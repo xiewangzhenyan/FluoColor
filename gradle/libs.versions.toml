@@ -22,7 +22,8 @@ kotlin-kapt = "2.0.0"
 ksp = "2.0.0-1.0.19"
 datastore = "1.0.0"
 material3 = "1.2.0"
-simplecropview = "1.1.8"
+ucrop = "2.2.10"
+appcompat = "1.6.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -39,6 +40,7 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 
 # 新增依赖
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "nav-compose" }
@@ -53,14 +55,12 @@ hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref
 hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
 androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hilt-navigation" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
-pytorch-android = { group = "org.pytorch", name = "pytorch_android", version.ref = "pytorch" }
-pytorch-android-torchvision = { group = "org.pytorch", name = "pytorch_android_torchvision", version.ref = "pytorch" }
 accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version.ref = "accompanist" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 androidx-datastore-preferences-core = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }
 androidx-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core" }
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
-simplecropview = { group = "com.isseiaoki", name = "simplecropview", version.ref = "simplecropview" }
+ucrop = { group = "com.github.yalantis", name = "ucrop", version.ref = "ucrop" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
