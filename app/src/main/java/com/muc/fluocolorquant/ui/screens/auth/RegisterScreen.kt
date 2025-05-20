@@ -28,11 +28,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.components.PrimaryButton
 import com.muc.fluocolorquant.ui.components.StandardTextField
 import com.muc.fluocolorquant.utils.Screen
@@ -61,12 +63,12 @@ fun RegisterScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("注册") },
+                title = { Text(stringResource(R.string.register_title)) },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.back)
                         )
                     }
                 }
@@ -92,7 +94,7 @@ fun RegisterScreen(navController: NavController) {
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "创建账户",
+                            text = stringResource(R.string.create_account_title),
                             style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.primary,
                             textAlign = TextAlign.Center,
@@ -100,7 +102,7 @@ fun RegisterScreen(navController: NavController) {
                         )
                         
                         Text(
-                            text = "加入FluoColorQuant，开始您的高通量检测之旅",
+                            text = stringResource(R.string.join_description),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -122,14 +124,14 @@ fun RegisterScreen(navController: NavController) {
                         StandardTextField(
                             value = username.value,
                             onValueChange = { username.value = it },
-                            label = "用户名",
+                            label = stringResource(R.string.username),
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
                         
                         StandardTextField(
                             value = email.value,
                             onValueChange = { email.value = it },
-                            label = "电子邮箱",
+                            label = stringResource(R.string.email_required),
                             keyboardType = KeyboardType.Email,
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
@@ -137,7 +139,7 @@ fun RegisterScreen(navController: NavController) {
                         StandardTextField(
                             value = password.value,
                             onValueChange = { password.value = it },
-                            label = "密码",
+                            label = stringResource(R.string.password),
                             keyboardType = KeyboardType.Password,
                             isPassword = true,
                             modifier = Modifier.padding(bottom = 16.dp)
@@ -146,7 +148,7 @@ fun RegisterScreen(navController: NavController) {
                         StandardTextField(
                             value = confirmPassword.value,
                             onValueChange = { confirmPassword.value = it },
-                            label = "确认密码",
+                            label = stringResource(R.string.confirm_password),
                             keyboardType = KeyboardType.Password,
                             imeAction = ImeAction.Done,
                             isPassword = true,
@@ -154,7 +156,7 @@ fun RegisterScreen(navController: NavController) {
                         )
                         
                         PrimaryButton(
-                            text = "注册",
+                            text = stringResource(R.string.register),
                             onClick = {
                                 // 这里应该实现注册逻辑
                                 // 成功注册后跳转到登录界面

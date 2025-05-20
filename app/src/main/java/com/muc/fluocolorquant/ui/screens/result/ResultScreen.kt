@@ -81,6 +81,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -195,10 +198,10 @@ fun ResultScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("检测结果") },
+                title = { Text(stringResource(R.string.detection_results)) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
@@ -207,7 +210,7 @@ fun ResultScreen(
                         // 使用本地图标而不是Icons.Default.FileDownload
                         Icon(
                             painter = painterResource(id = R.drawable.export),
-                            contentDescription = "导出",
+                            contentDescription = stringResource(R.string.export),
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -235,7 +238,7 @@ fun ResultScreen(
                     ) {
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text("加载结果数据...")
+                        Text(stringResource(R.string.loading_result_data))
                     }
                 }
                 
@@ -327,7 +330,7 @@ fun ResultScreen(
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text(
-                                text = "返回首页",
+                                text = stringResource(R.string.return_to_home),
                                 style = MaterialTheme.typography.labelLarge
                             )
                         }
@@ -415,13 +418,13 @@ fun ProjectInfoCard(project: Project) {
             )
             
             Text(
-                text = "创建时间: ${formatDate(project.createTime)}"
+                text = stringResource(R.string.creation_time, formatDate(project.createTime))
             )
             
             // 显示最大浓度（如果有）
             project.maxConcentration?.let { maxConc ->
                 Text(
-                    text = "最大浓度: $maxConc ng/ml"
+                    text = stringResource(R.string.max_concentration, maxConc.toString(), "ng/ml")
                 )
             }
         }
@@ -464,13 +467,13 @@ fun PlateHeatmapCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "浓度热力图",
+                    text = stringResource(R.string.concentration_heatmap),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 
                 Text(
-                    text = "单位: $concentrationUnit",
+                    text = stringResource(R.string.unit_label, concentrationUnit),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -580,6 +583,7 @@ fun PlateHeatmapCard(
                                             minConcentration = minConcentration,
                                             maxConcentration = maxConcentration,
                                             project = project,
+                                            concentrationUnit = concentrationUnit,
                                             viewModel = viewModel
                                         )
                                     }
@@ -602,6 +606,7 @@ fun PlateWell(
     minConcentration: Double,
     maxConcentration: Double,
     project: Project?,
+    concentrationUnit: String,
     viewModel: ResultViewModel = hiltViewModel()
 ) {
     val percentValue = wellResult?.predictedConcentration
@@ -661,7 +666,7 @@ fun PlateWell(
                             style = MaterialTheme.typography.bodySmall
                         )
                         Text(
-                            text = String.format("%.2f ng/ml", actualConcentration),
+                            text = String.format("%.2f %s", actualConcentration, concentrationUnit),
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -708,13 +713,13 @@ fun SquareHeatmapCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "浓度数值图",
+                    text = stringResource(R.string.concentration_values),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 
                 Text(
-                    text = "单位: $concentrationUnit",
+                    text = stringResource(R.string.unit_label, concentrationUnit),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1071,7 +1076,7 @@ fun ConcentrationChartCard(
                 .padding(16.dp)
         ) {
             Text(
-                text = "浓度折线图",
+                text = stringResource(R.string.concentration_chart),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -1079,8 +1084,8 @@ fun ConcentrationChartCard(
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                text = "孔位浓度趋势分析 (单位: $concentrationUnit)",
-                style = MaterialTheme.typography.bodyMedium,
+                text = stringResource(R.string.well_concentration_trend, concentrationUnit),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             
@@ -1127,8 +1132,8 @@ fun ConcentrationChartCard(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = String.format("%.2f%% (%.2f $concentrationUnit)", 
-                                            percentValue, actualConcentration),
+                                        text = String.format("%.2f%% (%.2f %s)", 
+                                            percentValue, actualConcentration, concentrationUnit),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
@@ -1485,7 +1490,7 @@ fun ConcentrationChartCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "点击数据点查看详细信息",
+                        text = stringResource(R.string.click_datapoint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1494,7 +1499,7 @@ fun ConcentrationChartCard(
                 // 滚动提示（仅当数据点较多时显示）
                 if (sortedResults.size > 10) {
                     Text(
-                        text = "左右滑动查看更多数据",
+                        text = stringResource(R.string.swipe_for_more),
                         style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
@@ -1512,7 +1517,7 @@ fun ConcentrationChartCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "没有有效的浓度数据",
+                        text = stringResource(R.string.no_concentration_data),
                         color = MaterialTheme.colorScheme.error
                     )
                 }
@@ -1563,7 +1568,7 @@ fun SingleWellResultCard(
         ) {
             // 标题改为项目名称
             Text(
-                text = project?.name ?: "手动裁剪结果",
+                text = project?.name ?: stringResource(R.string.manual_crop_result),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
@@ -1574,8 +1579,8 @@ fun SingleWellResultCard(
             // 显示检测模式
             project?.detectionMode?.let { mode ->
                 val detectionModeText = when (mode) {
-                    "FLUORESCENCE" -> "荧光检测"
-                    "COLORIMETRIC" -> "比色检测"
+                    "FLUORESCENCE" -> stringResource(R.string.fluorescence_detection_mode)
+                    "COLORIMETRIC" -> stringResource(R.string.colorimetric_detection_mode)
                     else -> mode
                 }
                 Text(
@@ -1608,7 +1613,7 @@ fun SingleWellResultCard(
                                 .data(imageSource)
                                 .crossfade(true)
                                 .build(),
-                            contentDescription = "孔位图像",
+                            contentDescription = stringResource(R.string.well_image),
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -1621,7 +1626,7 @@ fun SingleWellResultCard(
                                 .background(Color.LightGray),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("无图像")
+                            Text(stringResource(R.string.no_image))
                         }
                     }
                 }
@@ -1637,14 +1642,14 @@ fun SingleWellResultCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "浓度百分比:",
+                            text = stringResource(R.string.concentration_percent),
                             style = MaterialTheme.typography.titleMedium
                         )
                         
                         Spacer(modifier = Modifier.width(8.dp))
                         
                         Text(
-                            text = String.format("%.2f%%", percentValue),
+                            text = stringResource(R.string.concentration_percent_value, percentValue),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
@@ -1662,7 +1667,7 @@ fun SingleWellResultCard(
                     if (actualConcentration != null) {
                         // 显示浓度单位和最大浓度信息
                         Text(
-                            text = "实际浓度 (最大浓度: ${project?.maxConcentration ?: 100.0} $concentrationUnit)",
+                            text = stringResource(R.string.concentration_value, project?.maxConcentration ?: 100.0, concentrationUnit),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1671,14 +1676,14 @@ fun SingleWellResultCard(
                         
                         // 显示计算后的浓度值
                         Text(
-                            text = String.format("%.2f %s", actualConcentration, concentrationUnit),
+                            text = stringResource(R.string.concentration_value, actualConcentration, concentrationUnit),
                             style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
                 } ?: Text(
-                    text = "未能测量浓度",
+                    text = stringResource(R.string.unable_to_measure),
                     color = MaterialTheme.colorScheme.error
                 )
             } else {
@@ -1690,7 +1695,7 @@ fun SingleWellResultCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "未找到\n有效的检测结果",
+                        text = stringResource(R.string.no_valid_results),
                         color = MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.Center
                     )

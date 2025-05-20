@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -114,9 +115,9 @@ fun HomeScreen(
     
     // 底部导航项
     val bottomNavItems = listOf(
-        BottomNavItem(title = "首页", icon = Icons.Default.Home),
-        BottomNavItem(title = "历史", icon = Icons.Default.List),
-        BottomNavItem(title = "关于", icon = Icons.Default.Info)
+        BottomNavItem(title = stringResource(R.string.home_tab), icon = Icons.Default.Home),
+        BottomNavItem(title = stringResource(R.string.history_tab), icon = Icons.Default.List),
+        BottomNavItem(title = stringResource(R.string.about_tab), icon = Icons.Default.Info)
     )
     
     // 页面状态
@@ -140,7 +141,7 @@ fun HomeScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        "FluoColorQuant",
+                        stringResource(id = R.string.app_name),
                         style = MaterialTheme.typography.titleLarge
                     )
                 },
@@ -280,7 +281,7 @@ fun HomePageContent(navController: NavController) {
                     slideInVertically(animationSpec = tween(500)) { it / 2 }
         ) {
             Text(
-                text = "检测模式选择",
+                text = stringResource(R.string.detection_mode_selection),
                 style = MaterialTheme.typography.headlineMedium,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 24.dp, top = 8.dp)
@@ -325,12 +326,12 @@ fun HomePageContent(navController: NavController) {
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "新建检测项目",
+                                text = stringResource(R.string.new_detection_project),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                             Text(
-                                text = "创建新的荧光或比色检测项目",
+                                text = stringResource(R.string.create_new_project),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                             )
@@ -349,7 +350,7 @@ fun HomePageContent(navController: NavController) {
                             }
                         }
                     ) {
-                        Text("新建项目")
+                        Text(stringResource(R.string.new_project))
                     }
                 }
             }
@@ -378,30 +379,30 @@ fun HomePageContent(navController: NavController) {
                         .padding(16.dp)
                 ) {
                     Text(
-                        text = "主要功能",
+                        text = stringResource(R.string.main_functions),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                     
                     FunctionItem(
-                        title = "比色检测",
-                        description = "通过颜色变化分析样品浓度"
+                        title = stringResource(R.string.colorimetric_detection),
+                        description = stringResource(R.string.colorimetric_description)
                     )
                     
                     FunctionItem(
-                        title = "荧光检测",
-                        description = "通过荧光强度分析样品属性"
+                        title = stringResource(R.string.fluorescence_detection),
+                        description = stringResource(R.string.fluorescence_description)
                     )
                     
                     FunctionItem(
-                        title = "自动孔位识别",
-                        description = "智能识别微孔板位置"
+                        title = stringResource(R.string.auto_well_recognition),
+                        description = stringResource(R.string.auto_well_description)
                     )
                     
                     FunctionItem(
-                        title = "浓度曲线拟合",
-                        description = "生成标准曲线并计算未知样品浓度"
+                        title = stringResource(R.string.concentration_curve),
+                        description = stringResource(R.string.concentration_description)
                     )
                 }
             }
@@ -421,7 +422,7 @@ fun HistoryPageContent(navController: NavController) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "历史记录",
+            text = stringResource(R.string.history_records),
             style = MaterialTheme.typography.headlineMedium,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(vertical = 16.dp)
@@ -455,14 +456,14 @@ fun HistoryPageContent(navController: NavController) {
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Text(
-                    text = "查看您的历史项目记录",
+                    text = stringResource(R.string.view_history_projects),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
                 )
                 
                 Text(
-                    text = "在历史记录页面中，您可以查看、筛选、搜索和管理所有检测项目",
+                    text = stringResource(R.string.history_description),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center,
@@ -478,7 +479,7 @@ fun HistoryPageContent(navController: NavController) {
                         .fillMaxWidth(0.7f)
                         .padding(vertical = 8.dp)
                 ) {
-                    Text("查看详细历史记录")
+                    Text(stringResource(R.string.view_detailed_history))
                 }
             }
         }
@@ -498,30 +499,30 @@ fun HistoryPageContent(navController: NavController) {
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "历史记录功能",
+                    text = stringResource(R.string.history_functions),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 
                 HistoryFeatureItem(
-                    title = "项目管理",
-                    description = "查看、筛选和管理您的检测项目"
+                    title = stringResource(R.string.project_management),
+                    description = stringResource(R.string.project_management_description)
                 )
                 
                 HistoryFeatureItem(
-                    title = "结果查看",
-                    description = "随时回顾之前的检测结果"
+                    title = stringResource(R.string.result_viewing),
+                    description = stringResource(R.string.result_viewing_description)
                 )
                 
                 HistoryFeatureItem(
-                    title = "数据筛选",
-                    description = "按时间范围和检测模式筛选记录"
+                    title = stringResource(R.string.data_filtering),
+                    description = stringResource(R.string.data_filtering_description)
                 )
                 
                 HistoryFeatureItem(
-                    title = "快速搜索",
-                    description = "通过关键词快速定位项目"
+                    title = stringResource(R.string.quick_search),
+                    description = stringResource(R.string.quick_search_description)
                 )
             }
         }
@@ -576,7 +577,7 @@ fun AboutPageContent() {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "关于我们",
+            text = stringResource(R.string.about_us),
             style = MaterialTheme.typography.headlineMedium,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(vertical = 16.dp)
@@ -597,21 +598,21 @@ fun AboutPageContent() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "FluoColorQuant",
+                    text = stringResource(id = R.string.app_name),
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 
                 Text(
-                    text = "版本 1.0.0",
+                    text = stringResource(R.string.version),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
                 
                 Text(
-                    text = "FluoColorQuant是一款高效的比色与荧光高通量检测软件，通过先进的图像处理和机器学习算法，为您提供精准的传感器数据分析。",
+                    text = stringResource(R.string.app_description),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     textAlign = TextAlign.Center,
@@ -634,30 +635,30 @@ fun AboutPageContent() {
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "功能特点",
+                    text = stringResource(R.string.feature_highlights),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 
                 FunctionItem(
-                    title = "高精度检测",
-                    description = "支持0.01%精度的荧光和比色分析"
+                    title = stringResource(R.string.high_precision),
+                    description = stringResource(R.string.high_precision_description)
                 )
                 
                 FunctionItem(
-                    title = "多种分析模式",
-                    description = "支持单样品、标准曲线、多孔板等多种检测模式"
+                    title = stringResource(R.string.multiple_analysis_modes),
+                    description = stringResource(R.string.multiple_analysis_description)
                 )
                 
                 FunctionItem(
-                    title = "数据导出与分享",
-                    description = "一键导出数据和报告，支持多种格式"
+                    title = stringResource(R.string.data_export),
+                    description = stringResource(R.string.data_export_description)
                 )
                 
                 FunctionItem(
-                    title = "离线使用",
-                    description = "无需网络连接，保护您的数据安全"
+                    title = stringResource(R.string.offline_use),
+                    description = stringResource(R.string.offline_use_description)
                 )
             }
         }
@@ -677,14 +678,14 @@ fun AboutPageContent() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "联系我们",
+                    text = stringResource(R.string.contact_us),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 
                 Text(
-                    text = "邮箱: support@fluocolorquant.com\n网站: www.fluocolorquant.com",
+                    text = stringResource(R.string.contact_info),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     textAlign = TextAlign.Center
@@ -754,7 +755,7 @@ fun UserMenu(
                             .placeholder(R.drawable.placeholder_image)
                             .build()
                     ),
-                    contentDescription = "用户头像",
+                    contentDescription = stringResource(R.string.user_avatar),
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape),
@@ -763,7 +764,7 @@ fun UserMenu(
             } else {
                 Icon(
                     imageVector = Icons.Default.AccountCircle,
-                    contentDescription = "用户菜单",
+                    contentDescription = stringResource(R.string.user_menu),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(40.dp)
                 )
@@ -794,7 +795,7 @@ fun UserMenu(
                                 .placeholder(R.drawable.placeholder_image)
                                 .build()
                         ),
-                        contentDescription = "用户头像",
+                        contentDescription = stringResource(R.string.user_avatar),
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape),
@@ -811,7 +812,7 @@ fun UserMenu(
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = currentUser?.username ?: "未知用户",
+                    text = currentUser?.username ?: stringResource(R.string.unknown_user),
                     style = MaterialTheme.typography.titleMedium
                 )
             }
@@ -823,8 +824,11 @@ fun UserMenu(
 
             // 设置选项
             DropdownMenuItem(
-                text = { Text("设置") },
-                onClick = { /* 处理设置点击 */ },
+                text = { Text(stringResource(R.string.settings)) },
+                onClick = { 
+                    expanded = false
+                    navController.navigate(Screen.Settings.route)
+                },
                 leadingIcon = {
                     Icon(
                         Icons.Default.Settings,
@@ -836,7 +840,7 @@ fun UserMenu(
 
             // 个人信息选项
             DropdownMenuItem(
-                text = { Text("个人信息") },
+                text = { Text(stringResource(R.string.profile)) },
                 onClick = {
                     expanded = false
                     navController.navigate(Screen.Profile.route)
@@ -852,7 +856,7 @@ fun UserMenu(
 
             // 退出登录选项
             DropdownMenuItem(
-                text = { Text("退出登录") },
+                text = { Text(stringResource(R.string.logout)) },
                 onClick = { 
                     expanded = false
                     showLogoutDialog = true
@@ -871,8 +875,8 @@ fun UserMenu(
         if (showLogoutDialog) {
             AlertDialog(
                 onDismissRequest = { showLogoutDialog = false },
-                title = { Text("退出登录") },
-                text = { Text("确定要退出登录吗？") },
+                title = { Text(stringResource(R.string.confirm_logout)) },
+                text = { Text(stringResource(R.string.confirm_logout_message)) },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -888,14 +892,14 @@ fun UserMenu(
                             contentColor = MaterialTheme.colorScheme.error
                         )
                     ) {
-                        Text("确定")
+                        Text(stringResource(R.string.confirm))
                     }
                 },
                 dismissButton = {
                     TextButton(
                         onClick = { showLogoutDialog = false }
                     ) {
-                        Text("取消")
+                        Text(stringResource(R.string.cancel))
                     }
                 }
             )

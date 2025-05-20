@@ -16,6 +16,7 @@ import com.muc.fluocolorquant.ui.screens.imagecrop.ImageCropScreen
 import com.muc.fluocolorquant.ui.screens.profile.ProfileScreen
 import com.muc.fluocolorquant.ui.screens.project.NewProjectScreen
 import com.muc.fluocolorquant.ui.screens.result.ResultScreen
+import com.muc.fluocolorquant.ui.screens.settings.SettingsScreen
 import com.muc.fluocolorquant.ui.screens.splash.SplashScreen
 import com.muc.fluocolorquant.utils.Screen
 import com.muc.fluocolorquant.ui.screens.history.HistoryScreen
@@ -143,6 +144,11 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         
         composable(route = Screen.Profile.route) {
             ProfileScreen(navController = navController)
+        }
+        
+        // 设置页面
+        composable(route = Screen.Settings.route) {
+            SettingsScreen(navController = navController)
         }
         
         // 历史记录页面

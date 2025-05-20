@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -108,7 +109,7 @@ fun SplashScreen(
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.logo_holder),
-                    contentDescription = "应用图标",
+                    contentDescription = stringResource(R.string.app_icon_description),
                     modifier = Modifier.size(80.dp),
                     colorFilter = ColorFilter.tint(Color.White),
                     contentScale = ContentScale.Fit
@@ -119,7 +120,7 @@ fun SplashScreen(
             
             // 应用名称
             Text(
-                text = "FluoColor",
+                text = stringResource(R.string.app_name_short),
                 color = MaterialTheme.colorScheme.primary,
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
@@ -128,7 +129,7 @@ fun SplashScreen(
             
             // 应用描述
             Text(
-                text = "智能检测分析平台",
+                text = stringResource(R.string.app_subtitle),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                 fontSize = 18.sp,
                 textAlign = TextAlign.Center,
@@ -149,7 +150,7 @@ fun SplashScreen(
                 enter = fadeIn() + expandVertically()
             ) {
                 Text(
-                    text = "加载中... ${(progressAnimation * 100).toInt()}%",
+                    text = stringResource(R.string.loading_progress, (progressAnimation * 100).toInt()),
                     color = MaterialTheme.colorScheme.onPrimary,
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
@@ -160,7 +161,7 @@ fun SplashScreen(
         
         // 底部版权信息
         Text(
-            text = "© 2025 FluoColor Technology",
+            text = stringResource(R.string.copyright),
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             fontSize = 12.sp,
             modifier = Modifier

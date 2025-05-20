@@ -8,6 +8,7 @@ import com.muc.fluocolorquant.data.dao.DetectionRunDao
 import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepositoryImpl
+import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.data.repository.UserRepository
 import com.muc.fluocolorquant.data.repository.WellResultRepository
 import dagger.Module
@@ -55,5 +56,13 @@ object RepositoryModule {
         @ApplicationContext context: Context
     ): WellResultRepository {
         return WellResultRepository(wellResultDao, detectionRunDao, projectDao, context)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideSettingsRepository(
+        @ApplicationContext context: Context
+    ): SettingsRepository {
+        return SettingsRepository(context)
     }
 } 

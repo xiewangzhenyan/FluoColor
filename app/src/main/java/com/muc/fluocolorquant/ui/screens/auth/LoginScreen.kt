@@ -27,6 +27,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.components.PrimaryButton
 import com.muc.fluocolorquant.ui.components.SecondaryButton
 import com.muc.fluocolorquant.ui.components.StandardTextField
@@ -88,7 +90,7 @@ fun LoginScreen(
             
             // 软件名称
             Text(
-                text = "FluoColorQuant",
+                text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(vertical = 8.dp)
@@ -96,7 +98,7 @@ fun LoginScreen(
             
             // 软件描述
             Text(
-                text = "智能比色与荧光检测分析平台",
+                text = stringResource(R.string.app_description_short),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -121,7 +123,7 @@ fun LoginScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = if (isLoginMode) "账号登录" else "注册账号",
+                        text = stringResource(id = if (isLoginMode) R.string.account_login else R.string.create_account),
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(bottom = 24.dp)
                     )
@@ -130,7 +132,7 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = username,
                         onValueChange = { username = it },
-                        label = { Text("用户名") },
+                        label = { Text(stringResource(R.string.username)) },
                         singleLine = true,
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                         modifier = Modifier.fillMaxWidth(),
@@ -146,13 +148,13 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text("密码") },
+                        label = { Text(stringResource(R.string.password)) },
                         singleLine = true,
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                         trailingIcon = {
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                 Text(
-                                    text = if (passwordVisible) "隐藏" else "显示",
+                                    text = stringResource(id = if (passwordVisible) R.string.hide else R.string.show),
                                     color = MaterialTheme.colorScheme.primary,
                                     style = MaterialTheme.typography.labelSmall
                                 )
@@ -172,7 +174,7 @@ fun LoginScreen(
                         OutlinedTextField(
                             value = email,
                             onValueChange = { email = it },
-                            label = { Text("邮箱 (可选)") },
+                            label = { Text(stringResource(R.string.email)) },
                             singleLine = true,
                             leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                             modifier = Modifier.fillMaxWidth(),
@@ -198,7 +200,7 @@ fun LoginScreen(
                     
                     // 登录/注册按钮
                     PrimaryButton(
-                        text = if (isLoginMode) "登录" else "注册",
+                        text = stringResource(id = if (isLoginMode) R.string.login else R.string.register),
                         onClick = {
                             if (isLoginMode) {
                                 viewModel.login(username, password)
@@ -228,7 +230,7 @@ fun LoginScreen(
                 modifier = Modifier.padding(8.dp)
             ) {
                 Text(
-                    text = if (isLoginMode) "没有账号? 点击注册" else "已有账号? 点击登录",
+                    text = stringResource(id = if (isLoginMode) R.string.no_account else R.string.have_account),
                     color = MaterialTheme.colorScheme.primary
                 )
             }

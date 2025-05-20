@@ -6,6 +6,17 @@
 这是使用Jetpack Compose创建的Android应用，请按照一下规则进行开发:
 ##不使用xml
 -使用Jetpack Compose创建UI，不要使用XML
+##字符串资源化
+-所有用户界面显示的文本必须放入strings.xml资源文件中，不允许硬编码文本
+-英文字符串放在res/values/strings.xml中
+-中文字符串放在res/values-zh/strings.xml中
+-字符串资源使用合适的命名规范，保证不同语言版本使用相同的字符串ID
+-使用stringResource()函数引用字符串资源，例如：stringResource(R.string.app_name)
+##使用自定义Toast
+-不使用Android原生Toast组件（android.widget.Toast），而是使用项目自定义的CustomToast组件
+-在Composable函数中通过LocalToastManager获取toastManager实例
+-使用toastManager.showToast()方法显示Toast消息，并根据情况选择合适的ToastType（SUCCESS、INFO、WARNING、ERROR）
+-例如：toastManager.showToast("操作成功", ToastType.SUCCESS)
 #要求
 在理解用户需求、设计UI、编写代码、解决问题和项目选代优化时，你应该始终遵循以下原则:
 ##项目初始化

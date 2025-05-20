@@ -1,3 +1,233 @@
 <resources>
     <string name="app_name">FluoColorQuant</string>
+    
+    <!-- Common -->
+    <string name="cancel">Cancel</string>
+    <string name="confirm">Confirm</string>
+    <string name="save">Save</string>
+    <string name="back">Back</string>
+    <string name="delete">Delete</string>
+    <string name="loading">Loading…</string>
+    <string name="retry">Retry</string>
+    
+    <!-- Home Screen -->
+    <string name="home_tab">Home</string>
+    <string name="history_tab">History</string>
+    <string name="about_tab">About</string>
+    <string name="detection_mode_selection">Detection Mode Selection</string>
+    <string name="new_detection_project">New Detection Project</string>
+    <string name="create_new_project">Create a new fluorescence or colorimetric detection project</string>
+    <string name="new_project">New Project</string>
+    <string name="main_functions">Main Functions</string>
+    <string name="colorimetric_detection">Colorimetric Detection</string>
+    <string name="colorimetric_description">Analyze sample concentration through color changes</string>
+    <string name="fluorescence_detection">Fluorescence Detection</string>
+    <string name="fluorescence_description">Analyze sample properties through fluorescence intensity</string>
+    <string name="auto_well_recognition">Automatic Well Recognition</string>
+    <string name="auto_well_description">Intelligently recognize microplate positions</string>
+    <string name="concentration_curve">Concentration Curve Fitting</string>
+    <string name="concentration_description">Generate standard curves and calculate unknown sample concentrations</string>
+    
+    <!-- History Screen -->
+    <string name="history_records">History Records</string>
+    <string name="view_history_projects">View your history project records</string>
+    <string name="history_description">In the history page, you can view, filter, search, and manage all detection projects</string>
+    <string name="view_detailed_history">View Detailed History</string>
+    <string name="history_functions">History Functions</string>
+    <string name="project_management">Project Management</string>
+    <string name="project_management_description">View, filter, and manage your detection projects</string>
+    <string name="result_viewing">Result Viewing</string>
+    <string name="result_viewing_description">Review previous detection results anytime</string>
+    <string name="data_filtering">Data Filtering</string>
+    <string name="data_filtering_description">Filter records by time range and detection mode</string>
+    <string name="quick_search">Quick Search</string>
+    <string name="quick_search_description">Quickly locate projects with keywords</string>
+    
+    <!-- About Screen -->
+    <string name="about_us">About Us</string>
+    <string name="version">Version 1.0.0</string>
+    <string name="app_description">FluoColorQuant is an efficient colorimetric and fluorescence high-throughput detection software that provides accurate sensor data analysis through advanced image processing and machine learning algorithms.</string>
+    <string name="feature_highlights">Feature Highlights</string>
+    <string name="high_precision">High Precision Detection</string>
+    <string name="high_precision_description">Supports fluorescence and colorimetric analysis with 0.01% precision</string>
+    <string name="multiple_analysis_modes">Multiple Analysis Modes</string>
+    <string name="multiple_analysis_description">Supports various detection modes including single sample, standard curve, and multi-well plate</string>
+    <string name="data_export">Data Export and Sharing</string>
+    <string name="data_export_description">One-click export of data and reports in multiple formats</string>
+    <string name="offline_use">Offline Use</string>
+    <string name="offline_use_description">No network connection required, protecting your data security</string>
+    <string name="contact_us">Contact Us</string>
+    <string name="contact_info">Email: support@fluocolorquant.com\nWebsite: www.fluocolorquant.com</string>
+    
+    <!-- User Menu -->
+    <string name="settings">Settings</string>
+    <string name="profile">Profile</string>
+    <string name="logout">Logout</string>
+    <string name="unknown_user">Unknown User</string>
+    <string name="confirm_logout">Confirm Logout</string>
+    <string name="confirm_logout_message">Are you sure you want to logout?</string>
+    <string name="user_avatar">User Avatar</string>
+    <string name="user_menu">User Menu</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="language_settings">Language Settings</string>
+    <string name="select_language">Select Language</string>
+    <string name="english">English</string>
+    <string name="chinese">Chinese</string>
+    <string name="language_changed">Language changed successfully</string>
+    <string name="settings_update_success">Settings updated successfully</string>
+    <string name="app_settings">App Settings</string>
+    
+    <!-- Login Screen -->
+    <string name="app_description_short">Intelligent colorimetric and fluorescence detection platform</string>
+    <string name="login">Login</string>
+    <string name="register">Register</string>
+    <string name="account_login">Account Login</string>
+    <string name="create_account">Create Account</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="email">Email (Optional)</string>
+    <string name="show">Show</string>
+    <string name="hide">Hide</string>
+    <string name="no_account">Don\'t have an account? Click to register</string>
+    <string name="have_account">Already have an account? Click to login</string>
+    
+    <!-- Register Screen -->
+    <string name="register_title">Register</string>
+    <string name="create_account_title">Create Account</string>
+    <string name="join_description">Join FluoColorQuant to start your high-throughput detection journey</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="email_required">Email</string>
+    
+    <!-- Splash Screen -->
+    <string name="app_name_short">FluoColor</string>
+    <string name="app_subtitle">Intelligent detection analysis platform</string>
+    <string name="loading_progress">Loading... %1$d%%</string>
+    <string name="copyright">© 2025 FluoColor Technology</string>
+    <string name="app_icon_description">App Icon</string>
+    
+    <!-- Result Screen -->
+    <string name="return_to_home">Return to Home</string>
+    <string name="creation_time">Creation Time: %1$s</string>
+    <string name="concentration_heatmap">Concentration Heatmap</string>
+    <string name="unit_label">Unit: %1$s</string>
+    <string name="well_position">Well %1$s%2$d</string>
+    <string name="concentration_values">Concentration Values</string>
+    <string name="concentration_chart">Concentration Chart</string>
+    <string name="well_concentration_trend">Well Concentration Trend Analysis (Unit: %1$s)</string>
+    <string name="no_concentration_data">No valid concentration data</string>
+    <string name="manual_crop_result">Manual Crop Result</string>
+    <string name="fluorescence_detection_mode">Fluorescence Detection</string>
+    <string name="colorimetric_detection_mode">Colorimetric Detection</string>
+    <string name="concentration_percent">Concentration Percent:</string>
+    <string name="actual_concentration">Actual Concentration (Max Concentration: %1$.1f %2$s)</string>
+    <string name="concentration_value">%1$.2f %2$s</string>
+    <string name="concentration_percent_value">%1$.2f%%</string>
+    <string name="unable_to_measure">Unable to measure concentration</string>
+    <string name="no_valid_results">No valid\ndetection results</string>
+    <string name="well_image">Well Image</string>
+    <string name="no_image">No Image</string>
+    <string name="click_datapoint">Click on data points for details</string>
+    <string name="swipe_for_more">Swipe left or right for more data</string>
+    
+    <!-- History Screen Additional -->
+    <string name="confirm_delete">Confirm Delete</string>
+    <string name="confirm_delete_single">Are you sure you want to delete this project? This action cannot be undone.</string>
+    <string name="confirm_delete_multiple">Are you sure you want to delete %1$d selected projects? This action cannot be undone.</string>
+    <string name="delete_action">Delete</string>
+    <string name="no_history">No History Records</string>
+    <string name="history_will_appear">Your detection project history will appear here</string>
+    <string name="no_matching_projects">No matching projects found</string>
+    <string name="no_match_for_query">No projects match \"%1$s\"</string>
+    <string name="no_match_for_filters">No projects match current filters</string>
+    <string name="clear_filters">Clear Filters</string>
+    <string name="filter_history">Filter History</string>
+    <string name="time_range">Time Range</string>
+    <string name="detection_mode">Detection Mode</string>
+    <string name="recognition_type">Recognition Type</string>
+    <string name="sort_options">Sort Options</string>
+    <string name="sort_direction">Sort Direction:</string>
+    <string name="sort_field">Sort Field:</string>
+    <string name="loading_failed">Loading Failed</string>
+    
+    <!-- History Screen Extended -->
+    <string name="selected_items">Selected %1$d items</string>
+    <string name="search_projects">Search projects...</string>
+    <string name="clear_search">Clear search</string>
+    <string name="cancel_selection">Cancel</string>
+    <string name="delete_selected">Delete selected items</string>
+    <string name="all_time">All time</string>
+    <string name="today">Today</string>
+    <string name="last_7_days">Last 7 days</string>
+    <string name="last_30_days">Last 30 days</string>
+    <string name="auto_recognition">Automatic Recognition</string>
+    <string name="manual_crop">Manual Crop</string>
+    <string name="reset">Reset</string>
+    <string name="done">Done</string>
+    <string name="ascending">Ascending</string>
+    <string name="descending">Descending</string>
+    <string name="loading_data">Loading data...</string>
+    <string name="search">Search</string>
+    <string name="filter">Filter</string>
+    <string name="sort">Sort</string>
+    <string name="detection_results">Detection Results</string>
+    <string name="export">Export</string>
+    <string name="loading_result_data">Loading result data...</string>
+    
+    <!-- Export Components -->
+    <string name="export_title">Export</string>
+    <string name="export_data_csv">Export Data (CSV)</string>
+    <string name="export_data_csv_desc">Export concentration data as CSV file</string>
+    <string name="export_chart_png">Export Chart (PNG)</string>
+    <string name="export_chart_png_desc">Export concentration heatmap and value charts as PNG images</string>
+    <string name="export_report_pdf">Export Full Report (PDF)</string>
+    <string name="export_report_pdf_desc">Export detection results and parameters as PDF report</string>
+    <string name="csv_saved">CSV file saved to downloads folder</string>
+    <string name="csv_failed">CSV export failed</string>
+    <string name="charts_saved">Concentration charts saved as PNG images</string>
+    <string name="charts_failed">Chart export failed</string>
+    <string name="pdf_saved">PDF report saved to downloads folder</string>
+    <string name="pdf_failed">PDF report export failed</string>
+    
+    <!-- New Project Screen -->
+    <string name="new_project_title">New Project</string>
+    <string name="project_name">Project Name</string>
+    <string name="create_project">Create Project</string>
+    <string name="camera_permission_required">Camera permission is required to take photos</string>
+    <string name="temp_file_creation_error">Cannot create temporary image file</string>
+    <string name="enter_project_name">Please enter a project name</string>
+    <string name="select_image">Please select or take an image</string>
+    <string name="analyzing_image">Starting image analysis...</string>
+    <string name="fluorescence_mode">Fluorescence Detection</string>
+    <string name="colorimetric_mode">Colorimetric Detection</string>
+    <string name="auto_recognition_option">Automatic Recognition</string>
+    <string name="manual_crop_option">Manual Crop</string>
+    <string name="project_image">Project Image</string>
+    <string name="upload_project_image">Click to upload project image</string>
+    <string name="max_concentration">Maximum Concentration</string>
+    <string name="select_image_title">Select Image</string>
+    <string name="select_from_gallery">Select from gallery</string>
+    <string name="take_photo">Take photo</string>
+    <string name="project_creation_success">Project created successfully</string>
+    <string name="project_creation_error">Error: %1$s</string>
+    <string name="expand">Expand</string>
+    
+    <!-- Settings - Detection Settings -->
+    <string name="detection_settings">Detection Settings</string>
+    <string name="default_detection_mode">Default Detection Mode</string>
+    <string name="concentration_unit_settings">Concentration Unit Settings</string>
+    <string name="select_default_concentration_unit">Select Default Concentration Unit</string>
+    <string name="add_concentration_unit">Add Concentration Unit</string>
+    <string name="delete_concentration_unit">Delete Concentration Unit</string>
+    <string name="concentration_unit">Concentration Unit</string>
+    <string name="default_concentration_unit">Default Unit</string>
+    <string name="unit_added">Unit added successfully</string>
+    <string name="unit_deleted">Unit deleted successfully</string>
+    <string name="unit_already_exists">Unit already exists</string>
+    <string name="cannot_delete_default_unit">Cannot delete default unit</string>
+    <string name="enter_new_unit">Enter new unit</string>
+    <string name="add">Add</string>
+    <string name="expand_all">Show all</string>
+    <string name="collapse">Collapse</string>
 </resources>

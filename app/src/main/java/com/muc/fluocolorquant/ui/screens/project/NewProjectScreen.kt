@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
+
 package com.muc.fluocolorquant.ui.screens.project
 
+import android.content.Context
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -25,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +42,7 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.viewmodels.ProjectViewModel
 import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
+import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
 import com.muc.fluocolorquant.utils.Screen
 import kotlinx.coroutines.launch
 import android.Manifest
@@ -48,6 +53,8 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.PermissionStatus
+import com.muc.fluocolorquant.ui.components.LocalToastManager
+import com.muc.fluocolorquant.ui.components.ToastType
 
 // 检测模式枚举
 enum class DetectionMode {
@@ -59,33 +66,85 @@ enum class RecognitionType {
     AUTO, MANUAL
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun NewProjectScreen(
     navController: NavController,
     projectViewModel: ProjectViewModel = hiltViewModel(),
     userViewModel: UserViewModel = hiltViewModel(),
-    concentrationViewModel: ConcentrationViewModel = hiltViewModel()
+    concentrationViewModel: ConcentrationViewModel = hiltViewModel(),
+    settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    
+    val toastManager = LocalToastManager.current
+
     // 使用当前用户信息
     val currentUser by userViewModel.currentUser.collectAsState()
-    
+
     // 获取浓度预测状态
     val concentrationState by concentrationViewModel.concentrationState.collectAsState()
     
+    // 刷新设置，确保获取最新的设置值
+    LaunchedEffect(Unit) {
+        settingsViewModel.refreshSettings()
+    }
+    
+    // 获取默认浓度单位和可用单位列表
+    val defaultDetectionMode by settingsViewModel.defaultDetectionMode.collectAsState()
+    val defaultConcentrationUnit by settingsViewModel.defaultConcentrationUnit.collectAsState()
+    val availableConcentrationUnits by settingsViewModel.concentrationUnits.collectAsState()
+    
+    // 提前获取所有需要在非Composable上下文中使用的字符串资源
+    val tempFileCreationErrorMessage = stringResource(R.string.temp_file_creation_error)
+    val cameraPermissionRequiredMessage = stringResource(R.string.camera_permission_required)
+    val enterProjectNameMessage = stringResource(R.string.enter_project_name)
+    val selectImageMessage = stringResource(R.string.select_image)
+    val projectCreationSuccessMessage = stringResource(R.string.project_creation_success)
+    val analyzingImageMessage = stringResource(R.string.analyzing_image)
+    val projectCreationErrorMessage = stringResource(R.string.project_creation_error)
+
     // 状态管理 - 使用rememberSaveable而不是remember
     var projectName by rememberSaveable { mutableStateOf("") }
-    var detectionMode by rememberSaveable { mutableStateOf(DetectionMode.FLUORESCENCE) }
+    
+    // 根据默认设置初始化检测模式
+    var detectionMode by rememberSaveable(defaultDetectionMode) { 
+        mutableStateOf(
+            when (defaultDetectionMode) {
+                "FLUORESCENCE" -> DetectionMode.FLUORESCENCE
+                "COLORIMETRIC" -> DetectionMode.COLORIMETRIC
+                else -> DetectionMode.FLUORESCENCE
+            }
+        ) 
+    }
+    
     var recognitionType by rememberSaveable { mutableStateOf(RecognitionType.AUTO) }
     var projectImageUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var maxConcentration by rememberSaveable { mutableStateOf("") }
+    
+    // 根据默认设置初始化浓度单位
+    var concentrationUnit by rememberSaveable(defaultConcentrationUnit) { 
+        mutableStateOf(defaultConcentrationUnit) 
+    }
+    
     var showImagePickerDialog by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
     var isRecognitionTypeMenuExpanded by remember { mutableStateOf(false) }
+    var isConcentrationUnitMenuExpanded by remember { mutableStateOf(false) }
+
+    // 当默认检测模式变化时，更新当前检测模式
+    LaunchedEffect(defaultDetectionMode) {
+        detectionMode = when (defaultDetectionMode) {
+            "FLUORESCENCE" -> DetectionMode.FLUORESCENCE
+            "COLORIMETRIC" -> DetectionMode.COLORIMETRIC
+            else -> DetectionMode.FLUORESCENCE
+        }
+    }
     
+    // 当默认浓度单位变化时，更新当前浓度单位
+    LaunchedEffect(defaultConcentrationUnit) {
+        concentrationUnit = defaultConcentrationUnit
+    }
+
     // 检查裁剪后的图片URI
     val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
     LaunchedEffect(savedStateHandle) {
@@ -95,7 +154,7 @@ fun NewProjectScreen(
             savedStateHandle.remove<String>("croppedImageUri")
         }
     }
-    
+
     // 监听浓度预测状态变化，完成后导航到结果页面
     LaunchedEffect(concentrationState) {
         if (concentrationState is ConcentrationViewModel.ConcentrationState.Success) {
@@ -110,7 +169,7 @@ fun NewProjectScreen(
             }
         }
     }
-    
+
     // 图片选择器
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -120,7 +179,7 @@ fun NewProjectScreen(
             navController.navigate("${Screen.ImageCrop.route}?imageUri=${Uri.encode(uri.toString())}")
         }
     }
-    
+
     // 相机启动器
     val tempImageUri = remember { mutableStateOf<Uri?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -131,10 +190,10 @@ fun NewProjectScreen(
             navController.navigate("${Screen.ImageCrop.route}?imageUri=${Uri.encode(tempImageUri.value.toString())}")
         }
     }
-    
+
     // 相机权限状态
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
-    
+
     // 创建临时文件和URI的函数
     val createTempImageUri: () -> Uri? = {
         try {
@@ -147,7 +206,7 @@ fun NewProjectScreen(
                 ".jpg",
                 storageDir
             )
-            
+
             // 使用FileProvider获取内容URI
             androidx.core.content.FileProvider.getUriForFile(
                 context,
@@ -156,11 +215,11 @@ fun NewProjectScreen(
             )
         } catch (e: Exception) {
             android.util.Log.e("NewProjectScreen", "Error creating temp image uri", e)
-            Toast.makeText(context, "无法创建临时图像文件", Toast.LENGTH_SHORT).show()
+            toastManager.showToast(tempFileCreationErrorMessage, ToastType.ERROR)
             null
         }
     }
-    
+
     // 打开相机前检查权限的函数
     val checkCameraPermissionAndLaunch: () -> Unit = {
         when {
@@ -169,7 +228,7 @@ fun NewProjectScreen(
                 tempImageUri.value = createTempImageUri()
                 tempImageUri.value?.let { uri ->
                     cameraLauncher.launch(uri)
-                } ?: Toast.makeText(context, "无法创建临时图像文件", Toast.LENGTH_SHORT).show()
+                } ?: toastManager.showToast(tempFileCreationErrorMessage, ToastType.ERROR)
             }
             // 请求相机权限
             else -> {
@@ -177,7 +236,7 @@ fun NewProjectScreen(
             }
         }
     }
-    
+
     // 权限结果监听
     LaunchedEffect(cameraPermissionState.status) {
         when (cameraPermissionState.status) {
@@ -188,25 +247,25 @@ fun NewProjectScreen(
             is PermissionStatus.Denied -> {
                 // 权限被拒绝，显示提示
                 if ((cameraPermissionState.status as PermissionStatus.Denied).shouldShowRationale) {
-                    Toast.makeText(context, "需要相机权限才能拍照", Toast.LENGTH_SHORT).show()
+                    toastManager.showToast(cameraPermissionRequiredMessage, ToastType.WARNING)
                 }
             }
         }
     }
-    
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     Text(
-                        "新建项目",
+                        stringResource(R.string.new_project_title),
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, "返回")
+                        Icon(Icons.Default.ArrowBack, stringResource(R.string.back))
                     }
                 }
             )
@@ -225,7 +284,7 @@ fun NewProjectScreen(
             OutlinedTextField(
                 value = projectName,
                 onValueChange = { projectName = it },
-                label = { Text("项目名称") },
+                label = { Text(stringResource(R.string.project_name)) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Edit,
@@ -243,19 +302,19 @@ fun NewProjectScreen(
                 shape = RoundedCornerShape(8.dp),
                 singleLine = true
             )
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // 检测模式选择
             Text(
-                text = "检测模式",
+                text = stringResource(R.string.detection_mode),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 8.dp),
                 fontWeight = FontWeight.Medium,
                 color = Color(0xFF333333)
             )
-            
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -277,11 +336,11 @@ fun NewProjectScreen(
                         )
                     )
                     Text(
-                        text = "荧光检测",
+                        text = stringResource(R.string.fluorescence_mode),
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
-                
+
                 // 比色检测
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -297,63 +356,62 @@ fun NewProjectScreen(
                         )
                     )
                     Text(
-                        text = "比色检测",
+                        text = stringResource(R.string.colorimetric_mode),
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             // 识别类型下拉菜单
             Text(
-                text = "识别类型",
+                text = stringResource(R.string.recognition_type),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 8.dp),
                 fontWeight = FontWeight.Medium,
                 color = Color(0xFF333333)
             )
-            
-            Box(
+
+            ExposedDropdownMenuBox(
+                expanded = isRecognitionTypeMenuExpanded,
+                onExpandedChange = { isRecognitionTypeMenuExpanded = !isRecognitionTypeMenuExpanded },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
             ) {
                 OutlinedTextField(
                     value = when (recognitionType) {
-                        RecognitionType.AUTO -> "自动识别"
-                        RecognitionType.MANUAL -> "手动裁剪"
+                        RecognitionType.AUTO -> stringResource(R.string.auto_recognition_option)
+                        RecognitionType.MANUAL -> stringResource(R.string.manual_crop_option)
                     },
-                    onValueChange = { },
+                    onValueChange = { /* No action needed for readOnly field */ },
                     readOnly = true,
-                    trailingIcon = {
-                        IconButton(onClick = { isRecognitionTypeMenuExpanded = true }) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "展开",
-                                tint = Color(0xFF5D6B98)
-                            )
-                        }
-                    },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isRecognitionTypeMenuExpanded) },
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { isRecognitionTypeMenuExpanded = true },
-                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        .menuAnchor() // Important for ExposedDropdownMenuBox
+                        .fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color(0xFF5D6B98),
-                        unfocusedBorderColor = Color(0xFFDDDDDD)
+                        unfocusedBorderColor = Color(0xFFDDDDDD),
+                        focusedTrailingIconColor = Color(0xFF5D6B98),
+                        unfocusedTrailingIconColor = Color(0xFF5D6B98),
+                        disabledTextColor = LocalContentColor.current,
+                        disabledBorderColor = Color(0xFFDDDDDD),
+                        disabledTrailingIconColor = Color(0xFF5D6B98)
                     ),
                     shape = RoundedCornerShape(8.dp)
                 )
-                
-                DropdownMenu(
+
+                ExposedDropdownMenu(
                     expanded = isRecognitionTypeMenuExpanded,
                     onDismissRequest = { isRecognitionTypeMenuExpanded = false },
-                    modifier = Modifier.fillMaxWidth(0.9f)
+                    modifier = Modifier.fillMaxWidth(0.9f) // Keep original width factor
                 ) {
                     DropdownMenuItem(
-                        text = { Text("自动识别") },
-                        onClick = { 
+                        text = { Text(stringResource(R.string.auto_recognition_option)) },
+                        onClick = {
                             recognitionType = RecognitionType.AUTO
                             isRecognitionTypeMenuExpanded = false
                         },
@@ -365,10 +423,10 @@ fun NewProjectScreen(
                             )
                         }
                     )
-                    
+
                     DropdownMenuItem(
-                        text = { Text("手动裁剪") },
-                        onClick = { 
+                        text = { Text(stringResource(R.string.manual_crop_option)) },
+                        onClick = {
                             recognitionType = RecognitionType.MANUAL
                             isRecognitionTypeMenuExpanded = false
                         },
@@ -382,19 +440,19 @@ fun NewProjectScreen(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             // 项目图片
             Text(
-                text = "项目图片",
+                text = stringResource(R.string.project_image),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 8.dp),
                 fontWeight = FontWeight.Medium,
                 color = Color(0xFF333333)
             )
-            
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -416,11 +474,11 @@ fun NewProjectScreen(
                             .data(projectImageUri)
                             .crossfade(true)
                             .build(),
-                        contentDescription = "项目图片",
+                        contentDescription = stringResource(R.string.project_image),
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize()
                     )
-                    
+
                     // 添加删除按钮
                     IconButton(
                         onClick = { projectImageUri = null },
@@ -433,7 +491,7 @@ fun NewProjectScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "删除图片",
+                            contentDescription = stringResource(R.string.delete),
                             tint = Color.White
                         )
                     }
@@ -445,23 +503,33 @@ fun NewProjectScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = "上传图片",
+                            contentDescription = stringResource(R.string.project_image),
                             tint = Color(0xFF5D6B98),
                             modifier = Modifier.size(48.dp)
                         )
-                        
+
                         Spacer(modifier = Modifier.height(8.dp))
-                        
+
                         Text(
-                            text = "点击上传项目图片",
+                            text = stringResource(R.string.upload_project_image),
                             color = Color(0xFF666666),
                             fontSize = 14.sp
                         )
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
+
+            // 最大浓度标题和输入框
+            Text(
+                text = stringResource(R.string.max_concentration),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF333333)
+            )
             
             // 最大浓度输入框
             OutlinedTextField(
@@ -469,10 +537,10 @@ fun NewProjectScreen(
                 onValueChange = { 
                     // 仅允许数字输入
                     if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) {
-                        maxConcentration = it 
+                        maxConcentration = it
                     }
                 },
-                label = { Text("最大浓度 (ng/ml)") },
+                label = { Text(stringResource(R.string.max_concentration)) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Science,
@@ -493,27 +561,83 @@ fun NewProjectScreen(
                 ),
                 singleLine = true
             )
-            
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 浓度单位选择
+            Text(
+                text = stringResource(R.string.concentration_unit),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF333333)
+            )
+
+            ExposedDropdownMenuBox(
+                expanded = isConcentrationUnitMenuExpanded,
+                onExpandedChange = { isConcentrationUnitMenuExpanded = !isConcentrationUnitMenuExpanded },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                OutlinedTextField(
+                    value = concentrationUnit,
+                    onValueChange = { /* No action needed for readOnly field */ },
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isConcentrationUnitMenuExpanded) },
+                    modifier = Modifier
+                        .menuAnchor() // Important for ExposedDropdownMenuBox
+                        .fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF5D6B98),
+                        unfocusedBorderColor = Color(0xFFDDDDDD),
+                        focusedTrailingIconColor = Color(0xFF5D6B98),
+                        unfocusedTrailingIconColor = Color(0xFF5D6B98),
+                        disabledTextColor = LocalContentColor.current,
+                        disabledBorderColor = Color(0xFFDDDDDD),
+                        disabledTrailingIconColor = Color(0xFF5D6B98)
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                )
+
+                ExposedDropdownMenu(
+                    expanded = isConcentrationUnitMenuExpanded,
+                    onDismissRequest = { isConcentrationUnitMenuExpanded = false },
+                    modifier = Modifier.fillMaxWidth(0.9f) // Keep original width factor
+                ) {
+                    availableConcentrationUnits.toList().sorted().forEach { unit ->
+                        DropdownMenuItem(
+                            text = { Text(unit) },
+                            onClick = {
+                                concentrationUnit = unit
+                                isConcentrationUnitMenuExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
-            
+
             // 提交按钮
             Button(
                 onClick = {
                     if (projectName.isBlank()) {
-                        Toast.makeText(context, "请输入项目名称", Toast.LENGTH_SHORT).show()
+                        toastManager.showToast(enterProjectNameMessage, ToastType.WARNING)
                         return@Button
                     }
-                    
+
                     if (projectImageUri == null) {
-                        Toast.makeText(context, "请上传项目图片", Toast.LENGTH_SHORT).show()
+                        toastManager.showToast(selectImageMessage, ToastType.WARNING)
                         return@Button
                     }
-                    
+
                     isSubmitting = true
-                    
+
                     // 解析最大浓度，如果为空则使用默认值
                     val maxConc = if (maxConcentration.isBlank()) null else maxConcentration.toDoubleOrNull()
-                    
+
                     // 创建项目 - 使用当前用户ID
                     scope.launch {
                         try {
@@ -523,11 +647,12 @@ fun NewProjectScreen(
                                 recognitionType = recognitionType,
                                 imageUri = projectImageUri.toString(),
                                 maxConcentration = maxConc,
+                                concentrationUnit = concentrationUnit,
                                 userId = currentUser?.id.toString() // 使用当前用户ID
                             )
-                            
+
                             if (newProjectId != null) {
-                                Toast.makeText(context, "项目创建成功", Toast.LENGTH_SHORT).show()
+                                toastManager.showToast(projectCreationSuccessMessage, ToastType.SUCCESS)
                                 // 根据识别类型决定导航
                                 if (recognitionType == RecognitionType.AUTO) {
                                     // 自动识别 - 导航到孔阵检测页面
@@ -541,7 +666,7 @@ fun NewProjectScreen(
                                     // 手动裁剪 - 立即分析裁剪图像
                                     android.util.Log.d("NewProjectScreen", "开始分析手动裁剪图像: $newProjectId, ${projectImageUri.toString()}")
                                     // 设置为加载状态
-                                    Toast.makeText(context, "开始分析图像...", Toast.LENGTH_SHORT).show()
+                                    toastManager.showToast(analyzingImageMessage, ToastType.INFO)
                                     // 调用浓度预测
                                     concentrationViewModel.analyzeManualCroppedImage(
                                         projectId = newProjectId,
@@ -550,11 +675,11 @@ fun NewProjectScreen(
                                     // 不立即返回，等浓度预测完成后通过LaunchedEffect中的监听跳转
                                 }
                             } else {
-                                Toast.makeText(context, "项目创建失败", Toast.LENGTH_SHORT).show()
+                                toastManager.showToast(projectCreationErrorMessage, ToastType.ERROR)
                                 isSubmitting = false
                             }
                         } catch (e: Exception) {
-                            Toast.makeText(context, "发生错误: ${e.message}", Toast.LENGTH_SHORT).show()
+                            toastManager.showToast(context.getString(R.string.project_creation_error, e.message ?: ""), ToastType.ERROR)
                             isSubmitting = false
                         }
                     }
@@ -579,22 +704,22 @@ fun NewProjectScreen(
                         contentDescription = null
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("创建项目")
+                    Text(stringResource(R.string.create_project))
                 }
             }
         }
-        
+
         // 图片选择对话框
         if (showImagePickerDialog) {
             AlertDialog(
                 onDismissRequest = { showImagePickerDialog = false },
-                title = { 
+                title = {
                     Text(
-                        "选择图片",
+                        stringResource(R.string.select_image_title),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 8.dp)
-                    ) 
+                    )
                 },
                 shape = RoundedCornerShape(16.dp),
                 containerColor = Color.White,
@@ -633,19 +758,19 @@ fun NewProjectScreen(
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "从相册选择",
+                                    text = stringResource(R.string.select_from_gallery),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color(0xFF5D6B98)
                                 )
                             }
-                            
+
                             // 拍照
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier.clickable {
                                     // 启动相机
                                     showImagePickerDialog = false
-                                    
+
                                     // 先检查相机权限
                                     checkCameraPermissionAndLaunch()
                                 }
@@ -666,7 +791,7 @@ fun NewProjectScreen(
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "拍照",
+                                    text = stringResource(R.string.take_photo),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color(0xFF5D6B98)
                                 )
@@ -685,7 +810,7 @@ fun NewProjectScreen(
                         ),
                         shape = RoundedCornerShape(24.dp)
                     ) {
-                        Text("取消")
+                        Text(stringResource(R.string.cancel))
                     }
                 },
                 confirmButton = {}

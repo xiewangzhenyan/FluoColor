@@ -52,6 +52,7 @@ class ProjectViewModel @Inject constructor(
         recognitionType: RecognitionType,
         imageUri: String,
         maxConcentration: Double? = null,
+        concentrationUnit: String? = null,
         userId: String? = null
     ): String? {
         return try {
@@ -62,7 +63,8 @@ class ProjectViewModel @Inject constructor(
                 detectionMode = detectionMode.name,
                 recognitionType = recognitionType.name,
                 imageUri = imageUri,
-                maxConcentration = maxConcentration ?: 100.0, // 默认值为100.0 ng/ml
+                maxConcentration = maxConcentration ?: 100.0, // 默认值为100.0
+                concentrationUnit = concentrationUnit ?: "ng/ml", // 默认单位为ng/ml
                 createTime = Date(),
                 userId = userId ?: "guest",
                 lastRunTimestamp = null // 新项目还没有运行记录
