@@ -14,6 +14,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -38,20 +39,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Info // 用于记录总数图标
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.Update
+import androidx.compose.material.icons.outlined.DoneAll // 全选图标
+import androidx.compose.material.icons.outlined.RemoveDone // 取消全选图标
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -63,7 +67,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -73,6 +76,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -87,10 +91,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,9 +115,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.ui.graphics.vector.ImageVector
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -145,20 +147,20 @@ fun HistoryScreen(
 
     // Toast管理器
     val toastManager = LocalToastManager.current
-    val context = LocalContext.current
+    val context = LocalContext.current // 获取context
     val coroutineScope = rememberCoroutineScope()
 
     // 处理删除状态
     LaunchedEffect(deleteState) {
         when (deleteState) {
             is HistoryViewModel.DeleteState.Success -> {
-                toastManager.showToast("删除成功", ToastType.SUCCESS)
+                toastManager.showToast(context.getString(R.string.toast_delete_successful), ToastType.SUCCESS) // 使用context
                 selectedProjects.clear()
                 isSelectionMode = false
             }
             is HistoryViewModel.DeleteState.Error -> {
                 val message = (deleteState as HistoryViewModel.DeleteState.Error).message
-                toastManager.showToast("删除失败: $message", ToastType.ERROR)
+                toastManager.showToast(context.getString(R.string.toast_delete_failed, message), ToastType.ERROR) // 使用context
             }
             else -> {}
         }
@@ -178,9 +180,9 @@ fun HistoryScreen(
                             exit = fadeOut() + shrinkHorizontally()
                         ) {
                             if (isSelectionMode) {
-                                Text("已选择 ${selectedProjects.size} 项")
+                                Text(stringResource(R.string.history_selected_items_title, selectedProjects.size))
                             } else {
-                                Text("历史记录")
+                                Text(stringResource(R.string.history_records))
                             }
                         }
 
@@ -194,20 +196,22 @@ fun HistoryScreen(
                             OutlinedTextField(
                                 value = searchQuery,
                                 onValueChange = { viewModel.setSearchQuery(it) },
-                                placeholder = { Text("搜索项目...") },
+                                placeholder = { Text(stringResource(R.string.history_search_placeholder)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                colors = TextFieldDefaults.outlinedTextFieldColors(
-                                    containerColor = MaterialTheme.colorScheme.surface,
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                                colors = TextFieldDefaults.colors( // 使用TextFieldDefaults.colors
+                                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                    disabledContainerColor = MaterialTheme.colorScheme.surface,
+                                    focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedIndicatorColor = MaterialTheme.colorScheme.outline
                                 ),
                                 trailingIcon = {
                                     IconButton(onClick = {
                                         showSearchBar = false
                                         viewModel.setSearchQuery("")
                                     }) {
-                                        Icon(Icons.Default.Close, "清除搜索")
+                                        Icon(Icons.Default.Close, stringResource(R.string.history_clear_search_description))
                                     }
                                 }
                             )
@@ -228,7 +232,7 @@ fun HistoryScreen(
                     }) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
-                            contentDescription = if (isSelectionMode) "取消" else "返回"
+                            contentDescription = if (isSelectionMode) stringResource(R.string.cancel_selection) else stringResource(R.string.back)
                         )
                     }
                 },
@@ -236,11 +240,11 @@ fun HistoryScreen(
                     if (isSelectionMode) {
                         // 删除选中项
                         IconButton(onClick = {
-                            if (selectedProjects.isNotEmpty()) {
+                            if (selectedProjects.isNotEmpty()) { // 只有在有选中项时才显示删除确认
                                 showDeleteConfirmDialog = true
                             }
                         }) {
-                            Icon(Icons.Default.Delete, "删除选中项")
+                            Icon(Icons.Default.Delete, stringResource(R.string.delete_selected))
                         }
                     } else {
                         // 搜索按钮
@@ -250,7 +254,7 @@ fun HistoryScreen(
                             exit = fadeOut() + scaleOut()
                         ) {
                             IconButton(onClick = { showSearchBar = true }) {
-                                Icon(Icons.Default.Search, "搜索")
+                                Icon(Icons.Default.Search, stringResource(R.string.search))
                             }
                         }
 
@@ -261,7 +265,7 @@ fun HistoryScreen(
                             exit = fadeOut() + scaleOut()
                         ) {
                             IconButton(onClick = { showFilterDialog = true }) {
-                                Icon(Icons.Default.FilterList, "筛选")
+                                Icon(Icons.Default.FilterList, stringResource(R.string.filter))
                             }
                         }
 
@@ -272,7 +276,7 @@ fun HistoryScreen(
                             exit = fadeOut() + scaleOut()
                         ) {
                             IconButton(onClick = { showSortDialog = true }) {
-                                Icon(Icons.Default.Sort, "排序")
+                                Icon(Icons.Default.Sort, stringResource(R.string.sort))
                             }
                         }
                     }
@@ -284,14 +288,49 @@ fun HistoryScreen(
             )
         },
         floatingActionButton = {
-            if (isSelectionMode && selectedProjects.isNotEmpty()) {
-                ExtendedFloatingActionButton(
-                    onClick = { showDeleteConfirmDialog = true },
-                    icon = { Icon(Icons.Default.Delete, "删除") },
-                    text = { Text("删除选中项") },
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError
-                )
+            if (isSelectionMode) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 48.dp, end = 28.dp, bottom = 16.dp), // 调整内边距以匹配Scaffold通常的FAB边距
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val allSelected = projects.isNotEmpty() && selectedProjects.size == projects.size
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            if (allSelected) {
+                                selectedProjects.clear()
+                            } else {
+                                selectedProjects.clear()
+                                selectedProjects.addAll(projects.map { it.id })
+                            }
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = if (allSelected) Icons.Outlined.RemoveDone else Icons.Outlined.DoneAll,
+                                contentDescription = if (allSelected) stringResource(R.string.deselect_all) else stringResource(R.string.select_all),
+                            )
+                        },
+                        text = { Text(if (allSelected) stringResource(R.string.deselect_all) else stringResource(R.string.select_all)) },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (selectedProjects.isNotEmpty()) {
+                        ExtendedFloatingActionButton(
+                            onClick = { showDeleteConfirmDialog = true },
+                            icon = { Icon(Icons.Default.Delete, stringResource(R.string.delete_action)) },
+                            text = { Text(stringResource(R.string.delete_selected)) },
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
     ) { paddingValues ->
@@ -348,7 +387,7 @@ fun HistoryScreen(
                     onProjectLongClick = { project ->
                         if (!isSelectionMode) {
                             isSelectionMode = true
-                            selectedProjects.add(project.id)
+                            selectedProjects.add(project.id) // 长按时默认选中当前项
                         }
                     },
                     onDeleteClick = { project ->
@@ -359,7 +398,8 @@ fun HistoryScreen(
                     selectedProjects = selectedProjects,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(paddingValues)
+                        .padding(paddingValues),
+                    totalProjects = projects.size // 传递项目总数
                 )
             }
 
@@ -432,12 +472,45 @@ fun ProjectList(
     onDeleteClick: (Project) -> Unit,
     isSelectionMode: Boolean,
     selectedProjects: List<String>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    totalProjects: Int // 新增参数：项目总数
 ) {
     LazyColumn(
         modifier = modifier.padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp) // 增加项目间距
     ) {
+        // 固定头部，显示项目总数
+        stickyHeader {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                shape = RoundedCornerShape(12.dp), // 增加圆角
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f), // 调整颜色和透明度
+                tonalElevation = 3.dp // 增加一点阴影
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp), // 调整内边距
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Info, // 更换为Info图标
+                        contentDescription = stringResource(R.string.history_total_records_icon_description),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer // 适配颜色
+                    )
+                    Spacer(modifier = Modifier.width(12.dp)) // 调整间距
+                    Text(
+                        text = stringResource(R.string.history_total_records, totalProjects),
+                        style = MaterialTheme.typography.titleSmall, // 调整字体大小
+                        fontWeight = FontWeight.SemiBold, // 调整字重
+                        color = MaterialTheme.colorScheme.onSecondaryContainer // 适配颜色
+                    )
+                }
+            }
+        }
+
         items(
             items = projects,
             key = { it.id }
@@ -521,17 +594,17 @@ fun ProjectItem(
                         painter = rememberAsyncImagePainter(
                             ImageRequest.Builder(LocalContext.current)
                                 .data(Uri.parse(project.imageUri))
-                                .error(R.drawable.placeholder_image)
-                                .placeholder(R.drawable.placeholder_image)
+                                .error(R.drawable.placeholder_image) // 确保 placeholder_image 存在
+                                .placeholder(R.drawable.placeholder_image) // 确保 placeholder_image 存在
                                 .build()
                         ),
-                        contentDescription = "项目图片",
+                        contentDescription = stringResource(R.string.history_project_image_description),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
                 } else {
                     Icon(
-                        imageVector = Icons.Default.Search,
+                        imageVector = Icons.Default.Search, // 后备图标
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                         modifier = Modifier.size(40.dp)
@@ -558,9 +631,9 @@ fun ProjectItem(
                 Spacer(modifier = Modifier.height(6.dp)) // 增大间距
 
                 // 检测模式
-                val detectionMode = when (project.detectionMode) {
-                    "FLUORESCENCE" -> "荧光检测"
-                    "COLORIMETRIC" -> "比色检测"
+                val detectionModeText = when (project.detectionMode) {
+                    "FLUORESCENCE" -> stringResource(R.string.fluorescence_detection)
+                    "COLORIMETRIC" -> stringResource(R.string.colorimetric_detection)
                     else -> project.detectionMode
                 }
 
@@ -569,7 +642,7 @@ fun ProjectItem(
                 ) {
                     // 添加一个小图标
                     Icon(
-                        imageVector = Icons.Default.Check,
+                        imageVector = Icons.Default.Check, // 示例图标
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(16.dp)
@@ -578,7 +651,7 @@ fun ProjectItem(
                     Spacer(modifier = Modifier.width(4.dp))
 
                     Text(
-                        text = detectionMode,
+                        text = detectionModeText,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -587,9 +660,9 @@ fun ProjectItem(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 // 识别类型
-                val recognitionType = when (project.recognitionType) {
-                    "AUTO" -> "自动识别"
-                    "MANUAL" -> "手动裁剪"
+                val recognitionTypeText = when (project.recognitionType) {
+                    "AUTO" -> stringResource(R.string.auto_recognition)
+                    "MANUAL" -> stringResource(R.string.manual_crop)
                     else -> project.recognitionType
                 }
 
@@ -598,7 +671,7 @@ fun ProjectItem(
                 ) {
                     // 添加一个小图标
                     Icon(
-                        imageVector = Icons.Default.Search,
+                        imageVector = Icons.Default.Search, // 示例图标
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.size(16.dp)
@@ -607,7 +680,7 @@ fun ProjectItem(
                     Spacer(modifier = Modifier.width(4.dp))
 
                     Text(
-                        text = recognitionType,
+                        text = recognitionTypeText,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.secondary
                     )
@@ -647,7 +720,7 @@ fun ProjectItem(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
-                        contentDescription = "删除",
+                        contentDescription = stringResource(R.string.history_delete_icon_description),
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(20.dp)
                     )
@@ -679,7 +752,7 @@ fun FilterDialog(
             ) {
                 // 标题
                 Text(
-                    text = "筛选历史记录",
+                    text = stringResource(R.string.history_filter_dialog_title),
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -688,7 +761,7 @@ fun FilterDialog(
 
                 // 时间筛选
                 Text(
-                    text = "时间范围",
+                    text = stringResource(R.string.time_range),
                     style = MaterialTheme.typography.titleMedium
                 )
 
@@ -699,25 +772,25 @@ fun FilterDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     TimeFilterChip(
-                        label = "全部时间",
+                        label = stringResource(R.string.all_time),
                         selected = currentTimeRange is HistoryViewModel.TimeRange.ALL,
                         onClick = { onTimeRangeSelected(HistoryViewModel.TimeRange.ALL) }
                     )
 
                     TimeFilterChip(
-                        label = "今天",
+                        label = stringResource(R.string.today),
                         selected = currentTimeRange is HistoryViewModel.TimeRange.TODAY,
                         onClick = { onTimeRangeSelected(HistoryViewModel.TimeRange.TODAY) }
                     )
 
                     TimeFilterChip(
-                        label = "最近7天",
+                        label = stringResource(R.string.last_7_days),
                         selected = currentTimeRange is HistoryViewModel.TimeRange.LAST_WEEK,
                         onClick = { onTimeRangeSelected(HistoryViewModel.TimeRange.LAST_WEEK) }
                     )
 
                     TimeFilterChip(
-                        label = "最近30天",
+                        label = stringResource(R.string.last_30_days),
                         selected = currentTimeRange is HistoryViewModel.TimeRange.LAST_MONTH,
                         onClick = { onTimeRangeSelected(HistoryViewModel.TimeRange.LAST_MONTH) }
                     )
@@ -727,7 +800,7 @@ fun FilterDialog(
 
                 // 检测模式筛选
                 Text(
-                    text = "检测模式",
+                    text = stringResource(R.string.detection_mode),
                     style = MaterialTheme.typography.titleMedium
                 )
 
@@ -738,7 +811,7 @@ fun FilterDialog(
 
                 Row(modifier = Modifier.fillMaxWidth()) {
                     DetectionModeFilterChip(
-                        label = "荧光检测",
+                        label = stringResource(R.string.history_fluorescence_label), // 使用较短标签
                         selected = "FLUORESCENCE" in localDetectionModes,
                         onClick = {
                             localDetectionModes = if ("FLUORESCENCE" in localDetectionModes) {
@@ -753,7 +826,7 @@ fun FilterDialog(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     DetectionModeFilterChip(
-                        label = "比色检测",
+                        label = stringResource(R.string.history_colorimetric_label), // 使用较短标签
                         selected = "COLORIMETRIC" in localDetectionModes,
                         onClick = {
                             localDetectionModes = if ("COLORIMETRIC" in localDetectionModes) {
@@ -770,7 +843,7 @@ fun FilterDialog(
 
                 // 识别类型筛选
                 Text(
-                    text = "识别类型",
+                    text = stringResource(R.string.recognition_type),
                     style = MaterialTheme.typography.titleMedium
                 )
 
@@ -781,7 +854,7 @@ fun FilterDialog(
 
                 Row(modifier = Modifier.fillMaxWidth()) {
                     RecognitionTypeFilterChip(
-                        label = "自动识别",
+                        label = stringResource(R.string.history_auto_recognition_label), // 使用较短标签
                         selected = "AUTO" in localRecognitionTypes,
                         onClick = {
                             localRecognitionTypes = if ("AUTO" in localRecognitionTypes) {
@@ -796,7 +869,7 @@ fun FilterDialog(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     RecognitionTypeFilterChip(
-                        label = "手动裁剪",
+                        label = stringResource(R.string.history_manual_crop_label), // 使用较短标签
                         selected = "MANUAL" in localRecognitionTypes,
                         onClick = {
                             localRecognitionTypes = if ("MANUAL" in localRecognitionTypes) {
@@ -823,13 +896,13 @@ fun FilterDialog(
                             onRecognitionTypesSelected(emptySet())
                         }
                     ) {
-                        Text("重置")
+                        Text(stringResource(R.string.reset))
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Button(onClick = onDismiss) {
-                        Text("完成")
+                        Text(stringResource(R.string.done))
                     }
                 }
             }
@@ -906,7 +979,7 @@ fun EnhancedSortDialog(
             ) {
                 // 标题
                 Text(
-                    text = "排序方式",
+                    text = stringResource(R.string.history_sort_dialog_title),
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
@@ -914,66 +987,63 @@ fun EnhancedSortDialog(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // 排序字段
+                // 排序字段和方向
                 var localField by remember { mutableStateOf(currentField) }
                 var localDirection by remember { mutableStateOf(currentDirection) }
 
-                // 排序方向选择器
+                // 排序方向文本标签
+                Text(
+                    text = stringResource(R.string.sort_direction),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 8.dp) // 在标签和选项之间添加一些间距
+                )
+
+                // 排序方向选择器 - 现在是单独的一行
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(bottom = 16.dp), // 在选项和分割线之间添加间距
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), // 增加FilterChip之间的间距
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "排序方向:",
-                        style = MaterialTheme.typography.titleMedium
+                    FilterChip(
+                        selected = localDirection == HistoryViewModel.SortDirection.ASCENDING,
+                        onClick = {
+                            localDirection = HistoryViewModel.SortDirection.ASCENDING
+                            onSortOrderSelected(localField, localDirection)
+                        },
+                        label = { Text(stringResource(R.string.ascending)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.ArrowUpward,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     )
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilterChip(
-                            selected = localDirection == HistoryViewModel.SortDirection.ASCENDING,
-                            onClick = {
-                                localDirection = HistoryViewModel.SortDirection.ASCENDING
-                                onSortOrderSelected(localField, localDirection)
-                            },
-                            label = { Text("升序") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.ArrowUpward,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        )
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        FilterChip(
-                            selected = localDirection == HistoryViewModel.SortDirection.DESCENDING,
-                            onClick = {
-                                localDirection = HistoryViewModel.SortDirection.DESCENDING
-                                onSortOrderSelected(localField, localDirection)
-                            },
-                            label = { Text("降序") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDownward,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        )
-                    }
+                    FilterChip(
+                        selected = localDirection == HistoryViewModel.SortDirection.DESCENDING,
+                        onClick = {
+                            localDirection = HistoryViewModel.SortDirection.DESCENDING
+                            onSortOrderSelected(localField, localDirection)
+                        },
+                        label = { Text(stringResource(R.string.descending)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.ArrowDownward,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
                 }
 
                 Divider()
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "排序字段:",
+                    text = stringResource(R.string.sort_field),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
@@ -985,7 +1055,7 @@ fun EnhancedSortDialog(
                 ) {
                     // 按名称排序
                     EnhancedSortOptionItem(
-                        title = "项目名称",
+                        title = stringResource(R.string.history_project_name_sort),
                         icon = Icons.Default.Title,
                         selected = localField == HistoryViewModel.SortField.NAME,
                         onClick = {
@@ -996,7 +1066,7 @@ fun EnhancedSortDialog(
 
                     // 按创建时间排序
                     EnhancedSortOptionItem(
-                        title = "创建时间",
+                        title = stringResource(R.string.history_creation_time_sort),
                         icon = Icons.Default.DateRange,
                         selected = localField == HistoryViewModel.SortField.CREATE_TIME,
                         onClick = {
@@ -1007,7 +1077,7 @@ fun EnhancedSortDialog(
 
                     // 按最后运行时间排序
                     EnhancedSortOptionItem(
-                        title = "最后运行时间",
+                        title = stringResource(R.string.history_last_run_sort),
                         icon = Icons.Default.Update,
                         selected = localField == HistoryViewModel.SortField.LAST_RUN,
                         onClick = {
@@ -1030,7 +1100,7 @@ fun EnhancedSortDialog(
                             contentColor = MaterialTheme.colorScheme.primary
                         )
                     ) {
-                        Text("取消")
+                        Text(stringResource(R.string.cancel))
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1042,7 +1112,7 @@ fun EnhancedSortDialog(
                         },
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("确定")
+                        Text(stringResource(R.string.confirm))
                     }
                 }
             }
@@ -1115,13 +1185,13 @@ fun DeleteConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("确认删除") },
+        title = { Text(stringResource(R.string.confirm_delete)) },
         text = {
             Text(
                 text = if (isMultiSelect)
-                    "确定要删除选中的 $projectCount 个项目吗？此操作无法撤销。"
+                    stringResource(R.string.confirm_delete_multiple, projectCount)
                 else
-                    "确定要删除此项目吗？此操作无法撤销。"
+                    stringResource(R.string.confirm_delete_single)
             )
         },
         confirmButton = {
@@ -1131,12 +1201,12 @@ fun DeleteConfirmDialog(
                     contentColor = MaterialTheme.colorScheme.error
                 )
             ) {
-                Text("删除")
+                Text(stringResource(R.string.delete_action))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -1161,7 +1231,7 @@ fun EmptyHistoryView(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "暂无历史记录",
+            text = stringResource(R.string.no_history),
             style = MaterialTheme.typography.headlineMedium,
             textAlign = TextAlign.Center
         )
@@ -1169,7 +1239,7 @@ fun EmptyHistoryView(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "您的检测项目历史将显示在这里",
+            text = stringResource(R.string.history_will_appear),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
             textAlign = TextAlign.Center
@@ -1198,7 +1268,7 @@ fun NoResultsView(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "未找到匹配的项目",
+            text = stringResource(R.string.no_matching_projects),
             style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center
         )
@@ -1207,9 +1277,9 @@ fun NoResultsView(
 
         Text(
             text = if (searchQuery.isNotEmpty())
-                "没有与\"$searchQuery\"匹配的项目"
+                stringResource(R.string.no_match_for_query, searchQuery)
             else
-                "当前筛选条件下没有匹配的项目",
+                stringResource(R.string.no_match_for_filters),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
             textAlign = TextAlign.Center
@@ -1218,7 +1288,7 @@ fun NoResultsView(
         Spacer(modifier = Modifier.height(24.dp))
 
         OutlinedButton(onClick = onClearFilters) {
-            Text("清除筛选条件")
+            Text(stringResource(R.string.clear_filters))
         }
     }
 }
@@ -1235,7 +1305,7 @@ fun ErrorView(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
-            imageVector = Icons.Default.Close,
+            imageVector = Icons.Default.Close, // 错误图标
             contentDescription = null,
             tint = MaterialTheme.colorScheme.error,
             modifier = Modifier
@@ -1250,7 +1320,7 @@ fun ErrorView(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "加载失败",
+            text = stringResource(R.string.loading_failed),
             style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center
         )
@@ -1267,7 +1337,7 @@ fun ErrorView(
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(onClick = onRetry) {
-            Text("重试")
+            Text(stringResource(R.string.retry))
         }
     }
 }
@@ -1276,4 +1346,4 @@ fun ErrorView(
 private fun formatDate(date: Date): String {
     val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     return formatter.format(date)
-} 
+}

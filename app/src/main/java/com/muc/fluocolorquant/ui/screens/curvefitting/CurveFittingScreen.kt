@@ -16,12 +16,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
 import com.muc.fluocolorquant.utils.Screen
 import kotlinx.coroutines.Dispatchers
@@ -94,12 +96,12 @@ fun CurveFittingScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("孔位处理与预览") },
+                title = { Text(stringResource(R.string.curve_fitting_title)) },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.go_back)
                         )
                     }
                 }
@@ -118,18 +120,18 @@ fun CurveFittingScreen(
                 is ConcentrationViewModel.ConcentrationState.Idle -> {
                     // If bitmap is still null or runId is missing, show appropriate message
                     if (viewModel.originalBitmap.value == null && !imageUri.isNullOrEmpty()) {
-                        Text("正在加载原始图像...", textAlign = TextAlign.Center)
+                        Text(stringResource(R.string.loading_original_image), textAlign = TextAlign.Center)
                     } else if (effectiveRunId.isNullOrEmpty()) {
-                        Text("缺少有效的运行ID，无法处理。", textAlign = TextAlign.Center)
+                        Text(stringResource(R.string.missing_run_id), textAlign = TextAlign.Center)
                     } else {
-                        Text("准备处理孔位...", textAlign = TextAlign.Center)
+                        Text(stringResource(R.string.preparing_process), textAlign = TextAlign.Center)
                     }
                 }
                 is ConcentrationViewModel.ConcentrationState.Loading -> {
                     // 加载状态
                     CircularProgressIndicator()
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("正在处理孔位图像...", textAlign = TextAlign.Center)
+                    Text(stringResource(R.string.processing_well_images), textAlign = TextAlign.Center)
                 }
                 is ConcentrationViewModel.ConcentrationState.ImagesCropped,
                 is ConcentrationViewModel.ConcentrationState.Success -> {
@@ -143,16 +145,22 @@ fun CurveFittingScreen(
                     // 显示是否为预测状态
                     when {
                         state is ConcentrationViewModel.ConcentrationState.Success -> {
-                            Text("孔位处理和浓度预测完成，共 ${wellResults.size} 个孔位", 
-                                style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                stringResource(R.string.wells_processed_prediction_complete, wellResults.size),
+                                style = MaterialTheme.typography.titleMedium
+                            )
                         }
                         isPredicting -> {
-                            Text("孔位图像处理完成，共 ${wellResults.size} 个孔位。正在后台预测浓度...", 
-                                style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                stringResource(R.string.wells_processed_predicting, wellResults.size),
+                                style = MaterialTheme.typography.titleMedium
+                            )
                         }
                         else -> {
-                            Text("孔位图像处理完成，共 ${wellResults.size} 个孔位", 
-                                style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                stringResource(R.string.wells_processed, wellResults.size),
+                                style = MaterialTheme.typography.titleMedium
+                            )
                         }
                     }
                     
@@ -179,7 +187,7 @@ fun CurveFittingScreen(
                                         .error(android.R.drawable.ic_menu_gallery) // 加载错误时显示占位符
                                         .crossfade(true)
                                         .build(),
-                                    contentDescription = "孔位 ${wellResult.wellIndex + 1}",
+                                    contentDescription = stringResource(R.string.well_number, wellResult.wellIndex + 1),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .padding(2.dp) // 给圆形加一点内边距
@@ -207,7 +215,7 @@ fun CurveFittingScreen(
                                 contentDescription = null,
                                 modifier = Modifier.padding(end = 8.dp)
                             )
-                            Text("查看详细结果")
+                            Text(stringResource(R.string.view_detailed_results))
                         }
                     }
                     
@@ -219,7 +227,7 @@ fun CurveFittingScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                         Text(
-                            text = "浓度预测进度: $predictionProgress%",
+                            text = stringResource(R.string.prediction_progress, predictionProgress),
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(top = 4.dp)
                         )
@@ -230,12 +238,12 @@ fun CurveFittingScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
                             Icons.Default.Info,
-                            contentDescription = "错误",
+                            contentDescription = stringResource(R.string.processing_failed, ""),
                             tint = MaterialTheme.colorScheme.error
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "处理失败: ${state.message}",
+                            stringResource(R.string.processing_failed, state.message),
                             color = MaterialTheme.colorScheme.error,
                             textAlign = TextAlign.Center
                         )
@@ -249,7 +257,7 @@ fun CurveFittingScreen(
                             },
                             enabled = canRetry
                         ) {
-                            Text("重试")
+                            Text(stringResource(R.string.retry))
                         }
                     }
                 }

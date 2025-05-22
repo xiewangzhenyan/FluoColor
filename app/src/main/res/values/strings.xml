@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">FluoColorQuant</string>
-    
+
     <!-- Common -->
     <string name="cancel">Cancel</string>
     <string name="confirm">Confirm</string>
@@ -9,7 +9,7 @@
     <string name="delete">Delete</string>
     <string name="loading">Loading…</string>
     <string name="retry">Retry</string>
-    
+
     <!-- Home Screen -->
     <string name="home_tab">Home</string>
     <string name="history_tab">History</string>
@@ -27,7 +27,7 @@
     <string name="auto_well_description">Intelligently recognize microplate positions</string>
     <string name="concentration_curve">Concentration Curve Fitting</string>
     <string name="concentration_description">Generate standard curves and calculate unknown sample concentrations</string>
-    
+
     <!-- History Screen -->
     <string name="history_records">History Records</string>
     <string name="view_history_projects">View your history project records</string>
@@ -42,7 +42,7 @@
     <string name="data_filtering_description">Filter records by time range and detection mode</string>
     <string name="quick_search">Quick Search</string>
     <string name="quick_search_description">Quickly locate projects with keywords</string>
-    
+
     <!-- About Screen -->
     <string name="about_us">About Us</string>
     <string name="version">Version 1.0.0</string>
@@ -58,7 +58,7 @@
     <string name="offline_use_description">No network connection required, protecting your data security</string>
     <string name="contact_us">Contact Us</string>
     <string name="contact_info">Email: support@fluocolorquant.com\nWebsite: www.fluocolorquant.com</string>
-    
+
     <!-- User Menu -->
     <string name="settings">Settings</string>
     <string name="profile">Profile</string>
@@ -68,7 +68,7 @@
     <string name="confirm_logout_message">Are you sure you want to logout?</string>
     <string name="user_avatar">User Avatar</string>
     <string name="user_menu">User Menu</string>
-    
+
     <!-- Settings Screen -->
     <string name="settings_title">Settings</string>
     <string name="language_settings">Language Settings</string>
@@ -78,7 +78,7 @@
     <string name="language_changed">Language changed successfully</string>
     <string name="settings_update_success">Settings updated successfully</string>
     <string name="app_settings">App Settings</string>
-    
+
     <!-- Login Screen -->
     <string name="app_description_short">Intelligent colorimetric and fluorescence detection platform</string>
     <string name="login">Login</string>
@@ -92,21 +92,21 @@
     <string name="hide">Hide</string>
     <string name="no_account">Don\'t have an account? Click to register</string>
     <string name="have_account">Already have an account? Click to login</string>
-    
+
     <!-- Register Screen -->
     <string name="register_title">Register</string>
     <string name="create_account_title">Create Account</string>
     <string name="join_description">Join FluoColorQuant to start your high-throughput detection journey</string>
     <string name="confirm_password">Confirm Password</string>
     <string name="email_required">Email</string>
-    
+
     <!-- Splash Screen -->
     <string name="app_name_short">FluoColor</string>
     <string name="app_subtitle">Intelligent detection analysis platform</string>
     <string name="loading_progress">Loading... %1$d%%</string>
     <string name="copyright">© 2025 FluoColor Technology</string>
     <string name="app_icon_description">App Icon</string>
-    
+
     <!-- Result Screen -->
     <string name="return_to_home">Return to Home</string>
     <string name="creation_time">Creation Time: %1$s</string>
@@ -130,7 +130,19 @@
     <string name="no_image">No Image</string>
     <string name="click_datapoint">Click on data points for details</string>
     <string name="swipe_for_more">Swipe left or right for more data</string>
-    
+
+    <!-- ResultScreen Additional -->
+    <string name="detection_mode_res">Detection Mode: %1$s</string>
+    <string name="recognition_type_res">Recognition Type: %1$s</string>
+    <string name="max_concentration_res">Maximum Concentration: %1$s %2$s</string>
+    <string name="error">Error</string>
+    <string name="concentration_percent_format">%.2f%%</string>
+    <string name="concentration_format">%.2f %s</string>
+    <string name="concentration_percent_and_value">%.2f%% (%.2f %s)</string>
+    <string name="value_format">%.1f</string>
+    <string name="close_button">×</string>
+    <string name="well_position_short">%1$s%2$d</string>
+
     <!-- History Screen Additional -->
     <string name="confirm_delete">Confirm Delete</string>
     <string name="confirm_delete_single">Are you sure you want to delete this project? This action cannot be undone.</string>
@@ -150,13 +162,13 @@
     <string name="sort_direction">Sort Direction:</string>
     <string name="sort_field">Sort Field:</string>
     <string name="loading_failed">Loading Failed</string>
-    
+
     <!-- History Screen Extended -->
     <string name="selected_items">Selected %1$d items</string>
     <string name="search_projects">Search projects...</string>
     <string name="clear_search">Clear search</string>
     <string name="cancel_selection">Cancel</string>
-    <string name="delete_selected">Delete selected items</string>
+    <string name="delete_selected">Delete items</string>
     <string name="all_time">All time</string>
     <string name="today">Today</string>
     <string name="last_7_days">Last 7 days</string>
@@ -174,7 +186,7 @@
     <string name="detection_results">Detection Results</string>
     <string name="export">Export</string>
     <string name="loading_result_data">Loading result data...</string>
-    
+
     <!-- Export Components -->
     <string name="export_title">Export</string>
     <string name="export_data_csv">Export Data (CSV)</string>
@@ -189,7 +201,7 @@
     <string name="charts_failed">Chart export failed</string>
     <string name="pdf_saved">PDF report saved to downloads folder</string>
     <string name="pdf_failed">PDF report export failed</string>
-    
+
     <!-- New Project Screen -->
     <string name="new_project_title">New Project</string>
     <string name="project_name">Project Name</string>
@@ -212,7 +224,7 @@
     <string name="project_creation_success">Project created successfully</string>
     <string name="project_creation_error">Error: %1$s</string>
     <string name="expand">Expand</string>
-    
+
     <!-- Settings - Detection Settings -->
     <string name="detection_settings">Detection Settings</string>
     <string name="default_detection_mode">Default Detection Mode</string>
@@ -230,4 +242,66 @@
     <string name="add">Add</string>
     <string name="expand_all">Show all</string>
     <string name="collapse">Collapse</string>
+
+    <!-- WellDetectionScreen -->
+    <string name="well_detection_title">Well Detection</string>
+    <string name="go_back">Back</string>
+    <string name="help_info">Help</string>
+    <string name="help_dialog_title">Usage Instructions</string>
+    <string name="help_dialog_text">Well detection instructions:\n\n1. When the page loads, wells will be automatically detected and displayed with red rectangles\n2. Click on a well to select it (turns green)\n3. Once selected, you can drag to adjust the position of the well\n4. After adjustments, click \"Continue\" to proceed to the next step</string>
+    <string name="ok">OK</string>
+    <string name="preparing_detection">Preparing well detection...</string>
+    <string name="detecting_wells">Detecting wells, please wait...</string>
+    <string name="wells_detected">Detected %1$d wells</string>
+    <string name="well_array_image">Well Array Image</string>
+    <string name="click_and_drag_hint">Click on a well to select and drag to adjust</string>
+    <string name="detection_error">Detection Error: %1$s</string>
+    <string name="continue_button">Continue</string>
+    <string name="no_wells_detected">No wells detected, please try again</string>
+    <string name="project_id_empty">Project ID is empty, cannot save detection results</string>
+    <string name="saving_detection_results">Saving detection results...</string>
+    <string name="save_detection_failed">Failed to save detection results</string>
+    <string name="save_detection_failed_with_error">Failed to save detection results: %1$s</string>
+    <string name="image_uri_empty">Image URI is empty, cannot perform detection</string>
+
+    <!-- CurveFittingScreen -->
+    <string name="curve_fitting_title">Well Processing and Preview</string>
+    <string name="loading_original_image">Loading original image...</string>
+    <string name="missing_run_id">Missing valid run ID, cannot process.</string>
+    <string name="preparing_process">Preparing to process wells...</string>
+    <string name="processing_well_images">Processing well images...</string>
+    <string name="wells_processed_prediction_complete">Well processing and concentration prediction complete, %1$d wells total</string>
+    <string name="wells_processed_predicting">Well images processed, %1$d wells total. Predicting concentrations in background...</string>
+    <string name="wells_processed">Well images processed, %1$d wells total</string>
+    <string name="well_number">Well %1$d</string>
+    <string name="view_detailed_results">View Detailed Results</string>
+    <string name="prediction_progress">Concentration prediction progress: %1$d%%</string>
+    <string name="processing_failed">Processing failed: %1$s</string>
+    <string name="log_tag_result_screen">ResultScreen</string>
+    <string name="log_error_screenshot_failed">Screenshot failed</string>
+
+    <!-- HistoryScreen -->
+    <string name="history_selected_items_title">Selected %1$d items</string>
+    <string name="history_search_placeholder">Search projects...</string>
+    <string name="history_clear_search_description">Clear search</string>
+    <string name="history_filter_dialog_title">Filter History Records</string>
+    <string name="history_sort_dialog_title">Sort History</string>
+    <string name="history_creation_time_label">Creation Time</string>
+    <string name="history_last_run_time_label">Last Run Time</string>
+    <string name="history_project_image_description">Project Image</string>
+    <string name="history_delete_icon_description">Delete Project</string>
+    <string name="history_fluorescence_label">Fluorescence</string>
+    <string name="history_colorimetric_label">Colorimetric</string>
+    <string name="history_auto_recognition_label">Auto</string>
+    <string name="history_manual_crop_label">Manual</string>
+    <string name="history_project_name_sort">Name</string>
+    <string name="history_creation_time_sort">Created</string>
+    <string name="history_last_run_sort">Last Run</string>
+    <string name="toast_delete_successful">Delete successful</string>
+    <string name="toast_delete_failed">Delete failed: %1$s</string>
+    <string name="history_total_records">Total %1$d records</string>
+    <string name="history_total_records_icon_description">Total records icon</string>
+    <string name="select_all">Select All</string>
+    <string name="deselect_all">Deselect All</string>
+
 </resources>

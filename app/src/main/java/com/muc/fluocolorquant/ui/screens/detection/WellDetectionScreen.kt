@@ -21,12 +21,14 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
@@ -56,6 +58,14 @@ fun WellDetectionScreen(
     // 显示提示对话框的状态
     var showInfoDialog by remember { mutableStateOf(false) }
     
+    // 在@Composable上下文中获取所有需要的字符串资源
+    val noWellsDetectedMsg = stringResource(R.string.no_wells_detected)
+    val projectIdEmptyMsg = stringResource(R.string.project_id_empty)
+    val savingDetectionResultsMsg = stringResource(R.string.saving_detection_results)
+    val saveDetectionFailedMsg = stringResource(R.string.save_detection_failed)
+    val saveDetectionFailedWithErrorMsg = stringResource(R.string.save_detection_failed_with_error)
+    val imageUriEmptyMsg = stringResource(R.string.image_uri_empty)
+    
     // 保存当前项目ID到浓度预测ViewModel
     LaunchedEffect(projectId) {
         concentrationViewModel.setCurrentProjectId(projectId)
@@ -74,7 +84,7 @@ fun WellDetectionScreen(
     }
 
     // 处理继续导航
-    fun handleContinue() {
+    val handleContinue = handleContinue@{
         // 获取当前检测状态
         val currentState = viewModel.detectionState.value
         
@@ -82,18 +92,18 @@ fun WellDetectionScreen(
             // 检查是否有检测结果
             val detections = currentState.detections
             if (detections.isEmpty()) {
-                toastManager.showToast("未检测到孔位，请重试", ToastType.ERROR)
-                return
+                toastManager.showToast(noWellsDetectedMsg, ToastType.ERROR)
+                return@handleContinue
             }
             
             // 检查项目ID是否为空
             if (projectId.isNullOrEmpty()) {
-                toastManager.showToast("项目ID为空，无法保存检测结果", ToastType.ERROR)
-                return
+                toastManager.showToast(projectIdEmptyMsg, ToastType.ERROR)
+                return@handleContinue
             }
             
             // 显示保存进度Toast
-            toastManager.showToast("正在保存检测结果...", ToastType.INFO)
+            toastManager.showToast(savingDetectionResultsMsg, ToastType.INFO)
             
             coroutineScope.launch {
                 try {
@@ -113,10 +123,13 @@ fun WellDetectionScreen(
                             }
                         }
                     } else {
-                        toastManager.showToast("保存检测结果失败", ToastType.ERROR)
+                        toastManager.showToast(saveDetectionFailedMsg, ToastType.ERROR)
                     }
                 } catch (e: Exception) {
-                    toastManager.showToast("保存检测结果失败: ${e.message}", ToastType.ERROR)
+                    toastManager.showToast(
+                        String.format(saveDetectionFailedWithErrorMsg, e.message ?: ""),
+                        ToastType.ERROR
+                    )
                 }
             }
         }
@@ -127,19 +140,19 @@ fun WellDetectionScreen(
         if (imageUri != null) {
             viewModel.detectWells(imageUri)
         } else {
-            toastManager.showToast("图像URI为空，无法进行检测", ToastType.ERROR)
+            toastManager.showToast(imageUriEmptyMsg, ToastType.ERROR)
         }
     }
     
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("孔阵检测") },
+                title = { Text(stringResource(R.string.well_detection_title)) },
                 navigationIcon = {
                     IconButton(onClick = { handleBackPress() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.go_back)
                         )
                     }
                 },
@@ -148,7 +161,7 @@ fun WellDetectionScreen(
                     IconButton(onClick = { showInfoDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.Info,
-                            contentDescription = "使用帮助"
+                            contentDescription = stringResource(R.string.help_info)
                         )
                     }
                 }
@@ -158,19 +171,13 @@ fun WellDetectionScreen(
         if (showInfoDialog) {
             AlertDialog(
                 onDismissRequest = { showInfoDialog = false },
-                title = { Text("使用帮助") },
+                title = { Text(stringResource(R.string.help_dialog_title)) },
                 text = { 
-                    Text(
-                        "孔位检测使用说明：\n\n" +
-                        "1. 页面加载时会自动检测孔位，显示红色方框\n" +
-                        "2. 点击孔位可以选中它（变为绿色）\n" +
-                        "3. 选中后，拖动可以调整孔位的位置\n" +
-                        "4. 调整完成后，点击「继续」进入下一步"
-                    )
+                    Text(stringResource(R.string.help_dialog_text))
                 },
                 confirmButton = {
                     TextButton(onClick = { showInfoDialog = false }) {
-                        Text("确定")
+                        Text(stringResource(R.string.ok))
                     }
                 }
             )
@@ -194,7 +201,7 @@ fun WellDetectionScreen(
                 when (detectionState) {
                     is DetectionViewModel.DetectionState.Idle -> {
                         Text(
-                            text = "准备进行孔阵检测...",
+                            text = stringResource(R.string.preparing_detection),
                             style = MaterialTheme.typography.bodyLarge,
                             textAlign = TextAlign.Center
                         )
@@ -211,7 +218,7 @@ fun WellDetectionScreen(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "正在检测孔阵，请稍候...",
+                                text = stringResource(R.string.detecting_wells),
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
@@ -221,7 +228,7 @@ fun WellDetectionScreen(
                         val detections = (detectionState as DetectionViewModel.DetectionState.Success).detections
                         
                         Text(
-                            text = "检测到 ${detections.size} 个孔位",
+                            text = stringResource(R.string.wells_detected, detections.size),
                             style = MaterialTheme.typography.titleMedium
                         )
                         
@@ -241,7 +248,7 @@ fun WellDetectionScreen(
                                         .data(originalBitmap)
                                         .crossfade(true)
                                         .build(),
-                                    contentDescription = "孔阵图像",
+                                    contentDescription = stringResource(R.string.well_array_image),
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Fit
                                 )
@@ -362,7 +369,7 @@ fun WellDetectionScreen(
                             Spacer(modifier = Modifier.height(16.dp))
                             
                             Text(
-                                text = "点击孔位选中并拖动进行微调",
+                                text = stringResource(R.string.click_and_drag_hint),
                                 style = MaterialTheme.typography.bodyMedium,
                                 textAlign = TextAlign.Center
                             )
@@ -378,7 +385,7 @@ fun WellDetectionScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Info,
-                                contentDescription = "错误",
+                                contentDescription = stringResource(R.string.detection_error, ""),
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(48.dp)
                             )
@@ -386,7 +393,7 @@ fun WellDetectionScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                             
             Text(
-                                text = "检测出错: $error",
+                                text = stringResource(R.string.detection_error, error),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.error,
                                 textAlign = TextAlign.Center
@@ -401,7 +408,7 @@ fun WellDetectionScreen(
                                     }
                                 }
                             ) {
-                                Text("重试")
+                                Text(stringResource(R.string.retry))
                             }
                         }
                     }
@@ -424,7 +431,7 @@ fun WellDetectionScreen(
                         onClick = { handleBackPress() },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("返回")
+                        Text(stringResource(R.string.go_back))
                     }
                     
                     Spacer(modifier = Modifier.width(16.dp))
@@ -435,7 +442,7 @@ fun WellDetectionScreen(
                         modifier = Modifier.weight(1f),
                         enabled = detectionState is DetectionViewModel.DetectionState.Success
                     ) {
-                        Text("继续")
+                        Text(stringResource(R.string.continue_button))
                         Icon(
                             imageVector = Icons.Default.Done,
                             contentDescription = null,

@@ -131,6 +131,18 @@
     <string name="click_datapoint">点击数据点查看详细信息</string>
     <string name="swipe_for_more">左右滑动查看更多数据</string>
     
+    <!-- ResultScreen Additional -->
+    <string name="detection_mode_res">检测模式: %1$s</string>
+    <string name="recognition_type_res">识别类型: %1$s</string>
+    <string name="max_concentration_res">最大浓度: %1$s %2$s</string>
+    <string name="error">错误</string>
+    <string name="concentration_percent_format">%.2f%%</string>
+    <string name="concentration_format">%.2f %s</string>
+    <string name="concentration_percent_and_value">%.2f%% (%.2f %s)</string>
+    <string name="value_format">%.1f</string>
+    <string name="close_button">×</string>
+    <string name="well_position_short">%1$s%2$d</string>
+    
     <!-- History Screen Additional -->
     <string name="confirm_delete">确认删除</string>
     <string name="confirm_delete_single">确定要删除此项目吗？此操作无法撤销。</string>
@@ -230,4 +242,65 @@
     <string name="add">添加</string>
     <string name="expand_all">显示全部</string>
     <string name="collapse">收起</string>
+    
+    <!-- WellDetectionScreen -->
+    <string name="well_detection_title">孔阵检测</string>
+    <string name="go_back">返回</string>
+    <string name="help_info">使用帮助</string>
+    <string name="help_dialog_title">使用帮助</string>
+    <string name="help_dialog_text">孔位检测使用说明：\n\n1. 页面加载时会自动检测孔位，显示红色方框\n2. 点击孔位可以选中它（变为绿色）\n3. 选中后，拖动可以调整孔位的位置\n4. 调整完成后，点击「继续」进入下一步</string>
+    <string name="ok">确定</string>
+    <string name="preparing_detection">准备进行孔阵检测...</string>
+    <string name="detecting_wells">正在检测孔阵，请稍候...</string>
+    <string name="wells_detected">检测到 %1$d 个孔位</string>
+    <string name="well_array_image">孔阵图像</string>
+    <string name="click_and_drag_hint">点击孔位选中并拖动进行微调</string>
+    <string name="detection_error">检测出错: %1$s</string>
+    <string name="continue_button">继续</string>
+    <string name="no_wells_detected">未检测到孔位，请重试</string>
+    <string name="project_id_empty">项目ID为空，无法保存检测结果</string>
+    <string name="saving_detection_results">正在保存检测结果...</string>
+    <string name="save_detection_failed">保存检测结果失败</string>
+    <string name="save_detection_failed_with_error">保存检测结果失败: %1$s</string>
+    <string name="image_uri_empty">图像URI为空，无法进行检测</string>
+    
+    <!-- CurveFittingScreen -->
+    <string name="curve_fitting_title">孔位处理与预览</string>
+    <string name="loading_original_image">正在加载原始图像...</string>
+    <string name="missing_run_id">缺少有效的运行ID，无法处理。</string>
+    <string name="preparing_process">准备处理孔位...</string>
+    <string name="processing_well_images">正在处理孔位图像...</string>
+    <string name="wells_processed_prediction_complete">孔位处理和浓度预测完成，共 %1$d 个孔位</string>
+    <string name="wells_processed_predicting">孔位图像处理完成，共 %1$d 个孔位。正在后台预测浓度...</string>
+    <string name="wells_processed">孔位图像处理完成，共 %1$d 个孔位</string>
+    <string name="well_number">孔位 %1$d</string>
+    <string name="view_detailed_results">查看详细结果</string>
+    <string name="prediction_progress">浓度预测进度: %1$d%%</string>
+    <string name="processing_failed">处理失败: %1$s</string>
+    <string name="log_tag_result_screen">结果展示</string>
+    <string name="log_error_screenshot_failed">处理失败</string>
+
+    <!-- HistoryScreen -->
+    <string name="history_selected_items_title">已选择 %1$d 项</string>
+    <string name="history_search_placeholder">搜索项目...</string>
+    <string name="history_clear_search_description">清除搜索</string>
+    <string name="history_filter_dialog_title">筛选历史记录</string>
+    <string name="history_sort_dialog_title">排序历史记录</string>
+    <string name="history_creation_time_label">创建时间</string>
+    <string name="history_last_run_time_label">最后运行时间</string>
+    <string name="history_project_image_description">项目图片</string>
+    <string name="history_delete_icon_description">删除项目</string>
+    <string name="history_fluorescence_label">荧光</string>
+    <string name="history_colorimetric_label">比色</string>
+    <string name="history_auto_recognition_label">自动</string>
+    <string name="history_manual_crop_label">手动</string>
+    <string name="history_project_name_sort">名称</string>
+    <string name="history_creation_time_sort">创建时间</string>
+    <string name="history_last_run_sort">最后运行</string>
+    <string name="toast_delete_successful">删除成功</string>
+    <string name="toast_delete_failed">删除失败: %1$s</string>
+    <string name="history_total_records">共 %1$d 条记录</string>
+    <string name="history_total_records_icon_description">总记录图标</string>
+    <string name="select_all">全选</string>
+    <string name="deselect_all">取消全选</string>
 </resources> 
