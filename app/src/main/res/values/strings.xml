@@ -130,6 +130,26 @@
     <string name="no_image">No Image</string>
     <string name="click_datapoint">Click on data points for details</string>
     <string name="swipe_for_more">Swipe left or right for more data</string>
+    <string name="result_header_concentration_unit">Concentration (%1$s)</string>
+    <string name="result_screen_title">Detection Results</string>
+    <string name="result_heatmap_tab_title">Heatmap</string>
+    <string name="result_data_table_tab_title">Data Table</string>
+    <string name="result_well_id_header">Well ID</string>
+    <!-- The following was replaced by result_header_concentration_unit
+    <string name="result_concentration_header">Concentration</string> -->
+    <string name="result_gray_value_header">Gray Value</string>
+    <string name="result_r_value_header">R Value</string>
+    <string name="result_g_value_header">G Value</string>
+    <string name="result_b_value_header">B Value</string>
+    <string name="result_no_data">No results found for this project.</string>
+    <string name="result_export_button">Export Results</string>
+    <string name="result_return_home_button">Return to Home</string>
+    <string name="result_export_success_toast">Results exported successfully</string>
+    <string name="result_export_failure_toast">Export failed: %1$s</string>
+    <string name="result_screenshot_error_dialog_title">Error</string>
+    <string name="result_screenshot_error_dialog_message">Failed to capture screenshot for export.</string>
+    <string name="dialog_ok_button">OK</string>
+
 
     <!-- ResultScreen Additional -->
     <string name="detection_mode_res">Detection Mode: %1$s</string>
@@ -186,6 +206,10 @@
     <string name="detection_results">Detection Results</string>
     <string name="export">Export</string>
     <string name="loading_result_data">Loading result data...</string>
+    <string name="error_project_not_found">Project information not found</string>
+    <string name="error_run_not_found">Detection run record not found</string>
+    <string name="error_loading_results">Failed to load results: %1$s</string>
+    <string name="error_no_projects_found">No project data found</string>
 
     <!-- Export Components -->
     <string name="export_title">Export</string>
@@ -201,6 +225,41 @@
     <string name="charts_failed">Chart export failed</string>
     <string name="pdf_saved">PDF report saved to downloads folder</string>
     <string name="pdf_failed">PDF report export failed</string>
+    <string name="csv_header_line_format">Well,Well Index,Predicted Concentration (%%%%),Actual Concentration (%1$s)\n</string>
+    <string name="csv_label_project_name_colon">Project Name:</string>
+    <string name="csv_label_detection_mode_colon">Detection Mode:</string>
+    <string name="csv_label_recognition_type_colon">Recognition Type:</string>
+    <string name="csv_label_max_concentration_colon">Max Concentration:</string>
+    <string name="csv_label_creation_time_colon">Creation Time:</string>
+    <string name="bitmap_title_heatmap_with_name">Concentration Heatmap - %s</string>
+    <string name="bitmap_legend_concentration_range_format">Concentration Range: 0 - %1$s %2$s</string>
+    <string name="bitmap_title_value_distribution_with_name">Concentration Value Distribution - %s</string>
+    <string name="bitmap_axis_label_concentration_with_unit">Concentration (%s)</string>
+    <string name="bitmap_axis_label_well_id_capital">Well ID</string>
+    <string name="pdf_report_main_title">FluoColor Detection Report</string>
+    <string name="pdf_header_project_info">Project Information</string>
+    <string name="pdf_label_project_name_format">Project Name: %s</string>
+    <string name="pdf_label_detection_mode_format">Detection Mode: %s</string>
+    <string name="pdf_label_recognition_type_format">Recognition Type: %s</string>
+    <string name="pdf_label_max_concentration_format">Max Concentration: %1$s %2$s</string>
+    <string name="pdf_label_creation_time_format">Creation Time: %s</string>
+    <string name="pdf_header_detection_run_info">Detection Run Information</string>
+    <string name="pdf_label_detection_model_format">Detection Model: %s</string>
+    <string name="pdf_label_concentration_model_format">Concentration Model: %s</string>
+    <string name="pdf_label_confidence_threshold_format">Confidence Threshold: %s</string>
+    <string name="pdf_label_iou_threshold_format">IoU Threshold: %s</string>
+    <string name="pdf_label_wells_detected_count_format">Detected Wells: %s</string>
+    <string name="pdf_header_statistics">Statistics</string>
+    <string name="pdf_label_valid_data_points_format">Valid Data Points: %d</string>
+    <string name="pdf_label_avg_predicted_concentration_format">Avg. Predicted Concentration: %.2f%%%%</string>
+    <string name="pdf_label_max_predicted_concentration_format">Max. Predicted Concentration: %.2f%%%%</string>
+    <string name="pdf_label_min_predicted_concentration_format">Min. Predicted Concentration: %.2f%%%%</string>
+    <string name="pdf_label_avg_actual_concentration_format">Avg. Actual Concentration: %.2f %s</string>
+    <string name="pdf_label_max_actual_concentration_format">Max. Actual Concentration: %.2f %s</string>
+    <string name="pdf_label_min_actual_concentration_format">Min. Actual Concentration: %.2f %s</string>
+    <string name="pdf_report_continued_title">FluoColor Detection Report - Continued</string>
+    <string name="pdf_header_concentration_distribution_chart">Concentration Value Distribution</string>
+    <string name="pdf_footer_generated_on_app_format">Generated: %1$s | Using FluoColor App</string>
 
     <!-- New Project Screen -->
     <string name="new_project_title">New Project</string>
@@ -254,7 +313,7 @@
     <string name="detecting_wells">Detecting wells, please wait...</string>
     <string name="wells_detected">Detected %1$d wells</string>
     <string name="well_array_image">Well Array Image</string>
-    <string name="click_and_drag_hint">Click on a well to select and drag to adjust</string>
+    <string name="click_and_drag_hint">Click on a well to select (green), drag to adjust position. Click empty area to deselect.</string>
     <string name="detection_error">Detection Error: %1$s</string>
     <string name="continue_button">Continue</string>
     <string name="no_wells_detected">No wells detected, please try again</string>
@@ -303,5 +362,7 @@
     <string name="history_total_records_icon_description">Total records icon</string>
     <string name="select_all">Select All</string>
     <string name="deselect_all">Deselect All</string>
+
+
 
 </resources>

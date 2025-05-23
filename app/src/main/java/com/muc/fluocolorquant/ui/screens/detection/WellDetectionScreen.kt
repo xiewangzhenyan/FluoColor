@@ -2,6 +2,7 @@ package com.muc.fluocolorquant.ui.screens.detection
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +37,7 @@ import com.muc.fluocolorquant.ui.viewmodels.DetectionViewModel
 import com.muc.fluocolorquant.utils.Screen
 import kotlinx.coroutines.launch
 import android.net.Uri
+import android.graphics.RectF
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -258,9 +260,59 @@ fun WellDetectionScreen(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .pointerInput(Unit) {
+                                            // 使用detectTapGestures处理点击事件
+                                            detectTapGestures { offset ->
+                                                // 检查是否点击了某个孔位
+                                                val scale = minOf(
+                                                    size.width / originalBitmap!!.width.toFloat(),
+                                                    size.height / originalBitmap!!.height.toFloat()
+                                                )
+                                                
+                                                // 计算图像在Canvas中的实际位置和尺寸
+                                                val scaledWidth = originalBitmap!!.width * scale
+                                                val scaledHeight = originalBitmap!!.height * scale
+                                                val leftPadding = (size.width - scaledWidth) / 2
+                                                val topPadding = (size.height - scaledHeight) / 2
+                                                
+                                                // 检查点击是否在图像范围内
+                                                val clickInImageBounds = offset.x >= leftPadding && 
+                                                                        offset.x <= leftPadding + scaledWidth &&
+                                                                        offset.y >= topPadding && 
+                                                                        offset.y <= topPadding + scaledHeight
+                                                
+                                                if (clickInImageBounds) {
+                                                    // 将点击坐标转换为原始图像坐标
+                                                    val imageX = (offset.x - leftPadding) / scale
+                                                    val imageY = (offset.y - topPadding) / scale
+                                                    
+                                                    // 检查点击是否在某个孔位内
+                                                    var foundWell = false
+                                                    for (i in detections.indices) {
+                                                        val rect = detections[i].rect
+                                                        if (imageX >= rect.left && imageX <= rect.right &&
+                                                            imageY >= rect.top && imageY <= rect.bottom) {
+                                                            // 选中孔位
+                                                            viewModel.selectWell(i)
+                                                            foundWell = true
+                                                            break
+                                                        }
+                                                    }
+                                                    
+                                                    // 如果没有点击到任何孔位，取消选中
+                                                    if (!foundWell) {
+                                                        viewModel.selectWell(null)
+                                                    }
+                                                } else {
+                                                    // 点击在图像外部，取消选中
+                                                    viewModel.selectWell(null)
+                                                }
+                                            }
+                                        }
+                                        .pointerInput(Unit) {
+                                            // 使用detectDragGestures处理拖动事件
                                             detectDragGestures(
                                                 onDragStart = { offset ->
-                                                    // 检查是否点击了某个孔位
+                                                    // 检查是否点击了某个孔位（用于拖动开始）
                                                     val scale = minOf(
                                                         size.width / originalBitmap!!.width.toFloat(),
                                                         size.height / originalBitmap!!.height.toFloat()
@@ -272,18 +324,26 @@ fun WellDetectionScreen(
                                                     val leftPadding = (size.width - scaledWidth) / 2
                                                     val topPadding = (size.height - scaledHeight) / 2
                                                     
-                                                    // 将点击坐标转换为原始图像坐标
-                                                    val imageX = (offset.x - leftPadding) / scale
-                                                    val imageY = (offset.y - topPadding) / scale
+                                                    // 检查拖动开始位置是否在图像范围内
+                                                    val dragInImageBounds = offset.x >= leftPadding && 
+                                                                           offset.x <= leftPadding + scaledWidth &&
+                                                                           offset.y >= topPadding && 
+                                                                           offset.y <= topPadding + scaledHeight
                                                     
-                                                    // 检查点击是否在某个孔位内
-                                                    for (i in detections.indices) {
-                                                        val rect = detections[i].rect
-                                                        if (imageX >= rect.left && imageX <= rect.right &&
-                                                            imageY >= rect.top && imageY <= rect.bottom) {
-                                                            // 选中孔位
-                                                            viewModel.selectWell(i)
-                                                            break
+                                                    if (dragInImageBounds) {
+                                                        // 将点击坐标转换为原始图像坐标
+                                                        val imageX = (offset.x - leftPadding) / scale
+                                                        val imageY = (offset.y - topPadding) / scale
+                                                        
+                                                        // 检查点击是否在某个孔位内
+                                                        for (i in detections.indices) {
+                                                            val rect = detections[i].rect
+                                                            if (imageX >= rect.left && imageX <= rect.right &&
+                                                                imageY >= rect.top && imageY <= rect.bottom) {
+                                                                // 选中孔位，准备拖动
+                                                                viewModel.selectWell(i)
+                                                                break
+                                                            }
                                                         }
                                                     }
                                                 },
@@ -302,8 +362,16 @@ fun WellDetectionScreen(
                                                         val dx = dragAmount.x / scale
                                                         val dy = dragAmount.y / scale
                                                         
-                                                        // 更新孔位位置
-                                                        viewModel.moveSelectedWell(dx, dy)
+                                                        // 定义图像边界
+                                                        val imageBounds = RectF(
+                                                            0f, 
+                                                            0f, 
+                                                            originalBitmap!!.width.toFloat(), 
+                                                            originalBitmap!!.height.toFloat()
+                                                        )
+                                                        
+                                                        // 使用带边界检查的移动方法
+                                                        viewModel.moveSelectedWell(dx, dy, imageBounds)
                                                     }
                                                 }
                                             )

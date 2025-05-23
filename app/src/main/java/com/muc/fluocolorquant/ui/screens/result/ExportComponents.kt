@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -152,7 +153,7 @@ fun ExportBottomPanel(
                             modifier = Modifier.padding(16.dp)
                         ) {
                             Text(
-                                text = "导出",
+                                text = stringResource(R.string.export_title), // 使用已有的 stringResource
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(bottom = 16.dp)
@@ -160,8 +161,8 @@ fun ExportBottomPanel(
 
                             // 导出数据选项（CSV）
                             ExportOption(
-                                title = "导出数据 (CSV)",
-                                description = "将浓度数据导出为CSV文件",
+                                title = stringResource(R.string.export_data_csv), // 使用已有的 stringResource
+                                description = stringResource(R.string.export_data_csv_desc), // 使用已有的 stringResource
                                 icon = Icons.Default.Description,
                                 backgroundColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                             ) {
@@ -169,13 +170,13 @@ fun ExportBottomPanel(
                                     val success = exportDataToCsv(context, project, wellResults)
                                     if (success) {
                                         toastManager.showToast(
-                                            "CSV文件已保存到下载文件夹",
+                                            context.getString(R.string.csv_saved), // 使用已有的 stringResource
                                             ToastType.SUCCESS
                                         )
                                         onDismiss()
                                     } else {
                                         toastManager.showToast(
-                                            "导出CSV文件失败",
+                                            context.getString(R.string.csv_failed), // 使用已有的 stringResource
                                             ToastType.ERROR
                                         )
                                     }
@@ -186,8 +187,8 @@ fun ExportBottomPanel(
 
                             // 导出图表选项（PNG）
                             ExportOption(
-                                title = "导出图表 (PNG)",
-                                description = "将浓度热力图和数值图导出为PNG图片",
+                                title = stringResource(R.string.export_chart_png), // 使用已有的 stringResource
+                                description = stringResource(R.string.export_chart_png_desc), // 使用已有的 stringResource
                                 icon = Icons.Default.Image,
                                 backgroundColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                             ) {
@@ -196,13 +197,13 @@ fun ExportBottomPanel(
                                     val success = exportHeatmapAndValueCharts(context, project, wellResults)
                                     if (success) {
                                         toastManager.showToast(
-                                            "浓度图表已保存为PNG图片",
+                                            context.getString(R.string.charts_saved), // 使用已有的 stringResource
                                             ToastType.SUCCESS
                                         )
                                         onDismiss()
                                     } else {
                                         toastManager.showToast(
-                                            "导出图表失败",
+                                            context.getString(R.string.charts_failed), // 使用已有的 stringResource
                                             ToastType.ERROR
                                         )
                                     }
@@ -213,8 +214,8 @@ fun ExportBottomPanel(
 
                             // 导出报告选项（PDF）
                             ExportOption(
-                                title = "导出完整报告 (PDF)",
-                                description = "将检测结果及参数导出为PDF报告",
+                                title = stringResource(R.string.export_report_pdf), // 使用已有的 stringResource
+                                description = stringResource(R.string.export_report_pdf_desc), // 使用已有的 stringResource
                                 icon = Icons.Default.PictureAsPdf,
                                 backgroundColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                             ) {
@@ -223,13 +224,13 @@ fun ExportBottomPanel(
                                     val success = exportFullReport(context, project, wellResults, detectionRun)
                                     if (success) {
                                         toastManager.showToast(
-                                            "PDF报告已保存到下载文件夹",
+                                            context.getString(R.string.pdf_saved), // 使用已有的 stringResource
                                             ToastType.SUCCESS
                                         )
                                         onDismiss()
                                     } else {
                                         toastManager.showToast(
-                                            "导出PDF报告失败",
+                                            context.getString(R.string.pdf_failed), // 使用已有的 stringResource
                                             ToastType.ERROR
                                         )
                                     }
@@ -251,7 +252,7 @@ fun ExportBottomPanel(
                                     contentDescription = null,
                                     modifier = Modifier.padding(end = 8.dp)
                                 )
-                                Text("取消")
+                                Text(stringResource(R.string.cancel)) // 使用已有的 stringResource
                             }
                         }
                     }
@@ -338,14 +339,17 @@ suspend fun exportDataToCsv(
         val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val file = File(downloadDir, fileName)
 
+        val concentrationUnit = project.concentrationUnit ?: "ng/ml"
+
         FileOutputStream(file).use { fos ->
             // CSV头部
-            val header = "项目名称:,${project.name}\n" +
-                    "检测模式:,${if (project.detectionMode == "FLUORESCENCE") "荧光检测" else "比色检测"}\n" +
-                    "识别类型:,${if (project.recognitionType == "AUTO") "自动识别" else "手动裁剪"}\n" +
-                    "最大浓度:,${project.maxConcentration} ng/ml\n" +
-                    "创建时间:,${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(project.createTime)}\n\n" +
-                    "孔位,孔位索引,预测浓度(%),实际浓度(ng/ml)\n"
+            val header = "${context.getString(R.string.csv_label_project_name_colon)}${project.name}\n" +
+                    "${context.getString(R.string.csv_label_detection_mode_colon)}${if (project.detectionMode == "FLUORESCENCE") context.getString(R.string.fluorescence_detection) else context.getString(R.string.colorimetric_detection)}\n" +
+                    "${context.getString(R.string.csv_label_recognition_type_colon)}${if (project.recognitionType == "AUTO") context.getString(R.string.auto_recognition) else context.getString(R.string.manual_crop)}\n" +
+                    "${context.getString(R.string.csv_label_max_concentration_colon)}${project.maxConcentration ?: "-"} ${concentrationUnit}\n" +
+                    "${context.getString(R.string.csv_label_creation_time_colon)}${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(project.createTime)}\n\n" +
+                    context.getString(R.string.csv_header_line_format, concentrationUnit)
+
 
             fos.write(header.toByteArray())
 
@@ -361,7 +365,7 @@ suspend fun exportDataToCsv(
                         (predictedPercent!! / 100.0) * maxConc
                     } ?: 0.0
 
-                    val line = "$wellLabel,${result.wellIndex},${String.format("%.2f", predictedPercent)},${String.format("%.2f", actualConcentration)}\n"
+                    val line = "$wellLabel,${result.wellIndex},${String.format(Locale.US, "%.2f", predictedPercent)},${String.format(Locale.US, "%.2f", actualConcentration)}\n"
                     fos.write(line.toByteArray())
                 }
             }
@@ -394,9 +398,9 @@ suspend fun exportHeatmapAndValueCharts(
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
 
         // 生成热力图
-        val heatmapBitmap = generateHeatmapBitmap(project, wellResults)
+        val heatmapBitmap = generateHeatmapBitmap(context, project, wellResults) // Pass context
         // 生成数值图
-        val valueChartBitmap = generateValueChartBitmap(project, wellResults)
+        val valueChartBitmap = generateValueChartBitmap(context, project, wellResults) // Pass context
 
         var success = true
 
@@ -422,7 +426,7 @@ suspend fun exportHeatmapAndValueCharts(
 /**
  * 生成浓度热力图的Bitmap
  */
-fun generateHeatmapBitmap(project: Project, wellResults: List<WellResult>): Bitmap? {
+fun generateHeatmapBitmap(context: Context, project: Project, wellResults: List<WellResult>): Bitmap? {
     // 创建一个Bitmap来绘制热力图
     val width = 800
     val height = 600
@@ -439,7 +443,7 @@ fun generateHeatmapBitmap(project: Project, wellResults: List<WellResult>): Bitm
         textAlign = android.graphics.Paint.Align.CENTER
         isFakeBoldText = true
     }
-    canvas.drawText("浓度热力图 - ${project.name}", width / 2f, 60f, titlePaint)
+    canvas.drawText(context.getString(R.string.bitmap_title_heatmap_with_name, project.name), width / 2f, 60f, titlePaint)
 
     // 绘制热力图
     if (wellResults.isNotEmpty()) {
@@ -452,7 +456,9 @@ fun generateHeatmapBitmap(project: Project, wellResults: List<WellResult>): Bitm
         val startX = 50f
         val startY = 100f
 
-        val maxConcentration = project.maxConcentration ?: 100.0
+        val maxConcentrationProject = project.maxConcentration ?: 100.0
+        val concentrationUnit = project.concentrationUnit ?: "ng/ml"
+
 
         // 绘制网格和颜色
         for (row in 0 until gridHeight) {
@@ -491,14 +497,14 @@ fun generateHeatmapBitmap(project: Project, wellResults: List<WellResult>): Bitm
 
                 // 如果有预测值，显示预测值
                 if (wellResult?.predictedConcentration != null) {
-                    val actualConcentration = (wellResult.predictedConcentration / 100.0) * maxConcentration
+                    val actualConcentration = (wellResult.predictedConcentration / 100.0) * maxConcentrationProject
                     val valuePaint = android.graphics.Paint().apply {
                         color = android.graphics.Color.BLACK
                         textSize = 10f
                         textAlign = android.graphics.Paint.Align.CENTER
                     }
                     canvas.drawText(
-                        String.format("%.1f", actualConcentration),
+                        String.format(Locale.US, "%.1f", actualConcentration),
                         left + cellWidth / 2,
                         top + cellHeight / 2 + 15,
                         valuePaint
@@ -512,7 +518,7 @@ fun generateHeatmapBitmap(project: Project, wellResults: List<WellResult>): Bitm
             textSize = 14f
             color = android.graphics.Color.BLACK
         }
-        canvas.drawText("浓度范围: 0 - $maxConcentration ng/ml", startX, startY + gridHeight * cellHeight + 40, legendPaint)
+        canvas.drawText(context.getString(R.string.bitmap_legend_concentration_range_format, String.format(Locale.US, "%.1f",maxConcentrationProject), concentrationUnit ), startX, startY + gridHeight * cellHeight + 40, legendPaint)
     } else {
         // 如果没有结果，显示提示信息
         val noPaint = android.graphics.Paint().apply {
@@ -520,7 +526,7 @@ fun generateHeatmapBitmap(project: Project, wellResults: List<WellResult>): Bitm
             textSize = 30f
             textAlign = android.graphics.Paint.Align.CENTER
         }
-        canvas.drawText("没有有效的浓度数据", width / 2f, height / 2f, noPaint)
+        canvas.drawText(context.getString(R.string.no_concentration_data), width / 2f, height / 2f, noPaint)
     }
 
     return bitmap
@@ -529,7 +535,7 @@ fun generateHeatmapBitmap(project: Project, wellResults: List<WellResult>): Bitm
 /**
  * 生成浓度数值图的Bitmap
  */
-fun generateValueChartBitmap(project: Project, wellResults: List<WellResult>): Bitmap? {
+fun generateValueChartBitmap(context: Context, project: Project, wellResults: List<WellResult>): Bitmap? {
     // 创建一个Bitmap来绘制数值图
     val width = 1000  // 增加图表宽度，从800增加到1000
     val height = 500  // 增加图表高度，从400增加到500
@@ -546,16 +552,17 @@ fun generateValueChartBitmap(project: Project, wellResults: List<WellResult>): B
         textAlign = android.graphics.Paint.Align.CENTER
         isFakeBoldText = true
     }
-    canvas.drawText("浓度数值分布 - ${project.name}", width / 2f, 60f, titlePaint)
+    canvas.drawText(context.getString(R.string.bitmap_title_value_distribution_with_name, project.name), width / 2f, 60f, titlePaint)
 
     // 过滤有效结果
     val validResults = wellResults.filter { it.predictedConcentration != null && it.predictedConcentration!!.isFinite() }
+    val concentrationUnit = project.concentrationUnit ?: "ng/ml"
 
     if (validResults.isNotEmpty()) {
         // 计算实际浓度值
-        val maxConcentration = project.maxConcentration ?: 100.0
+        val maxConcentrationProject = project.maxConcentration ?: 100.0
         val concentrations = validResults.map {
-            (it.predictedConcentration!! / 100.0) * maxConcentration
+            (it.predictedConcentration!! / 100.0) * maxConcentrationProject
         }
 
         // 绘制柱状图
@@ -598,11 +605,11 @@ fun generateValueChartBitmap(project: Project, wellResults: List<WellResult>): B
         val labelInterval = if (barCount > 24) 4 else if (barCount > 12) 2 else 1
 
         sortedResults.forEachIndexed { index, result ->
-            val concentration = (result.predictedConcentration!! / 100.0) * maxConcentration
+            val concentration = (result.predictedConcentration!! / 100.0) * maxConcentrationProject
             val barHeight = (concentration / yMax * maxHeight.toFloat()).toFloat()
 
             // 设置柱状图颜色
-            val normalizedValue = (concentration / maxConcentration).toFloat()
+            val normalizedValue = (concentration / maxConcentrationProject).toFloat()
             barPaint.color = getHeatmapColor(normalizedValue)
 
             // 绘制柱状图
@@ -629,7 +636,7 @@ fun generateValueChartBitmap(project: Project, wellResults: List<WellResult>): B
             // 如果空间足够，绘制浓度值
             if (barWidth > 20f) {
                 canvas.drawText(
-                    String.format("%.1f", concentration),
+                    String.format(Locale.US, "%.1f", concentration),
                     left + barWidth / 2,
                     top - 5,
                     textPaint
@@ -649,7 +656,7 @@ fun generateValueChartBitmap(project: Project, wellResults: List<WellResult>): B
             val y = startY - i * maxHeight.toFloat() / 5
             val value = i * yMax / 5
             canvas.drawLine(startX - 5, y, startX, y, axisPaint) // 刻度线
-            canvas.drawText(String.format("%.1f", value), startX - 10, y + 5, yLabelPaint)
+            canvas.drawText(String.format(Locale.US, "%.1f", value), startX - 10, y + 5, yLabelPaint)
         }
 
         // 绘制单位 - 增加左边距并旋转90度显示
@@ -662,7 +669,7 @@ fun generateValueChartBitmap(project: Project, wellResults: List<WellResult>): B
         // 旋转画布并绘制Y轴单位
         canvas.save()
         canvas.rotate(-90f, startX - 60, startY - chartHeight.toFloat() / 2)
-        canvas.drawText("浓度 (ng/ml)", startX - 60, startY - chartHeight.toFloat() / 2, unitPaint)
+        canvas.drawText(context.getString(R.string.bitmap_axis_label_concentration_with_unit, concentrationUnit), startX - 60, startY - chartHeight.toFloat() / 2, unitPaint)
         canvas.restore()
 
         // 绘制X轴标签
@@ -671,7 +678,7 @@ fun generateValueChartBitmap(project: Project, wellResults: List<WellResult>): B
             textSize = 14f
             textAlign = android.graphics.Paint.Align.CENTER
         }
-        canvas.drawText("孔位编号", startX + chartWidth.toFloat() / 2, startY + 70, xLabelPaint)
+        canvas.drawText(context.getString(R.string.bitmap_axis_label_well_id_capital), startX + chartWidth.toFloat() / 2, startY + 70, xLabelPaint)
     } else {
         // 如果没有结果，显示提示信息
         val noPaint = android.graphics.Paint().apply {
@@ -679,7 +686,7 @@ fun generateValueChartBitmap(project: Project, wellResults: List<WellResult>): B
             textSize = 30f
             textAlign = android.graphics.Paint.Align.CENTER
         }
-        canvas.drawText("没有有效的浓度数据", width / 2f, height / 2f, noPaint)
+        canvas.drawText(context.getString(R.string.no_concentration_data), width / 2f, height / 2f, noPaint)
     }
 
     return bitmap
@@ -797,6 +804,8 @@ suspend fun exportFullReport(
 
         // 创建PDF文档
         val document = PdfDocument()
+        val concentrationUnit = project.concentrationUnit ?: "ng/ml"
+
 
         // 创建页面
         val pageWidth = 595 // A4宽度，72dpi
@@ -827,70 +836,70 @@ suspend fun exportFullReport(
         }
 
         // 绘制标题
-        canvas.drawText("FluoColor 检测报告", pageWidth / 2f, 40f, titlePaint)
+        canvas.drawText(context.getString(R.string.pdf_report_main_title), pageWidth / 2f, 40f, titlePaint)
 
         // 绘制项目信息
         var yOffset = 80f
-        canvas.drawText("项目信息", 50f, yOffset, headerPaint)
+        canvas.drawText(context.getString(R.string.pdf_header_project_info), 50f, yOffset, headerPaint)
         yOffset += 20f
 
-        canvas.drawText("项目名称: ${project.name}", 50f, yOffset, textPaint)
+        canvas.drawText(context.getString(R.string.pdf_label_project_name_format, project.name), 50f, yOffset, textPaint)
         yOffset += 20f
 
-        val detectionMode = if (project.detectionMode == "FLUORESCENCE") "荧光检测" else "比色检测"
-        canvas.drawText("检测模式: $detectionMode", 50f, yOffset, textPaint)
+        val detectionModeString = if (project.detectionMode == "FLUORESCENCE") context.getString(R.string.fluorescence_detection) else context.getString(R.string.colorimetric_detection)
+        canvas.drawText(context.getString(R.string.pdf_label_detection_mode_format, detectionModeString), 50f, yOffset, textPaint)
         yOffset += 20f
 
-        val recognitionType = if (project.recognitionType == "AUTO") "自动识别" else "手动裁剪"
-        canvas.drawText("识别类型: $recognitionType", 50f, yOffset, textPaint)
+        val recognitionTypeString = if (project.recognitionType == "AUTO") context.getString(R.string.auto_recognition) else context.getString(R.string.manual_crop)
+        canvas.drawText(context.getString(R.string.pdf_label_recognition_type_format, recognitionTypeString), 50f, yOffset, textPaint)
         yOffset += 20f
 
-        canvas.drawText("最大浓度: ${project.maxConcentration} ng/ml", 50f, yOffset, textPaint)
+        canvas.drawText(context.getString(R.string.pdf_label_max_concentration_format, project.maxConcentration?.toString() ?: "-", concentrationUnit), 50f, yOffset, textPaint)
         yOffset += 20f
 
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        canvas.drawText("创建时间: ${dateFormat.format(project.createTime)}", 50f, yOffset, textPaint)
+        canvas.drawText(context.getString(R.string.pdf_label_creation_time_format, dateFormat.format(project.createTime)), 50f, yOffset, textPaint)
         yOffset += 20f
 
         // 如果是自动模式且有检测运行记录，添加模型信息
         if (project.recognitionType == "AUTO" && detectionRun != null) {
             yOffset += 10f
-            canvas.drawText("检测运行信息", 50f, yOffset, headerPaint)
+            canvas.drawText(context.getString(R.string.pdf_header_detection_run_info), 50f, yOffset, headerPaint)
             yOffset += 20f
 
             detectionRun.detectionModelUsed?.let {
-                canvas.drawText("检测模型: $it", 50f, yOffset, textPaint)
+                canvas.drawText(context.getString(R.string.pdf_label_detection_model_format, it), 50f, yOffset, textPaint)
                 yOffset += 20f
             }
 
             detectionRun.concentrationModelUsed?.let {
-                canvas.drawText("浓度预测模型: $it", 50f, yOffset, textPaint)
+                canvas.drawText(context.getString(R.string.pdf_label_concentration_model_format, it), 50f, yOffset, textPaint)
                 yOffset += 20f
             }
 
             detectionRun.confThreshold?.let {
-                canvas.drawText("置信度阈值: $it", 50f, yOffset, textPaint)
+                canvas.drawText(context.getString(R.string.pdf_label_confidence_threshold_format, it.toString()), 50f, yOffset, textPaint)
                 yOffset += 20f
             }
 
             detectionRun.iouThreshold?.let {
-                canvas.drawText("IoU阈值: $it", 50f, yOffset, textPaint)
+                canvas.drawText(context.getString(R.string.pdf_label_iou_threshold_format, it.toString()), 50f, yOffset, textPaint)
                 yOffset += 20f
             }
 
             detectionRun.wellsDetected?.let {
-                canvas.drawText("检测到的孔位数量: $it", 50f, yOffset, textPaint)
+                canvas.drawText(context.getString(R.string.pdf_label_wells_detected_count_format, it.toString()), 50f, yOffset, textPaint)
                 yOffset += 20f
             }
         }
 
         // 统计信息
         yOffset += 10f
-        canvas.drawText("统计信息", 50f, yOffset, headerPaint)
+        canvas.drawText(context.getString(R.string.pdf_header_statistics), 50f, yOffset, headerPaint)
         yOffset += 20f
 
         val validResults = wellResults.filter { it.predictedConcentration != null && it.predictedConcentration!!.isFinite() }
-        canvas.drawText("有效数据点数量: ${validResults.size}", 50f, yOffset, textPaint)
+        canvas.drawText(context.getString(R.string.pdf_label_valid_data_points_format, validResults.size), 50f, yOffset, textPaint)
         yOffset += 20f
 
         if (validResults.isNotEmpty()) {
@@ -898,13 +907,13 @@ suspend fun exportFullReport(
             val maxPercentage = validResults.maxOf { it.predictedConcentration!! }
             val minPercentage = validResults.minOf { it.predictedConcentration!! }
 
-            canvas.drawText("平均浓度百分比: ${String.format("%.2f", avgPercentage)}%", 50f, yOffset, textPaint)
+            canvas.drawText(context.getString(R.string.pdf_label_avg_predicted_concentration_format, avgPercentage), 50f, yOffset, textPaint)
             yOffset += 20f
 
-            canvas.drawText("最大浓度百分比: ${String.format("%.2f", maxPercentage)}%", 50f, yOffset, textPaint)
+            canvas.drawText(context.getString(R.string.pdf_label_max_predicted_concentration_format, maxPercentage), 50f, yOffset, textPaint)
             yOffset += 20f
 
-            canvas.drawText("最小浓度百分比: ${String.format("%.2f", minPercentage)}%", 50f, yOffset, textPaint)
+            canvas.drawText(context.getString(R.string.pdf_label_min_predicted_concentration_format, minPercentage), 50f, yOffset, textPaint)
             yOffset += 20f
 
             // 计算实际浓度
@@ -912,21 +921,21 @@ suspend fun exportFullReport(
             val actualMax = project.maxConcentration?.let { (maxPercentage / 100.0) * it } ?: 0.0
             val actualMin = project.maxConcentration?.let { (minPercentage / 100.0) * it } ?: 0.0
 
-            canvas.drawText("平均实际浓度: ${String.format("%.2f", actualAvg)} ng/ml", 50f, yOffset, textPaint)
+            canvas.drawText(context.getString(R.string.pdf_label_avg_actual_concentration_format, actualAvg, concentrationUnit), 50f, yOffset, textPaint)
             yOffset += 20f
 
-            canvas.drawText("最大实际浓度: ${String.format("%.2f", actualMax)} ng/ml", 50f, yOffset, textPaint)
+            canvas.drawText(context.getString(R.string.pdf_label_max_actual_concentration_format, actualMax, concentrationUnit), 50f, yOffset, textPaint)
             yOffset += 20f
 
-            canvas.drawText("最小实际浓度: ${String.format("%.2f", actualMin)} ng/ml", 50f, yOffset, textPaint)
+            canvas.drawText(context.getString(R.string.pdf_label_min_actual_concentration_format, actualMin, concentrationUnit), 50f, yOffset, textPaint)
             yOffset += 30f
         }
 
         // 生成并添加热力图
-        canvas.drawText("浓度热力图", 50f, yOffset, headerPaint)
+        canvas.drawText(context.getString(R.string.concentration_heatmap), 50f, yOffset, headerPaint) // Reused string
         yOffset += 20f
 
-        val heatmapBitmap = generateHeatmapBitmap(project, wellResults)
+        val heatmapBitmap = generateHeatmapBitmap(context, project, wellResults) // Pass context
         if (heatmapBitmap != null) {
             // 缩放热力图以适应PDF页面
             val scaledHeatmap = Bitmap.createScaledBitmap(
@@ -950,14 +959,14 @@ suspend fun exportFullReport(
         val canvas2 = page2.canvas
 
         // 第二页标题
-        canvas2.drawText("FluoColor 检测报告 - 续", pageWidth / 2f, 40f, titlePaint)
+        canvas2.drawText(context.getString(R.string.pdf_report_continued_title), pageWidth / 2f, 40f, titlePaint)
 
         // 添加浓度数值图
         var yOffset2 = 80f
-        canvas2.drawText("浓度数值分布", 50f, yOffset2, headerPaint)
+        canvas2.drawText(context.getString(R.string.pdf_header_concentration_distribution_chart), 50f, yOffset2, headerPaint)
         yOffset2 += 20f
 
-        val valueChartBitmap = generateValueChartBitmap(project, wellResults)
+        val valueChartBitmap = generateValueChartBitmap(context, project, wellResults) // Pass context
         if (valueChartBitmap != null) {
             // 缩放数值图以适应PDF页面
             val scaledValueChart = Bitmap.createScaledBitmap(
@@ -973,7 +982,7 @@ suspend fun exportFullReport(
         }
 
         // 添加页脚
-        val footerText = "生成时间: ${dateFormat.format(Date())} | 使用FluoColor应用生成"
+        val footerText = context.getString(R.string.pdf_footer_generated_on_app_format, dateFormat.format(Date()))
         val footerPaint = android.graphics.Paint().apply {
             color = android.graphics.Color.GRAY
             textSize = 10f
@@ -1003,4 +1012,4 @@ suspend fun exportFullReport(
         e.printStackTrace()
         return@withContext false
     }
-} 
+}

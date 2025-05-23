@@ -567,9 +567,56 @@ class DetectionViewModel @Inject constructor(
     }
 
     /**
-     * 移动选中的孔位
+     * 移动选中的孔位（带边界检查）
      */
-    fun moveSelectedWell(dx: Float, dy: Float) {
+    fun moveSelectedWell(dx: Float, dy: Float, imageBounds: RectF) {
+        val index = _selectedWellIndex.value ?: return
+        
+        val currentState = _detectionState.value
+        if (currentState is DetectionState.Success) {
+            val detections = currentState.detections.toMutableList()
+            if (index >= 0 && index < detections.size) {
+                val well = detections[index]
+                
+                // 计算新的矩形位置
+                var newLeft = well.rect.left + dx
+                var newTop = well.rect.top + dy
+                var newRight = well.rect.right + dx
+                var newBottom = well.rect.bottom + dy
+                
+                // 应用边界检查，确保检测框不超出图像范围
+                if (newLeft < imageBounds.left) {
+                    val offset = imageBounds.left - newLeft
+                    newLeft += offset
+                    newRight += offset
+                }
+                if (newTop < imageBounds.top) {
+                    val offset = imageBounds.top - newTop
+                    newTop += offset
+                    newBottom += offset
+                }
+                if (newRight > imageBounds.right) {
+                    val offset = newRight - imageBounds.right
+                    newLeft -= offset
+                    newRight -= offset
+                }
+                if (newBottom > imageBounds.bottom) {
+                    val offset = newBottom - imageBounds.bottom
+                    newTop -= offset
+                    newBottom -= offset
+                }
+                
+                val updatedRect = RectF(newLeft, newTop, newRight, newBottom)
+                detections[index] = well.copy(rect = updatedRect)
+                _detectionState.value = DetectionState.Success(detections)
+            }
+        }
+    }
+
+    /**
+     * 移动选中的孔位（不带边界检查的原始方法，保持向后兼容）
+     */
+    fun moveSelectedWellUnconstrained(dx: Float, dy: Float) {
         val index = _selectedWellIndex.value ?: return
         
         val currentState = _detectionState.value
