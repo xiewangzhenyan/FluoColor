@@ -152,6 +152,8 @@
     <string name="error_run_not_found">找不到检测运行记录</string>
     <string name="error_loading_results">加载结果失败: %1$s</string>
     <string name="error_no_projects_found">未找到任何项目数据</string>
+    <string name="standard_detection_starting">Starting standard detection…</string>
+    <string name="switch_to_standard_detection">Switch to Standard Detection</string>
     
     <!-- ResultScreen Additional -->
     <string name="detection_mode_res">检测模式: %1$s</string>
@@ -285,6 +287,13 @@
     <!-- Settings - Detection Settings -->
     <string name="detection_settings">检测设置</string>
     <string name="default_detection_mode">默认检测模式</string>
+    
+    <!-- Settings - Project Settings -->
+    <string name="project_settings">项目设置</string>
+    <string name="default_row_column_settings">默认孔板尺寸</string>
+    <string name="default_rows">默认行数</string>
+    <string name="default_columns">默认列数</string>
+    
     <string name="concentration_unit_settings">浓度单位设置</string>
     <string name="select_default_concentration_unit">选择默认浓度单位</string>
     <string name="add_concentration_unit">添加浓度单位</string>
@@ -299,6 +308,14 @@
     <string name="add">添加</string>
     <string name="expand_all">显示全部</string>
     <string name="collapse">收起</string>
+    
+    <!-- NewProjectScreen - Row Column Settings -->
+    <string name="row_column_settings">孔板尺寸</string>
+    <string name="rows">行数</string>
+    <string name="columns">列数</string>
+    <string name="row_limit_exceeded">超出最大行限制 (8)</string>
+    <string name="column_limit_exceeded">超出最大列限制 (12)</string>
+    <string name="input_number_only">请只输入数字</string>
     
     <!-- WellDetectionScreen -->
     <string name="well_detection_title">孔阵检测</string>
@@ -360,4 +377,11 @@
     <string name="history_total_records_icon_description">总记录图标</string>
     <string name="select_all">全选</string>
     <string name="deselect_all">取消全选</string>
+    <string name="well_plate_size_info">孔板大小: %1$d 行 × %2$d 列 (最多 %3$d 个孔位)</string>
+
+    <!-- Enhanced Detection Feature -->
+    <string name="enhanced_detection">增强型检测</string>
+    <string name="enhanced_detection_starting">启动增强型检测（霍夫圆变换）...</string>
+    <string name="enhanced_detection_active">使用增强型检测模式（YOLOv5s + 霍夫圆变换）</string>
+    <string name="enhanced_detection_hint">圆形轮廓和颜色已自动检测。</string>
 </resources> 

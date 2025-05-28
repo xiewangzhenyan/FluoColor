@@ -149,6 +149,8 @@
     <string name="result_screenshot_error_dialog_title">Error</string>
     <string name="result_screenshot_error_dialog_message">Failed to capture screenshot for export.</string>
     <string name="dialog_ok_button">OK</string>
+    <string name="standard_detection_starting">Starting standard detection…</string>
+    <string name="switch_to_standard_detection">Switch to Standard Detection</string>
 
 
     <!-- ResultScreen Additional -->
@@ -287,6 +289,13 @@
     <!-- Settings - Detection Settings -->
     <string name="detection_settings">Detection Settings</string>
     <string name="default_detection_mode">Default Detection Mode</string>
+    
+    <!-- Settings - Project Settings -->
+    <string name="project_settings">Project Settings</string>
+    <string name="default_row_column_settings">Default Well Plate Size</string>
+    <string name="default_rows">Default Rows</string>
+    <string name="default_columns">Default Columns</string>
+    
     <string name="concentration_unit_settings">Concentration Unit Settings</string>
     <string name="select_default_concentration_unit">Select Default Concentration Unit</string>
     <string name="add_concentration_unit">Add Concentration Unit</string>
@@ -301,6 +310,14 @@
     <string name="add">Add</string>
     <string name="expand_all">Show all</string>
     <string name="collapse">Collapse</string>
+    
+    <!-- NewProjectScreen - Row Column Settings -->
+    <string name="row_column_settings">Well Plate Size</string>
+    <string name="rows">Rows</string>
+    <string name="columns">Columns</string>
+    <string name="row_limit_exceeded">Maximum row limit (8) exceeded</string>
+    <string name="column_limit_exceeded">Maximum column limit (12) exceeded</string>
+    <string name="input_number_only">Please enter numbers only</string>
 
     <!-- WellDetectionScreen -->
     <string name="well_detection_title">Well Detection</string>
@@ -363,6 +380,12 @@
     <string name="select_all">Select All</string>
     <string name="deselect_all">Deselect All</string>
 
+    <string name="well_plate_size_info">Well plate size: %1$d rows × %2$d columns (max %3$d wells)</string>
 
+    <!-- Enhanced Detection Feature -->
+    <string name="enhanced_detection">Enhanced Detection</string>
+    <string name="enhanced_detection_starting">Starting enhanced detection with Hough circle transform...</string>
+    <string name="enhanced_detection_active">Using Enhanced Detection Mode (YOLOv5s + Hough Circle Transform)</string>
+    <string name="enhanced_detection_hint">Circle contours and colors are automatically detected.</string>
 
 </resources>

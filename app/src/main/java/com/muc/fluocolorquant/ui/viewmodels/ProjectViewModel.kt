@@ -4,12 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.ui.screens.project.DetectionMode
 import com.muc.fluocolorquant.ui.screens.project.RecognitionType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Date
 import java.util.UUID
@@ -17,7 +19,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ProjectViewModel @Inject constructor(
-    private val projectRepository: ProjectRepository
+    private val projectRepository: ProjectRepository,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     // 项目列表的StateFlow
@@ -53,9 +56,15 @@ class ProjectViewModel @Inject constructor(
         imageUri: String,
         maxConcentration: Double? = null,
         concentrationUnit: String? = null,
-        userId: String? = null
+        userId: String? = null,
+        rows: Int? = null,
+        columns: Int? = null
     ): String? {
         return try {
+            // 从设置中获取默认行列值
+            val defaultRows = settingsRepository.defaultRowsFlow.first()
+            val defaultColumns = settingsRepository.defaultColumnsFlow.first()
+            
             val projectId = UUID.randomUUID().toString()
             val project = Project(
                 id = projectId,
@@ -65,6 +74,8 @@ class ProjectViewModel @Inject constructor(
                 imageUri = imageUri,
                 maxConcentration = maxConcentration ?: 100.0, // 默认值为100.0
                 concentrationUnit = concentrationUnit ?: "ng/ml", // 默认单位为ng/ml
+                rows = rows ?: defaultRows, // 使用传入的行数或默认值
+                columns = columns ?: defaultColumns, // 使用传入的列数或默认值
                 createTime = Date(),
                 userId = userId ?: "guest",
                 lastRunTimestamp = null // 新项目还没有运行记录

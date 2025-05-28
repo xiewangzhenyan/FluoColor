@@ -159,4 +159,34 @@ class SettingsViewModel @Inject constructor(
             android.util.Log.d("SettingsViewModel", "Settings refreshed: mode=$currentDetectionMode, unit=$currentUnit, units=${currentUnits.size}")
         }
     }
+
+    // 当前默认行数
+    val defaultRows: StateFlow<Int> = settingsRepository.defaultRowsFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 8 // 默认8行
+        )
+    
+    // 更新默认行数
+    fun setDefaultRows(rows: Int) {
+        viewModelScope.launch {
+            settingsRepository.setDefaultRows(rows)
+        }
+    }
+    
+    // 当前默认列数
+    val defaultColumns: StateFlow<Int> = settingsRepository.defaultColumnsFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 12 // 默认12列
+        )
+    
+    // 更新默认列数
+    fun setDefaultColumns(columns: Int) {
+        viewModelScope.launch {
+            settingsRepository.setDefaultColumns(columns)
+        }
+    }
 } 

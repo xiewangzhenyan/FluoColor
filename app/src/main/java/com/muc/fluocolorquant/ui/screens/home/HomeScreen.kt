@@ -127,6 +127,25 @@ fun HomeScreen(
     // 在顶部操作栏中添加用户信息和退出登录选项
     val currentUser by userViewModel.currentUser.collectAsState()
     
+    // 提前获取字符串资源
+    val unknownUserString = stringResource(R.string.unknown_user)
+    
+    // 记录页面是否刚刚进入，避免刚进入页面就立即检查并导航
+    val initialComposition = remember { mutableStateOf(true) }
+    
+    // 检查用户状态，如果是Unknown User，跳转到登录页面
+    // 但要避免在初始化时和登录后立即导航，这可能导致导航循环
+    LaunchedEffect(currentUser) {
+        // 如果不是初次渲染，并且用户状态为空或Unknown User，则导航到登录页面
+        if (!initialComposition.value && (currentUser == null || currentUser?.username == unknownUserString)) {
+            navController.navigate(Screen.Login.route) {
+                popUpTo(navController.graph.id) { inclusive = true }
+            }
+        }
+        // 第一次渲染后将标记设为false
+        initialComposition.value = false
+    }
+    
     // 监听导航返回事件，确保用户数据更新
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     LaunchedEffect(navBackStackEntry) {
@@ -149,9 +168,7 @@ fun HomeScreen(
                     UserMenu(
                         onLogout = {
                             userViewModel.logout()
-                            navController.navigate(Screen.Login.route) {
-                                popUpTo(navController.graph.id) { inclusive = true }
-                            }
+                            // 注意：UserMenu内部会处理导航，这里不需要重复
                         },
                         userViewModel = userViewModel,
                         navController = navController
@@ -239,8 +256,8 @@ fun HomeScreen(
                 .padding(innerPadding)
         ) { page ->
             when (page) {
-                0 -> HomePageContent(navController)
-                1 -> HistoryPageContent(navController)
+                0 -> HomePageContent(navController, userViewModel)
+                1 -> HistoryPageContent(navController, userViewModel)
                 2 -> AboutPageContent()
             }
         }
@@ -249,9 +266,16 @@ fun HomeScreen(
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun HomePageContent(navController: NavController) {
+fun HomePageContent(
+    navController: NavController,
+    userViewModel: UserViewModel = hiltViewModel()
+) {
     // 获取上下文
     val context = LocalContext.current
+    val currentUser by userViewModel.currentUser.collectAsState()
+    
+    // 提前获取字符串资源
+    val unknownUserString = stringResource(R.string.unknown_user)
 
     // 动画状态控制
     val newProjectCardVisible = remember { MutableTransitionState(false) }
@@ -299,7 +323,16 @@ fun HomePageContent(navController: NavController) {
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { navController.navigate(Screen.NewProject.route) },
+                    .clickable { 
+                        // 检查用户状态
+                        if (currentUser == null || currentUser?.username == unknownUserString) {
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(navController.graph.id) { inclusive = true }
+                            }
+                        } else {
+                            navController.navigate(Screen.NewProject.route)
+                        }
+                    },
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 ),
@@ -342,11 +375,18 @@ fun HomePageContent(navController: NavController) {
                     
                     Button(
                         onClick = { 
+                            // 检查用户状态
+                            if (currentUser == null || currentUser?.username == unknownUserString) {
+                                navController.navigate(Screen.Login.route) {
+                                    popUpTo(navController.graph.id) { inclusive = true }
+                                }
+                            } else {
                             try {
                                 navController.navigate(Screen.NewProject.route)
                             } catch (e: Exception) {
                                 Log.e("HomeScreen", "导航错误: ${e.message}", e)
                                 Toast.makeText(context, "导航错误: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
                     ) {
@@ -413,7 +453,15 @@ fun HomePageContent(navController: NavController) {
 }
 
 @Composable
-fun HistoryPageContent(navController: NavController) {
+fun HistoryPageContent(
+    navController: NavController,
+    userViewModel: UserViewModel = hiltViewModel()
+) {
+    val currentUser by userViewModel.currentUser.collectAsState()
+    
+    // 提前获取字符串资源
+    val unknownUserString = stringResource(R.string.unknown_user)
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -474,7 +522,16 @@ fun HistoryPageContent(navController: NavController) {
                 
                 // 查看更多按钮
                 Button(
-                    onClick = { navController.navigate(Screen.History.route) },
+                    onClick = { 
+                        // 检查用户状态
+                        if (currentUser == null || currentUser?.username == unknownUserString) {
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(navController.graph.id) { inclusive = true }
+                            }
+                        } else {
+                            navController.navigate(Screen.History.route)
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth(0.7f)
                         .padding(vertical = 8.dp)
@@ -742,6 +799,9 @@ fun UserMenu(
     var showLogoutDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val currentUser by userViewModel.currentUser.collectAsState()
+    
+    // 提前获取字符串资源
+    val unknownUserString = stringResource(R.string.unknown_user)
 
     Box {
         IconButton(onClick = { expanded = true }) {
@@ -812,7 +872,7 @@ fun UserMenu(
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = currentUser?.username ?: stringResource(R.string.unknown_user),
+                    text = currentUser?.username ?: unknownUserString,
                     style = MaterialTheme.typography.titleMedium
                 )
             }
@@ -827,7 +887,14 @@ fun UserMenu(
                 text = { Text(stringResource(R.string.settings)) },
                 onClick = { 
                     expanded = false
+                    // 检查用户状态
+                    if (currentUser == null || currentUser?.username == unknownUserString) {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                        }
+                    } else {
                     navController.navigate(Screen.Settings.route)
+                    }
                 },
                 leadingIcon = {
                     Icon(
@@ -843,7 +910,14 @@ fun UserMenu(
                 text = { Text(stringResource(R.string.profile)) },
                 onClick = {
                     expanded = false
+                    // 检查用户状态
+                    if (currentUser == null || currentUser?.username == unknownUserString) {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                        }
+                    } else {
                     navController.navigate(Screen.Profile.route)
+                    }
                 },
                 leadingIcon = {
                     Icon(
@@ -880,10 +954,14 @@ fun UserMenu(
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            onLogout()
+                            // 先关闭对话框
                             showLogoutDialog = false
+                            // 调用 logout 函数
+                            onLogout()
+                            // 立即导航到登录页面
                             navController.navigate(Screen.Login.route) {
-                                popUpTo(navController.graph.startDestinationId) {
+                                // 清除所有页面，以确保用户不能返回
+                                popUpTo(navController.graph.id) {
                                     inclusive = true
                                 }
                             }

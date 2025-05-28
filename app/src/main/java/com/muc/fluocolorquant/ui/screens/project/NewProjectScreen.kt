@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -93,6 +94,8 @@ fun NewProjectScreen(
     val defaultDetectionMode by settingsViewModel.defaultDetectionMode.collectAsState()
     val defaultConcentrationUnit by settingsViewModel.defaultConcentrationUnit.collectAsState()
     val availableConcentrationUnits by settingsViewModel.concentrationUnits.collectAsState()
+    val defaultRows by settingsViewModel.defaultRows.collectAsState()
+    val defaultColumns by settingsViewModel.defaultColumns.collectAsState()
     
     // 提前获取所有需要在非Composable上下文中使用的字符串资源
     val tempFileCreationErrorMessage = stringResource(R.string.temp_file_creation_error)
@@ -124,6 +127,14 @@ fun NewProjectScreen(
     // 根据默认设置初始化浓度单位
     var concentrationUnit by rememberSaveable(defaultConcentrationUnit) { 
         mutableStateOf(defaultConcentrationUnit) 
+    }
+    
+    // 根据默认设置初始化行列
+    var rows by rememberSaveable(defaultRows) { 
+        mutableStateOf(defaultRows) 
+    }
+    var columns by rememberSaveable(defaultColumns) { 
+        mutableStateOf(defaultColumns) 
     }
     
     var showImagePickerDialog by remember { mutableStateOf(false) }
@@ -241,8 +252,11 @@ fun NewProjectScreen(
     LaunchedEffect(cameraPermissionState.status) {
         when (cameraPermissionState.status) {
             is PermissionStatus.Granted -> {
-                // 如果是刚刚授予的权限，不需要自动启动相机
-                // 用户需要再次点击拍照按钮
+                // 如果是刚刚授予的权限，自动启动相机
+                tempImageUri.value = createTempImageUri()
+                tempImageUri.value?.let { uri ->
+                    cameraLauncher.launch(uri)
+                } ?: toastManager.showToast(tempFileCreationErrorMessage, ToastType.ERROR)
             }
             is PermissionStatus.Denied -> {
                 // 权限被拒绝，显示提示
@@ -521,6 +535,148 @@ fun NewProjectScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // 孔阵行列设置 - 移到项目图片之后
+            Text(
+                text = stringResource(R.string.row_column_settings),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF333333)
+            )
+            
+            // 行列输入框放在同一行
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 行数输入框
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = stringResource(R.string.rows),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF666666),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    
+                    // 使用与SettingsScreen相同的逻辑
+                    var rowsText by remember(rows) { mutableStateOf(rows.toString()) }
+                    var rowInputError by remember { mutableStateOf(false) }
+                    
+                    OutlinedTextField(
+                        value = rowsText,
+                        onValueChange = { value ->
+                            // 仅接受数字输入
+                            if (value.isEmpty()) {
+                                rowsText = value
+                                rowInputError = false
+                            } else if (value.matches(Regex("^[0-9]+$"))) {
+                                val numValue = value.toInt()
+                                if (numValue in 1..8) {
+                                    rowsText = value
+                                    rows = numValue
+                                    rowInputError = false
+                                } else {
+                                    rowInputError = true
+                                    toastManager.showToast(context.getString(R.string.row_limit_exceeded), ToastType.WARNING)
+                                }
+                            } else {
+                                // 非数字输入，不更新值，显示错误
+                                rowInputError = true
+                                toastManager.showToast(context.getString(R.string.input_number_only), ToastType.ERROR)
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number
+                        ),
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.GridView,
+                                contentDescription = null,
+                                tint = Color(0xFF5D6B98)
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            focusedBorderColor = if (rowInputError) Color.Red else Color(0xFF5D6B98),
+                            unfocusedBorderColor = if (rowInputError) Color.Red else Color(0xFFDDDDDD),
+                            errorBorderColor = Color.Red,
+                            errorTrailingIconColor = Color.Red
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        singleLine = true,
+                        isError = rowInputError
+                    )
+                }
+                
+                // 列数输入框
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = stringResource(R.string.columns),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF666666),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    
+                    // 使用与SettingsScreen相同的逻辑
+                    var columnsText by remember(columns) { mutableStateOf(columns.toString()) }
+                    var columnInputError by remember { mutableStateOf(false) }
+                    
+                    OutlinedTextField(
+                        value = columnsText,
+                        onValueChange = { value ->
+                            // 仅接受数字输入
+                            if (value.isEmpty()) {
+                                columnsText = value
+                                columnInputError = false
+                            } else if (value.matches(Regex("^[0-9]+$"))) {
+                                val numValue = value.toInt()
+                                if (numValue in 1..12) {
+                                    columnsText = value
+                                    columns = numValue
+                                    columnInputError = false
+                                } else {
+                                    columnInputError = true
+                                    toastManager.showToast(context.getString(R.string.column_limit_exceeded), ToastType.WARNING)
+                                }
+                            } else {
+                                // 非数字输入，不更新值，显示错误
+                                columnInputError = true
+                                toastManager.showToast(context.getString(R.string.input_number_only), ToastType.ERROR)
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number
+                        ),
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.GridView,
+                                contentDescription = null,
+                                tint = Color(0xFF5D6B98)
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            focusedBorderColor = if (columnInputError) Color.Red else Color(0xFF5D6B98),
+                            unfocusedBorderColor = if (columnInputError) Color.Red else Color(0xFFDDDDDD),
+                            errorBorderColor = Color.Red,
+                            errorTrailingIconColor = Color.Red
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        singleLine = true,
+                        isError = columnInputError
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // 最大浓度标题和输入框
             Text(
                 text = stringResource(R.string.max_concentration),
@@ -618,7 +774,7 @@ fun NewProjectScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // 提交按钮
             Button(
@@ -648,7 +804,9 @@ fun NewProjectScreen(
                                 imageUri = projectImageUri.toString(),
                                 maxConcentration = maxConc,
                                 concentrationUnit = concentrationUnit,
-                                userId = currentUser?.id.toString() // 使用当前用户ID
+                                userId = currentUser?.id.toString(), // 使用当前用户ID
+                                rows = rows,
+                                columns = columns
                             )
 
                             if (newProjectId != null) {

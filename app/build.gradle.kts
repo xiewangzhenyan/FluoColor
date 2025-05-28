@@ -44,9 +44,18 @@ android {
             excludes.add("META-INF/LICENSE.txt")
             excludes.add("META-INF/NOTICE.txt")
             excludes.add("META-INF/DEPENDENCIES")
+            
+            // 解决本机库冲突
+//            pickFirsts.add("lib/arm64-v8a/libc++_shared.so")
+//            pickFirsts.add("lib/armeabi-v7a/libc++_shared.so")
+//            pickFirsts.add("lib/x86/libc++_shared.so")
+//            pickFirsts.add("lib/x86_64/libc++_shared.so")
         }
         jniLibs {
             useLegacyPackaging = true
+            // 添加以下行来解决 libc++_shared.so 冲突
+            // 这会告诉 Gradle 优先选择它遇到的第一个 libc++_shared.so 文件
+            pickFirsts.add("lib/*/libc++_shared.so")
         }
     }
     
@@ -96,6 +105,10 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.ucrop)
     implementation(libs.androidx.appcompat)
+    
+    // 使用com.github.quickbirdstudios:opencv-android依赖
+    implementation("com.quickbirdstudios:opencv:4.5.3.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

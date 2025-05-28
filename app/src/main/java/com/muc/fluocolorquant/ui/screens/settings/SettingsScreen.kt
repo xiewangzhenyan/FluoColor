@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -34,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -63,6 +65,7 @@ import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
 import com.muc.fluocolorquant.utils.LocaleHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.ui.text.input.KeyboardType
 
 private const val TAG = "SettingsScreen"
 
@@ -82,6 +85,8 @@ fun SettingsScreen(
     val defaultConcentrationUnit by viewModel.defaultConcentrationUnit.collectAsState()
     val concentrationUnits by viewModel.concentrationUnits.collectAsState()
     val newUnitInput by viewModel.newUnitInput.collectAsState()
+    val defaultRows by viewModel.defaultRows.collectAsState()
+    val defaultColumns by viewModel.defaultColumns.collectAsState()
 
     Scaffold(
         topBar = {
@@ -211,6 +216,171 @@ fun SettingsScreen(
                         },
                         modeOptions = viewModel.detectionModeOptions
                     )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // 项目设置卡片
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.project_settings),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    Divider(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                    )
+
+                    // 默认行列设置
+                    Text(
+                        text = stringResource(R.string.default_row_column_settings),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    // 行数设置
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.default_rows),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        
+                        // 行数选择器
+                        var rowsText by remember(defaultRows) { mutableStateOf(defaultRows.toString()) }
+                        var rowInputError by remember { mutableStateOf(false) }
+                        
+                        OutlinedTextField(
+                            value = rowsText,
+                            onValueChange = { value ->
+                                // 仅接受数字输入
+                                if (value.isEmpty()) {
+                                    rowsText = value
+                                    rowInputError = false
+                                } else if (value.matches(Regex("^[0-9]+$"))) {
+                                    val numValue = value.toInt()
+                                    if (numValue in 1..8) {
+                                        rowsText = value
+                                        viewModel.setDefaultRows(numValue)
+                                        rowInputError = false
+                                        toastManager.showToast(
+                                            message = context.getString(R.string.settings_update_success),
+                                            type = ToastType.SUCCESS
+                                        )
+                                    } else {
+                                        rowInputError = true
+                                        toastManager.showToast(
+                                            message = context.getString(R.string.row_limit_exceeded),
+                                            type = ToastType.WARNING
+                                        )
+                                    }
+                                } else {
+                                    // 非数字输入，不更新值，显示错误
+                                    rowInputError = true
+                                    toastManager.showToast(
+                                        message = context.getString(R.string.input_number_only),
+                                        type = ToastType.ERROR
+                                    )
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number
+                            ),
+                            modifier = Modifier.width(100.dp),
+                            singleLine = true,
+                            isError = rowInputError,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = if (rowInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = if (rowInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                                errorBorderColor = MaterialTheme.colorScheme.error,
+                                errorTrailingIconColor = MaterialTheme.colorScheme.error
+                            )
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 列数设置
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.default_columns),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        
+                        // 列数选择器
+                        var columnsText by remember(defaultColumns) { mutableStateOf(defaultColumns.toString()) }
+                        var columnInputError by remember { mutableStateOf(false) }
+                        
+                        OutlinedTextField(
+                            value = columnsText,
+                            onValueChange = { value ->
+                                // 仅接受数字输入
+                                if (value.isEmpty()) {
+                                    columnsText = value
+                                    columnInputError = false
+                                } else if (value.matches(Regex("^[0-9]+$"))) {
+                                    val numValue = value.toInt()
+                                    if (numValue in 1..12) {
+                                        columnsText = value
+                                        viewModel.setDefaultColumns(numValue)
+                                        columnInputError = false
+                                        toastManager.showToast(
+                                            message = context.getString(R.string.settings_update_success),
+                                            type = ToastType.SUCCESS
+                                        )
+                                    } else {
+                                        columnInputError = true
+                                        toastManager.showToast(
+                                            message = context.getString(R.string.column_limit_exceeded),
+                                            type = ToastType.WARNING
+                                        )
+                                    }
+                                } else {
+                                    // 非数字输入，不更新值，显示错误
+                                    columnInputError = true
+                                    toastManager.showToast(
+                                        message = context.getString(R.string.input_number_only),
+                                        type = ToastType.ERROR
+                                    )
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number
+                            ),
+                            modifier = Modifier.width(100.dp),
+                            singleLine = true,
+                            isError = columnInputError,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = if (columnInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = if (columnInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                                errorBorderColor = MaterialTheme.colorScheme.error,
+                                errorTrailingIconColor = MaterialTheme.colorScheme.error
+                            )
+                        )
+                    }
                     
                     Spacer(modifier = Modifier.height(24.dp))
                     

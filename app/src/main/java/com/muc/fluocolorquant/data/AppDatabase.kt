@@ -21,7 +21,7 @@ import java.util.Date
         DetectionRun::class,
         WellResult::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

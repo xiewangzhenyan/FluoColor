@@ -1,7 +1,9 @@
 package com.muc.fluocolorquant.ui.screens.curvefitting
 
+import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -14,6 +16,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -25,6 +30,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
+import com.muc.fluocolorquant.ui.viewmodels.EnhancedWellDetection
 import com.muc.fluocolorquant.utils.Screen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,6 +41,7 @@ import java.io.InputStream
  * 曲线拟合/浓度预测界面
  * 自动处理孔位裁剪和浓度预测，并展示裁剪后的孔位图像网格
  */
+@SuppressLint("StateFlowValueCalledInComposition")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CurveFittingScreen(
@@ -49,6 +56,8 @@ fun CurveFittingScreen(
     val isPredicting by viewModel.isPredicting.collectAsState()
     val predictionProgress by viewModel.predictionProgress.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() } // 可以保留用于其他提示
+    
+    val enhancedDetections by viewModel.enhancedDetections.collectAsState() // 添加增强型检测结果状态
     
     // 使用传入的runId或ViewModel中的currentRunId
     val effectiveRunId = runId ?: currentRunId
@@ -142,6 +151,11 @@ fun CurveFittingScreen(
                         else -> emptyList() // 不会执行到这里
                     }
                     
+                    // 获取项目的行列值
+                    val projectColumns by viewModel.projectColumns.collectAsState()
+                    val projectRows by viewModel.projectRows.collectAsState()
+                    val currentProject by viewModel.currentProject.collectAsState()
+                    
                     // 显示是否为预测状态
                     when {
                         state is ConcentrationViewModel.ConcentrationState.Success -> {
@@ -164,11 +178,25 @@ fun CurveFittingScreen(
                         }
                     }
                     
+                    // 显示项目行列信息（如果有）
+                    if (currentProject != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(
+                                R.string.well_plate_size_info,
+                                currentProject?.rows ?: 8,
+                                currentProject?.columns ?: 12,
+                                (currentProject?.rows ?: 8) * (currentProject?.columns ?: 12)
+                            ),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    // 显示图像网格
+                    // 显示图像网格，根据行列值动态调整布局
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(8), // 8列
+                        columns = GridCells.Fixed(minOf(projectRows, projectColumns)), // 使用较小的值作为列数，确保手机屏幕更好的显示效果
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -177,22 +205,67 @@ fun CurveFittingScreen(
                             // croppedImageIdentifier 存储的是文件路径
                             val imageFile = wellResult.croppedImageIdentifier?.let { File(it) }
                             
+                            // 获取对应的增强型检测结果（如果有）
+                            val enhancedResult = enhancedDetections.find { it.id == wellResult.wellIndex }
+                            
                             Box(
                                 modifier = Modifier.aspectRatio(1f), // 保持正方形容器
                                 contentAlignment = Alignment.Center
                             ) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
-                                        .data(imageFile) // 直接加载文件
-                                        .error(android.R.drawable.ic_menu_gallery) // 加载错误时显示占位符
-                                        .crossfade(true)
-                                        .build(),
-                                    contentDescription = stringResource(R.string.well_number, wellResult.wellIndex + 1),
+                                if (enhancedResult?.circleX != null && 
+                                    enhancedResult.circleY != null && 
+                                    enhancedResult.radius != null && 
+                                    enhancedResult.centerColor != null) {
+                                    
+                                    // 如果有增强型检测结果，绘制完美圆形
+                                    Canvas(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(2.dp)
+                                    ) {
+                                        val center = Offset(size.width / 2, size.height / 2)
+                                        val radius = minOf(size.width, size.height) / 2 - 4.dp.toPx()
+                                        
+                                        // 填充颜色（使用检测到的中心颜色）
+                                        drawCircle(
+                                            color = Color(enhancedResult.centerColor!!).copy(alpha = 0.8f),
+                                            radius = radius,
+                                            center = center
+                                        )
+                                        
+                                        // 圆形轮廓
+                                        drawCircle(
+                                            color = Color.Black,
+                                            radius = radius,
+                                            center = center,
+                                            style = Stroke(width = 1.dp.toPx())
+                                        )
+                                    }
+                                } else {
+                                    // 如果没有增强型检测结果，使用原始图像
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(LocalContext.current)
+                                            .data(imageFile) // 直接加载文件
+                                            .error(android.R.drawable.ic_menu_gallery) // 加载错误时显示占位符
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = stringResource(R.string.well_number, wellResult.wellIndex + 1),
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(2.dp) // 给圆形加一点内边距
+                                            .clip(androidx.compose.foundation.shape.CircleShape), // 圆形裁剪
+                                        contentScale = ContentScale.Fit // 使用Fit而不是Crop，保持纵横比
+                                    )
+                                }
+                                
+                                // 添加孔位索引显示，使其位于右下角
+                                Text(
+                                    text = "${wellResult.wellIndex + 1}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(2.dp) // 给圆形加一点内边距
-                                        .clip(androidx.compose.foundation.shape.CircleShape), // 圆形裁剪
-                                    contentScale = ContentScale.Fit // 使用Fit而不是Crop，保持纵横比
+                                        .align(Alignment.BottomEnd)
+                                        .padding(4.dp)
                                 )
                             }
                         }

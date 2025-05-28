@@ -334,6 +334,13 @@ fun PlateHeatmapCard(
     viewModel: ResultViewModel = hiltViewModel()
 ) {
     val project = (viewModel.resultState.collectAsState().value as? ResultViewModel.ResultState.Success)?.project
+    // 获取项目的行列值，默认为8行12列
+    val projectRows = project?.rows ?: 8
+    val projectColumns = project?.columns ?: 12
+    
+    // 记录日志
+    android.util.Log.d("ResultScreen", "PlateHeatmapCard - 行数: $projectRows, 列数: $projectColumns, 孔位总数: ${wellResults.size}")
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -367,6 +374,7 @@ fun PlateHeatmapCard(
                     .fillMaxSize()
                     .padding(4.dp)) {
                     Column(modifier = Modifier.fillMaxSize()) {
+                        // 标题行 - 显示列标题
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Box(modifier = Modifier.size(20.dp))
                             for (col in 1..12) {
@@ -377,26 +385,50 @@ fun PlateHeatmapCard(
                                 }
                             }
                         }
+                        
+                        // 显示孔阵行
                         for (row in 0 until 8) {
                             Row(modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                // 行标题
                                 Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
                                     Text(text = ('A' + row).toString(), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                                 }
+                                
+                                // 每行的孔位
                                 for (col in 0 until 12) {
-                                    val index = row * 12 + col
+                                    val isWithinProjectBounds = row < projectRows && col < projectColumns
+                                    
                                     Box(modifier = Modifier
                                         .weight(1f)
                                         .aspectRatio(1f), contentAlignment = Alignment.Center) {
+                                        if (isWithinProjectBounds) {
+                                            // 计算正确的孔位索引，使用项目特定的列数
+                                            val wellIndex = col * projectRows + row
+                                            val wellResult = wellResults.find { it.wellIndex == wellIndex }
+                                            
                                         PlateWell(
-                                            wellResult = wellMap[index],
+                                                wellResult = wellResult,
                                             minConcentration = minConcentration,
                                             maxConcentration = maxConcentration,
                                             project = project,
                                             concentrationUnit = concentrationUnit, // 传递 concentrationUnit
                                             viewModel = viewModel
                                         )
+                                        } else {
+                                            // 显示灰色不可点击的占位符
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(1.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(224, 224, 224, 100))
+                                                    .border(0.5.dp, Color.DarkGray.copy(alpha = 0.1f), CircleShape)
+                                            ) {
+                                                // Empty box for placeholder
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -448,7 +480,7 @@ fun PlateWell(
                 ) {
                     Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = stringResource(R.string.well_position_short, ('A' + wellResult.wellIndex / 12).toString(), (wellResult.wellIndex % 12) + 1),
+                            text = stringResource(R.string.well_position_short, ('A' + wellResult.wellIndex % 8).toString(), (wellResult.wellIndex / 8) + 1),
                             style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
@@ -470,6 +502,13 @@ fun SquareHeatmapCard(
     viewModel: ResultViewModel = hiltViewModel()
 ) {
     val project = (viewModel.resultState.collectAsState().value as? ResultViewModel.ResultState.Success)?.project
+    // 获取项目的行列值，默认为8行12列
+    val projectRows = project?.rows ?: 8
+    val projectColumns = project?.columns ?: 12
+    
+    // 记录日志
+    android.util.Log.d("ResultScreen", "SquareHeatmapCard - 行数: $projectRows, 列数: $projectColumns, 孔位总数: ${wellResults.size}")
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -521,17 +560,35 @@ fun SquareHeatmapCard(
                                     Text(text = ('A' + row).toString(), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                                 }
                                 for (col in 0 until 12) {
-                                    val index = row * 12 + col
+                                    val isWithinProjectBounds = row < projectRows && col < projectColumns
+                                    
                                     Box(modifier = Modifier
                                         .weight(1f)
                                         .aspectRatio(1f), contentAlignment = Alignment.Center) {
+                                        if (isWithinProjectBounds) {
+                                            // 计算正确的孔位索引，使用项目特定的列数
+                                            val wellIndex = col * projectRows + row
+                                            val wellResult = wellResults.find { it.wellIndex == wellIndex }
+                                            
                                         SquareWell(
-                                            wellResult = wellMap[index],
+                                                wellResult = wellResult,
                                             minConcentration = minConcentration,
                                             maxConcentration = maxConcentration,
                                             project = project,
                                             viewModel = viewModel
                                         )
+                                        } else {
+                                            // 显示灰色不可点击的占位符
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(1.dp)
+                                                    .background(Color(224, 224, 224, 100))
+                                                    .border(0.5.dp, Color.DarkGray.copy(alpha = 0.1f))
+                                            ) {
+                                                // Empty box for placeholder
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -696,11 +753,12 @@ fun ConcentrationChartCard(
                         .height(chartHeight)
                         .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(8.dp))
                         .clip(RoundedCornerShape(8.dp))
-                        .padding(start = 40.dp, end = 12.dp, top = 12.dp, bottom = 24.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+                        .padding(start = 40.dp, end = 12.dp, top = 12.dp, bottom = 40.dp) // 增加底部边距从24dp到40dp
                 ) {
                     Column(
                         modifier = Modifier
-                            .height(chartHeight - 36.dp)
+                            .height(chartHeight - 52.dp) // 调整高度以适应新的底部边距
                             .align(Alignment.CenterStart)
                             .offset(x = (-38).dp),
                         verticalArrangement = Arrangement.SpaceBetween
@@ -716,8 +774,10 @@ fun ConcentrationChartCard(
                         Box(modifier = Modifier
                             .fillMaxSize()
                             .horizontalScroll(scrollState)) {
-                            val dataPointWidth = 40.dp
-                            val chartWidth = maxOf(dataPointWidth * sortedResults.size, 350.dp)
+                            val pointCount = sortedResults.size
+                            val dataPointWidth = 50.dp // 增加点之间的间距，从45dp到50dp以给每个点更多空间
+                            // 确保图表宽度足够显示所有点和标签，增加右侧边距
+                            val chartWidth = maxOf(dataPointWidth * pointCount, 350.dp) + 20.dp
                             val primaryColorArgb = MaterialTheme.colorScheme.primary.toArgb()
                             val primaryColorHighlightedArgb = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f).toArgb()
                             val canvasBackgroundColor = Color.White // androidx.compose.ui.graphics.Color
@@ -730,8 +790,10 @@ fun ConcentrationChartCard(
                                     emptyList()
                                 } else {
                                     sortedResults.map { result ->
-                                        val rowChar = ('A' + result.wellIndex / 12).toChar()
-                                        val colNumber = (result.wellIndex % 12) + 1
+                                        // 新计算方式：wellIndex / 8是列号，wellIndex % 8是行号
+                                        val rowIndex = result.wellIndex % 8
+                                        val colNumber = result.wellIndex / 8 + 1
+                                        val rowChar = ('A' + rowIndex).toChar()
                                         context.getString(R.string.well_position_short, rowChar.toString(), colNumber)
                                     }
                                 }
@@ -753,39 +815,143 @@ fun ConcentrationChartCard(
                                         }
                                     }
                             ) {
-                                val height = size.height; val width = size.width; val pointCount = sortedResults.size
+                                val height = size.height - 12.dp.toPx() // 预留空间给X轴标签，减少可绘制高度
+                                val width = size.width
                                 dataPoints.clear()
-                                val gridColor = Color.Gray.copy(alpha = 0.15f); val gridStrokeWidth = 1f // androidx.compose.ui.graphics.Color
-                                for (i in 0..5) { val y = height - (height * i / 5); drawLine(gridColor, Offset(0f, y), Offset(width, y), gridStrokeWidth) }
-                                val pointDistance = if (pointCount > 1) width / (pointCount - 1f) else width
-                                for (i in 0 until pointCount) if (i % 2 == 0) { val x = i * pointDistance; drawLine(gridColor, Offset(x, 0f), Offset(x, height), gridStrokeWidth) }
-                                val path = Path(); var firstPoint = true
+                                
+                                // 绘制更优雅的网格
+                                val gridColor = Color.Gray.copy(alpha = 0.1f)
+                                val gridStrokeWidth = 1f
+                                
+                                // 绘制水平网格线
+                                for (i in 0..5) { 
+                                    val y = height - (height * i / 5)
+                                    drawLine(
+                                        color = gridColor, 
+                                        start = Offset(0f, y), 
+                                        end = Offset(width, y), 
+                                        strokeWidth = gridStrokeWidth
+                                    )
+                                }
+                                
+                                // 计算每个点的水平间距
+                                // 确保点之间的间距足够，但不要让它们太靠近边缘
+                                val pointSpacing = if (pointCount > 1) (width - 30.dp.toPx()) / (pointCount - 1) else width / 2
+                                
+                                // 绘制垂直网格线
+                                for (i in 0 until pointCount) { 
+                                    val x = 15.dp.toPx() + i * pointSpacing
+                                    drawLine(
+                                        color = gridColor, 
+                                        start = Offset(x, 0f), 
+                                        end = Offset(x, height), 
+                                        strokeWidth = gridStrokeWidth
+                                    )
+                                }
+                                
+                                // 数据点的最小高度（以防止与X轴标签重叠）
+                                val minPointHeight = height - height * 0.95f
+                                
+                                // 绘制数据线和点
+                                val path = Path()
+                                var firstPoint = true
+                                
                                 sortedResults.forEachIndexed { i, result ->
-                                    val x = i * pointDistance
+                                    val x = 15.dp.toPx() + i * pointSpacing
                                     val actualConcentrationValue = viewModel.calculateActualConcentration(result.predictedConcentration, project?.maxConcentration) ?: 0.0
                                     val normalizedY = if (yAxisMaxConcentration > 0) (actualConcentrationValue / yAxisMaxConcentration).toFloat() else 0f
-                                    val y = (height - (normalizedY * height)).coerceIn(0f, height)
+                                    
+                                    // 确保点不会太低，与X轴标签重叠
+                                    val y = (height - (normalizedY * height)).coerceIn(minPointHeight, height)
+                                    
                                     dataPoints.add(Offset(x, y) to i)
-                                    if (firstPoint) { path.moveTo(x, y); firstPoint = false } else path.lineTo(x, y)
+                                    
+                                    if (firstPoint) { 
+                                        path.moveTo(x, y)
+                                        firstPoint = false 
+                                    } else {
+                                        path.lineTo(x, y)
+                                    }
+                                    
+                                    // 绘制点阴影
+                                    if (i == selectedPointIndex) {
+                                        // 选中点的阴影
+                                        drawCircle(
+                                            color = Color.Gray.copy(alpha = 0.2f),
+                                            radius = 12f,
+                                            center = Offset(x, y)
+                                        )
+                                    }
+                                    
+                                    // 绘制数据点
                                     val pointRadius = if (i == selectedPointIndex) 8f else 5f
-                                    val pointColor = if (i == selectedPointIndex) Color(primaryColorHighlightedArgb) else Color(primaryColorArgb) // androidx.compose.ui.graphics.Color
-                                    if (i == selectedPointIndex) drawCircle(canvasBackgroundColor, pointRadius + 2f, Offset(x, y))
-                                    drawCircle(pointColor, pointRadius, Offset(x, y))
+                                    val pointColor = if (i == selectedPointIndex) 
+                                        Color(primaryColorHighlightedArgb) 
+                                    else 
+                                        Color(primaryColorArgb)
+                                    
+                                    // 白色边框
+                                    if (i == selectedPointIndex) {
+                                        drawCircle(
+                                            color = canvasBackgroundColor,
+                                            radius = pointRadius + 2f,
+                                            center = Offset(x, y)
+                                        )
+                                    }
+                                    
+                                    // 实际数据点
+                                    drawCircle(
+                                        color = pointColor,
+                                        radius = pointRadius,
+                                        center = Offset(x, y)
+                                    )
                                 }
-                                drawPath(path, Color(primaryColorArgb), style = Stroke(width = 2.5f, pathEffect = androidx.compose.ui.graphics.PathEffect.cornerPathEffect(5f))) // androidx.compose.ui.graphics.Color
+                                
+                                // 绘制曲线
+                                drawPath(
+                                    path = path,
+                                    color = Color(primaryColorArgb).copy(alpha = 0.8f),
+                                    style = Stroke(
+                                        width = 3f,
+                                        pathEffect = androidx.compose.ui.graphics.PathEffect.cornerPathEffect(8f)
+                                    )
+                                )
                             }
-                            Box(modifier = Modifier
-                                .width(chartWidth)
-                                .height(24.dp)
-                                .align(Alignment.BottomCenter)) {
+                            
+                            // X轴标签绘制区域
+                            Box(
+                                modifier = Modifier
+                                    .width(chartWidth)
+                                    .height(40.dp) // 增加标签高度
+                                    .align(Alignment.BottomCenter)
+                            ) {
                                 val density = LocalDensity.current
                                 val textColorArgb = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f).toArgb()
+                                
                                 Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val textPaint = android.text.TextPaint().apply { textSize = with(density) { 9.sp.toPx() }; color = textColorArgb; textAlign = android.graphics.Paint.Align.CENTER; isAntiAlias = true }
-                                    val pointDistance = if (xLabels.size > 1) size.width / (xLabels.size - 1f) else size.width
+                                    val textPaint = android.text.TextPaint().apply { 
+                                        textSize = with(density) { 11.sp.toPx() } // 增大字体
+                                        color = textColorArgb
+                                        textAlign = android.graphics.Paint.Align.CENTER
+                                        isAntiAlias = true
+                                        isFakeBoldText = true // 使文本略微加粗
+                                    }
+                                    
+                                    // 使用与数据点相同的间距和起始点
+                                    val pointSpacing = if (xLabels.size > 1) (size.width - 30.dp.toPx()) / (xLabels.size - 1) else size.width / 2
+                                    
+                                    // 绘制标签
                                     xLabels.forEachIndexed { i, label ->
-                                        val xPos = i * pointDistance
-                                        this.drawContext.canvas.nativeCanvas.drawText(label, xPos, size.height - 4.dp.toPx(), textPaint)
+                                        val xPos = 15.dp.toPx() + i * pointSpacing
+                                        val yPos = size.height - 8.dp.toPx() // 调整文本位置
+                                        
+                                        // 绘制标签文本
+                                        this.drawContext.canvas.nativeCanvas.drawText(
+                                            label,
+                                            xPos,
+                                            yPos,
+                                            textPaint
+                                        )
                                     }
                                 }
                             }
@@ -793,9 +959,8 @@ fun ConcentrationChartCard(
                     } else if (sortedResults.size == 1) { // 单个数据点的情况
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             val result = sortedResults[0]
-                            // val actualConcentrationValue = viewModel.calculateActualConcentration(result.predictedConcentration, project?.maxConcentration) ?: 0.0
-                            val rowChar = ('A' + result.wellIndex / 12).toChar()
-                            val colNumber = (result.wellIndex % 12) + 1
+                            val rowChar = ('A' + result.wellIndex % 8).toChar()
+                            val colNumber = (result.wellIndex / 8) + 1
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(modifier = Modifier
                                     .size(30.dp)
@@ -805,12 +970,10 @@ fun ConcentrationChartCard(
                                     Box(modifier = Modifier
                                         .fillMaxSize()
                                         .clip(CircleShape)
-                                        .background(Color.White)) // androidx.compose.ui.graphics.Color
+                                        .background(Color.White))
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(text = stringResource(R.string.well_position_short, rowChar.toString(), colNumber), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                // 这里可以不显示具体浓度，因为下方会有详细信息卡片
-                                // Text(text = stringResource(R.string.concentration_format, actualConcentrationValue, concentrationUnit), fontSize = 11.sp)
                             }
                         }
                     }
@@ -822,8 +985,8 @@ fun ConcentrationChartCard(
                 selectedPointIndex?.let { index ->
                     if (index < sortedResults.size) {
                         val result = sortedResults[index]
-                        val rowChar = ('A' + result.wellIndex / 12).toChar()
-                        val colNumber = (result.wellIndex % 12) + 1
+                        val rowChar = ('A' + result.wellIndex % 8).toChar()
+                        val colNumber = (result.wellIndex / 8) + 1
                         val percentValue = result.predictedConcentration ?: 0.0
                         val actualConcentrationValue = viewModel.calculateActualConcentration(percentValue, project?.maxConcentration) ?: 0.0
                         Card(

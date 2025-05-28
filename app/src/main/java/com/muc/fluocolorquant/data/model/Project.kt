@@ -18,6 +18,8 @@ data class Project(
     val imageUri: String,          // 项目图片URI
     val maxConcentration: Double?, // 最大浓度值(ng/ml)，可为null
     val concentrationUnit: String?,// 浓度单位，可为null
+    val rows: Int,                 // 孔阵行数
+    val columns: Int,              // 孔阵列数
     val createTime: Date,          // 创建时间
     val userId: String,            // 创建用户ID
     val lastRunTimestamp: Date?    // 最后一次运行时间，方便排序

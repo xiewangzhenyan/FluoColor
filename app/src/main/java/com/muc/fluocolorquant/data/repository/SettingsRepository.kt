@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -33,6 +34,8 @@ class SettingsRepository @Inject constructor(
     private val DEFAULT_DETECTION_MODE_KEY = stringPreferencesKey("default_detection_mode")
     private val DEFAULT_CONCENTRATION_UNIT_KEY = stringPreferencesKey("default_concentration_unit")
     private val CONCENTRATION_UNITS_KEY = stringSetPreferencesKey("concentration_units")
+    private val DEFAULT_ROWS_KEY = intPreferencesKey("default_rows")
+    private val DEFAULT_COLUMNS_KEY = intPreferencesKey("default_columns")
 
     // 获取当前语言设置，默认为系统语言
     val languageFlow: Flow<String> = languageDataStore.data.map { preferences ->
@@ -116,8 +119,36 @@ class SettingsRepository @Inject constructor(
         }
     }
     
+    // 获取默认行数
+    val defaultRowsFlow: Flow<Int> = appSettingsDataStore.data.map { preferences ->
+        preferences[DEFAULT_ROWS_KEY] ?: DEFAULT_ROWS
+    }
+    
+    // 设置默认行数
+    suspend fun setDefaultRows(rows: Int) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[DEFAULT_ROWS_KEY] = rows
+        }
+    }
+    
+    // 获取默认列数
+    val defaultColumnsFlow: Flow<Int> = appSettingsDataStore.data.map { preferences ->
+        preferences[DEFAULT_COLUMNS_KEY] ?: DEFAULT_COLUMNS
+    }
+    
+    // 设置默认列数
+    suspend fun setDefaultColumns(columns: Int) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[DEFAULT_COLUMNS_KEY] = columns
+        }
+    }
+    
     companion object {
         // 默认浓度单位集合
         val DEFAULT_CONCENTRATION_UNITS = setOf("ng/ml", "μg/ml", "mg/ml", "g/ml", "mol/L", "mmol/L", "μmol/L", "nmol/L")
+        // 默认行数
+        val DEFAULT_ROWS = 8
+        // 默认列数
+        val DEFAULT_COLUMNS = 12
     }
 } 

@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.data.repository.WellResultRepository
+import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.data.model.Project
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +17,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import com.muc.fluocolorquant.ui.viewmodels.EnhancedWellDetection
 
 /**
  * 浓度预测ViewModel
@@ -23,7 +29,8 @@ import javax.inject.Inject
 @HiltViewModel
 class ConcentrationViewModel @Inject constructor(
     private val wellResultRepository: WellResultRepository,
-    private val wellResultDao: WellResultDao // 注入DAO以便直接查询
+    private val wellResultDao: WellResultDao, // 注入DAO以便直接查询
+    private val projectRepository: ProjectRepository
 ) : ViewModel() {
     // 浓度预测状态
     sealed class ConcentrationState {
@@ -60,15 +67,43 @@ class ConcentrationViewModel @Inject constructor(
     private val _currentProjectId = MutableStateFlow<String?>(null)
     val currentProjectId: StateFlow<String?> = _currentProjectId.asStateFlow()
     
+    // 当前项目信息
+    private val _currentProject = MutableStateFlow<Project?>(null)
+    val currentProject: StateFlow<Project?> = _currentProject.asStateFlow()
+    
+    // 项目行数
+    val projectRows: StateFlow<Int> = _currentProject.map { it?.rows ?: 8 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 8)
+        
+    // 项目列数
+    val projectColumns: StateFlow<Int> = _currentProject.map { it?.columns ?: 12 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 12)
+    
     // 当前运行ID
     private val _currentRunId = MutableStateFlow<String?>(null)
     val currentRunId: StateFlow<String?> = _currentRunId.asStateFlow()
     
+    // 保存增强型检测结果的状态
+    private val _enhancedDetections = MutableStateFlow<List<EnhancedWellDetection>>(emptyList())
+    val enhancedDetections: StateFlow<List<EnhancedWellDetection>> = _enhancedDetections.asStateFlow()
+    
     /**
-     * 设置当前项目ID
+     * 设置当前项目ID并加载项目信息
      */
     fun setCurrentProjectId(projectId: String?) {
         _currentProjectId.value = projectId
+        
+        if (!projectId.isNullOrEmpty()) {
+            viewModelScope.launch {
+                try {
+                    val project = projectRepository.getProjectById(projectId)
+                    _currentProject.value = project
+                    android.util.Log.d("ConcentrationViewModel", "项目加载成功，行数: ${project?.rows}, 列数: ${project?.columns}")
+                } catch (e: Exception) {
+                    android.util.Log.e("ConcentrationViewModel", "加载项目失败: ${e.message}", e)
+                }
+            }
+        }
     }
     
     /**
@@ -79,6 +114,14 @@ class ConcentrationViewModel @Inject constructor(
     }
     
     /**
+     * 设置增强型检测结果
+     * @param detections 增强型检测结果列表
+     */
+    fun setEnhancedDetections(detections: List<EnhancedWellDetection>) {
+        _enhancedDetections.value = detections
+    }
+    
+    /**
      * 从检测结果保存孔位数据 (此方法现在主要用于启动runId)
      * @param detections 检测到的孔位列表
      * @param projectId 项目ID
@@ -86,16 +129,16 @@ class ConcentrationViewModel @Inject constructor(
      * @param iouThreshold IoU阈值
      * @return 生成的runId，如果保存失败则返回null
      */
-    suspend fun saveDetectionResults( // Make it suspend and return String?
+    suspend fun saveDetectionResults(
         detections: List<WellDetection>,
         projectId: String,
         confThreshold: Float = 0.25f,
         iouThreshold: Float = 0.45f
-    ): String? { // Return nullable String for potential errors
-        _concentrationState.value = ConcentrationState.Loading // 开始时设为加载
+    ): String? {
+        _concentrationState.value = ConcentrationState.Loading
         
-        return try { // Return the result of the try block
-            // 保存检测结果并获取runId
+        return try {
+            // 调用仓库保存检测结果
             val runId = wellResultRepository.saveDetectionResults(
                 projectId = projectId,
                 detections = detections,
@@ -106,15 +149,50 @@ class ConcentrationViewModel @Inject constructor(
             // 设置当前运行ID
             _currentRunId.value = runId
             
+            // 如果有增强型检测结果，将其与runId关联并保存到数据库
+            val enhancedResults = _enhancedDetections.value
+            if (enhancedResults.isNotEmpty()) {
+                // 保存增强型检测的颜色信息，仅保存检测到了圆心和颜色的信息
+                val wellsWithColorInfo = enhancedResults
+                    .filter { it.circleX != null && it.circleY != null && it.radius != null && it.centerColor != null }
+                    .map { enhancedWell ->
+                        WellResult(
+                            runId = runId,
+                            projectId = projectId,
+                            wellIndex = enhancedWell.id,
+                            predictedConcentration = null, // 暂未预测浓度
+                            trueConcentration = null,
+                            isStandard = false,
+                            detectedRectLeft = enhancedWell.rect.left,
+                            detectedRectTop = enhancedWell.rect.top,
+                            detectedRectRight = enhancedWell.rect.right,
+                            detectedRectBottom = enhancedWell.rect.bottom,
+                            detectionConfidence = enhancedWell.confidence,
+                            croppedImageIdentifier = null,
+                            // 添加圆形检测信息到额外字段
+                            manualCropRectLeft = enhancedWell.circleX,
+                            manualCropRectTop = enhancedWell.circleY,
+                            manualCropRectRight = enhancedWell.radius,
+                            manualCropRectBottom = enhancedWell.centerColor?.toFloat() // 使用额外字段存储颜色值
+                        )
+                    }
+                
+                // 更新已有孔位信息
+                if (wellsWithColorInfo.isNotEmpty()) {
+                    wellResultDao.updateWellResults(wellsWithColorInfo)
+                    android.util.Log.d("ConcentrationViewModel", "已保存 ${wellsWithColorInfo.size} 个增强型检测结果")
+                }
+            }
+            
             // 状态可以保持Loading或Idle，因为下一步是predictConcentration
-            _concentrationState.value = ConcentrationState.Idle 
+            _concentrationState.value = ConcentrationState.Idle
             android.util.Log.d("ConcentrationViewModel", "Detection results saved. Run ID: $runId")
-            runId // Return the runId
+            runId
             
         } catch (e: Exception) {
             _concentrationState.value = ConcentrationState.Error("保存检测结果失败: ${e.message}")
             android.util.Log.e("ConcentrationViewModel", "Failed to save detection results", e)
-            null // Return null on error
+            null
         }
     }
     
