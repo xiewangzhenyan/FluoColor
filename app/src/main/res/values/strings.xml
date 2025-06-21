@@ -9,6 +9,11 @@
     <string name="delete">Delete</string>
     <string name="loading">Loading…</string>
     <string name="retry">Retry</string>
+    <string name="missing_parameters">Missing parameters</string>
+    <string name="no_image_available">No image available</string>
+    <string name="processing_image">Processing image...</string>
+    <string name="image_correction_success">Image correction completed successfully</string>
+    <string name="image_correction_failed">Image correction failed</string>
 
     <!-- Home Screen -->
     <string name="home_tab">Home</string>
@@ -387,5 +392,23 @@
     <string name="enhanced_detection_starting">Starting enhanced detection with Hough circle transform...</string>
     <string name="enhanced_detection_active">Using Enhanced Detection Mode (YOLOv5s + Hough Circle Transform)</string>
     <string name="enhanced_detection_hint">Circle contours and colors are automatically detected.</string>
+
+    <!-- Image Correction -->
+    <string name="image_correction">Image Correction</string>
+    <string name="enable_image_correction">Enable Image Correction</string>
+    <string name="disable_image_correction">Disable Image Correction</string>
+    <string name="image_correction_title">Image Correction</string>
+    <string name="original_image">Original Image</string>
+    <string name="corrected_image">Corrected Image</string>
+    <string name="next_step">Next Step</string>
+    <string name="image_correction_description">Correct image distortion before detection</string>
+    <string name="correction_in_progress">Correcting image...</string>
+    <string name="correction_success">Image correction completed</string>
+    <string name="correction_failed">Image correction failed</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+
+    <string name="no_run_found_for_project">No run data found for this project</string>
+    <string name="error_loading_project_data">Error loading project data</string>
 
 </resources>

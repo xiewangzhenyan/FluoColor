@@ -37,7 +37,7 @@ import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.components.PrimaryButton
 import com.muc.fluocolorquant.ui.components.StandardTextField
-import com.muc.fluocolorquant.utils.Screen
+import com.muc.fluocolorquant.ui.navigation.Screen
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)

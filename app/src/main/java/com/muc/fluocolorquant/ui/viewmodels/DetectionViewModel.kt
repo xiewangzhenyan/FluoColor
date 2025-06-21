@@ -885,8 +885,8 @@ class DetectionViewModel @Inject constructor(
                     confidence = detection.confidence
                 )
                 
-                // 1. 裁剪原始矩形区域，扩大约20%以确保包含完整的圆
-                val expansionFactor = 0.2f
+                // 1. 裁剪原始矩形区域，扩大约10%以确保包含完整的圆
+                val expansionFactor = 0.05f
                 val centerX = (detection.rect.left + detection.rect.right) / 2
                 val centerY = (detection.rect.top + detection.rect.bottom) / 2
                 val width = detection.rect.width() * (1 + expansionFactor)

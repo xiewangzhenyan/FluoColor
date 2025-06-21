@@ -41,7 +41,7 @@ import com.muc.fluocolorquant.ui.components.PrimaryButton
 import com.muc.fluocolorquant.ui.components.SecondaryButton
 import com.muc.fluocolorquant.ui.components.StandardTextField
 import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
-import com.muc.fluocolorquant.utils.Screen
+import com.muc.fluocolorquant.ui.navigation.Screen
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)

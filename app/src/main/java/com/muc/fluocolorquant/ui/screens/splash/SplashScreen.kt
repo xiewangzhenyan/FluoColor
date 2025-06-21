@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
-import com.muc.fluocolorquant.utils.Screen
+import com.muc.fluocolorquant.ui.navigation.Screen
 import kotlinx.coroutines.delay
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Science

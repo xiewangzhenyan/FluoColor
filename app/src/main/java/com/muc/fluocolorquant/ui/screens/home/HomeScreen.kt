@@ -67,7 +67,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.components.AnimatedPrimaryButton
 import com.muc.fluocolorquant.ui.components.AnimatedSecondaryButton
-import com.muc.fluocolorquant.utils.Screen
+import com.muc.fluocolorquant.ui.navigation.Screen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.hilt.navigation.compose.hiltViewModel

@@ -36,7 +36,7 @@ import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
 import com.muc.fluocolorquant.ui.viewmodels.DetectionViewModel
 import com.muc.fluocolorquant.ui.viewmodels.EnhancedWellDetection
-import com.muc.fluocolorquant.utils.Screen
+import com.muc.fluocolorquant.ui.navigation.Screen
 import kotlinx.coroutines.launch
 import android.net.Uri
 import android.graphics.RectF
@@ -56,6 +56,16 @@ fun WellDetectionScreen(
     val selectedWellIndex by viewModel.selectedWellIndex.collectAsState()
     val enhancedDetections by viewModel.enhancedDetections.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+
+    // 解码imageUri (如果是被编码的)
+    val decodedImageUri = remember(imageUri) {
+        try {
+            imageUri?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+        } catch (e: Exception) {
+            android.util.Log.e("WellDetection", "解码imageUri失败: ${e.message}", e)
+            imageUri // 如果解码失败，则使用原始URI
+        }
+    }
 
     // 跟踪是否正在使用增强型检测
     var isEnhancedDetection by remember { mutableStateOf(false) } // 默认不是增强模式
@@ -131,9 +141,8 @@ fun WellDetectionScreen(
 
                     // 检查runId是否为空
                     if (newRunId != null) {
-                        // 导航到曲线拟合屏幕
-                        val encodedImageUri = Uri.encode(imageUri ?: "")
-                        navController.navigate("${Screen.CurveFitting.route}?runId=$newRunId&imageUri=$encodedImageUri") {
+                        // 导航到曲线拟合屏幕，同时传递原始图像URI
+                        navController.navigate(Screen.CurveFitting.createRoute(newRunId, decodedImageUri)) {
                             popUpTo(Screen.WellDetection.route) {
                                 inclusive = true
                             }
@@ -153,14 +162,14 @@ fun WellDetectionScreen(
 
     // 启动检测 (仅在imageUri变化时触发，避免重复检测)
     LaunchedEffect(key1 = imageUri) {
-        if (imageUri != null) {
+        if (decodedImageUri != null) {
             // 如果有项目ID，先加载项目信息
             if (!projectId.isNullOrEmpty()) {
                 viewModel.loadProject(projectId)
             }
             // 默认使用标准检测模式
             isEnhancedDetection = false // 确保初始状态为标准检测
-            viewModel.detectWells(imageUri)
+            viewModel.detectWells(decodedImageUri)
         } else {
             toastManager.showToast(imageUriEmptyMsg, ToastType.ERROR)
         }
@@ -168,18 +177,18 @@ fun WellDetectionScreen(
 
     // 处理切换检测模式 (标准检测 <-> 增强型检测)
     val toggleDetectionMode = {
-        if (imageUri == null) {
+        if (decodedImageUri == null) {
             toastManager.showToast(imageUriEmptyMsg, ToastType.ERROR)
         } else {
             // 如果当前是增强型模式，切换回标准模式；否则切换到增强型模式
             if (isEnhancedDetection) {
                 isEnhancedDetection = false // 切换到标准模式
                 toastManager.showToast(standardDetectionStartingMsg, ToastType.INFO)
-                viewModel.detectWells(imageUri) // 启动标准检测
+                viewModel.detectWells(decodedImageUri) // 启动标准检测
             } else {
                 isEnhancedDetection = true // 切换到增强型模式
                 toastManager.showToast(enhancedDetectionStartingMsg, ToastType.INFO)
-                viewModel.enhancedWellDetection(imageUri) // 启动增强型检测
+                viewModel.enhancedWellDetection(decodedImageUri) // 启动增强型检测
             }
         }
     }
@@ -189,7 +198,7 @@ fun WellDetectionScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text(stringResource(R.string.well_detection_title)) },
                 navigationIcon = {
                     IconButton(onClick = { handleBackPress() }) {
@@ -640,12 +649,12 @@ fun WellDetectionScreen(
 
                             Button(
                                 onClick = {
-                                    if (imageUri != null) {
+                                    if (decodedImageUri != null) {
                                         // 根据当前模式重试
                                         if (isEnhancedDetection) {
-                                            viewModel.enhancedWellDetection(imageUri)
+                                            viewModel.enhancedWellDetection(decodedImageUri)
                                         } else {
-                                            viewModel.detectWells(imageUri)
+                                            viewModel.detectWells(decodedImageUri)
                                         }
                                     }
                                 }

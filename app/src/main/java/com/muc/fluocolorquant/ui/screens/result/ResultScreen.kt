@@ -60,6 +60,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -101,7 +102,7 @@ import com.muc.fluocolorquant.data.model.WellResult
 // import com.muc.fluocolorquant.ui.components.ToastType // 不再直接使用
 import com.muc.fluocolorquant.ui.viewmodels.ResultViewModel
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
-import com.muc.fluocolorquant.utils.Screen
+import com.muc.fluocolorquant.ui.navigation.Screen
 // import kotlinx.coroutines.CoroutineScope // 使用 rememberCoroutineScope
 import kotlinx.coroutines.launch
 // import java.io.File // 不再直接使用
@@ -109,9 +110,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.compose.ui.graphics.toArgb
-// import androidx.compose.ui.graphics.graphicsLayer // 不再直接使用
-// import androidx.compose.ui.graphics.TransformOrigin // 不再直接使用
-// import androidx.compose.ui.unit.Dp // 不再直接使用
 import kotlin.math.max // 已在ViewModel中使用
 // import kotlin.math.min // 不再直接使用
 import androidx.compose.ui.input.pointer.pointerInput
@@ -169,10 +167,14 @@ fun ResultScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text(stringResource(R.string.detection_results)) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = { 
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }) {
                         // 使用 AutoMirrored 版本以支持RTL布局
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }

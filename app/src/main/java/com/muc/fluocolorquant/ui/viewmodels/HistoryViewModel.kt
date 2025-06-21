@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.SessionManager
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.data.repository.WellResultRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +24,8 @@ import javax.inject.Inject
 @HiltViewModel
 class HistoryViewModel @Inject constructor(
     private val projectRepository: ProjectRepository,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val wellResultRepository: WellResultRepository
 ) : ViewModel() {
 
     // 原始项目列表
@@ -300,6 +302,20 @@ class HistoryViewModel @Inject constructor(
     // 工具函数：检查日期是否在指定范围内
     private fun isWithinDateRange(date: Date, startDate: Date, endDate: Date): Boolean {
         return date.after(startDate) && date.before(endDate)
+    }
+    
+    /**
+     * 获取项目对应的最新运行ID
+     * @param projectId 项目ID
+     * @return 最新的运行ID，如果没有则返回null
+     */
+    suspend fun getLatestRunIdForProject(projectId: String): String? {
+        return try {
+            wellResultRepository.getLatestRunIdForProject(projectId)
+        } catch (e: Exception) {
+            android.util.Log.e("HistoryViewModel", "获取项目运行ID失败: ${e.message}", e)
+            null
+        }
     }
     
     /**

@@ -44,7 +44,7 @@ import com.muc.fluocolorquant.ui.viewmodels.ProjectViewModel
 import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
 import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
-import com.muc.fluocolorquant.utils.Screen
+import com.muc.fluocolorquant.ui.navigation.Screen
 import kotlinx.coroutines.launch
 import android.Manifest
 import android.content.pm.PackageManager
@@ -137,6 +137,9 @@ fun NewProjectScreen(
         mutableStateOf(defaultColumns) 
     }
     
+    // 添加图像矫正选项
+    var enableImageCorrection by rememberSaveable { mutableStateOf(false) }
+    
     var showImagePickerDialog by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
     var isRecognitionTypeMenuExpanded by remember { mutableStateOf(false) }
@@ -172,10 +175,18 @@ fun NewProjectScreen(
             // 获取当前项目ID
             val projectId = concentrationViewModel.currentProjectId.value
             if (projectId != null) {
+                // 获取当前运行ID（如果有）
+                val runId = concentrationViewModel.getCurrentRunId()
                 // 导航到结果页面
-                navController.navigate("${Screen.Result.route}?projectId=$projectId") {
-                    // 可选: 设置导航选项，例如弹出当前页面
-                    popUpTo(Screen.NewProject.route) { inclusive = true }
+                if (runId != null) {
+                    navController.navigate(Screen.Result.createRoute(runId)) {
+                        // 可选: 设置导航选项，例如弹出当前页面
+                        popUpTo(Screen.NewProject.route) { inclusive = true }
+                    }
+                } else {
+                    // 如果没有runId，回退到使用projectId（较少情况）
+                    toastManager.showToast("未获取到运行ID，可能影响数据显示", ToastType.WARNING)
+                    navController.popBackStack()
                 }
             }
         }
@@ -269,11 +280,10 @@ fun NewProjectScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
                     Text(
                         stringResource(R.string.new_project_title),
-                        modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
                     )
                 },
@@ -455,7 +465,76 @@ fun NewProjectScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            // 添加图像矫正选项
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                text = stringResource(R.string.image_correction),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF333333)
+            )
+            
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 启用图像矫正
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { enableImageCorrection = true }
+                ) {
+                    RadioButton(
+                        selected = enableImageCorrection,
+                        onClick = { enableImageCorrection = true },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = Color(0xFF5D6B98)
+                        )
+                    )
+                    Text(
+                        text = stringResource(R.string.yes),
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+
+                // 禁用图像矫正
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { enableImageCorrection = false }
+                ) {
+                    RadioButton(
+                        selected = !enableImageCorrection,
+                        onClick = { enableImageCorrection = false },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = Color(0xFF5D6B98)
+                        )
+                    )
+                    Text(
+                        text = stringResource(R.string.no),
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+            
+            // 在项目图片部分之后添加图像矫正描述
+            if (enableImageCorrection) {
+                Text(
+                    text = stringResource(R.string.image_correction_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // 项目图片
             Text(
@@ -811,26 +890,37 @@ fun NewProjectScreen(
 
                             if (newProjectId != null) {
                                 toastManager.showToast(projectCreationSuccessMessage, ToastType.SUCCESS)
-                                // 根据识别类型决定导航
-                                if (recognitionType == RecognitionType.AUTO) {
-                                    // 自动识别 - 导航到孔阵检测页面
+                                
+                                // 根据是否启用图像矫正和识别类型决定导航
+                                if (enableImageCorrection) {
+                                    // 导航到图像矫正页面 - 使用 createRoute 方法
                                     navController.navigate(
-                                        "${Screen.WellDetection.route}?imageUri=${Uri.encode(projectImageUri.toString())}&projectId=$newProjectId"
+                                        Screen.ImageCorrection.createRoute(Uri.encode(projectImageUri.toString()), newProjectId)
                                     ) {
-                                        // 可选: 设置导航选项，例如弹出当前页面
                                         popUpTo(Screen.NewProject.route) { inclusive = true }
                                     }
                                 } else {
-                                    // 手动裁剪 - 立即分析裁剪图像
-                                    android.util.Log.d("NewProjectScreen", "开始分析手动裁剪图像: $newProjectId, ${projectImageUri.toString()}")
-                                    // 设置为加载状态
-                                    toastManager.showToast(analyzingImageMessage, ToastType.INFO)
-                                    // 调用浓度预测
-                                    concentrationViewModel.analyzeManualCroppedImage(
-                                        projectId = newProjectId,
-                                        croppedImageUri = projectImageUri!!
-                                    )
-                                    // 不立即返回，等浓度预测完成后通过LaunchedEffect中的监听跳转
+                                    // 根据识别类型决定导航
+                                    if (recognitionType == RecognitionType.AUTO) {
+                                        // 自动识别 - 导航到孔阵检测页面，使用 createRoute 方法
+                                        navController.navigate(
+                                            Screen.WellDetection.createRoute(Uri.encode(projectImageUri.toString()), newProjectId)
+                                        ) {
+                                            // 可选: 设置导航选项，例如弹出当前页面
+                                            popUpTo(Screen.NewProject.route) { inclusive = true }
+                                        }
+                                    } else {
+                                        // 手动裁剪 - 立即分析裁剪图像
+                                        android.util.Log.d("NewProjectScreen", "开始分析手动裁剪图像: $newProjectId, ${projectImageUri.toString()}")
+                                        // 设置为加载状态
+                                        toastManager.showToast(analyzingImageMessage, ToastType.INFO)
+                                        // 调用浓度预测
+                                        concentrationViewModel.analyzeManualCroppedImage(
+                                            projectId = newProjectId,
+                                            croppedImageUri = projectImageUri!!
+                                        )
+                                        // 不立即返回，等浓度预测完成后通过LaunchedEffect中的监听跳转
+                                    }
                                 }
                             } else {
                                 toastManager.showToast(projectCreationErrorMessage, ToastType.ERROR)

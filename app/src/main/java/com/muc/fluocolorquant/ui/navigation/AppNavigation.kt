@@ -13,13 +13,14 @@ import com.muc.fluocolorquant.ui.screens.curvefitting.CurveFittingScreen
 import com.muc.fluocolorquant.ui.screens.detection.WellDetectionScreen
 import com.muc.fluocolorquant.ui.screens.home.HomeScreen
 import com.muc.fluocolorquant.ui.screens.imagecrop.ImageCropScreen
+import com.muc.fluocolorquant.ui.screens.image.ImageCorrectionScreen
 import com.muc.fluocolorquant.ui.screens.profile.ProfileScreen
 import com.muc.fluocolorquant.ui.screens.project.NewProjectScreen
 import com.muc.fluocolorquant.ui.screens.result.ResultScreen
 import com.muc.fluocolorquant.ui.screens.settings.SettingsScreen
 import com.muc.fluocolorquant.ui.screens.splash.SplashScreen
-import com.muc.fluocolorquant.utils.Screen
 import com.muc.fluocolorquant.ui.screens.history.HistoryScreen
+import com.muc.fluocolorquant.ui.navigation.Screen
 
 @Composable
 fun AppNavigation(navController: NavHostController, startDestination: String = Screen.Splash.route) {
@@ -67,24 +68,45 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         }
         
-        // 孔阵检测页面
+        // 图像矫正页面 - 更新为路径参数格式
         composable(
-            route = "${Screen.WellDetection.route}?imageUri={imageUri}&projectId={projectId}",
+            route = "${Screen.ImageCorrection.route}/{imageUri}/{projectId}",
             arguments = listOf(
                 navArgument("imageUri") {
                     type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
                 },
                 navArgument("projectId") {
                     type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
                 }
             )
         ) { backStackEntry ->
             val imageUriString = backStackEntry.arguments?.getString("imageUri")
             val projectId = backStackEntry.arguments?.getString("projectId")
+            ImageCorrectionScreen(
+                navController = navController,
+                imageUri = imageUriString,
+                projectId = projectId
+            )
+        }
+        
+        // 孔阵检测页面 - 更新为路径参数格式
+        composable(
+            route = "${Screen.WellDetection.route}/{imageUri}/{projectId}",
+            arguments = listOf(
+                navArgument("imageUri") {
+                    type = NavType.StringType
+                },
+                navArgument("projectId") {
+                    type = NavType.StringType
+                }
+            )
+        ) { backStackEntry ->
+            val imageUriString = backStackEntry.arguments?.getString("imageUri")
+            val projectId = backStackEntry.arguments?.getString("projectId")
+            
+            // 日志输出，记录URI参数
+            android.util.Log.d("AppNavigation", "WellDetection接收到imageUri: $imageUriString")
+            
             WellDetectionScreen(
                 navController = navController,
                 imageUri = imageUriString,
@@ -92,14 +114,12 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         }
         
-        // 曲线拟合/浓度预测页面
+        // 曲线拟合/浓度预测页面 - 更新为路径参数格式
         composable(
-            route = "${Screen.CurveFitting.route}?runId={runId}&imageUri={imageUri}",
+            route = "${Screen.CurveFitting.route}/{runId}?imageUri={imageUri}",
             arguments = listOf(
                 navArgument("runId") {
                     type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
                 },
                 navArgument("imageUri") {
                     type = NavType.StringType
@@ -117,28 +137,19 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         }
         
-        // 结果展示页面
+        // 结果展示页面 - 更新为路径参数格式
         composable(
-            route = "${Screen.Result.route}?runId={runId}&projectId={projectId}",
+            route = "${Screen.Result.route}/{runId}",
             arguments = listOf(
                 navArgument("runId") {
                     type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-                navArgument("projectId") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
                 }
             )
         ) { backStackEntry ->
             val runId = backStackEntry.arguments?.getString("runId")
-            val projectId = backStackEntry.arguments?.getString("projectId")
             ResultScreen(
                 navController = navController,
-                runId = runId,
-                projectId = projectId
+                runId = runId
             )
         }
         

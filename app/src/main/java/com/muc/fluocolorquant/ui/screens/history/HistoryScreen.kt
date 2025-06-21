@@ -79,6 +79,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -110,7 +111,7 @@ import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.HistoryViewModel
-import com.muc.fluocolorquant.utils.Screen
+import com.muc.fluocolorquant.ui.navigation.Screen
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -149,6 +150,44 @@ fun HistoryScreen(
     val toastManager = LocalToastManager.current
     val context = LocalContext.current // 获取context
     val coroutineScope = rememberCoroutineScope()
+    
+    // 提前获取需要在协程中使用的字符串资源
+    val noRunFoundMessage = stringResource(R.string.no_run_found_for_project)
+    val errorLoadingMessage = stringResource(R.string.error_loading_project_data)
+    
+    // 处理项目点击的函数，明确指定类型为 (Project) -> Unit
+    val handleProjectClick: (Project) -> Unit = { project ->
+        if (isSelectionMode) {
+            if (project.id in selectedProjects) {
+                selectedProjects.remove(project.id)
+            } else {
+                selectedProjects.add(project.id)
+            }
+        } else {
+            // 导航到结果页面
+            // 先获取项目对应的最新运行ID
+            coroutineScope.launch {
+                try {
+                    val runId = viewModel.getLatestRunIdForProject(project.id)
+                    if (runId != null) {
+                        navController.navigate(Screen.Result.createRoute(runId))
+                    } else {
+                        // 如果没有run，显示提示信息
+                        toastManager.showToast(
+                            noRunFoundMessage,
+                            ToastType.WARNING
+                        )
+                    }
+                } catch (e: Exception) {
+                    toastManager.showToast(
+                        errorLoadingMessage,
+                        ToastType.ERROR
+                    )
+                    android.util.Log.e("HistoryScreen", "获取运行ID失败", e)
+                }
+            }
+        }
+    }
 
     // 处理删除状态
     LaunchedEffect(deleteState) {
@@ -166,9 +205,16 @@ fun HistoryScreen(
         }
     }
 
+    // 确保选择模式与选中项一致 - 当没有任何选中项时自动退出选择模式
+    LaunchedEffect(selectedProjects.size) {
+        if (selectedProjects.isEmpty() && isSelectionMode) {
+            isSelectionMode = false
+        }
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -179,8 +225,12 @@ fun HistoryScreen(
                             enter = fadeIn() + expandHorizontally(),
                             exit = fadeOut() + shrinkHorizontally()
                         ) {
-                            if (isSelectionMode) {
-                                Text(stringResource(R.string.history_selected_items_title, selectedProjects.size))
+                            // 计算实际选中数量
+                            val actualSelectedCount = selectedProjects.size
+                            
+                            // 只有在有选择项且处于选择模式时显示计数
+                            if (isSelectionMode && actualSelectedCount > 0) {
+                                Text(stringResource(R.string.history_selected_items_title, actualSelectedCount))
                             } else {
                                 Text(stringResource(R.string.history_records))
                             }
@@ -372,18 +422,7 @@ fun HistoryScreen(
             HistoryViewModel.LoadingState.Success -> {
                 ProjectList(
                     projects = projects,
-                    onProjectClick = { project ->
-                        if (isSelectionMode) {
-                            if (project.id in selectedProjects) {
-                                selectedProjects.remove(project.id)
-                            } else {
-                                selectedProjects.add(project.id)
-                            }
-                        } else {
-                            // 导航到结果页面
-                            navController.navigate("${Screen.Result.route}?projectId=${project.id}")
-                        }
-                    },
+                    onProjectClick = handleProjectClick,
                     onProjectLongClick = { project ->
                         if (!isSelectionMode) {
                             isSelectionMode = true
@@ -447,7 +486,15 @@ fun HistoryScreen(
                 projectCount = if (isSelectionMode) selectedProjects.size else 1,
                 onConfirm = {
                     if (isSelectionMode && selectedProjects.isNotEmpty()) {
-                        viewModel.deleteProjects(selectedProjects.toList())
+                        // 先保存一份要删除的项目ID
+                        val projectsToDelete = selectedProjects.toList()
+                        
+                        // 立即清除选择状态和模式，不等待删除完成
+                        selectedProjects.clear()
+                        isSelectionMode = false
+                        
+                        // 然后执行删除
+                        viewModel.deleteProjects(projectsToDelete)
                     } else if (projectToDelete != null) {
                         viewModel.deleteProject(projectToDelete!!.id)
                     }

@@ -9,6 +9,11 @@
     <string name="delete">删除</string>
     <string name="loading">加载中…</string>
     <string name="retry">重试</string>
+    <string name="missing_parameters">缺少参数</string>
+    <string name="no_image_available">无可用图像</string>
+    <string name="processing_image">正在处理图像...</string>
+    <string name="image_correction_success">图像矫正成功完成</string>
+    <string name="image_correction_failed">图像矫正失败</string>
     
     <!-- Home Screen -->
     <string name="home_tab">首页</string>
@@ -384,4 +389,23 @@
     <string name="enhanced_detection_starting">启动增强型检测（霍夫圆变换）...</string>
     <string name="enhanced_detection_active">使用增强型检测模式（YOLOv5s + 霍夫圆变换）</string>
     <string name="enhanced_detection_hint">圆形轮廓和颜色已自动检测。</string>
+
+    <!-- Image Correction -->
+    <string name="image_correction">图像矫正</string>
+    <string name="enable_image_correction">启用图像矫正</string>
+    <string name="disable_image_correction">禁用图像矫正</string>
+    <string name="image_correction_title">图像矫正</string>
+    <string name="original_image">原始图像</string>
+    <string name="corrected_image">矫正后图像</string>
+    <string name="next_step">下一步</string>
+    <string name="image_correction_description">在检测前矫正图像畸变</string>
+    <string name="correction_in_progress">正在矫正图像...</string>
+    <string name="correction_success">图像矫正完成</string>
+    <string name="correction_failed">图像矫正失败</string>
+    <string name="yes">是</string>
+    <string name="no">否</string>
+
+    <!-- New additions -->
+    <string name="no_run_found_for_project">未找到此项目的运行数据</string>
+    <string name="error_loading_project_data">加载项目数据时出错</string>
 </resources> 

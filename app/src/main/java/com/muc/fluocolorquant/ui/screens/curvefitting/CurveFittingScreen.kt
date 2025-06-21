@@ -30,8 +30,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
-import com.muc.fluocolorquant.ui.viewmodels.EnhancedWellDetection
-import com.muc.fluocolorquant.utils.Screen
+import com.muc.fluocolorquant.ui.navigation.Screen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -61,6 +60,8 @@ fun CurveFittingScreen(
     
     // 使用传入的runId或ViewModel中的currentRunId
     val effectiveRunId = runId ?: currentRunId
+
+    android.util.Log.d("CurveFittingScreen", "Screen started with runId: $runId, imageUri: $imageUri, effectiveRunId: $effectiveRunId")
     
     // Load the original bitmap when the screen launches using the passed imageUri
     LaunchedEffect(key1 = imageUri) {
@@ -73,7 +74,7 @@ fun CurveFittingScreen(
                 }
                 bitmap?.let { 
                     viewModel.setOriginalBitmap(it)
-                    android.util.Log.d("CurveFittingScreen", "Original bitmap loaded successfully.")
+                    android.util.Log.d("CurveFittingScreen", "Original bitmap loaded successfully from URI.")
                  } ?: run {
                     android.util.Log.e("CurveFittingScreen", "Failed to load bitmap from URI: $imageUri")
                     // Optionally show an error message via Snackbar or Toast
@@ -104,7 +105,7 @@ fun CurveFittingScreen(
     
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text(stringResource(R.string.curve_fitting_title)) },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
@@ -277,7 +278,7 @@ fun CurveFittingScreen(
                     if (state is ConcentrationViewModel.ConcentrationState.Success) {
                         Button(
                             onClick = {
-                                navController.navigate("${Screen.Result.route}?runId=$effectiveRunId")
+                                navController.navigate(Screen.Result.createRoute(effectiveRunId!!))
                             },
                             modifier = Modifier
                                 .fillMaxWidth()

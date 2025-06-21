@@ -25,6 +25,7 @@ material3 = "1.2.0"
 ucrop = "2.2.10"
 appcompat = "1.6.1"
 opencv = "4.8.0"
+coreKtxVersion = "1.6.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -63,6 +64,7 @@ androidx-material-icons-core = { group = "androidx.compose.material", name = "ma
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 ucrop = { group = "com.github.yalantis", name = "ucrop", version.ref = "ucrop" }
 opencv = { group = "org.opencv", name = "opencv-android", version.ref = "opencv" }
+core-ktx = { group = "androidx.test", name = "core-ktx", version.ref = "coreKtxVersion" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

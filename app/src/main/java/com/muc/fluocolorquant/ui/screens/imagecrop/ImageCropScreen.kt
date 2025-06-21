@@ -14,7 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
-import com.muc.fluocolorquant.utils.Screen
+import com.muc.fluocolorquant.ui.navigation.Screen
 import com.yalantis.ucrop.UCrop
 import com.yalantis.ucrop.UCropActivity
 import com.yalantis.ucrop.model.AspectRatio // 导入 AspectRatio
@@ -61,10 +61,18 @@ fun ImageCropScreen(
                             val projectId = navController.previousBackStackEntry?.savedStateHandle?.get<String>("projectId")
                             if (!projectId.isNullOrEmpty()) {
                                 viewModel.analyzeManualCroppedImage(projectId, resultUri)
-                                navController.navigate("${Screen.Result.route}?projectId=$projectId") {
-                                    popUpTo(navController.currentBackStackEntry?.destination?.route ?: "") {
-                                        inclusive = true
+                                val runId = viewModel.getCurrentRunId() // 假设有这个方法
+                                if (runId != null) {
+                                    navController.navigate(Screen.Result.createRoute(runId)) {
+                                        popUpTo(navController.currentBackStackEntry?.destination?.route ?: "") {
+                                            inclusive = true
+                                        }
                                     }
+                                } else {
+                                    // 如果没有runId，返回上一级页面并显示警告
+                                    android.util.Log.w("ImageCropScreen", "无法获取runId，无法导航到结果页面")
+                                    navController.popBackStack()
+                                    // 这里可以添加错误处理或Toast提示
                                 }
                             } else {
                                 navController.popBackStack()

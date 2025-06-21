@@ -83,6 +83,14 @@ class ConcentrationViewModel @Inject constructor(
     private val _currentRunId = MutableStateFlow<String?>(null)
     val currentRunId: StateFlow<String?> = _currentRunId.asStateFlow()
     
+    /**
+     * 获取当前运行ID
+     * @return 当前运行ID，如果未设置则返回null
+     */
+    fun getCurrentRunId(): String? {
+        return _currentRunId.value
+    }
+    
     // 保存增强型检测结果的状态
     private val _enhancedDetections = MutableStateFlow<List<EnhancedWellDetection>>(emptyList())
     val enhancedDetections: StateFlow<List<EnhancedWellDetection>> = _enhancedDetections.asStateFlow()

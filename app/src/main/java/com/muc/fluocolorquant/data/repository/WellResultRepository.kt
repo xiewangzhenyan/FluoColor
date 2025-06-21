@@ -838,4 +838,27 @@ class WellResultRepository @Inject constructor(
             emptyList()
         }
     }
+    
+    /**
+     * 获取项目对应的最新运行ID
+     * @param projectId 项目ID
+     * @return 最新的运行ID，如果没有则返回null
+     */
+    suspend fun getLatestRunIdForProject(projectId: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // 获取项目关联的所有结果，按创建时间倒序排列，取第一个（最新的）
+                val results = wellResultDao.getWellResultsByProjectId(projectId)
+                if (results.isNotEmpty()) {
+                    // 返回最新的runId
+                    results.first().runId
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("WellResultRepository", "获取项目最新运行ID失败: ${e.message}", e)
+                null
+            }
+        }
+    }
 } 
