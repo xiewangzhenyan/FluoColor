@@ -157,8 +157,8 @@
     <string name="error_run_not_found">找不到检测运行记录</string>
     <string name="error_loading_results">加载结果失败: %1$s</string>
     <string name="error_no_projects_found">未找到任何项目数据</string>
-    <string name="standard_detection_starting">Starting standard detection…</string>
-    <string name="switch_to_standard_detection">Switch to Standard Detection</string>
+    <string name="standard_detection_starting">开始标准检测…</string>
+    <string name="switch_to_standard_detection">切换到标准检测</string>
     
     <!-- ResultScreen Additional -->
     <string name="detection_mode_res">检测模式: %1$s</string>
@@ -408,4 +408,21 @@
     <!-- New additions -->
     <string name="no_run_found_for_project">未找到此项目的运行数据</string>
     <string name="error_loading_project_data">加载项目数据时出错</string>
+
+    <!-- Well Selection Zoom Feature -->
+    <string name="zoom_well">缩放孔位</string>
+    <string name="adjust_well_size">调整孔位大小</string>
+    <string name="well_size_adjustment">孔位大小调整</string>
+    <string name="confirm_well_size">确认</string>
+    <string name="cancel_well_size">取消</string>
+    <string name="drag_to_adjust">拖动角落调整孔位大小</string>
+    <string name="enhanced_detection_using_standard">增强检测使用标准模式孔位位置</string>
+
+    <!-- Single Well Zoom Feature -->
+    <string name="single_well_zoom_title">孔位大小调整</string>
+    <string name="single_well_zoom_message">拖动四个角或整个矩形来调整孔位大小和位置</string>
+    <string name="single_well_zoom_confirm">确认调整</string>
+    <string name="single_well_zoom_cancel">取消</string>
+    <string name="please_select_well_first">请先选择一个孔位</string>
+    <string name="well_adjusted_success">孔位大小调整成功</string>
 </resources> 

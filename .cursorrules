@@ -17,6 +17,10 @@
 -在Composable函数中通过LocalToastManager获取toastManager实例
 -使用toastManager.showToast()方法显示Toast消息，并根据情况选择合适的ToastType（SUCCESS、INFO、WARNING、ERROR）
 -例如：toastManager.showToast("操作成功", ToastType.SUCCESS)
+##Compose函数调用规则
+-@Composable函数（如stringResource）只能在其他@Composable函数的上下文中调用
+-如果需要在非@Composable上下文中（如事件处理器）使用字符串资源，应该提前声明临时变量存储这些值
+-例如：val errorMessage = stringResource(R.string.error_message)
 #要求
 在理解用户需求、设计UI、编写代码、解决问题和项目选代优化时，你应该始终遵循以下原则:
 ##项目初始化
@@ -28,6 +32,7 @@
 -选择最简单的解决方案来满足用户需求，避免过度设计。
 ##UI和样式设计
 -使用现代UI框架进行样式设计【例如 **Jetpack Compose** 或 **XML布局**，遵循 **Material Design** 设计规范】;
+-使用Material 3 设计规范
 -在不同平台上实现一致的设计和响应式模式
 ##代码编写
 -技术选型:根据项目需求选择合适的技术栈(例如 **Kotlin** 用于主要开发言，**Jetpack Compose**用于构建声明式UI，**Room用于数据持久化**)

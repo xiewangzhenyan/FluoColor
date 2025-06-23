@@ -7,11 +7,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Science // 用于增强检测图标
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
@@ -40,6 +41,7 @@ import com.muc.fluocolorquant.ui.navigation.Screen
 import kotlinx.coroutines.launch
 import android.net.Uri
 import android.graphics.RectF
+import android.graphics.Bitmap
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,6 +78,13 @@ fun WellDetectionScreen(
     // 显示提示对话框的状态
     var showInfoDialog by remember { mutableStateOf(false) }
 
+    // 添加单个孔位缩放预览状态
+    var showSingleWellZoomDialog by remember { mutableStateOf(false) }
+    var singleWellCroppedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var singleWellOriginalRect by remember { mutableStateOf<RectF?>(null) }
+    var singleWellAdjustedRect by remember { mutableStateOf<RectF?>(null) }
+    var selectedWellId by remember { mutableStateOf<Int?>(null) }
+
     // 在@Composable上下文中获取所有需要的字符串资源
     val noWellsDetectedMsg = stringResource(R.string.no_wells_detected)
     val projectIdEmptyMsg = stringResource(R.string.project_id_empty)
@@ -84,8 +93,17 @@ fun WellDetectionScreen(
     val saveDetectionFailedWithErrorMsg = stringResource(R.string.save_detection_failed_with_error)
     val imageUriEmptyMsg = stringResource(R.string.image_uri_empty)
     val enhancedDetectionStartingMsg = stringResource(R.string.enhanced_detection_starting)
-    val standardDetectionStartingMsg = stringResource(R.string.standard_detection_starting) // 新增字符串
-    val switchDetectionModeDescription = stringResource(R.string.switch_to_standard_detection) // 新增字符串
+    val standardDetectionStartingMsg = stringResource(R.string.standard_detection_starting)
+    val switchDetectionModeDescription = stringResource(R.string.switch_to_standard_detection)
+    val zoomWellMsg = stringResource(R.string.zoom_well)
+
+    // 单个孔位缩放预览相关字符串
+    val singleWellZoomTitleMsg = stringResource(R.string.single_well_zoom_title)
+    val singleWellZoomMessageMsg = stringResource(R.string.single_well_zoom_message)
+    val singleWellZoomConfirmMsg = stringResource(R.string.single_well_zoom_confirm)
+    val singleWellZoomCancelMsg = stringResource(R.string.single_well_zoom_cancel)
+    val pleaseSelectWellFirstMsg = stringResource(R.string.please_select_well_first)
+    val wellAdjustedSuccessMsg = stringResource(R.string.well_adjusted_success)
 
     // 保存当前项目ID到浓度预测ViewModel
     LaunchedEffect(projectId) {
@@ -193,8 +211,391 @@ fun WellDetectionScreen(
         }
     }
 
+    // 处理单个孔位缩放
+    val handleSingleWellZoom = lambda@{
+        // 获取当前选中的孔位ID
+        val wellId = viewModel.getSelectedWellId()
+
+        if (wellId == null) {
+            // 如果没有选中的孔位，显示提示
+            toastManager.showToast(pleaseSelectWellFirstMsg, ToastType.WARNING)
+            return@lambda
+        }
+
+        // 检查对话框是否已经显示
+        if (showSingleWellZoomDialog) {
+            // 如果对话框已经显示，直接返回，不做任何改变
+            return@lambda
+        }
+
+        // 获取裁剪后的孔位图像
+        val croppedBitmap = viewModel.getCroppedWellBitmap(wellId)
+
+        if (croppedBitmap != null) {
+            // 获取原始矩形
+            val originalRect = viewModel.getSelectedWellRect()
+
+            if (originalRect != null) {
+                // 检查是否是同一个孔位
+                val isNewWell = selectedWellId != wellId
+
+                // 保存孔位ID
+                selectedWellId = wellId
+
+                // 只有在新孔位时才更新原始矩形
+                if (isNewWell) {
+                    singleWellOriginalRect = originalRect
+                    // 仅当是新的孔位或调整后的矩形为null时才初始化为原始矩形
+                    if (singleWellAdjustedRect == null || isNewWell) {
+                        singleWellAdjustedRect = RectF(originalRect)
+                    }
+                } else if (singleWellAdjustedRect == null) {
+                    // 如果是同一个孔位，但调整矩形丢失了，则重新初始化
+                    singleWellAdjustedRect = RectF(originalRect)
+                }
+
+
+                // 保存裁剪后的图像
+                singleWellCroppedBitmap = croppedBitmap
+                // 显示对话框
+                showSingleWellZoomDialog = true
+            }
+        }
+    }
+
     // 使用变量存储选中的孔位索引值，避免智能转换问题
     val currentSelectedIndex = selectedWellIndex ?: -1
+
+    // 单个孔位缩放预览对话框
+    if (showSingleWellZoomDialog && singleWellCroppedBitmap != null && singleWellAdjustedRect != null) {
+        Dialog(
+            onDismissRequest = {
+                // 只关闭对话框和清理临时资源，保留调整状态
+                showSingleWellZoomDialog = false
+                singleWellCroppedBitmap = null
+                // 不重置singleWellAdjustedRect，以保持用户的调整状态
+            }
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // 标题
+                    Text(
+                        text = singleWellZoomTitleMsg,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    // 提示信息
+                    Text(
+                        text = singleWellZoomMessageMsg,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    // 预览区域
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .padding(8.dp)
+                    ) {
+                        // 显示裁剪后的图像
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(singleWellCroppedBitmap)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+
+                        // 绘制可调整的矩形框
+                        val croppedBitmap = singleWellCroppedBitmap!!
+                        val originalRect = singleWellOriginalRect!!
+                        val adjustedRect = singleWellAdjustedRect!!
+
+                        // 计算裁剪区域（与DetectionViewModel.getCroppedWellBitmap方法保持一致）
+                        val centerX = (originalRect.left + originalRect.right) / 2
+                        val centerY = (originalRect.top + originalRect.bottom) / 2
+                        val expansionFactor = 1.5f
+                        val width = originalRect.width() * expansionFactor
+                        val height = originalRect.height() * expansionFactor
+
+                        // 计算裁剪区域的左上角坐标
+                        val cropLeft = (centerX - width / 2).coerceAtLeast(0f)
+                        val cropTop = (centerY - height / 2).coerceAtLeast(0f)
+
+                        // 添加拖动状态跟踪
+                        var dragMode by remember { mutableStateOf(0) } // 0: 无拖动, 1-4: 四个角, 5: 整体移动
+
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(Unit) {
+                                    detectDragGestures(
+                                        onDragStart = { offset ->
+                                            // 计算缩放比例
+                                            val scale = minOf(
+                                                size.width / croppedBitmap.width.toFloat(),
+                                                size.height / croppedBitmap.height.toFloat()
+                                            )
+
+                                            // 计算图像在Canvas中的实际位置和尺寸
+                                            val scaledWidth = croppedBitmap.width * scale
+                                            val scaledHeight = croppedBitmap.height * scale
+                                            val leftPadding = (size.width - scaledWidth) / 2
+                                            val topPadding = (size.height - scaledHeight) / 2
+
+                                            // 计算当前触摸点在原始图像坐标系中的位置
+                                            val touchX = (offset.x - leftPadding) / scale + cropLeft
+                                            val touchY = (offset.y - topPadding) / scale + cropTop
+
+                                            // 计算四个角落点的位置
+                                            val cornerSize = 25f // 增大角落判断半径，使得更容易选中角落
+                                            val corners = listOf(
+                                                Pair(adjustedRect.left, adjustedRect.top), // 左上
+                                                Pair(adjustedRect.right, adjustedRect.top), // 右上
+                                                Pair(adjustedRect.left, adjustedRect.bottom), // 左下
+                                                Pair(adjustedRect.right, adjustedRect.bottom) // 右下
+                                            )
+
+                                            // 计算触摸点与各个角落的距离
+                                            val distances = corners.mapIndexed { index, corner ->
+                                                val distX = touchX - corner.first
+                                                val distY = touchY - corner.second
+                                                Triple(index + 1, Math.sqrt((distX * distX + distY * distY).toDouble()), corner)
+                                            }
+
+                                            // 找到最近的角落点
+                                            val minDistance = distances.minByOrNull { it.second }
+                                            if (minDistance != null && minDistance.second < cornerSize) {
+                                                // 设置拖动模式为对应的角落
+                                                dragMode = minDistance.first
+                                            } else if (touchX >= adjustedRect.left && touchX <= adjustedRect.right &&
+                                                touchY >= adjustedRect.top && touchY <= adjustedRect.bottom) {
+                                                // 如果在矩形内部，设置为整体移动模式
+                                                dragMode = 5
+                                            } else {
+                                                // 不在任何有效区域，不进行拖动
+                                                dragMode = 0
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            // 重置拖动模式
+                                            dragMode = 0
+                                        },
+                                        onDragCancel = {
+                                            // 重置拖动模式
+                                            dragMode = 0
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+
+                                            if (dragMode == 0) {
+                                                return@detectDragGestures
+                                            }
+
+                                            // 直接从 state 读取最新的矩形
+                                            val currentRect = singleWellAdjustedRect ?: return@detectDragGestures
+
+                                            // 计算缩放比例
+                                            val scale = minOf(
+                                                size.width / croppedBitmap.width.toFloat(),
+                                                size.height / croppedBitmap.height.toFloat()
+                                            )
+
+                                            // 将拖动量转换为原始图像坐标系
+                                            val dx = dragAmount.x / scale
+                                            val dy = dragAmount.y / scale
+
+                                            // 创建新的矩形，基于当前的矩形状态进行修改
+                                            val newRect = RectF(currentRect)
+
+                                            // 根据拖动模式调整矩形
+                                            when (dragMode) {
+                                                1 -> { // 左上角
+                                                    newRect.left += dx
+                                                    newRect.top += dy
+                                                }
+                                                2 -> { // 右上角
+                                                    newRect.right += dx
+                                                    newRect.top += dy
+                                                }
+                                                3 -> { // 左下角
+                                                    newRect.left += dx
+                                                    newRect.bottom += dy
+                                                }
+                                                4 -> { // 右下角
+                                                    newRect.right += dx
+                                                    newRect.bottom += dy
+                                                }
+                                                5 -> { // 整体移动
+                                                    newRect.left += dx
+                                                    newRect.top += dy
+                                                    newRect.right += dx
+                                                    newRect.bottom += dy
+                                                }
+                                            }
+
+                                            // 确保矩形不超出裁剪区域且宽高为正
+                                            val maxRight = cropLeft + croppedBitmap.width
+                                            val maxBottom = cropTop + croppedBitmap.height
+
+                                            // 添加最小尺寸限制，防止矩形过小
+                                            val minSize = 20f
+
+                                            // 应用约束
+                                            val constrainedRect = RectF(newRect)
+
+                                            // 确保左边界在有效范围内
+                                            constrainedRect.left = constrainedRect.left.coerceIn(cropLeft, maxRight - minSize)
+
+                                            // 确保上边界在有效范围内
+                                            constrainedRect.top = constrainedRect.top.coerceIn(cropTop, maxBottom - minSize)
+
+                                            // 确保右边界在有效范围内，并且宽度至少为minSize
+                                            constrainedRect.right = constrainedRect.right.coerceIn(
+                                                constrainedRect.left + minSize,
+                                                maxRight
+                                            )
+
+                                            // 确保下边界在有效范围内，并且高度至少为minSize
+                                            constrainedRect.bottom = constrainedRect.bottom.coerceIn(
+                                                constrainedRect.top + minSize,
+                                                maxBottom
+                                            )
+
+                                            // 更新调整后的矩形状态
+                                            singleWellAdjustedRect = constrainedRect
+                                        }
+                                    )
+                                }
+                        ) {
+                            // 计算缩放比例
+                            val scale = minOf(
+                                size.width / croppedBitmap.width.toFloat(),
+                                size.height / croppedBitmap.height.toFloat()
+                            )
+
+                            // 计算图像在Canvas中的实际位置和尺寸
+                            val scaledWidth = croppedBitmap.width * scale
+                            val scaledHeight = croppedBitmap.height * scale
+                            val leftPadding = (size.width - scaledWidth) / 2
+                            val topPadding = (size.height - scaledHeight) / 2
+
+                            // 绘制调整后的矩形框
+                            val rectLeft = leftPadding + (adjustedRect.left - cropLeft) * scale
+                            val rectTop = topPadding + (adjustedRect.top - cropTop) * scale
+                            val rectRight = leftPadding + (adjustedRect.right - cropLeft) * scale
+                            val rectBottom = topPadding + (adjustedRect.bottom - cropTop) * scale
+
+                            // 绘制矩形框
+                            drawRect(
+                                color = Color.Green,
+                                topLeft = Offset(rectLeft, rectTop),
+                                size = androidx.compose.ui.geometry.Size(
+                                    width = rectRight - rectLeft,
+                                    height = rectBottom - rectTop
+                                ),
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+
+                            // 绘制四个角落的拖动点
+                            val cornerRadius = 10.dp.toPx()
+                            val corners = listOf(
+                                Offset(rectLeft, rectTop),
+                                Offset(rectRight, rectTop),
+                                Offset(rectLeft, rectBottom),
+                                Offset(rectRight, rectBottom)
+                            )
+
+                            corners.forEachIndexed { index, corner ->
+                                // 根据当前拖动模式设置颜色
+                                val cornerColor = if (dragMode == index + 1) {
+                                    Color.Yellow // 被拖动的角落点高亮显示
+                                } else {
+                                    Color.Green
+                                }
+
+                                // 绘制角落点
+                                drawCircle(
+                                    color = cornerColor,
+                                    radius = cornerRadius,
+                                    center = corner,
+                                    alpha = 0.8f
+                                )
+                            }
+
+                            // 如果是整体移动模式，绘制一个半透明的填充矩形表示选中状态
+                            if (dragMode == 5) {
+                                drawRect(
+                                    color = Color.Green,
+                                    topLeft = Offset(rectLeft, rectTop),
+                                    size = androidx.compose.ui.geometry.Size(
+                                        width = rectRight - rectLeft,
+                                        height = rectBottom - rectTop
+                                    ),
+                                    alpha = 0.2f // 半透明
+                                )
+                            }
+                        }
+                    }
+
+                    // 按钮区域
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        // 取消按钮
+                        OutlinedButton(
+                            onClick = {
+                                // 只关闭对话框和清理临时资源，保留调整状态
+                                showSingleWellZoomDialog = false
+                                singleWellCroppedBitmap = null
+                                // 不重置singleWellAdjustedRect，以保持用户的调整状态
+                            }
+                        ) {
+                            Text(singleWellZoomCancelMsg)
+                        }
+
+                        // 确认按钮
+                        Button(
+                            onClick = {
+                                // 应用调整后的矩形
+                                selectedWellId?.let { wellId ->
+                                    singleWellAdjustedRect?.let { adjustedRect ->
+                                        // 应用更改到视图模型
+                                        viewModel.adjustSingleWellSize(wellId, adjustedRect)
+                                        toastManager.showToast(wellAdjustedSuccessMsg, ToastType.SUCCESS)
+                                    }
+                                }
+
+                                // 关闭对话框和清理临时资源，但保留调整状态
+                                showSingleWellZoomDialog = false
+                                singleWellCroppedBitmap = null
+                                // 不重置singleWellAdjustedRect，以保持用户的调整状态
+                            }
+                        ) {
+                            Text(singleWellZoomConfirmMsg)
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -211,14 +612,28 @@ fun WellDetectionScreen(
                 actions = {
                     // 切换检测模式按钮
                     IconButton(
-                        onClick = { toggleDetectionMode() }, // 调用新的切换函数
+                        onClick = { toggleDetectionMode() },
                         enabled = detectionState !is DetectionViewModel.DetectionState.Loading
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Science, // 图标可以根据模式变化
-                            contentDescription = if (isEnhancedDetection) switchDetectionModeDescription else stringResource(R.string.enhanced_detection), // 切换描述
-                            tint = if (isEnhancedDetection) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant // 可以给增强模式加一个突出颜色
+                            imageVector = Icons.Default.Science,
+                            contentDescription = if (isEnhancedDetection) switchDetectionModeDescription else stringResource(R.string.enhanced_detection),
+                            tint = if (isEnhancedDetection) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+
+                    // 添加单个孔位缩放按钮，仅在标准检测模式下可用
+                    if (!isEnhancedDetection && detectionState is DetectionViewModel.DetectionState.Success) {
+                        IconButton(
+                            onClick = { handleSingleWellZoom() },
+                            enabled = detectionState !is DetectionViewModel.DetectionState.Loading
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ZoomIn,
+                                contentDescription = zoomWellMsg,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     // 添加信息按钮，显示使用帮助
@@ -298,20 +713,6 @@ fun WellDetectionScreen(
                                 text = stringResource(R.string.wells_detected, detections.size),
                                 style = MaterialTheme.typography.titleMedium
                             )
-
-                            // 显示项目行列信息（如果有）
-                            if (currentProject != null) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = stringResource(
-                                        R.string.well_plate_size_info,
-                                        currentProject?.rows ?: 8,
-                                        currentProject?.columns ?: 12,
-                                        maxWellCount
-                                    ),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
 
                             // 显示是否使用增强型检测
                             if (isEnhancedDetection) {
@@ -463,10 +864,8 @@ fun WellDetectionScreen(
                                                             )
 
                                                             // 使用带边界检查的移动方法
-                                                            // 确保 selectedWellIndex 有效，并且它对应的孔位在当前 detections 列表中
-                                                            selectedWellIndex?.let { index -> // 使用?.let安全地处理可空值
+                                                            selectedWellIndex?.let { index ->
                                                                 if (index >= 0 && index < detections.size) {
-                                                                    // 直接通过索引移动选中的孔位
                                                                     viewModel.moveSelectedWell(dx, dy, imageBounds)
                                                                 }
                                                             }

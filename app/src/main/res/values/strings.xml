@@ -157,6 +157,14 @@
     <string name="standard_detection_starting">Starting standard detection…</string>
     <string name="switch_to_standard_detection">Switch to Standard Detection</string>
 
+    <!-- Well Selection Zoom Feature -->
+    <string name="zoom_well">Zoom Well</string>
+    <string name="adjust_well_size">Adjust Well Size</string>
+    <string name="well_size_adjustment">Well Size Adjustment</string>
+    <string name="confirm_well_size">Confirm</string>
+    <string name="cancel_well_size">Cancel</string>
+    <string name="drag_to_adjust">Drag corners to adjust the well size</string>
+    <string name="enhanced_detection_using_standard">Enhanced detection using standard mode well positions</string>
 
     <!-- ResultScreen Additional -->
     <string name="detection_mode_res">Detection Mode: %1$s</string>
@@ -410,5 +418,12 @@
 
     <string name="no_run_found_for_project">No run data found for this project</string>
     <string name="error_loading_project_data">Error loading project data</string>
+
+    <string name="single_well_zoom_title">Well Size Adjustment</string>
+    <string name="single_well_zoom_message">Drag corners or the entire rectangle to adjust well size and position</string>
+    <string name="single_well_zoom_confirm">Confirm Adjustment</string>
+    <string name="single_well_zoom_cancel">Cancel</string>
+    <string name="please_select_well_first">Please choose one well</string>
+    <string name="well_adjusted_success">Well size adjusted successfully</string>
 
 </resources>

@@ -37,6 +37,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import javax.inject.Inject
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import com.muc.fluocolorquant.data.model.Project
@@ -352,7 +353,6 @@ class DetectionViewModel @Inject constructor(
                         // 根据项目的行列限制检测数量
                         val currentMaxCount = _maxWellCount.value
                         if (scaledDetections.size > currentMaxCount) {
-                            Log.d("DetectionViewModel", "检测数量超过最大孔位数 $currentMaxCount，按置信度取前 $currentMaxCount 个")
                             scaledDetections.sortByDescending { it.confidence }
                             scaledDetections.take(currentMaxCount)
                         } else {
@@ -732,7 +732,6 @@ class DetectionViewModel @Inject constructor(
                 // 根据项目的行列数更新最大孔位数
                 project?.let {
                     _maxWellCount.value = it.rows * it.columns
-                    Log.d("DetectionViewModel", "项目加载成功，行数: ${it.rows}, 列数: ${it.columns}, 最大孔位数: ${_maxWellCount.value}")
                 }
             } catch (e: Exception) {
                 Log.e("DetectionViewModel", "加载项目失败: ${e.message}", e)
@@ -803,7 +802,17 @@ class DetectionViewModel @Inject constructor(
                     val iouThreshold = 0.45f
                     val nmsResults = applyNMS(rawDetections, iouThreshold)
                     
-                    scaleBoxes(nmsResults, letterboxInfo, bitmap.width, bitmap.height)
+                    // 获取初步检测结果
+                    val scaledDetections = scaleBoxes(nmsResults, letterboxInfo, bitmap.width, bitmap.height)
+                    
+                    // 根据项目的行列限制检测数量
+                    val currentMaxCount = _maxWellCount.value
+                    if (scaledDetections.size > currentMaxCount) {
+                        // 按置信度排序并只保留前 currentMaxCount 个
+                        scaledDetections.sortedByDescending { it.confidence }.take(currentMaxCount)
+                    } else {
+                        scaledDetections
+                    }
                 }
                 
                 // 进行霍夫圆变换和中心取色增强
@@ -835,11 +844,25 @@ class DetectionViewModel @Inject constructor(
                     )
                 }
                 
+                // 再次检查最终结果是否超过最大孔位数量限制
+                val currentMaxCount = _maxWellCount.value
+                val limitedDetections = if (finalDetections.size > currentMaxCount) {
+                    // 按置信度排序并只保留前 currentMaxCount 个
+                    finalDetections.sortedByDescending { it.confidence }.take(currentMaxCount)
+                } else {
+                    finalDetections
+                }
+                
                 // 更新状态为成功
-                _detectionState.value = DetectionState.Success(finalDetections)
+                _detectionState.value = DetectionState.Success(limitedDetections)
                 
                 // 保存增强型检测结果，可用于将来的浓度分析
-                _enhancedDetections.value = enhancedDetections
+                // 同样限制增强型检测结果的数量
+                _enhancedDetections.value = if (enhancedDetections.size > currentMaxCount) {
+                    enhancedDetections.sortedByDescending { it.confidence }.take(currentMaxCount)
+                } else {
+                    enhancedDetections
+                }
                 
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -875,9 +898,32 @@ class DetectionViewModel @Inject constructor(
         val grayMat = Mat()
         clahe.apply(grayRaw, grayMat)
         grayRaw.release()
+
+        // 检查每个检测结果是否与已处理的区域重叠，用于解决同一区域检测多个圆的问题
+        val processedAreas = mutableListOf<RectF>()
         
         for (detection in detections) {
             try {
+                // 检查当前检测区域是否与已处理区域重叠过多
+                val overlapThreshold = 0.7f // 70%的重叠阈值
+                var shouldSkip = false
+                for (processedArea in processedAreas) {
+                    val intersection = RectF()
+                    if (intersection.setIntersect(detection.rect, processedArea)) {
+                        val intersectionArea = intersection.width() * intersection.height()
+                        val detectionArea = detection.rect.width() * detection.rect.height()
+                        if (intersectionArea / detectionArea > overlapThreshold) {
+                            // 如果重叠面积超过阈值，跳过该区域检测
+                            shouldSkip = true
+                            break
+                        }
+                    }
+                }
+                
+                if (shouldSkip) {
+                    continue
+                }
+                
                 // 创建增强型检测对象，初始包含原始检测信息
                 val enhancedDetection = EnhancedWellDetection(
                     id = detection.id,
@@ -886,7 +932,7 @@ class DetectionViewModel @Inject constructor(
                 )
                 
                 // 1. 裁剪原始矩形区域，扩大约10%以确保包含完整的圆
-                val expansionFactor = 0.05f
+                val expansionFactor = 0.03f
                 val centerX = (detection.rect.left + detection.rect.right) / 2
                 val centerY = (detection.rect.top + detection.rect.bottom) / 2
                 val width = detection.rect.width() * (1 + expansionFactor)
@@ -906,23 +952,17 @@ class DetectionViewModel @Inject constructor(
                 // 3. 应用高斯模糊减少噪声
                 Imgproc.GaussianBlur(roi, roi, Size(5.0, 5.0), 2.0, 2.0)
                 
-                // 可选：边缘增强
-                // val sobel = Mat()
-                // Imgproc.Sobel(roi, sobel, CvType.CV_8U, 1, 1)
-                // sobel.copyTo(roi)
-                // sobel.release()
-                
-                // 4. 使用霍夫圆变换检测圆 (参数优化以提高暗圆检测率)
+                // 4. 使用霍夫圆变换检测圆 (修改参数以解决多重检测问题)
                 val circles = Mat()
                 Imgproc.HoughCircles(
                     roi,
                     circles,
                     Imgproc.HOUGH_GRADIENT,
                     1.0,                // 分辨率比例
-                    roi.rows() / 2.0,   // 最小圆心距离
+                    roi.rows() / 1.2,   // 进一步增大最小圆心距离，减少重复检测（从roi.rows()/1.5改为roi.rows()/1.2）
                     100.0,              // Canny边缘检测器的高阈值
-                    20.0,               // 累加器阈值（从30.0降低到20.0）
-                    min(roi.width(), roi.height()) / 6, // 最小半径（从1/4降低到1/6）
+                    30.0,               // 提高累加器阈值（从25.0提高到30.0），减少误检
+                    min(roi.width(), roi.height()) / 6, // 最小半径
                     min(roi.width(), roi.height()) / 2  // 最大半径
                 )
                 
@@ -941,6 +981,14 @@ class DetectionViewModel @Inject constructor(
                     enhancedDetection.circleX = circleX
                     enhancedDetection.circleY = circleY
                     enhancedDetection.radius = radius
+                    
+                    // 将当前检测区域添加到已处理区域列表
+                    processedAreas.add(RectF(
+                        circleX - radius,
+                        circleY - radius,
+                        circleX + radius,
+                        circleY + radius
+                    ))
                     
                     // 6. 计算圆形中心区域的平均颜色
                     // 取半径的1/3作为中心区域
@@ -1067,6 +1115,276 @@ class DetectionViewModel @Inject constructor(
         grayMat.release()
         
         return enhancedResults
+    }
+
+    /**
+     * 根据调整后的边界框更新所有孔位
+     * 这个方法会按照调整后边界框的比例重新计算所有孔位的位置和大小
+     */
+    fun updateAllWellsWithAdjustedBox(adjustedBox: RectF) {
+        val currentState = _detectionState.value
+        if (currentState is DetectionState.Success) {
+            val detections = currentState.detections
+            if (detections.isEmpty()) return
+            
+            // 计算当前所有孔位的边界框
+            var currentMinX = Float.MAX_VALUE
+            var currentMinY = Float.MAX_VALUE
+            var currentMaxX = 0f
+            var currentMaxY = 0f
+            
+            detections.forEach { well ->
+                currentMinX = minOf(currentMinX, well.rect.left)
+                currentMinY = minOf(currentMinY, well.rect.top)
+                currentMaxX = maxOf(currentMaxX, well.rect.right)
+                currentMaxY = maxOf(currentMaxY, well.rect.bottom)
+            }
+            
+            val currentWidth = currentMaxX - currentMinX
+            val currentHeight = currentMaxY - currentMinY
+            
+            // 计算缩放比例
+            val scaleX = adjustedBox.width() / currentWidth
+            val scaleY = adjustedBox.height() / currentHeight
+            
+            // 计算偏移量
+            val offsetX = adjustedBox.left - currentMinX
+            val offsetY = adjustedBox.top - currentMinY
+            
+            // 更新所有孔位
+            val updatedDetections = detections.map { well ->
+                // 计算新的矩形位置
+                val newLeft = well.rect.left * scaleX + offsetX
+                val newTop = well.rect.top * scaleY + offsetY
+                val newRight = well.rect.right * scaleX + offsetX
+                val newBottom = well.rect.bottom * scaleY + offsetY
+                
+                val updatedRect = RectF(newLeft, newTop, newRight, newBottom)
+                well.copy(rect = updatedRect)
+            }
+            
+            // 更新检测状态
+            _detectionState.value = DetectionState.Success(updatedDetections)
+            
+            // 记录调整信息
+            Log.d("DetectionViewModel", "已根据调整后的边界框更新所有孔位 - " +
+                    "原始边界: ($currentMinX,$currentMinY,$currentMaxX,$currentMaxY), " +
+                    "调整后: (${adjustedBox.left},${adjustedBox.top},${adjustedBox.right},${adjustedBox.bottom}), " +
+                    "缩放比例: ($scaleX,$scaleY), 偏移量: ($offsetX,$offsetY)")
+        }
+    }
+    
+    /**
+     * 使用调整后的边界框执行增强型孔阵检测
+     * 这个方法会基于标准模式下调整好的边界框位置进行增强型检测
+     */
+    fun enhancedWellDetectionWithAdjustedBox(imageUri: String?, adjustedBox: RectF) {
+        if (imageUri == null) {
+            _detectionState.value = DetectionState.Error("图像URI为空")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                // 设置为加载状态
+                _detectionState.value = DetectionState.Loading
+
+                // 加载原始图像
+                if (_originalBitmap.value == null) {
+                    loadImage(imageUri)
+                    // 确保图像已加载
+                    while (_originalBitmap.value == null) {
+                        delay(100)
+                    }
+                }
+
+                // 获取原始图像
+                val bitmap = _originalBitmap.value ?: throw Exception("图像加载失败")
+                
+                // 使用调整后的边界框创建初步检测结果
+                val initialDetections = withContext(Dispatchers.IO) {
+                    // 根据调整后的边界框创建孔位
+                    // 计算每个孔位的大小
+                    val currentProject = _currentProject.value
+                    val rows = currentProject?.rows ?: 8
+                    val columns = currentProject?.columns ?: 12
+                    
+                    val wellWidth = adjustedBox.width() / columns
+                    val wellHeight = adjustedBox.height() / rows
+                    
+                    val detections = mutableListOf<WellDetection>()
+                    var wellId = 0
+                    
+                    for (row in 0 until rows) {
+                        for (col in 0 until columns) {
+                            val left = adjustedBox.left + col * wellWidth
+                            val top = adjustedBox.top + row * wellHeight
+                            val right = left + wellWidth
+                            val bottom = top + wellHeight
+                            
+                            val rect = RectF(left, top, right, bottom)
+                            detections.add(WellDetection(wellId++, rect, 1.0f))
+                        }
+                    }
+                    
+                    detections
+                }
+                
+                // 进行霍夫圆变换和中心取色增强
+                val enhancedDetections = withContext(Dispatchers.IO) {
+                    enhanceDetectionsWithHoughCircles(initialDetections, bitmap)
+                }
+                
+                // 将增强型检测结果转换为标准WellDetection用于显示和后续处理
+                val finalDetections = enhancedDetections.mapIndexed { index, enhancedWell ->
+                    // 如果检测到了圆，使用圆的边界矩形，否则使用原始矩形
+                    val finalRect = if (enhancedWell.circleX != null && enhancedWell.circleY != null && enhancedWell.radius != null) {
+                        val circleX = enhancedWell.circleX!!
+                        val circleY = enhancedWell.circleY!!
+                        val radius = enhancedWell.radius!!
+                        RectF(
+                            circleX - radius,
+                            circleY - radius,
+                            circleX + radius,
+                            circleY + radius
+                        )
+                    } else {
+                        enhancedWell.rect
+                    }
+                    
+                    WellDetection(
+                        id = enhancedWell.id,
+                        rect = finalRect,
+                        confidence = enhancedWell.confidence
+                    )
+                }
+                
+                // 更新状态为成功
+                _detectionState.value = DetectionState.Success(finalDetections)
+                
+                // 保存增强型检测结果，可用于将来的浓度分析
+                _enhancedDetections.value = enhancedDetections
+                
+                Log.d("DetectionViewModel", "使用调整后的边界框完成增强型检测，检测到 ${finalDetections.size} 个孔位")
+                
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _detectionState.value = DetectionState.Error("增强型检测失败: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 调整单个孔位的大小
+     * @param wellId 孔位ID
+     * @param newRect 新的矩形区域
+     */
+    fun adjustSingleWellSize(wellId: Int, newRect: RectF) {
+        val currentState = _detectionState.value
+        if (currentState is DetectionState.Success) {
+            val detections = currentState.detections.toMutableList()
+            val index = detections.indexOfFirst { it.id == wellId }
+            
+            if (index >= 0) {
+                // 更新孔位矩形
+                detections[index] = detections[index].copy(rect = newRect)
+                _detectionState.value = DetectionState.Success(detections)
+                
+                // 记录调整信息
+                Log.d("DetectionViewModel", "已调整孔位 #$wellId 的大小 - " +
+                        "新位置: (${newRect.left},${newRect.top},${newRect.right},${newRect.bottom})")
+            }
+        }
+    }
+    
+    /**
+     * 获取裁剪后的孔位图像，用于预览窗口
+     * @param wellId 孔位ID
+     * @param expansionFactor 扩展因子，默认为1.5（扩大50%）
+     * @return 裁剪后的Bitmap，如果失败则返回null
+     */
+    fun getCroppedWellBitmap(wellId: Int, expansionFactor: Float = 1.5f): Bitmap? {
+        val bitmap = _originalBitmap.value ?: return null
+        val currentState = _detectionState.value
+        
+        if (currentState is DetectionState.Success) {
+            val detections = currentState.detections
+            val wellIndex = detections.indexOfFirst { it.id == wellId }
+            
+            if (wellIndex >= 0) {
+                val well = detections[wellIndex]
+                
+                // 计算裁剪区域（扩大以便于预览）
+                val centerX = (well.rect.left + well.rect.right) / 2
+                val centerY = (well.rect.top + well.rect.bottom) / 2
+                val width = well.rect.width() * expansionFactor
+                val height = well.rect.height() * expansionFactor
+                
+                // 确保裁剪区域不超出图像边界
+                val cropLeft = (centerX - width / 2).coerceAtLeast(0f).toInt()
+                val cropTop = (centerY - height / 2).coerceAtLeast(0f).toInt()
+                val cropRight = (centerX + width / 2).coerceAtMost(bitmap.width.toFloat()).toInt()
+                val cropBottom = (centerY + height / 2).coerceAtMost(bitmap.height.toFloat()).toInt()
+                
+                // 检查裁剪区域是否有效
+                if (cropRight <= cropLeft || cropBottom <= cropTop) {
+                    Log.e("DetectionViewModel", "无效的裁剪区域: ($cropLeft,$cropTop,$cropRight,$cropBottom)")
+                    return null
+                }
+                
+                // 创建裁剪后的Bitmap
+                try {
+                    return Bitmap.createBitmap(
+                        bitmap,
+                        cropLeft,
+                        cropTop,
+                        cropRight - cropLeft,
+                        cropBottom - cropTop
+                    )
+                } catch (e: Exception) {
+                    Log.e("DetectionViewModel", "裁剪Bitmap失败: ${e.message}", e)
+                    return null
+                }
+            }
+        }
+        
+        return null
+    }
+
+    /**
+     * 获取选中孔位的ID
+     * @return 选中孔位的ID，如果没有选中则返回null
+     */
+    fun getSelectedWellId(): Int? {
+        val index = _selectedWellIndex.value ?: return null
+        val currentState = _detectionState.value
+        
+        if (currentState is DetectionState.Success) {
+            val detections = currentState.detections
+            if (index >= 0 && index < detections.size) {
+                return detections[index].id
+            }
+        }
+        
+        return null
+    }
+    
+    /**
+     * 获取选中孔位的矩形
+     * @return 选中孔位的矩形，如果没有选中则返回null
+     */
+    fun getSelectedWellRect(): RectF? {
+        val index = _selectedWellIndex.value ?: return null
+        val currentState = _detectionState.value
+        
+        if (currentState is DetectionState.Success) {
+            val detections = currentState.detections
+            if (index >= 0 && index < detections.size) {
+                return detections[index].rect
+            }
+        }
+        
+        return null
     }
 } 
  
