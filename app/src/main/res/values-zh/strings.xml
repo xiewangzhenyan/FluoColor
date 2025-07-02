@@ -425,4 +425,195 @@
     <string name="single_well_zoom_cancel">取消</string>
     <string name="please_select_well_first">请先选择一个孔位</string>
     <string name="well_adjusted_success">孔位大小调整成功</string>
+
+    <!-- Settings Additional -->
+    <string name="settings_detection_title">检测设置</string>
+    <string name="settings_library_title">库管理</string>
+
+    <string name="settings_pixel_extraction_title">像素提取方式</string>
+    <string name="settings_pixel_extraction_desc">从孔位中提取代表性数值的算法。</string>
+    <string name="pixel_extraction_option_roi_avg">中心区域平均值</string>
+    <string name="pixel_extraction_option_center_pixel">中心点像素</string>
+    <string name="pixel_extraction_option_gaussian_avg">高斯加权平均值</string>
+
+    <string name="settings_preprocessing_title">图像预处理</string>
+    <string name="settings_preprocessing_desc">开启图像降噪 (高斯模糊)</string>
+
+    <string name="library_analyte_title">分析物管理</string>
+    <string name="library_analyte_desc">增删改分析物</string>
+    <string name="library_reagent_title">试剂库管理</string>
+    <string name="library_reagent_desc">管理每种分析物对应的抗原抗体</string>
+    <string name="library_curve_model_title">曲线模型库</string>
+    <string name="library_curve_model_desc">管理预先训练好的标准曲线模型</string>
+    <string name="library_template_title">实验模板库</string>
+    <string name="library_template_desc">创建和管理完整的实验方案</string>
+    
+    <!-- Missing Strings -->
+    <string name="new_concentration_unit">新浓度单位</string>
+    <string name="unit_added_success">单位添加成功</string>
+    <string name="available_concentration_units">可用浓度单位</string>
+    <string name="default_plate_size">默认孔板尺寸</string>
+    
+    <!-- Settings Navigation Descriptions -->
+    <string name="app_settings_desc">管理语言</string>
+    <string name="detection_settings_desc">配置默认检测参数和图像处理</string>
+    <string name="library_management_desc">管理分析物、试剂、曲线模型和实验模板</string>
+
+    <string name="language_settings_desc">选择应用界面显示的语言</string>
+    <string name="default_unit">默认单位</string>
+
+    <!-- Analyte Management -->
+    <string name="analyte_management_title">分析物管理</string>
+    <string name="analyte_management_desc">管理检测用分析物</string>
+    <string name="add_analyte">添加分析物</string>
+    <string name="enter_analyte_name">输入分析物名称</string>
+    <string name="analyte_name">分析物名称</string>
+    <string name="analyte_added_success">分析物添加成功</string>
+    <string name="analyte_added_error">添加分析物失败</string>
+    <string name="analyte_deleted_success">分析物删除成功</string>
+    <string name="analyte_name_empty">分析物名称不能为空</string>
+    <string name="analyte_already_exists">分析物已存在</string>
+    <string name="confirm_delete_analyte">确定要删除该分析物吗？</string>
+    <string name="delete_analyte_title">删除分析物</string>
+    <string name="no_analytes_found">未找到分析物</string>
+    <string name="add_your_first_analyte">添加您的第一个分析物开始使用</string>
+
+
+    <!-- 实验模板管理 -->
+    <string name="add_template">添加模板</string>
+    <string name="edit_template">编辑模板</string>
+    <string name="create_template">创建模板</string>
+    <string name="template_name">模板名称</string>
+    <string name="delete_template_title">删除模板</string>
+    <string name="delete_template_confirmation">确定要删除模板"%1$s"吗？</string>
+    <string name="template_save_success">模板保存成功</string>
+    <string name="loading_template">正在加载模板数据...</string>
+    <string name="no_templates">暂无模板</string>
+    <string name="add_template_hint">点击右下角的加号按钮创建新模板</string>
+    <string name="edit">编辑</string>
+    <string name="basic_info">基本信息</string>
+    <string name="reagents">试剂</string>
+    <string name="curve_model">曲线模型</string>
+    <string name="range">范围</string>
+    <string name="measurement_range">测量范围</string>
+    <string name="min_value">最小值</string>
+    <string name="max_value">最大值</string>
+    <string name="plate_layout">板布局</string>
+    <string name="default_layout">默认布局</string>
+    <string name="select">选择</string>
+    <string name="clear">清除</string>
+    <string name="unknown">未知</string>
+    <string name="none">无</string>
+    <string name="min_value_greater_than_max">最小值不能大于最大值</string>
+    <string name="max_value_less_than_min">最大值不能小于最小值</string>
+    <string name="enable_default_layout">启用默认布局</string>
+
+
+    <!-- Reagent Management -->
+    <string name="reagent_library_title">试剂库管理</string>
+    <string name="reagent_library_desc">管理抗原和抗体</string>
+    <string name="add_reagent">添加试剂</string>
+    <string name="edit_reagent">编辑试剂</string>
+    <string name="enter_reagent_name">输入试剂名称</string>
+    <string name="reagent_name">试剂名称</string>
+    <string name="reagent_type">试剂类型</string>
+    <string name="antigen">抗原</string>
+    <string name="antibody">抗体</string>
+    <string name="analyte">分析物</string>
+    <string name="select_analyte">选择分析物</string>
+    <string name="manufacturer">制造商</string>
+    <string name="enter_manufacturer">输入制造商（可选）</string>
+    <string name="molecular_weight">分子量 (kDa)</string>
+    <string name="enter_molecular_weight">输入分子量（可选）</string>
+    <string name="reagent_added_success">试剂添加成功</string>
+    <string name="reagent_added_error">添加试剂失败</string>
+    <string name="reagent_deleted_success">试剂删除成功</string>
+    <string name="reagent_name_empty">试剂名称不能为空</string>
+    <string name="reagent_type_not_selected">请选择试剂类型</string>
+    <string name="analyte_not_selected">请选择分析物</string>
+    <string name="confirm_delete_reagent">确定要删除该试剂吗？</string>
+    <string name="delete_reagent_title">删除试剂</string>
+    <string name="no_reagents_found">未找到试剂</string>
+    <string name="add_your_first_reagent">添加您的第一个试剂开始使用</string>
+    <string name="no_analytes_add_first">没有可用的分析物，请先添加分析物。</string>
+
+
+    <!-- 编辑功能 -->
+    <string name="edit_analyte">编辑分析物</string>
+    <string name="update">更新</string>
+    <string name="analyte_updated_success">分析物更新成功</string>
+    <string name="reagent_updated_success">试剂更新成功</string>
+
+    <!-- 确认对话框 -->
+    <string name="confirm_delete_analyte_with_name">确定要删除分析物 "%1$s" 吗？此操作不可撤销。</string>
+    <string name="confirm_delete_reagent_with_name">确定要删除试剂 "%1$s" 吗？此操作不可撤销。</string>
+
+    <!-- New additions -->
+    <string name="click_add_button">点击添加按钮开始</string>
+    <string name="analyte_management">分析物管理</string>
+    <string name="reagent_library">试剂库</string>
+
+    <!-- 曲线模型库相关 -->
+    <string name="curve_model_title">曲线模型库</string>
+    <string name="parameter_placeholder">参数 %1$s</string>
+    <string name="curve_model_desc">管理和创建曲线拟合模型</string>
+    <string name="add_new_model">添加</string>
+    <string name="import_curve">导入曲线</string>
+    <string name="import_data">导入数据</string>
+    <string name="manual_input">手动输入</string>
+    <string name="from_file">从文件导入</string>
+    <string name="function_type">函数类型</string>
+    <string name="pixel_type">像素类型</string>
+    <string name="preview_curve">预览曲线</string>
+    <string name="save_model">保存模型</string>
+    <string name="start_fitting">开始拟合</string>
+    <string name="model_name">模型名称</string>
+    <string name="metrics_name">指标名称</string>
+    <string name="function_expression">函数表达式</string>
+    <string name="metrics_value">数值</string>
+    <string name="concentration">浓度</string>
+    <string name="parameter_a">参数 a</string>
+    <string name="parameter_b">参数 b</string>
+    <string name="parameter_c">参数 c</string>
+    <string name="parameter_d">参数 d</string>
+    <string name="parameter_e">参数 e</string>
+    <string name="parameter_g">参数 g</string>
+    <string name="fitting_quality">拟合质量</string>
+    <string name="curve_parameters">曲线参数</string>
+    <string name="column_type">列类型</string>
+    <string name="add_row">添加行</string>
+    <string name="add_column">添加列</string>
+    <string name="row_count">行数</string>
+    <string name="column_count">列数</string>
+    <string name="manual_curve_preview_title">%1$s 曲线预览</string>
+    <string name="manual_curve_error_invalid_params">参数超出有效范围，无法预览曲线。</string>
+    <string name="manual_curve_error_calculation">计算曲线时出错: %1$s</string>
+    <string name="manual_curve_prompt_enter_params">请先选择函数、像素类型并输入所有必需的参数</string>
+    <string name="edit_model">编辑</string>
+    <string name="edit_model_title">编辑模型</string>
+    <string name="save_changes">保存</string>
+    <string name="model_name_label">模型名称</string>
+    <string name="select_analyte_label">选择分析物</string>
+    <string name="select_pixel_type_label">选择像素类型</string>
+    <string name="confirm_delete_model">确定要删除此曲线模型吗？此操作无法撤销。</string>
+
+    <string name="default_layout_tip">先选择角色，然后点击下面的孔位进行分配。点击已分配角色的孔位会移除该角色。</string>
+
+    <!-- Template Card Expanded View -->
+    <string name="curve_function">曲线函数</string>
+    <string name="curve_preview">曲线预览</string>
+    <string name="default_plate_layout">默认孔板布局</string>
+    <string name="legend_sample">样本</string>
+    <string name="legend_standard">标准品</string>
+    <string name="legend_blank">空白</string>
+    <string name="legend_control">质控</string>
+    <string name="legend_empty">空</string>
+    <string name="expand_details">展开详情</string>
+    <string name="collapse_details">收起详情</string>
+    <string name="template_expand_to_view">点击展开查看详情</string>
+    <string name="template_collapse">收起详情</string>
+    <string name="no_default_layout">未设置默认孔板布局</string>
+    <string name="no_curve_model">无可用曲线模型</string>
+
+
 </resources> 

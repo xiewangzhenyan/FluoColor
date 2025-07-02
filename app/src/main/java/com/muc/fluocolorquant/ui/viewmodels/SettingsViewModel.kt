@@ -189,4 +189,44 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.setDefaultColumns(columns)
         }
     }
+    
+    // 像素提取方式
+    val pixelExtractionMethod: StateFlow<String> = settingsRepository.pixelExtractionMethodFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = "roi_avg" // 默认区域平均值
+        )
+    
+    // 像素提取方式选项
+    val pixelExtractionOptions = listOf(
+        PixelExtractionOption("roi_avg", "pixel_extraction_option_roi_avg"),
+        PixelExtractionOption("center_pixel", "pixel_extraction_option_center_pixel"),
+        PixelExtractionOption("gaussian_avg", "pixel_extraction_option_gaussian_avg")
+    )
+    
+    // 像素提取方式选项数据类
+    data class PixelExtractionOption(val code: String, val resourceId: String)
+    
+    // 设置像素提取方式
+    fun setPixelExtractionMethod(method: String) {
+        viewModelScope.launch {
+            settingsRepository.setPixelExtractionMethod(method)
+        }
+    }
+    
+    // 图像预处理设置
+    val imagePreprocessingEnabled: StateFlow<Boolean> = settingsRepository.imagePreprocessingEnabledFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = true // 默认开启
+        )
+    
+    // 设置图像预处理开关
+    fun setImagePreprocessingEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setImagePreprocessingEnabled(enabled)
+        }
+    }
 } 

@@ -426,4 +426,195 @@
     <string name="please_select_well_first">Please choose one well</string>
     <string name="well_adjusted_success">Well size adjusted successfully</string>
 
+    <!-- Settings Additional -->
+    <string name="settings_detection_title">Detection Settings</string>
+    <string name="settings_library_title">Library Management</string>
+
+    <string name="settings_pixel_extraction_title">Pixel Extraction Method</string>
+    <string name="settings_pixel_extraction_desc">Algorithm for extracting a representative value from a well.</string>
+    <string name="pixel_extraction_option_roi_avg">Region of Interest Average</string>
+    <string name="pixel_extraction_option_center_pixel">Center Pixel</string>
+    <string name="pixel_extraction_option_gaussian_avg">Gaussian Weighted Average</string>
+
+    <string name="settings_preprocessing_title">Image Preprocessing</string>
+    <string name="settings_preprocessing_desc">Enable image noise reduction (Gaussian Blur)</string>
+
+    <string name="library_analyte_title">Analyte Management</string>
+    <string name="library_analyte_desc">Add, delete, or modify analytes (e.g., CEA, NSE).</string>
+    <string name="library_reagent_title">Reagent Library</string>
+    <string name="library_reagent_desc">Manage antigens and antibodies for each analyte.</string>
+    <string name="library_curve_model_title">Curve Model Library</string>
+    <string name="library_curve_model_desc">Manage and create curve fitting models</string>
+    <string name="library_template_title">Experiment Templates</string>
+    <string name="library_template_desc">Create and manage complete experiment protocols.</string>
+
+    <!-- Missing Strings -->
+    <string name="new_concentration_unit">New concentration unit</string>
+    <string name="unit_added_success">Unit added successfully</string>
+    <string name="available_concentration_units">Available concentration units</string>
+    <string name="default_plate_size">Default well plate size</string>
+    
+    <!-- Settings Navigation Descriptions -->
+    <string name="app_settings_desc">Manage language</string>
+    <string name="detection_settings_desc">Configure default detection parameters and image processing</string>
+    <string name="library_management_desc">Manage analytes, reagents, curve models and experiment templates</string>
+
+    <string name="language_settings_desc">Select the language displayed on the application interface</string>
+    <string name="default_unit">Default Unit</string>
+
+    <!-- Analyte Management -->
+    <string name="analyte_management_title">Analyte Management</string>
+    <string name="analyte_management_desc">Manage analytes for detection</string>
+    <string name="add_analyte">Add Analyte</string>
+    <string name="enter_analyte_name">Enter analyte name</string>
+    <string name="analyte_name">Analyte Name</string>
+    <string name="analyte_added_success">Analyte added successfully</string>
+    <string name="analyte_added_error">Failed to add analyte</string>
+    <string name="analyte_deleted_success">Analyte deleted successfully</string>
+    <string name="analyte_name_empty">Analyte name cannot be empty</string>
+    <string name="analyte_already_exists">Analyte already exists</string>
+    <string name="confirm_delete_analyte">Are you sure you want to delete this analyte?</string>
+    <string name="delete_analyte_title">Delete Analyte</string>
+    <string name="no_analytes_found">No analytes found</string>
+    <string name="add_your_first_analyte">Add your first analyte to start</string>
+
+    
+    <!-- Experiment Template Management -->
+    <string name="add_template">Add Template</string>
+    <string name="edit_template">Edit Template</string>
+    <string name="create_template">Create Template</string>
+    <string name="template_name">Template Name</string>
+    <string name="delete_template_title">Delete Template</string>
+    <string name="delete_template_confirmation">Are you sure you want to delete template %1$s?</string>
+    <string name="template_save_success">Template saved successfully</string>
+    <string name="loading_template">Loading template data...</string>
+    <string name="no_templates">No templates</string>
+    <string name="add_template_hint">Tap the + button to add a new template</string>
+    <string name="edit">Edit</string>
+    <string name="basic_info">Basic Information</string>
+    <string name="reagents">Reagents</string>
+    <string name="curve_model">Curve Model</string>
+    <string name="range">Range</string>
+    <string name="measurement_range">Measurement Range</string>
+    <string name="min_value">Minimum Value</string>
+    <string name="max_value">Maximum Value</string>
+    <string name="plate_layout">Plate Layout</string>
+    <string name="default_layout">Default Layout</string>
+    <string name="select">Select</string>
+    <string name="clear">Clear</string>
+    <string name="unknown">Unknown</string>
+    <string name="none">None</string>
+    <string name="min_value_greater_than_max">Minimum value cannot be greater than maximum value</string>
+    <string name="max_value_less_than_min">Maximum value cannot be less than minimum value</string>
+    <string name="enable_default_layout">Enable default layout</string>
+
+
+    <!-- Reagent Management -->
+    <string name="reagent_library_title">Reagent Library Management</string>
+    <string name="reagent_library_desc">Manage antigens and antibodies</string>
+    <string name="add_reagent">Add Reagent</string>
+    <string name="edit_reagent">Edit Reagent</string>
+    <string name="enter_reagent_name">Enter reagent name</string>
+    <string name="reagent_name">Reagent Name</string>
+    <string name="reagent_type">Reagent Type</string>
+    <string name="antigen">Antigen</string>
+    <string name="antibody">Antibody</string>
+    <string name="analyte">Analyte</string>
+    <string name="select_analyte">Select Analyte</string>
+    <string name="manufacturer">Manufacturer</string>
+    <string name="enter_manufacturer">Enter manufacturer (optional)</string>
+    <string name="molecular_weight">Molecular Weight (kDa)</string>
+    <string name="enter_molecular_weight">Enter molecular weight (optional)</string>
+    <string name="reagent_added_success">Reagent added successfully</string>
+    <string name="reagent_added_error">Failed to add reagent</string>
+    <string name="reagent_deleted_success">Reagent deleted successfully</string>
+    <string name="reagent_name_empty">Reagent name cannot be empty</string>
+    <string name="reagent_type_not_selected">Please select a reagent type</string>
+    <string name="analyte_not_selected">Please select an analyte</string>
+    <string name="confirm_delete_reagent">Are you sure you want to delete this reagent?</string>
+    <string name="delete_reagent_title">Delete Reagent</string>
+    <string name="no_reagents_found">No reagents found</string>
+    <string name="add_your_first_reagent">Add your first reagent to get started</string>
+    <string name="no_analytes_add_first">No available analytes, please add one first.</string>
+
+
+    <!-- Edit Features -->
+    <string name="edit_analyte">Edit Analyte</string>
+    <string name="update">Update</string>
+    <string name="analyte_updated_success">Analyte updated successfully</string>
+    <string name="reagent_updated_success">Reagent updated successfully</string>
+
+    <!-- Confirmation Dialogs -->
+    <string name="confirm_delete_analyte_with_name">Are you sure you want to delete analyte "%1$s"? This action cannot be undone.</string>
+    <string name="confirm_delete_reagent_with_name">Are you sure you want to delete reagent "%1$s"? This action cannot be undone.</string>
+
+    <!-- New additions -->
+    <string name="click_add_button">Click the add button to get started</string>
+    <string name="analyte_management">Analyte Management</string>
+    <string name="reagent_library">Reagent Library</string>
+
+    <!-- Curve Model Library -->
+    <string name="curve_model_title">Curve Model Library</string>
+    <string name="parameter_placeholder">Parameter %1$s</string>
+    <string name="curve_model_desc">Manage and create curve fitting models</string>
+    <string name="add_new_model">Add New Model</string>
+    <string name="import_curve">Import Curve</string>
+    <string name="import_data">Import Data</string>
+    <string name="manual_input">Manual Input</string>
+    <string name="from_file">From File</string>
+    <string name="function_type">Function Type</string>
+    <string name="pixel_type">Pixel Type</string>
+    <string name="preview_curve">Preview Curve</string>
+    <string name="save_model">Save Model</string>
+    <string name="start_fitting">Start Fitting</string>
+    <string name="model_name">Model Name</string>
+    <string name="metrics_name">Metric Name</string>
+    <string name="function_expression">Function Expression</string>
+    <string name="metrics_value">Value</string>
+    <string name="concentration">Concentration</string>
+    <string name="parameter_a">Parameter a</string>
+    <string name="parameter_b">Parameter b</string>
+    <string name="parameter_c">Parameter c</string>
+    <string name="parameter_d">Parameter d</string>
+    <string name="parameter_e">Parameter e</string>
+    <string name="parameter_g">Parameter g</string>
+    <string name="fitting_quality">Fitting Quality</string>
+    <string name="curve_parameters">Curve Parameters</string>
+    <string name="column_type">Column Type</string>
+    <string name="add_row">Add Row</string>
+    <string name="add_column">Add Column</string>
+    <string name="row_count">Row Count</string>
+    <string name="column_count">Column Count</string>
+    <string name="manual_curve_preview_title">%1$s Preview</string>
+    <string name="manual_curve_error_invalid_params">Parameters are invalid for preview.</string>
+    <string name="manual_curve_error_calculation">Error calculating curve: %1$s</string>
+    <string name="manual_curve_prompt_enter_params">Please select a function, pixel type, and enter all required parameters.</string>
+    <string name="edit_model">Edit Model</string>
+    <string name="edit_model_title">Edit Model</string>
+    <string name="save_changes">Save</string>
+    <string name="model_name_label">Model Name</string>
+    <string name="select_analyte_label">Select Analyte</string>
+    <string name="select_pixel_type_label">Select Pixel Type</string>
+    <string name="confirm_delete_model">Are you sure you want to delete this curve model? This action cannot be undone.</string>
+
+    <string name="default_layout_tip">First select a role, then click on wells below to assign. Click on a well with an assigned role to remove it.</string>
+
+    
+    <!-- Template Card Expanded View -->
+    <string name="template_expand_to_view">Tap to expand for details</string>
+    <string name="template_collapse">Hide details</string>
+    <string name="curve_function">Curve Function</string>
+    <string name="curve_preview">Curve Preview</string>
+    <string name="no_default_layout">No default plate layout set</string>
+    <string name="legend_sample">Sample</string>
+    <string name="legend_standard">Standard</string>
+    <string name="legend_blank">Blank</string>
+    <string name="legend_control">Control</string>
+    <string name="legend_empty">Empty</string>
+    <string name="default_plate_layout">Default Plate Layout</string>
+    <string name="expand_details">Expand Details</string>
+    <string name="collapse_details">Collapse Details</string>
+    <string name="no_curve_model">No curve model available</string>
+
+
 </resources>

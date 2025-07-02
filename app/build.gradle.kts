@@ -13,8 +13,8 @@ android {
         applicationId = "com.muc.fluocolorquant"
         minSdk = 22
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 4
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -109,6 +109,12 @@ dependencies {
     
     // 使用com.github.quickbirdstudios:opencv-android依赖
     implementation("com.quickbirdstudios:opencv:4.5.3.0")
+
+    // 添加Apache Commons Math3库 - 用于曲线拟合计算
+    implementation("org.apache.commons:commons-math3:3.6.1")
+
+    // 添加这一行来引入AndroidMath库
+    implementation("com.github.gregcockroft:AndroidMath:ALPHA")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

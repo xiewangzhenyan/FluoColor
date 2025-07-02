@@ -58,7 +58,10 @@ class ProjectViewModel @Inject constructor(
         concentrationUnit: String? = null,
         userId: String? = null,
         rows: Int? = null,
-        columns: Int? = null
+        columns: Int? = null,
+        analysisMethod: String = "DL_MODEL",
+        fkCurveModelId: String? = null,
+        finalCurveModelJson: String? = null
     ): String? {
         return try {
             // 从设置中获取默认行列值
@@ -78,7 +81,10 @@ class ProjectViewModel @Inject constructor(
                 columns = columns ?: defaultColumns, // 使用传入的列数或默认值
                 createTime = Date(),
                 userId = userId ?: "guest",
-                lastRunTimestamp = null // 新项目还没有运行记录
+                lastRunTimestamp = null, // 新项目还没有运行记录
+                analysisMethod = analysisMethod,
+                fkCurveModelId = fkCurveModelId,
+                finalCurveModelJson = finalCurveModelJson
             )
             
             projectRepository.createProject(project)

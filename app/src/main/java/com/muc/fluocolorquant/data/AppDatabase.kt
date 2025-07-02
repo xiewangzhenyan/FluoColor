@@ -2,26 +2,44 @@ package com.muc.fluocolorquant.data
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
-import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import com.muc.fluocolorquant.data.dao.UserDao
 import com.muc.fluocolorquant.data.dao.ProjectDao
 import com.muc.fluocolorquant.data.dao.DetectionRunDao
 import com.muc.fluocolorquant.data.dao.WellResultDao
+import com.muc.fluocolorquant.data.dao.AnalyteDao
+import com.muc.fluocolorquant.data.dao.ReagentDao
+import com.muc.fluocolorquant.data.dao.CurveModelDao
+import com.muc.fluocolorquant.data.dao.PlateLayoutDao
+import com.muc.fluocolorquant.data.dao.ExperimentTemplateDao
 import com.muc.fluocolorquant.data.model.User
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.WellResult
-import java.util.Date
+import com.muc.fluocolorquant.data.model.Analyte
+import com.muc.fluocolorquant.data.model.Reagent
+import com.muc.fluocolorquant.data.model.CurveModel
+import com.muc.fluocolorquant.data.model.PlateLayout
+import com.muc.fluocolorquant.data.model.ExperimentTemplate
+import com.muc.fluocolorquant.data.converters.Converters
 
+/**
+ * 应用数据库
+ * 统一管理所有数据表和DAO
+ */
 @Database(
     entities = [
         User::class,
         Project::class,
         DetectionRun::class,
-        WellResult::class
+        WellResult::class,
+        Analyte::class,
+        Reagent::class,
+        CurveModel::class,
+        PlateLayout::class,
+        ExperimentTemplate::class
     ],
-    version = 5,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -30,16 +48,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
     abstract fun detectionRunDao(): DetectionRunDao
     abstract fun wellResultDao(): WellResultDao
-}
-
-class Converters {
-    @TypeConverter
-    fun fromTimestamp(value: Long?): Date? {
-        return value?.let { Date(it) }
-    }
-
-    @TypeConverter
-    fun dateToTimestamp(date: Date?): Long? {
-        return date?.time
-    }
+    abstract fun analyteDao(): AnalyteDao
+    abstract fun reagentDao(): ReagentDao
+    abstract fun curveModelDao(): CurveModelDao
+    abstract fun plateLayoutDao(): PlateLayoutDao
+    abstract fun experimentTemplateDao(): ExperimentTemplateDao
 } 

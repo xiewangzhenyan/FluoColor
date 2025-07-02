@@ -44,8 +44,8 @@ class MainActivity : ComponentActivity() {
     private val toastManager by lazy { ToastManager() }
     
     override fun attachBaseContext(newBase: Context) {
-        // The newBase context provided by FluoColorApp is already localized.
-        // No need to re-wrap or apply locale here again.
+        // FluoColorApp 提供的 newBase 上下文已经本地化。
+        // 无需在此处重新包装或再次应用语言环境。
         super.attachBaseContext(newBase)
     }
     
@@ -82,9 +82,9 @@ class MainActivity : ComponentActivity() {
         }
         
         setContent {
-            // The Activity's context (and thus LocalContext.current by default)
-            // is already configured by FluoColorApp.attachBaseContext and this Activity's attachBaseContext.
-            // Composable functions like stringResource() will use this context.
+        // Activity 的上下文（因此默认情况下为 LocalContext.current）
+        // 已由 FluoColorApp.attachBaseContext 和此 Activity 的 attachmentBaseContext 配置。
+        // 可组合函数（如 stringResource()）将使用此上下文。
             ActualAppContent()
         }
     }

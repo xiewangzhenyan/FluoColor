@@ -22,5 +22,10 @@ data class Project(
     val columns: Int,              // 孔阵列数
     val createTime: Date,          // 创建时间
     val userId: String,            // 创建用户ID
-    val lastRunTimestamp: Date?    // 最后一次运行时间，方便排序
+    val lastRunTimestamp: Date?,   // 最后一次运行时间，方便排序
+    
+    // 新增字段 - 2.0.0版本
+    val analysisMethod: String,    // 分析方法: "DL_MODEL"(深度学习模型) 或 "CURVE_FIT"(曲线拟合)
+    val fkCurveModelId: String?,   // 外键，关联到curve_models表
+    val finalCurveModelJson: String? // 最终曲线模型的JSON存储，用于结果溯源
 ) 

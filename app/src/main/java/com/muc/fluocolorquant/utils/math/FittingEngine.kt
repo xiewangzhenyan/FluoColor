@@ -1,0 +1,812 @@
+package com.muc.fluocolorquant.utils.math
+
+import com.muc.fluocolorquant.data.enums.FittingFunction
+import org.apache.commons.math3.analysis.ParametricUnivariateFunction
+import org.apache.commons.math3.fitting.AbstractCurveFitter
+import org.apache.commons.math3.fitting.WeightedObservedPoint
+import org.apache.commons.math3.fitting.leastsquares.LevenbergMarquardtOptimizer
+import org.apache.commons.math3.fitting.PolynomialCurveFitter
+import kotlin.math.E
+import kotlin.math.ln
+import kotlin.math.pow
+import kotlin.math.exp
+import kotlin.math.sqrt
+import kotlin.math.abs
+import java.text.DecimalFormat
+
+/**
+ * 曲线拟合引擎
+ * 处理各种数学拟合模型计算和数据拟合
+ */
+object FittingEngine {
+
+    /**
+     * 将函数参数格式化为LaTeX表达式
+     * 
+     * @param function 函数类型
+     * @param params 参数值映射表
+     * @return 格式化后的LaTeX表达式字符串
+     */
+    fun formatParametersToLatex(function: FittingFunction?, params: Map<String, Double>): String {
+        if (function == null) return ""
+        var latexString = function.latexFormula
+
+        fun formatValue(value: Double): String {
+            if (abs(value) < 1e-9) return "0"
+            return if (value == value.toLong().toDouble()) {
+                value.toLong().toString()
+            } else {
+                DecimalFormat("0.###").format(value)
+            }
+        }
+
+        // 按照参数名称长度降序排序，确保先替换较长的参数名（例如，先替换"a1"再替换"a"）
+        val sortedParams = function.requiredParams.sortedByDescending { it.length }
+        
+        // 针对不同的函数类型，采用不同的替换策略
+        when (function) {
+            // 多项式函数使用简单的直接替换
+            FittingFunction.LINEAR, 
+            FittingFunction.QUADRATIC, 
+            FittingFunction.CUBIC, 
+            FittingFunction.QUARTIC -> {
+                // 对于多项式函数，使用简单的直接替换
+                sortedParams.forEach { paramName ->
+                    val paramValue = params[paramName]
+                    if (paramValue != null) {
+                        latexString = latexString.replace(paramName, formatValue(paramValue))
+                    }
+                }
+            }
+            
+            // 指数函数需要特殊处理
+            FittingFunction.EXPONENTIAL -> {
+                // 处理a参数（简单替换）
+                params["a"]?.let { a ->
+                    latexString = latexString.replace(
+                        "a \\cdot e", 
+                        "${formatValue(a)} \\cdot e"
+                    )
+                }
+                
+                // 处理b参数（位于指数上标位置）
+                params["b"]?.let { b ->
+                    latexString = latexString.replace(
+                        "e^{bx}", 
+                        "e^{${formatValue(b)}x}"
+                    )
+                }
+            }
+            
+            // 带偏移量的指数函数
+            FittingFunction.EXPONENTIAL_WITH_OFFSET -> {
+                // 处理a参数（简单替换）
+                params["a"]?.let { a ->
+                    latexString = latexString.replace(
+                        "a \\cdot e", 
+                        "${formatValue(a)} \\cdot e"
+                    )
+                }
+                
+                // 处理b参数（位于指数上标位置）
+                params["b"]?.let { b ->
+                    latexString = latexString.replace(
+                        "e^{-bx}", 
+                        "e^{-${formatValue(b)}x}"
+                    )
+                }
+                
+                // 处理c参数（简单替换）
+                params["c"]?.let { c ->
+                    latexString = latexString.replace(
+                        " + c", 
+                        " + ${formatValue(c)}"
+                    )
+                }
+            }
+            
+            // 高斯函数
+            FittingFunction.GAUSSIAN -> {
+                // 处理a参数（简单替换）
+                params["a"]?.let { a ->
+                    latexString = latexString.replace(
+                        "a + ", 
+                        "${formatValue(a)} + "
+                    )
+                }
+                
+                // 处理b参数（简单替换）
+                params["b"]?.let { b ->
+                    latexString = latexString.replace(
+                        "(b-a)", 
+                        "(${formatValue(b)}-" + (params["a"]?.let { formatValue(it) } ?: "a") + ")"
+                    )
+                }
+                
+                // 处理c参数（位于指数内）
+                params["c"]?.let { c ->
+                    latexString = latexString.replace(
+                        "(x-c)", 
+                        "(x-${formatValue(c)})"
+                    )
+                }
+                
+                // 处理d参数（位于指数内分母）
+                params["d"]?.let { d ->
+                    latexString = latexString.replace(
+                        "2d^2", 
+                        "2${formatValue(d)}^2"
+                    )
+                }
+            }
+            
+            // 指数恢复函数
+            FittingFunction.EXPONENTIAL_RECOVERY -> {
+                // 处理a参数（简单替换）
+                params["a"]?.let { a ->
+                    latexString = latexString.replace(
+                        "a \\cdot", 
+                        "${formatValue(a)} \\cdot"
+                    )
+                }
+                
+                // 处理b参数（位于指数上标位置）
+                params["b"]?.let { b ->
+                    latexString = latexString.replace(
+                        "e^{-bx}", 
+                        "e^{-${formatValue(b)}x}"
+                    )
+                }
+            }
+            
+            // 一般Gompertz函数
+            FittingFunction.GENERAL_GOMPERTZ -> {
+                // 处理a参数（简单替换）
+                params["a"]?.let { a ->
+                    latexString = latexString.replace(
+                        "a \\cdot", 
+                        "${formatValue(a)} \\cdot"
+                    )
+                }
+                
+                // 处理b参数（指数内）
+                params["b"]?.let { b ->
+                    latexString = latexString.replace(
+                        "-b \\cdot", 
+                        "-${formatValue(b)} \\cdot"
+                    )
+                }
+                
+                // 处理c参数（指数内的指数项）
+                params["c"]?.let { c ->
+                    latexString = latexString.replace(
+                        "e^{-cx", 
+                        "e^{-${formatValue(c)}x"
+                    )
+                }
+                
+                // 处理d参数（x的幂）
+                params["d"]?.let { d ->
+                    latexString = latexString.replace(
+                        "x^d}", 
+                        "x^${formatValue(d)}}"
+                    )
+                }
+            }
+            
+            // Gompertz函数
+            FittingFunction.GOMPERTZ -> {
+                // 处理a参数（简单替换）
+                params["a"]?.let { a ->
+                    latexString = latexString.replace(
+                        "a \\cdot", 
+                        "${formatValue(a)} \\cdot"
+                    )
+                }
+                
+                // 处理b参数（指数内）
+                params["b"]?.let { b ->
+                    latexString = latexString.replace(
+                        "-b \\cdot", 
+                        "-${formatValue(b)} \\cdot"
+                    )
+                }
+                
+                // 处理c参数（指数内的指数项）
+                params["c"]?.let { c ->
+                    latexString = latexString.replace(
+                        "e^{-cx}", 
+                        "e^{-${formatValue(c)}x}"
+                    )
+                }
+            }
+            
+            // Richards函数
+            FittingFunction.RICHARDS -> {
+                // 处理a参数（简单替换）
+                params["a"]?.let { a ->
+                    latexString = latexString.replace(
+                        "\\frac{a}", 
+                        "\\frac{${formatValue(a)}}"
+                    )
+                }
+                
+                // 修复：特别处理Richards函数的b参数，直接针对整个表达式部分替换
+                params["b"]?.let { b ->
+                    // 修改替换策略，针对整个表达式进行处理
+                    latexString = latexString.replace(
+                        "(1+b \\cdot e", 
+                        "(1+${formatValue(b)} \\cdot e"
+                    )
+                }
+                
+                // 处理c参数（指数内）
+                params["c"]?.let { c ->
+                    latexString = latexString.replace(
+                        "e^{-cx}", 
+                        "e^{-${formatValue(c)}x}"
+                    )
+                }
+                
+                // 处理d参数（分数上标）
+                params["d"]?.let { d ->
+                    latexString = latexString.replace(
+                        "\\frac{1}{d}}", 
+                        "\\frac{1}{${formatValue(d)}}}"
+                    )
+                }
+            }
+            
+            // 其他函数使用正则表达式替换
+            else -> {
+                sortedParams.forEach { paramName ->
+                    val replacement = params[paramName]?.let {
+                        // 将数字用花括号包裹，让LaTeX库把它当作一个文本块
+                        "{${formatValue(it)}}"
+                    } ?: paramName // 如果参数未输入，则显示其字母
+
+                    // 使用更严格的正则表达式确保正确替换
+                    latexString = latexString.replace(Regex("(^|[^a-zA-Z0-9])$paramName($|[^a-zA-Z0-9])")) { matchResult ->
+                        val prefix = matchResult.groupValues[1]
+                        val suffix = matchResult.groupValues[2]
+                        "$prefix$replacement$suffix"
+                    }
+                }
+            }
+        }
+
+        return latexString
+    }
+
+    /**
+     * 计算给定拟合函数在特定x值的输出
+     * @param function 拟合函数类型
+     * @param params 函数参数映射表
+     * @param x 自变量值
+     * @return 函数输出值
+     */
+    fun calculate(function: FittingFunction, params: Map<String, Double>, x: Double): Double {
+        return when (function) {
+            FittingFunction.LINEAR -> linearFunction(params, x)
+            FittingFunction.QUADRATIC -> quadraticFunction(params, x)
+            FittingFunction.CUBIC -> cubicFunction(params, x)
+            FittingFunction.QUARTIC -> quarticFunction(params, x)
+            FittingFunction.EXPONENTIAL -> exponentialFunction(params, x)
+            FittingFunction.POWER -> powerFunction(params, x)
+            FittingFunction.LOG -> logFunction(params, x)
+            FittingFunction.RODBARD -> rodbardFunction(params, x)
+            FittingFunction.GAMMA_VARIATE -> gammaVariateFunction(params, x)
+            FittingFunction.CUSTOM_LOG -> customLogFunction(params, x)
+            FittingFunction.RODBARD_NIH -> rodbardNihFunction(params, x)
+            FittingFunction.EXPONENTIAL_WITH_OFFSET -> exponentialWithOffsetFunction(params, x)
+            FittingFunction.GAUSSIAN -> gaussianFunction(params, x)
+            FittingFunction.EXPONENTIAL_RECOVERY -> exponentialRecoveryFunction(params, x)
+            FittingFunction.LOGISTIC -> logisticFunction(params, x)
+            FittingFunction.GOMPERTZ -> gompertzFunction(params, x)
+            FittingFunction.HILL -> hillFunction(params, x)
+            FittingFunction.GENERAL_GOMPERTZ -> generalGompertzFunction(params, x)
+            FittingFunction.RICHARDS -> richardsFunction(params, x)
+            FittingFunction.INTERPOLATION -> interpolationFunction(params, x)
+        }
+    }
+
+    /**
+     * 拟合数据点到最佳函数模型
+     * @param dataPoints 数据点列表，每个点为 (x, y) 对
+     * @return 拟合结果
+     */
+    fun fit(dataPoints: List<Pair<Double, Double>>): FittingResult {
+        if (dataPoints.size < 2) {
+            return FittingResult(
+                function = FittingFunction.LINEAR,
+                params = emptyMap(),
+                metrics = emptyMap(),
+                isSuccess = false,
+                errorMessage = "数据点数量不足，至少需要2个点",
+                dataPoints = dataPoints
+            )
+        }
+
+        val results = mutableListOf<FittingResult>()
+
+        // 尝试拟合所有适用的函数类型
+        for (function in getApplicableFunctions(dataPoints)) {
+            try {
+                val result = fitSingle(dataPoints, function)
+                if (result.isSuccess) {
+                    results.add(result)
+                }
+            } catch (e: Exception) {
+                // 拟合失败，尝试下一个函数
+                continue
+            }
+        }
+
+        // 找到 R² 最高的结果
+        return results.maxByOrNull { it.metrics["R²"] ?: 0.0 }
+            ?: FittingResult(
+                function = FittingFunction.LINEAR,
+                params = emptyMap(),
+                metrics = emptyMap(),
+                isSuccess = false,
+                errorMessage = "所有函数拟合均失败",
+                dataPoints = dataPoints
+            )
+    }
+
+    /**
+     * 拟合数据点到指定函数模型
+     * @param dataPoints 数据点列表
+     * @param function 拟合函数类型
+     * @return 拟合结果
+     */
+    fun fitSingle(dataPoints: List<Pair<Double, Double>>, function: FittingFunction): FittingResult {
+        if (dataPoints.size < 2) {
+            return FittingResult(
+                function = function,
+                params = emptyMap(),
+                metrics = emptyMap(),
+                isSuccess = false,
+                errorMessage = "数据点数量不足，至少需要2个点",
+                dataPoints = dataPoints
+            )
+        }
+
+        try {
+            val params = when (function) {
+                FittingFunction.LINEAR -> fitLinear(dataPoints)
+                FittingFunction.QUADRATIC -> fitPolynomial(dataPoints, 2)
+                FittingFunction.CUBIC -> fitPolynomial(dataPoints, 3)
+                FittingFunction.QUARTIC -> fitPolynomial(dataPoints, 4)
+                FittingFunction.EXPONENTIAL -> fitExponential(dataPoints)
+                FittingFunction.POWER -> fitPower(dataPoints)
+                FittingFunction.LOG -> fitLog(dataPoints)
+                FittingFunction.RODBARD -> fitRodbard(dataPoints)
+                // 为简化示例，其他函数暂时使用线性拟合
+                else -> fitLinear(dataPoints)
+            }
+
+            // 计算拟合指标
+            val observed = dataPoints.map { it.second }
+            val predicted = dataPoints.map { (x, _) -> calculate(function, params, x) }
+            val metrics = MetricsCalculator.calculateAllMetrics(
+                observed, predicted, params.size
+            )
+
+            return FittingResult(
+                function = function,
+                params = params,
+                metrics = metrics,
+                isSuccess = true,
+                dataPoints = dataPoints
+            )
+        } catch (e: Exception) {
+            return FittingResult(
+                function = function,
+                params = emptyMap(),
+                metrics = emptyMap(),
+                isSuccess = false,
+                errorMessage = e.message ?: "拟合失败",
+                dataPoints = dataPoints
+            )
+        }
+    }
+
+    /**
+     * 获取适用于给定数据点的函数类型
+     */
+    private fun getApplicableFunctions(dataPoints: List<Pair<Double, Double>>): List<FittingFunction> {
+        // 简化起见，返回所有函数
+        // 实际使用时可以根据数据特性筛选适用的函数
+        return FittingFunction.values().toList()
+    }
+
+    /**
+     * 拟合线性函数: y = a·x + b
+     */
+    private fun fitLinear(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        val fitter = PolynomialCurveFitter.create(1)
+        val points = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+        val coefficients = fitter.fit(points)
+        return mapOf("a" to coefficients[1], "b" to coefficients[0])
+    }
+
+    /**
+     * 拟合多项式函数
+     * @param degree 多项式次数
+     */
+    private fun fitPolynomial(dataPoints: List<Pair<Double, Double>>, degree: Int): Map<String, Double> {
+        val fitter = PolynomialCurveFitter.create(degree)
+        val points = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+        val coefficients = fitter.fit(points)
+        
+        return when (degree) {
+            2 -> mapOf(
+                "a" to coefficients[2], 
+                "b" to coefficients[1], 
+                "c" to coefficients[0]
+            )
+            3 -> mapOf(
+                "a" to coefficients[3], 
+                "b" to coefficients[2], 
+                "c" to coefficients[1], 
+                "d" to coefficients[0]
+            )
+            4 -> mapOf(
+                "a" to coefficients[4], 
+                "b" to coefficients[3], 
+                "c" to coefficients[2], 
+                "d" to coefficients[1], 
+                "e" to coefficients[0]
+            )
+            else -> mapOf("a" to coefficients[1], "b" to coefficients[0])
+        }
+    }
+
+    // 以下是各个函数的实现，仅展示部分常用函数
+    // 实际项目中需要根据需要实现所有函数
+
+    /**
+     * 拟合指数函数: y = a·e^(b·x)
+     */
+    private fun fitExponential(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        // 对数转换后线性拟合
+        val transformedPoints = dataPoints.filter { it.second > 0 }
+            .map { (x, y) -> Pair(x, ln(y)) }
+        
+        val linearParams = fitLinear(transformedPoints)
+        return mapOf(
+            "a" to exp(linearParams["b"] ?: 0.0),
+            "b" to (linearParams["a"] ?: 0.0)
+        )
+    }
+
+    /**
+     * 拟合幂函数: y = a·x^b
+     */
+    private fun fitPower(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        // 对数转换后线性拟合
+        val transformedPoints = dataPoints.filter { it.first > 0 && it.second > 0 }
+            .map { (x, y) -> Pair(ln(x), ln(y)) }
+        
+        val linearParams = fitLinear(transformedPoints)
+        return mapOf(
+            "a" to exp(linearParams["b"] ?: 0.0),
+            "b" to (linearParams["a"] ?: 0.0)
+        )
+    }
+
+    /**
+     * 拟合对数函数: y = a + b·ln(x)
+     */
+    private fun fitLog(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        // 变换x后线性拟合
+        val transformedPoints = dataPoints.filter { it.first > 0 }
+            .map { (x, y) -> Pair(ln(x), y) }
+        
+        val linearParams = fitLinear(transformedPoints)
+        return mapOf(
+            "a" to (linearParams["b"] ?: 0.0),
+            "b" to (linearParams["a"] ?: 0.0)
+        )
+    }
+
+    /**
+     * 拟合Rodbard函数 (4PL): y = d + (a-d)/(1+(x/c)^b)
+     */
+    private fun fitRodbard(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        // 简化实现，实际应使用LevenbergMarquardtOptimizer
+        // 初始参数估计
+        val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
+        val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+        val xMid = dataPoints.map { it.first }.average()
+        
+        return mapOf(
+            "a" to yMin,
+            "b" to 1.0,
+            "c" to xMid,
+            "d" to yMax
+        )
+    }
+
+    // 各种函数的计算部分
+
+    /**
+     * 线性函数: y = a·x + b
+     */
+    private fun linearFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        return a * x + b
+    }
+
+    /**
+     * 二次函数: y = a·x² + b·x + c
+     */
+    private fun quadraticFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        val c = params["c"] ?: 0.0
+        return a * x * x + b * x + c
+    }
+
+    /**
+     * 三次函数: y = a·x³ + b·x² + c·x + d
+     */
+    private fun cubicFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        val c = params["c"] ?: 0.0
+        val d = params["d"] ?: 0.0
+        return a * x * x * x + b * x * x + c * x + d
+    }
+
+    /**
+     * 四次函数: y = a·x⁴ + b·x³ + c·x² + d·x + e
+     */
+    private fun quarticFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        val c = params["c"] ?: 0.0
+        val d = params["d"] ?: 0.0
+        val e = params["e"] ?: 0.0
+        return a * x.pow(4) + b * x.pow(3) + c * x * x + d * x + e
+    }
+
+    /**
+     * 指数函数: y = a·e^(b·x)
+     */
+    private fun exponentialFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        return a * exp(b * x)
+    }
+
+    /**
+     * 幂函数: y = a·x^b
+     */
+    private fun powerFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        return if (x > 0) a * x.pow(b) else 0.0
+    }
+
+    /**
+     * 对数函数: y = a + b·ln(x)
+     */
+    private fun logFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        return if (x > 0) a + b * ln(x) else Double.NaN
+    }
+
+    /**
+     * Rodbard函数 (4PL): y = d + (a-d)/(1+(x/c)^b)
+     */
+    private fun rodbardFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 1.0
+        val c = params["c"] ?: 1.0
+        val d = params["d"] ?: 0.0
+        
+        return if (c > 0) {
+            d + (a - d) / (1 + (x / c).pow(b))
+        } else {
+            d + (a - d) / (1 + (x * 0.001).pow(b)) // 避免除以零
+        }
+    }
+
+    /**
+     * 伽马变量函数: y = a·(x-b)^c·e^(-(x-b)/d)
+     * 【重要改进】增加了对定义域和参数的检查
+     */
+    private fun gammaVariateFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0 // a: amplitude
+        val b = params["b"] ?: 0.0 // b: offset (start time)
+        val c = params["c"] ?: 0.0 // c: shape parameter
+        val d = params["d"] ?: 1.0 // d: scale parameter
+
+        // 增加定义域和参数检查
+        if (x <= b || a <= 0 || c <= 0 || d <= 0) {
+            return 0.0
+        }
+
+        val term1 = (x - b).pow(c)
+        val term2 = exp(-(x - b) / d)
+
+        return a * term1 * term2
+    }
+
+    /**
+     * 自定义对数函数: y = a + b·ln(x-c)
+     */
+    private fun customLogFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        val c = params["c"] ?: 0.0
+        return if (x > c) a + b * ln(x - c) else Double.NaN
+    }
+
+    /**
+     * Rodbard NIH函数: y = a·(1/(1+(x/c)^b))
+     */
+    private fun rodbardNihFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 1.0
+        val c = params["c"] ?: 1.0
+        
+        return if (c > 0) {
+            a * (1 / (1 + (x / c).pow(b)))
+        } else {
+            a * (1 / (1 + (x * 0.001).pow(b))) // 避免除以零
+        }
+    }
+
+    /**
+     * 带偏移的指数函数: y = a·e^(-b·x) + c
+     */
+    private fun exponentialWithOffsetFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        val c = params["c"] ?: 0.0
+        return a * exp(-b * x) + c
+    }
+
+    /**
+     * 高斯函数: y = a + (b-a) * e^(-(x-c)²/(2·d²))
+     */
+    private fun gaussianFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0 // base
+        val b = params["b"] ?: 0.0 // max y
+        val c = params["c"] ?: 0.0 // center
+        val d = params["d"] ?: 1.0 // width
+        return a + (b - a) * exp(-(x - c).pow(2) / (2 * d.pow(2)))
+    }
+
+    /**
+     * 指数恢复函数: y = a·(1-e^(-b·x))
+     */
+    private fun exponentialRecoveryFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        return a * (1 - exp(-b * x))
+    }
+
+    /**
+     * Logistic函数 (5PL): y = d + (a-d)/(1+(x/c)^b)^g
+     */
+    private fun logisticFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 1.0
+        val c = params["c"] ?: 1.0
+        val d = params["d"] ?: 0.0
+        val g = params["g"] ?: 1.0
+        
+        return if (c > 0) {
+            d + (a - d) / (1 + (x / c).pow(b)).pow(g)
+        } else {
+            d + (a - d) / (1 + (x * 0.001).pow(b)).pow(g) // 避免除以零
+        }
+    }
+
+    /**
+     * Gompertz函数: y = a·e^(-b·e^(-c·x))
+     */
+    private fun gompertzFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        val c = params["c"] ?: 0.0
+        return a * exp(-b * exp(-c * x))
+    }
+
+    /**
+     * Hill函数: y = a·x^b/(c^b+x^b)
+     */
+    private fun hillFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 1.0
+        val c = params["c"] ?: 1.0
+        
+        return if (x >= 0) {
+            a * x.pow(b) / (c.pow(b) + x.pow(b))
+        } else {
+            0.0
+        }
+    }
+
+    /**
+     * 广义Gompertz函数: y = a·e^(-b·e^(-c·x^d))
+     */
+    private fun generalGompertzFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        val c = params["c"] ?: 0.0
+        val d = params["d"] ?: 1.0
+        
+        return if (x >= 0) {
+            a * exp(-b * exp(-c * x.pow(d)))
+        } else {
+            0.0
+        }
+    }
+
+    /**
+     * Richards函数: y = a/(1+b·e^(-c·x))^(1/d)
+     */
+    private fun richardsFunction(params: Map<String, Double>, x: Double): Double {
+        val a = params["a"] ?: 0.0
+        val b = params["b"] ?: 0.0
+        val c = params["c"] ?: 0.0
+        val d = params["d"] ?: 1.0
+        
+        return if (d != 0.0) {
+            a / (1 + b * exp(-c * x)).pow(1 / d)
+        } else {
+            0.0 // 避免除以零
+        }
+    }
+
+    /**
+     * 插值函数
+     */
+    private fun interpolationFunction(params: Map<String, Double>, x: Double): Double {
+        // 插值需要有序的点对，这里简化处理
+        val points = params.entries
+            .filter { it.key.startsWith("x") && it.key.length > 1 }
+            .map { 
+                val index = it.key.substring(1).toIntOrNull() ?: 0
+                Pair(it.value, params["y$index"] ?: 0.0)
+            }
+            .sortedBy { it.first }
+        
+        if (points.isEmpty()) return 0.0
+        if (points.size == 1) return points[0].second
+        
+        // 找到x所在的区间
+        for (i in 0 until points.size - 1) {
+            val x1 = points[i].first
+            val y1 = points[i].second
+            val x2 = points[i + 1].first
+            val y2 = points[i + 1].second
+            
+            if (x >= x1 && x <= x2) {
+                // 线性插值
+                return y1 + (y2 - y1) * (x - x1) / (x2 - x1)
+            }
+        }
+        
+        // 超出范围时的外推
+        return if (x < points.first().first) {
+            points.first().second
+        } else {
+            points.last().second
+        }
+    }
+
+    /**
+     * 根据函数类型和参数创建函数
+     */
+    fun createFunctionFromParameters(function: FittingFunction, params: Map<String, Double>): (Double) -> Double {
+        return { x -> calculate(function, params, x) }
+    }
+} 

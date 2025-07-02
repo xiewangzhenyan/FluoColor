@@ -2,32 +2,437 @@ package com.muc.fluocolorquant.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.muc.fluocolorquant.data.AppDatabase
 import com.muc.fluocolorquant.data.dao.DetectionRunDao
 import com.muc.fluocolorquant.data.dao.ProjectDao
 import com.muc.fluocolorquant.data.dao.UserDao
 import com.muc.fluocolorquant.data.dao.WellResultDao
+import com.muc.fluocolorquant.data.dao.AnalyteDao
+import com.muc.fluocolorquant.data.dao.ReagentDao
+import com.muc.fluocolorquant.data.dao.CurveModelDao
+import com.muc.fluocolorquant.data.dao.PlateLayoutDao
+import com.muc.fluocolorquant.data.dao.ExperimentTemplateDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import java.util.UUID
 import javax.inject.Singleton
 
+/**
+ * 数据库模块
+ * 提供数据库实例和各个DAO
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
     
+    /**
+     * 提供数据库实例
+     */
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
         return Room.databaseBuilder(
             context,
             AppDatabase::class.java,
-            "fluocolorquant_db"
+            "fluocolor_database"
         )
-        .fallbackToDestructiveMigration() // 仅在开发阶段使用，生产环境应该提供正确的迁移策略
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        .addCallback(prepopulateCallback)  // 添加预填充回调
+        .fallbackToDestructiveMigration() // 版本更新时，如果没有提供迁移路径，则重建数据库
         .build()
+    }
+    
+    // 版本1到版本2的迁移策略
+    private val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 创建 curve_models 表
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `curve_models` (
+                    `id` TEXT NOT NULL, 
+                    `modelName` TEXT NOT NULL, 
+                    `analyteId` TEXT NOT NULL, 
+                    `reagentId` TEXT,
+                    `functionType` TEXT NOT NULL, 
+                    `pixelType` TEXT NOT NULL, 
+                    `parametersJson` TEXT NOT NULL, 
+                    `rSquared` REAL NOT NULL, 
+                    `reliableRangeMin` REAL NOT NULL, 
+                    `reliableRangeMax` REAL NOT NULL,
+                    `createTime` INTEGER,
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`reagentId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """
+            )
+            
+            // 创建 plate_layouts 表
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `plate_layouts` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+                    `projectId` TEXT NOT NULL, 
+                    `wellIndex` INTEGER NOT NULL, 
+                    `analyteId` TEXT, 
+                    `roleType` TEXT NOT NULL,
+                    FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """
+            )
+            
+            // 创建索引
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_curve_models_analyteId` ON `curve_models` (`analyteId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_curve_models_reagentId` ON `curve_models` (`reagentId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_plate_layouts_projectId` ON `plate_layouts` (`projectId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_plate_layouts_analyteId` ON `plate_layouts` (`analyteId`)")
+        }
+    }
+    
+    // 版本2到版本3的迁移策略 - 无结构变化，仅用于触发预填充
+    private val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 结构没有变化，只是版本号变更以触发重新创建
+        }
+    }
+    
+    // 版本3到版本4的迁移策略 - 添加实验模板表
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 创建实验模板表
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `experiment_templates` (
+                    `id` TEXT NOT NULL,
+                    `templateName` TEXT NOT NULL,
+                    `analyteId` TEXT NOT NULL,
+                    `reagentAntigenId` TEXT,
+                    `reagentAntibodyId` TEXT,
+                    `fkCurveModelId` TEXT NOT NULL,
+                    `reliableRangeMin` REAL NOT NULL,
+                    `reliableRangeMax` REAL NOT NULL,
+                    `concentrationUnit` TEXT NOT NULL,
+                    `defaultLayoutJson` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`reagentAntigenId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL,
+                    FOREIGN KEY(`reagentAntibodyId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL,
+                    FOREIGN KEY(`fkCurveModelId`) REFERENCES `curve_models`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """
+            )
+            
+            // 创建索引
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_experiment_templates_analyteId` ON `experiment_templates` (`analyteId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_experiment_templates_reagentAntigenId` ON `experiment_templates` (`reagentAntigenId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_experiment_templates_reagentAntibodyId` ON `experiment_templates` (`reagentAntibodyId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_experiment_templates_fkCurveModelId` ON `experiment_templates` (`fkCurveModelId`)")
+        }
+    }
+    
+    /**
+     * 提供分析物DAO
+     */
+    @Provides
+    fun provideAnalyteDao(appDatabase: AppDatabase): AnalyteDao {
+        return appDatabase.analyteDao()
+    }
+    
+    /**
+     * 提供试剂DAO
+     */
+    @Provides
+    fun provideReagentDao(appDatabase: AppDatabase): ReagentDao {
+        return appDatabase.reagentDao()
+    }
+    
+    // 版本5到版本6的迁移策略
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 1. 创建新表
+            // 创建 analytes 表
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `analytes` (
+                    `id` TEXT NOT NULL, 
+                    `name` TEXT NOT NULL, 
+                    PRIMARY KEY(`id`)
+                )
+                """
+            )
+            
+            // 创建 reagents 表
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `reagents` (
+                    `id` TEXT NOT NULL, 
+                    `analyteId` TEXT NOT NULL, 
+                    `reagentName` TEXT NOT NULL, 
+                    `reagentType` TEXT NOT NULL, 
+                    `manufacturer` TEXT, 
+                    `molecularWeight` REAL, 
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """
+            )
+            
+            // 创建 curve_models 表
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `curve_models` (
+                    `id` TEXT NOT NULL, 
+                    `modelName` TEXT NOT NULL, 
+                    `analyteId` TEXT NOT NULL, 
+                    `functionType` TEXT NOT NULL, 
+                    `pixelType` TEXT NOT NULL, 
+                    `parametersJson` TEXT NOT NULL, 
+                    `rSquared` REAL NOT NULL, 
+                    `reliableRangeMin` REAL NOT NULL, 
+                    `reliableRangeMax` REAL NOT NULL, 
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """
+            )
+            
+            // 创建 plate_layouts 表
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `plate_layouts` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+                    `projectId` TEXT NOT NULL, 
+                    `wellIndex` INTEGER NOT NULL, 
+                    `analyteId` TEXT, 
+                    `roleType` TEXT NOT NULL,
+                    FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """
+            )
+            
+            // 创建索引
+            database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_analytes_name` ON `analytes` (`name`)")
+            
+            // 2. 修改现有表
+            // 修改 projects 表，添加新字段
+            database.execSQL("ALTER TABLE `projects` ADD COLUMN `analysisMethod` TEXT NOT NULL DEFAULT 'DL_MODEL'")
+            database.execSQL("ALTER TABLE `projects` ADD COLUMN `fkCurveModelId` TEXT")
+            database.execSQL("ALTER TABLE `projects` ADD COLUMN `finalCurveModelJson` TEXT")
+            
+            // 修改 well_results 表，添加新字段
+            database.execSQL("ALTER TABLE `well_results` ADD COLUMN `pixelValueJson` TEXT")
+            database.execSQL("ALTER TABLE `well_results` ADD COLUMN `fkAnalyteId` TEXT")
+            database.execSQL("ALTER TABLE `well_results` ADD COLUMN `isOutOfRange` INTEGER NOT NULL DEFAULT 0")
+            
+            // 3. 创建外键索引
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_well_results_fkAnalyteId` ON `well_results` (`fkAnalyteId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_plate_layouts_projectId` ON `plate_layouts` (`projectId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_plate_layouts_analyteId` ON `plate_layouts` (`analyteId`)")
+        }
+    }
+    
+    // 版本6到版本7的迁移策略
+    private val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 1. 修改 curve_models 表结构
+            
+            // 先创建一个临时表，包含所有旧字段以及新增字段
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `curve_models_temp` (
+                    `id` TEXT NOT NULL, 
+                    `modelName` TEXT NOT NULL, 
+                    `analyteId` TEXT NOT NULL, 
+                    `reagentId` TEXT,
+                    `functionType` TEXT NOT NULL, 
+                    `pixelType` TEXT NOT NULL, 
+                    `parametersJson` TEXT NOT NULL, 
+                    `rSquared` REAL NOT NULL, 
+                    `reliableRangeMin` REAL NOT NULL, 
+                    `reliableRangeMax` REAL NOT NULL,
+                    `createTime` INTEGER,
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`reagentId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """
+            )
+            
+            // 将旧表数据复制到临时表
+            database.execSQL(
+                """
+                INSERT INTO `curve_models_temp` (
+                    `id`, `modelName`, `analyteId`, `functionType`, 
+                    `pixelType`, `parametersJson`, `rSquared`, 
+                    `reliableRangeMin`, `reliableRangeMax`
+                )
+                SELECT 
+                    `id`, `modelName`, `analyteId`, `functionType`, 
+                    `pixelType`, `parametersJson`, `rSquared`, 
+                    `reliableRangeMin`, `reliableRangeMax`
+                FROM `curve_models`
+                """
+            )
+            
+            // 删除旧表
+            database.execSQL("DROP TABLE `curve_models`")
+            
+            // 重命名临时表为正式表
+            database.execSQL("ALTER TABLE `curve_models_temp` RENAME TO `curve_models`")
+            
+            // 创建索引
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_curve_models_analyteId` ON `curve_models` (`analyteId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_curve_models_reagentId` ON `curve_models` (`reagentId`)")
+        }
+    }
+    
+    // 版本7到版本8的迁移策略 - 添加unit字段到reagents表
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 添加unit字段到reagents表
+            database.execSQL("ALTER TABLE `reagents` ADD COLUMN `unit` TEXT")
+        }
+    }
+    
+    // 数据库预填充回调
+    private val prepopulateCallback = object : RoomDatabase.Callback() {
+        override fun onCreate(db: SupportSQLiteDatabase) {
+            super.onCreate(db)
+            
+            // 预填充分析物数据
+            val analyteIds = mutableMapOf<String, String>()
+            
+            // 生成10个分析物的UUID并插入数据
+            val analyteNames = listOf("CEA", "NSE", "CYFRA21-1", "ProGRP", "SCCA", "CA125", "GAGE7", "TSGF", "MAGE A1", "p53")
+            
+            analyteNames.forEachIndexed { index, name ->
+                val analyteId = UUID.randomUUID().toString()
+                val placeholder = "uuid_analyte_${String.format("%02d", index + 1)}"
+                analyteIds[placeholder] = analyteId
+                
+                val sql = "INSERT INTO analytes (id, name) VALUES ('$analyteId', '$name')"
+                db.execSQL(sql)
+            }
+            
+            // 预填充试剂数据
+            val reagentData = listOf(
+                // Reagents for CEA (analyte_id: 'uuid_analyte_01')
+                Triple("uuid_analyte_01", "1_antibody_linc-bio", "antibody"),
+                Triple("uuid_analyte_01", "1_antigen_linc-bio", "antigen"),
+                Triple("uuid_analyte_01", "1_antibody_Bioss", "antibody"),
+                Triple("uuid_analyte_01", "1_antigen_Bioss", "antigen"),
+                
+                // Reagents for NSE (analyte_id: 'uuid_analyte_02')
+                Triple("uuid_analyte_02", "2_antibody_linc-bio", "antibody"),
+                Triple("uuid_analyte_02", "2_antigen_linc-bio", "antigen"),
+                
+                // Reagents for CYFRA21-1 (analyte_id: 'uuid_analyte_03')
+                Triple("uuid_analyte_03", "3_antibody_linc-bio", "antibody"),
+                Triple("uuid_analyte_03", "3_antigen_linc-bio", "antigen"),
+                
+                // Reagents for ProGRP (analyte_id: 'uuid_analyte_04')
+                Triple("uuid_analyte_04", "4_antibody_linc-bio", "antibody"),
+                Triple("uuid_analyte_04", "4_antigen_linc-bio", "antigen"),
+                
+                // Reagents for SCCA (analyte_id: 'uuid_analyte_05')
+                Triple("uuid_analyte_05", "5_antibody_linc-bio", "antibody"),
+                Triple("uuid_analyte_05", "5_antigen_linc-bio", "antigen"),
+                
+                // Reagents for CA125 (analyte_id: 'uuid_analyte_06')
+                Triple("uuid_analyte_06", "6_antibody_linc-bio", "antibody"),
+                Triple("uuid_analyte_06", "6_antigen_linc-bio", "antigen"),
+                Triple("uuid_analyte_06", "6_antibody_Bioss", "antibody"),
+                Triple("uuid_analyte_06", "6_antigen_Bioss", "antigen"),
+                
+                // Reagents for GAGE7 (analyte_id: 'uuid_analyte_07')
+                Triple("uuid_analyte_07", "7_antibody_BIORBYT", "antibody"),
+                Triple("uuid_analyte_07", "7_antigen_BIORBYT", "antigen"),
+                
+                // Reagents for TSGF (analyte_id: 'uuid_analyte_08')
+                Triple("uuid_analyte_08", "8_antibody_Abbiotec", "antibody"),
+                Triple("uuid_analyte_08", "8_antigen_Abbiotec", "antigen"),
+                
+                // Reagents for MAGE A1 (analyte_id: 'uuid_analyte_09')
+                Triple("uuid_analyte_09", "9_antibody_BIORBYT", "antibody"),
+                Triple("uuid_analyte_09", "9_antigen_BIORBYT", "antigen"),
+                
+                // Reagents for p53 (analyte_id: 'uuid_analyte_10')
+                Triple("uuid_analyte_10", "10_antibody_linc-bio", "antibody"),
+                Triple("uuid_analyte_10", "10_antigen_linc-bio", "antigen")
+            )
+            
+            // 制造商和分子量数据
+            val manufacturerData = mapOf(
+                "1_antibody_linc-bio" to Pair("linc-bio", null),
+                "1_antigen_linc-bio" to Pair("linc-bio", 200.0),
+                "1_antibody_Bioss" to Pair("Bioss", null),
+                "1_antigen_Bioss" to Pair("Bioss", 200.0),
+                "2_antibody_linc-bio" to Pair("linc-bio", null),
+                "2_antigen_linc-bio" to Pair("linc-bio", 78.0),
+                "3_antibody_linc-bio" to Pair("linc-bio", null),
+                "3_antigen_linc-bio" to Pair("linc-bio", 40.0),
+                "4_antibody_linc-bio" to Pair("linc-bio", null),
+                "4_antigen_linc-bio" to Pair("linc-bio", 14.0),
+                "5_antibody_linc-bio" to Pair("linc-bio", null),
+                "5_antigen_linc-bio" to Pair("linc-bio", 45.0),
+                "6_antibody_linc-bio" to Pair("linc-bio", null),
+                "6_antigen_linc-bio" to Pair("linc-bio", 200.0),
+                "6_antibody_Bioss" to Pair("Bioss", null),
+                "6_antigen_Bioss" to Pair("Bioss", 200.0),
+                "7_antibody_BIORBYT" to Pair("BIORBYT", null),
+                "7_antigen_BIORBYT" to Pair("BIORBYT", 13.0),
+                "8_antibody_Abbiotec" to Pair("Abbiotec", null),
+                "8_antigen_Abbiotec" to Pair("Abbiotec", 40.0),
+                "9_antibody_BIORBYT" to Pair("BIORBYT", null),
+                "9_antigen_BIORBYT" to Pair("BIORBYT", 44.0),
+                "10_antibody_linc-bio" to Pair("linc-bio", null),
+                "10_antigen_linc-bio" to Pair("linc-bio", 44.0)
+            )
+            
+            // 单位数据 - 只有抗原类型有单位
+            val unitData = mapOf(
+                "1_antigen_linc-bio" to "ng/ml",
+                "1_antigen_Bioss" to "μg/ml",
+                "2_antigen_linc-bio" to "μg/ml",
+                "3_antigen_linc-bio" to "μg/ml",
+                "4_antigen_linc-bio" to "μg/ml",
+                "5_antigen_linc-bio" to "μg/ml",
+                "6_antigen_linc-bio" to "μg/ml",
+                "6_antigen_Bioss" to "μg/ml",
+                "7_antigen_BIORBYT" to "μg/ml",
+                "9_antigen_BIORBYT" to "μg/ml",
+                "10_antigen_linc-bio" to "μg/ml"
+            )
+            
+            // 插入试剂数据
+            reagentData.forEachIndexed { index, (analytePlaceholder, reagentName, reagentType) ->
+                val reagentId = UUID.randomUUID().toString()
+                val analyteId = analyteIds[analytePlaceholder] ?: return@forEachIndexed
+                
+                val manufacturerInfo = manufacturerData[reagentName] ?: Pair(null, null)
+                val manufacturer = manufacturerInfo.first
+                val molecularWeight = manufacturerInfo.second
+                val unit = unitData[reagentName]
+                
+                val molecularWeightStr = if (molecularWeight != null) "$molecularWeight" else "NULL"
+                val manufacturerStr = if (manufacturer != null) "'$manufacturer'" else "NULL"
+                val unitStr = if (unit != null) "'$unit'" else "NULL"
+                
+                val sql = "INSERT INTO reagents (id, analyteId, reagentName, reagentType, manufacturer, unit, molecularWeight) " +
+                          "VALUES ('$reagentId', '$analyteId', '$reagentName', '$reagentType', $manufacturerStr, $unitStr, $molecularWeightStr)"
+                db.execSQL(sql)
+            }
+        }
     }
     
     @Provides
@@ -48,5 +453,20 @@ object DatabaseModule {
     @Provides
     fun provideWellResultDao(appDatabase: AppDatabase): WellResultDao {
         return appDatabase.wellResultDao()
+    }
+    
+    @Provides
+    fun provideCurveModelDao(appDatabase: AppDatabase): CurveModelDao {
+        return appDatabase.curveModelDao()
+    }
+    
+    @Provides
+    fun providePlateLayoutDao(appDatabase: AppDatabase): PlateLayoutDao {
+        return appDatabase.plateLayoutDao()
+    }
+    
+    @Provides
+    fun provideExperimentTemplateDao(appDatabase: AppDatabase): ExperimentTemplateDao {
+        return appDatabase.experimentTemplateDao()
     }
 } 

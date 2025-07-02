@@ -3,13 +3,18 @@ package com.muc.fluocolorquant.ui.navigation
 /**
  * 定义应用的所有页面路由
  */
-sealed class Screen(val route: String) {
+sealed class Screen(open val route: String) {
     object Splash : Screen("splash")
     object Login : Screen("login")
     object Register : Screen("register")
     object Home : Screen("home")
     object NewProject : Screen("new_project")
-    object ImageCrop : Screen("image_crop")
+    object ImageCapture : Screen("image_capture")
+    object ImageCrop : Screen("image_crop") {
+        fun createRoute(imageUri: String? = null): String {
+            return imageUri?.let { "$route?imageUri=$it" } ?: route
+        }
+    }
     object ImageCorrection : Screen("image_correction") {
         fun createRoute(imageUri: String, projectId: String): String {
             return "$route/$imageUri/$projectId"
@@ -35,7 +40,27 @@ sealed class Screen(val route: String) {
             return "$route/$runId"
         }
     }
-    object Profile : Screen("profile")
     object History : Screen("history")
     object Settings : Screen("settings")
+    object Profile : Screen("profile")
+    object AppSettings : Screen("app_settings")
+    object DetectionSettings : Screen("detection_settings")
+    object AnalyteManagement : Screen("analyte_management")
+    object ReagentLibrary : Screen("reagent_library")
+    object CurveModelLibrary : Screen("curve_model_library")
+    
+    // 实验模板管理相关路由
+    object ExperimentTemplateManagement : Screen("experiment_template_management")
+    object CreateExperimentTemplate : Screen("create_experiment_template") {
+        fun createRoute(templateId: String? = null): String {
+            return templateId?.let { "$route?templateId=$it" } ?: route
+        }
+    }
+    
+    // 曲线模型输入相关路由
+    object ManualCurveInput : Screen("manual_curve_input")
+    object ManualDataInput : Screen("manual_data_input")
+    
+    // 带参数的路由
+    class DetailRoute(val id: String) : Screen("detail/$id")
 } 

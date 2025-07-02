@@ -16,15 +16,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
-// Define DataStore name and key at a level accessible by FluoColorApp without Hilt instance
+// 在 FluoColorApp 无需 Hilt 实例即可访问的级别上定义 DataStore 名称和键
 private const val LANGUAGE_SETTINGS_NAME = "language_settings"
 private val LANGUAGE_PREF_KEY = stringPreferencesKey("language")
 private val Context.appLanguageDataStore by preferencesDataStore(name = LANGUAGE_SETTINGS_NAME)
 
 @HiltAndroidApp
 class FluoColorApp : Application() {
-    
-    // SettingsRepository can still be injected for use in other parts of the app after onCreate
+
+    // 在 onCreate 之后，仍可注入 SettingsRepository 以供应用程序的其他部分使用
     @Inject
     lateinit var settingsRepository: SettingsRepository
     
@@ -37,7 +37,7 @@ class FluoColorApp : Application() {
                     it[LANGUAGE_PREF_KEY] ?: LocaleHelper.getSystemLanguage()
                 }.first()
             } catch (e: Exception) {
-                // Fallback to system language in case of any error reading DataStore
+                // 如果读取 DataStore 时出现任何错误，则返回系统语言
                 LocaleHelper.getSystemLanguage()
             }
         }
@@ -47,10 +47,9 @@ class FluoColorApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // Hilt injection is complete here. settingsRepository is available.
-        // If there are other app-wide initializations that depend on settingsRepository,
-        // they can be done here. For language, attachBaseContext has already handled initial setup.
-        // We might still want to log the applied language or perform other related tasks.
+        // Hilt 注入到此完成。settingsRepository 可用。
+        // 如果还有其他依赖于 settingsRepository 的应用级初始化，
+        // 也可以在此处完成。对于语言，attachBaseContext 已经处理了初始设置。
         applicationScope.launch {
             val currentLang = settingsRepository.languageFlow.first() // For logging or other non-UI tasks
             android.util.Log.i("FluoColorApp", "Application onCreate: Language set to: $currentLang")

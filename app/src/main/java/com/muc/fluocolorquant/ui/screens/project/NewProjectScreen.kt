@@ -885,7 +885,10 @@ fun NewProjectScreen(
                                 concentrationUnit = concentrationUnit,
                                 userId = currentUser?.id.toString(), // 使用当前用户ID
                                 rows = rows,
-                                columns = columns
+                                columns = columns,
+                                analysisMethod = "DL_MODEL", // 默认使用深度学习模型分析
+                                fkCurveModelId = null, // 默认不使用曲线模型
+                                finalCurveModelJson = null // 默认无曲线模型JSON
                             )
 
                             if (newProjectId != null) {

@@ -25,7 +25,11 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("projectId"), Index("runId")]
+    indices = [
+        Index("projectId"), 
+        Index("runId"),
+        Index("fkAnalyteId") // 为新增的外键列添加索引
+    ]
 )
 data class WellResult(
     @PrimaryKey(autoGenerate = true)
@@ -49,5 +53,10 @@ data class WellResult(
     val manualCropRectLeft: Float?,       // 手动裁剪框左坐标
     val manualCropRectTop: Float?,        // 手动裁剪框上坐标
     val manualCropRectRight: Float?,      // 手动裁剪框右坐标
-    val manualCropRectBottom: Float?      // 手动裁剪框下坐标
+    val manualCropRectBottom: Float?,     // 手动裁剪框下坐标
+    
+    // 新增字段 - 2.0.0版本
+    val pixelValueJson: String? = null,    // 存储从图片中提取的原始像素特征值的JSON
+    val fkAnalyteId: String? = null,       // 外键，关联到analytes表，指明孔位结果属于哪个分析物
+    val isOutOfRange: Boolean = false      // 标志位，标记计算结果是否超出曲线的可靠浓度范围
 ) 

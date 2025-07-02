@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -36,6 +37,8 @@ class SettingsRepository @Inject constructor(
     private val CONCENTRATION_UNITS_KEY = stringSetPreferencesKey("concentration_units")
     private val DEFAULT_ROWS_KEY = intPreferencesKey("default_rows")
     private val DEFAULT_COLUMNS_KEY = intPreferencesKey("default_columns")
+    private val PIXEL_EXTRACTION_METHOD_KEY = stringPreferencesKey("pixel_extraction_method")
+    private val IMAGE_PREPROCESSING_ENABLED_KEY = booleanPreferencesKey("image_preprocessing_enabled")
 
     // 获取当前语言设置，默认为系统语言
     val languageFlow: Flow<String> = languageDataStore.data.map { preferences ->
@@ -140,6 +143,30 @@ class SettingsRepository @Inject constructor(
     suspend fun setDefaultColumns(columns: Int) {
         appSettingsDataStore.edit { preferences ->
             preferences[DEFAULT_COLUMNS_KEY] = columns
+        }
+    }
+    
+    // 获取像素提取方式，默认为区域平均值
+    val pixelExtractionMethodFlow: Flow<String> = appSettingsDataStore.data.map { preferences ->
+        preferences[PIXEL_EXTRACTION_METHOD_KEY] ?: "roi_avg"
+    }
+    
+    // 设置像素提取方式
+    suspend fun setPixelExtractionMethod(method: String) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[PIXEL_EXTRACTION_METHOD_KEY] = method
+        }
+    }
+    
+    // 获取图像预处理开关状态
+    val imagePreprocessingEnabledFlow: Flow<Boolean> = appSettingsDataStore.data.map { preferences ->
+        preferences[IMAGE_PREPROCESSING_ENABLED_KEY] ?: true
+    }
+    
+    // 设置图像预处理开关
+    suspend fun setImagePreprocessingEnabled(enabled: Boolean) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[IMAGE_PREPROCESSING_ENABLED_KEY] = enabled
         }
     }
     
