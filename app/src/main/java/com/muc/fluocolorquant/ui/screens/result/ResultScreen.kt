@@ -3,6 +3,7 @@
 package com.muc.fluocolorquant.ui.screens.result
 
 import android.graphics.Bitmap
+import android.net.Uri
 // import android.graphics.BitmapFactory // 不再直接使用
 // import android.graphics.Color as AndroidColor // 不再直接使用
 import androidx.compose.animation.core.Spring
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.filled.ArrowBack // 使用 AutoMirrored �
 import androidx.compose.material.icons.automirrored.filled.ArrowBack // 新增：AutoMirrored 版本
 // import androidx.compose.material.icons.filled.FileDownload // 使用 drawable 替代
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Share
 // import androidx.compose.material.icons.filled.MoreVert // 不再直接使用
 // import androidx.compose.material.icons.filled.Share // 不再直接使用
 import androidx.compose.material3.Card
@@ -100,6 +102,8 @@ import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.WellResult
 // import com.muc.fluocolorquant.ui.components.LocalToastManager // 不再直接使用
 // import com.muc.fluocolorquant.ui.components.ToastType // 不再直接使用
+import com.muc.fluocolorquant.ui.components.LocalToastManager
+import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.ResultViewModel
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
 import com.muc.fluocolorquant.ui.navigation.Screen
@@ -116,6 +120,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalView
 import com.muc.fluocolorquant.R // 已有
+import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
+import androidx.compose.material3.FloatingActionButton
+import com.muc.fluocolorquant.utils.math.WellMappingUtils
 
 /**
  * 结果展示页面
@@ -127,12 +134,14 @@ fun ResultScreen(
     navController: NavController,
     runId: String? = null,
     projectId: String? = null,
-    viewModel: ResultViewModel = hiltViewModel()
+    viewModel: ResultViewModel = hiltViewModel(),
+    concentrationViewModel: ConcentrationViewModel = hiltViewModel()
 ) {
     val resultState by viewModel.resultState.collectAsState()
     val concentrationUnit by viewModel.concentrationUnit.collectAsState() // 从ViewModel获取单位
     val minConcentrationState by viewModel.minConcentration.collectAsState()
     val maxConcentrationState by viewModel.maxConcentration.collectAsState()
+    val toastManager = LocalToastManager.current
 
     val pagerState = rememberPagerState(initialPage = 0) { 3 }
     var showExportPanel by remember { mutableStateOf(false) }
@@ -146,10 +155,10 @@ fun ResultScreen(
         }
     }
 
-    val logTagString = stringResource(R.string.log_tag_result_screen)
-    val logErrorScreenshotFailedString = stringResource(R.string.log_error_screenshot_failed)
+    val logTagString = "ResultScreen" // 直接使用字符串常量
+    val logErrorScreenshotFailedString = "Screenshot failed" // 直接使用字符串常量
 
-    val captureScreenshot = remember(view, logTagString, logErrorScreenshotFailedString) {
+    val captureScreenshot = remember(view) {
         {
             try {
                 val rootView = view.rootView
@@ -165,14 +174,18 @@ fun ResultScreen(
         }
     }
 
+    // 添加分析方法判断
+    val project = (resultState as? ResultViewModel.ResultState.Success)?.project
+    val isStandardCurveFitting = project?.analysisMethod == "CURVE_FIT"
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text(stringResource(R.string.detection_results)) },
                 navigationIcon = {
-                    IconButton(onClick = { 
+                    IconButton(onClick = {
                         navController.navigate(Screen.Home.route) {
-                            popUpTo(0) { inclusive = true }
+                            popUpTo(Screen.Home.route) { inclusive = true }
                         }
                     }) {
                         // 使用 AutoMirrored 版本以支持RTL布局
@@ -193,6 +206,71 @@ fun ResultScreen(
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             )
+        },
+        floatingActionButton = {
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 添加曲线拟合按钮（仅当使用标准曲线拟合方法时显示）
+                if (isStandardCurveFitting) {
+                    // 提前获取字符串资源
+                    val projectNotFoundMsg = stringResource(R.string.project_not_found)
+
+                    FloatingActionButton(
+                        onClick = {
+                            runId?.let { currentRunId ->
+                                // 获取当前项目ID
+                                val currentState = viewModel.resultState.value
+                                if (currentState is ResultViewModel.ResultState.Success) {
+                                    val projectIdValue = currentState.project.id
+                                    val imageUri = currentState.project.imageUri
+                                    // 添加空字符串作为imageUri参数，因为从结果页面导航时不需要图像
+                                    navController.navigate(Screen.CurveFitting.createRoute(projectIdValue, currentRunId, Uri.encode(imageUri)))
+                                } else {
+                                    // 如果状态不是成功状态，显示错误提示
+                                    toastManager.showToast(
+                                        message = projectNotFoundMsg,
+                                        type = ToastType.ERROR
+                                    )
+                                }
+                            }
+                        },
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_curve_fitting),
+                                contentDescription = stringResource(R.string.curve_fitting)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = stringResource(R.string.curve_fitting))
+                        }
+                    }
+                }
+
+                // 原有的导出按钮
+                FloatingActionButton(
+                    onClick = {
+                        showExportPanel = true
+                    }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = stringResource(R.string.export)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(R.string.export))
+                    }
+                }
+            }
         }
     ) { paddingValues ->
         Box(
@@ -215,7 +293,7 @@ fun ResultScreen(
                 }
 
                 is ResultViewModel.ResultState.Success -> {
-                    val project = state.project
+                    val projectData = state.project
                     val wellResults = state.wellResults
 
                     Column(
@@ -223,10 +301,10 @@ fun ResultScreen(
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
                     ) {
-                        ProjectInfoCard(project, concentrationUnit) // 传递从ViewModel获取的concentrationUnit
+                        ProjectInfoCard(projectData, concentrationUnit) // 传递从ViewModel获取的concentrationUnit
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        if (project.recognitionType == "AUTO") {
+                        if (projectData.recognitionType == "AUTO") {
                             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth()) { page ->
                                 when (page) {
                                     0 -> PlateHeatmapCard(wellResults, concentrationUnit, minConcentrationState, maxConcentrationState, viewModel)
@@ -280,7 +358,8 @@ fun ResultScreen(
                 project = successState.project,
                 wellResults = successState.wellResults,
                 detectionRun = successState.detectionRun,
-                captureScreenshot = captureScreenshot
+                captureScreenshot = captureScreenshot,
+                projectAnalyteJoinRepository = viewModel.projectAnalyteJoinRepository
             )
         }
     }
@@ -320,9 +399,9 @@ fun ProjectInfoCard(project: Project, concentrationUnit: String) { // 接收 con
                 )
             )
             Text(text = stringResource(R.string.creation_time, formatDate(project.createTime)))
-            project.maxConcentration?.let { maxConc ->
-                Text(text = stringResource(R.string.max_concentration_res, maxConc.toString(), concentrationUnit)) // 使用传入的 concentrationUnit
-            }
+
+            // 使用传入的浓度单位
+            Text(text = stringResource(R.string.concentration_unit_res, concentrationUnit))
         }
     }
 }
@@ -339,10 +418,10 @@ fun PlateHeatmapCard(
     // 获取项目的行列值，默认为8行12列
     val projectRows = project?.rows ?: 8
     val projectColumns = project?.columns ?: 12
-    
+
     // 记录日志
     android.util.Log.d("ResultScreen", "PlateHeatmapCard - 行数: $projectRows, 列数: $projectColumns, 孔位总数: ${wellResults.size}")
-    
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -371,7 +450,17 @@ fun PlateHeatmapCard(
                 shape = RoundedCornerShape(8.dp),
                 shadowElevation = 2.dp
             ) {
-                val wellMap = remember(wellResults) { wellResults.associateBy { it.wellIndex } }
+                // 【修正】将孔位结果转换为以虚拟坐标为键的Map，便于查找
+                val wellsByVirtualCoord = remember(wellResults) {
+                    wellResults
+                        .filter { it.virtualRow != null && it.virtualCol != null }
+                        .associateBy { Pair(it.virtualRow!!, it.virtualCol!!) }
+                }
+
+                // 虚拟布局始终是8x12
+                val displayRows = 8
+                val displayCols = 12
+
                 Box(modifier = Modifier
                     .fillMaxSize()
                     .padding(4.dp)) {
@@ -379,7 +468,7 @@ fun PlateHeatmapCard(
                         // 标题行 - 显示列标题
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Box(modifier = Modifier.size(20.dp))
-                            for (col in 1..12) {
+                            for (col in 1..displayCols) {
                                 Box(modifier = Modifier
                                     .weight(1f)
                                     .aspectRatio(1f), contentAlignment = Alignment.Center) {
@@ -387,9 +476,9 @@ fun PlateHeatmapCard(
                                 }
                             }
                         }
-                        
+
                         // 显示孔阵行
-                        for (row in 0 until 8) {
+                        for (row in 0 until displayRows) {
                             Row(modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f), verticalAlignment = Alignment.CenterVertically) {
@@ -397,27 +486,29 @@ fun PlateHeatmapCard(
                                 Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
                                     Text(text = ('A' + row).toString(), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                                 }
-                                
+
                                 // 每行的孔位
-                                for (col in 0 until 12) {
-                                    val isWithinProjectBounds = row < projectRows && col < projectColumns
-                                    
+                                for (col in 0 until displayCols) {
+                                    // 【修正】使用虚拟坐标从Map中获取数据
+                                    val wellResult = wellsByVirtualCoord[Pair(row, col)]
+
+                                    // 检查这个虚拟孔位是否在项目的实际物理范围内
+                                    val realIndex = WellMappingUtils.mapVirtualToRealIndex(row, col)
+                                    val isWithinProjectBounds = realIndex < (projectRows * projectColumns)
+
+
                                     Box(modifier = Modifier
                                         .weight(1f)
                                         .aspectRatio(1f), contentAlignment = Alignment.Center) {
                                         if (isWithinProjectBounds) {
-                                            // 计算正确的孔位索引，使用项目特定的列数
-                                            val wellIndex = col * projectRows + row
-                                            val wellResult = wellResults.find { it.wellIndex == wellIndex }
-                                            
-                                        PlateWell(
+                                            PlateWell(
                                                 wellResult = wellResult,
-                                            minConcentration = minConcentration,
-                                            maxConcentration = maxConcentration,
-                                            project = project,
-                                            concentrationUnit = concentrationUnit, // 传递 concentrationUnit
-                                            viewModel = viewModel
-                                        )
+                                                minConcentration = minConcentration,
+                                                maxConcentration = maxConcentration,
+                                                project = project,
+                                                concentrationUnit = concentrationUnit, // 传递 concentrationUnit
+                                                viewModel = viewModel
+                                            )
                                         } else {
                                             // 显示灰色不可点击的占位符
                                             Box(
@@ -451,10 +542,12 @@ fun PlateWell(
     concentrationUnit: String, // 接收 concentrationUnit
     viewModel: ResultViewModel = hiltViewModel()
 ) {
-    val percentValue = wellResult?.predictedConcentration
-    val actualConcentration = if (project != null && percentValue != null) {
-        viewModel.calculateActualConcentration(percentValue, project.maxConcentration)
+    // 【修正】直接使用 wellResult?.predictedConcentration 作为最终浓度值
+    val actualConcentration = wellResult?.predictedConcentration
+    val percentValue = if (actualConcentration != null) {
+        viewModel.calculateConcentrationPercentage(actualConcentration, viewModel.maxConcentration.collectAsState().value)
     } else null
+
 
     val wellColor = if (actualConcentration != null) {
         HeatmapColorUtil.getColor(value = actualConcentration, minValue = minConcentration, maxValue = maxConcentration)
@@ -481,13 +574,21 @@ fun PlateWell(
                     modifier = Modifier.padding(8.dp)
                 ) {
                     Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        // 【修正】使用 WellMappingUtils 获取正确的标签
+                        val wellLabel = if(wellResult.virtualRow != null && wellResult.virtualCol != null) {
+                            WellMappingUtils.getWellLabel(wellResult.virtualRow!!, wellResult.virtualCol!!)
+                        } else {
+                            // 回退旧数据
+                            val (vRow, vCol) = WellMappingUtils.mapRealToVirtualCoordinates(wellResult.wellIndex)
+                            WellMappingUtils.getWellLabel(vRow, vCol)
+                        }
                         Text(
-                            text = stringResource(R.string.well_position_short, ('A' + wellResult.wellIndex % 8).toString(), (wellResult.wellIndex / 8) + 1),
+                            text = wellLabel,
                             style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(text = stringResource(R.string.concentration_percent_format, percentValue), style = MaterialTheme.typography.bodySmall)
-                        Text(text = stringResource(R.string.concentration_format, actualConcentration, concentrationUnit), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold) // 使用传入的 concentrationUnit
+                        Text(text = stringResource(R.string.concentration_value_format, actualConcentration, concentrationUnit), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -507,10 +608,10 @@ fun SquareHeatmapCard(
     // 获取项目的行列值，默认为8行12列
     val projectRows = project?.rows ?: 8
     val projectColumns = project?.columns ?: 12
-    
+
     // 记录日志
     android.util.Log.d("ResultScreen", "SquareHeatmapCard - 行数: $projectRows, 列数: $projectColumns, 孔位总数: ${wellResults.size}")
-    
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -539,14 +640,24 @@ fun SquareHeatmapCard(
                 shape = RoundedCornerShape(8.dp),
                 shadowElevation = 2.dp
             ) {
-                val wellMap = remember(wellResults) { wellResults.associateBy { it.wellIndex } }
+                // 【修正】将孔位结果转换为以虚拟坐标为键的Map，便于查找
+                val wellsByVirtualCoord = remember(wellResults) {
+                    wellResults
+                        .filter { it.virtualRow != null && it.virtualCol != null }
+                        .associateBy { Pair(it.virtualRow!!, it.virtualCol!!) }
+                }
+
+                // 虚拟布局始终是8x12
+                val displayRows = 8
+                val displayCols = 12
+
                 Box(modifier = Modifier
                     .fillMaxSize()
                     .padding(4.dp)) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Box(modifier = Modifier.size(20.dp))
-                            for (col in 1..12) {
+                            for (col in 1..displayCols) {
                                 Box(modifier = Modifier
                                     .weight(1f)
                                     .aspectRatio(1f), contentAlignment = Alignment.Center) {
@@ -554,31 +665,31 @@ fun SquareHeatmapCard(
                                 }
                             }
                         }
-                        for (row in 0 until 8) {
+                        for (row in 0 until displayRows) {
                             Row(modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f), verticalAlignment = Alignment.CenterVertically) {
                                 Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
                                     Text(text = ('A' + row).toString(), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                                 }
-                                for (col in 0 until 12) {
-                                    val isWithinProjectBounds = row < projectRows && col < projectColumns
-                                    
+                                for (col in 0 until displayCols) {
+                                    val realIndex = WellMappingUtils.mapVirtualToRealIndex(row, col)
+                                    val isWithinProjectBounds = realIndex < (projectRows * projectColumns)
+
                                     Box(modifier = Modifier
                                         .weight(1f)
                                         .aspectRatio(1f), contentAlignment = Alignment.Center) {
                                         if (isWithinProjectBounds) {
-                                            // 计算正确的孔位索引，使用项目特定的列数
-                                            val wellIndex = col * projectRows + row
-                                            val wellResult = wellResults.find { it.wellIndex == wellIndex }
-                                            
-                                        SquareWell(
+                                            // 【修正】使用虚拟坐标从Map中获取数据
+                                            val wellResult = wellsByVirtualCoord[Pair(row, col)]
+                                            SquareWell(
                                                 wellResult = wellResult,
-                                            minConcentration = minConcentration,
-                                            maxConcentration = maxConcentration,
-                                            project = project,
-                                            viewModel = viewModel
-                                        )
+                                                minConcentration = minConcentration,
+                                                maxConcentration = maxConcentration,
+                                                project = project,
+                                                concentrationUnit = concentrationUnit, // 添加 concentrationUnit 参数
+                                                viewModel = viewModel
+                                            )
                                         } else {
                                             // 显示灰色不可点击的占位符
                                             Box(
@@ -608,12 +719,11 @@ fun SquareWell(
     minConcentration: Double,
     maxConcentration: Double,
     project: Project?,
+    concentrationUnit: String, // 添加 concentrationUnit 参数
     viewModel: ResultViewModel = hiltViewModel()
 ) {
-    val percentValue = wellResult?.predictedConcentration
-    val actualConcentration = if (project != null && percentValue != null) {
-        viewModel.calculateActualConcentration(percentValue, project.maxConcentration)
-    } else null
+    // 【修正】直接使用 wellResult?.predictedConcentration 作为最终浓度值
+    val actualConcentration = wellResult?.predictedConcentration
 
     val wellColor = if (actualConcentration != null) {
         HeatmapColorUtil.getColor(value = actualConcentration, minValue = minConcentration, maxValue = maxConcentration)
@@ -666,12 +776,11 @@ fun HeatmapLegend(minValue: Double, maxValue: Double, unit: String) { // 接收 
             for (i in 0..4) {
                 val value = minValue + (maxValue - minValue) * (i / 4.0)
                 Text(
-                    // text = "%.1f %s".format(value, unit), // 将单位结合进来
-                    text = stringResource(R.string.value_format, value), // 或者如果value_format只包含数字部分
+                    text = stringResource(R.string.value_format, value),
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.width(40.dp) // 可能需要调整宽度以适应单位
+                    modifier = Modifier.width(40.dp)
                 )
             }
         }
@@ -681,7 +790,9 @@ fun HeatmapLegend(minValue: Double, maxValue: Double, unit: String) { // 接收 
             fontSize = 10.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp)
         )
     }
 }
@@ -723,7 +834,7 @@ fun ConcentrationChartCard(
     val project = (viewModel.resultState.collectAsState().value as? ResultViewModel.ResultState.Success)?.project
     val validResults = wellResults.filter { it.predictedConcentration != null && it.predictedConcentration!!.isFinite() }
     val sortedResults = remember(validResults) { validResults.sortedBy { it.wellIndex } }
-    val yAxisMaxConcentration = project?.maxConcentration ?: 100.0
+    val yAxisMaxConcentration = viewModel.maxConcentration.collectAsState().value
     var selectedPointIndex by remember { mutableStateOf<Int?>(null) }
 
     val context = LocalContext.current
@@ -746,7 +857,11 @@ fun ConcentrationChartCard(
 
             if (sortedResults.isNotEmpty()) {
                 val chartHeight = 250.dp
-                // 移除原来的 selectedPointIndex?.let Card 定义
+                // 【修正】直接使用已有的最终浓度值
+                val dataPointConcentrations = sortedResults.map { result ->
+                    result to (result.predictedConcentration ?: 0.0)
+                }
+
 
                 // 图表Canvas部分
                 Box(
@@ -787,19 +902,19 @@ fun ConcentrationChartCard(
                             var tapSelectedIndex by remember { mutableStateOf<Int?>(null) }
                             LaunchedEffect(tapSelectedIndex) { selectedPointIndex = tapSelectedIndex }
 
-                            val xLabels = remember(sortedResults, R.string.well_position_short, context) {
-                                if (sortedResults.isEmpty()) {
-                                    emptyList()
-                                } else {
-                                    sortedResults.map { result ->
-                                        // 新计算方式：wellIndex / 8是列号，wellIndex % 8是行号
-                                        val rowIndex = result.wellIndex % 8
-                                        val colNumber = result.wellIndex / 8 + 1
-                                        val rowChar = ('A' + rowIndex).toChar()
-                                        context.getString(R.string.well_position_short, rowChar.toString(), colNumber)
+                            // 【修正】使用 virtualRow 和 virtualCol 生成正确的标签
+                            val xLabels = remember(sortedResults) {
+                                sortedResults.map { result ->
+                                    if (result.virtualRow != null && result.virtualCol != null) {
+                                        WellMappingUtils.getWellLabel(result.virtualRow!!, result.virtualCol!!)
+                                    } else {
+                                        // Fallback for old data without virtual coords
+                                        val (vRow, vCol) = WellMappingUtils.mapRealToVirtualCoordinates(result.wellIndex)
+                                        WellMappingUtils.getWellLabel(vRow, vCol)
                                     }
                                 }
                             }
+
 
                             Canvas(
                                 modifier = Modifier
@@ -820,61 +935,60 @@ fun ConcentrationChartCard(
                                 val height = size.height - 12.dp.toPx() // 预留空间给X轴标签，减少可绘制高度
                                 val width = size.width
                                 dataPoints.clear()
-                                
+
                                 // 绘制更优雅的网格
                                 val gridColor = Color.Gray.copy(alpha = 0.1f)
                                 val gridStrokeWidth = 1f
-                                
+
                                 // 绘制水平网格线
-                                for (i in 0..5) { 
+                                for (i in 0..5) {
                                     val y = height - (height * i / 5)
                                     drawLine(
-                                        color = gridColor, 
-                                        start = Offset(0f, y), 
-                                        end = Offset(width, y), 
+                                        color = gridColor,
+                                        start = Offset(0f, y),
+                                        end = Offset(width, y),
                                         strokeWidth = gridStrokeWidth
                                     )
                                 }
-                                
+
                                 // 计算每个点的水平间距
                                 // 确保点之间的间距足够，但不要让它们太靠近边缘
                                 val pointSpacing = if (pointCount > 1) (width - 30.dp.toPx()) / (pointCount - 1) else width / 2
-                                
+
                                 // 绘制垂直网格线
-                                for (i in 0 until pointCount) { 
+                                for (i in 0 until pointCount) {
                                     val x = 15.dp.toPx() + i * pointSpacing
                                     drawLine(
-                                        color = gridColor, 
-                                        start = Offset(x, 0f), 
-                                        end = Offset(x, height), 
+                                        color = gridColor,
+                                        start = Offset(x, 0f),
+                                        end = Offset(x, height),
                                         strokeWidth = gridStrokeWidth
                                     )
                                 }
-                                
+
                                 // 数据点的最小高度（以防止与X轴标签重叠）
                                 val minPointHeight = height - height * 0.95f
-                                
+
                                 // 绘制数据线和点
                                 val path = Path()
                                 var firstPoint = true
-                                
-                                sortedResults.forEachIndexed { i, result ->
+
+                                dataPointConcentrations.forEachIndexed { i, (result, actualConcentrationValue) ->
                                     val x = 15.dp.toPx() + i * pointSpacing
-                                    val actualConcentrationValue = viewModel.calculateActualConcentration(result.predictedConcentration, project?.maxConcentration) ?: 0.0
                                     val normalizedY = if (yAxisMaxConcentration > 0) (actualConcentrationValue / yAxisMaxConcentration).toFloat() else 0f
-                                    
+
                                     // 确保点不会太低，与X轴标签重叠
                                     val y = (height - (normalizedY * height)).coerceIn(minPointHeight, height)
-                                    
+
                                     dataPoints.add(Offset(x, y) to i)
-                                    
-                                    if (firstPoint) { 
+
+                                    if (firstPoint) {
                                         path.moveTo(x, y)
-                                        firstPoint = false 
+                                        firstPoint = false
                                     } else {
                                         path.lineTo(x, y)
                                     }
-                                    
+
                                     // 绘制点阴影
                                     if (i == selectedPointIndex) {
                                         // 选中点的阴影
@@ -884,14 +998,14 @@ fun ConcentrationChartCard(
                                             center = Offset(x, y)
                                         )
                                     }
-                                    
+
                                     // 绘制数据点
                                     val pointRadius = if (i == selectedPointIndex) 8f else 5f
-                                    val pointColor = if (i == selectedPointIndex) 
-                                        Color(primaryColorHighlightedArgb) 
-                                    else 
+                                    val pointColor = if (i == selectedPointIndex)
+                                        Color(primaryColorHighlightedArgb)
+                                    else
                                         Color(primaryColorArgb)
-                                    
+
                                     // 白色边框
                                     if (i == selectedPointIndex) {
                                         drawCircle(
@@ -900,7 +1014,7 @@ fun ConcentrationChartCard(
                                             center = Offset(x, y)
                                         )
                                     }
-                                    
+
                                     // 实际数据点
                                     drawCircle(
                                         color = pointColor,
@@ -908,7 +1022,7 @@ fun ConcentrationChartCard(
                                         center = Offset(x, y)
                                     )
                                 }
-                                
+
                                 // 绘制曲线
                                 drawPath(
                                     path = path,
@@ -919,7 +1033,7 @@ fun ConcentrationChartCard(
                                     )
                                 )
                             }
-                            
+
                             // X轴标签绘制区域
                             Box(
                                 modifier = Modifier
@@ -929,24 +1043,24 @@ fun ConcentrationChartCard(
                             ) {
                                 val density = LocalDensity.current
                                 val textColorArgb = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f).toArgb()
-                                
+
                                 Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val textPaint = android.text.TextPaint().apply { 
+                                    val textPaint = android.text.TextPaint().apply {
                                         textSize = with(density) { 11.sp.toPx() } // 增大字体
                                         color = textColorArgb
                                         textAlign = android.graphics.Paint.Align.CENTER
                                         isAntiAlias = true
                                         isFakeBoldText = true // 使文本略微加粗
                                     }
-                                    
+
                                     // 使用与数据点相同的间距和起始点
                                     val pointSpacing = if (xLabels.size > 1) (size.width - 30.dp.toPx()) / (xLabels.size - 1) else size.width / 2
-                                    
+
                                     // 绘制标签
                                     xLabels.forEachIndexed { i, label ->
                                         val xPos = 15.dp.toPx() + i * pointSpacing
                                         val yPos = size.height - 8.dp.toPx() // 调整文本位置
-                                        
+
                                         // 绘制标签文本
                                         this.drawContext.canvas.nativeCanvas.drawText(
                                             label,
@@ -983,14 +1097,14 @@ fun ConcentrationChartCard(
 
                 Spacer(modifier = Modifier.height(16.dp)) // 图表与下方信息的间距
 
-                // 将 selectedPointIndex 的信息卡片移到这里，图表的下方
+                // 选中点的信息卡片在此处显示
                 selectedPointIndex?.let { index ->
-                    if (index < sortedResults.size) {
-                        val result = sortedResults[index]
+                    if (index < dataPointConcentrations.size) {
+                        val (result, actualConcentrationValue) = dataPointConcentrations[index]
                         val rowChar = ('A' + result.wellIndex % 8).toChar()
                         val colNumber = (result.wellIndex / 8) + 1
-                        val percentValue = result.predictedConcentration ?: 0.0
-                        val actualConcentrationValue = viewModel.calculateActualConcentration(percentValue, project?.maxConcentration) ?: 0.0
+                        val percentValue = viewModel.calculateConcentrationPercentage(actualConcentrationValue, yAxisMaxConcentration) ?: 0.0
+
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1029,12 +1143,7 @@ fun ConcentrationChartCard(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(text = stringResource(R.string.click_datapoint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (sortedResults.size > 10) { // 根据实际情况调整，判断何时显示滑动提示
-                    Text(text = stringResource(R.string.swipe_for_more), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                }
-            } else { // sortedResults为空
+            } else { // 无数据点
                 Box(modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp), contentAlignment = Alignment.Center) {
@@ -1107,19 +1216,21 @@ fun SingleWellResultCard(
                     }
                 }
                 Spacer(modifier = Modifier.height(32.dp))
-                singleWell.predictedConcentration?.let { percentValue ->
+                // 【修正】直接使用 predictedConcentration 作为最终浓度
+                singleWell.predictedConcentration?.let { actualConcentrationValue ->
+                    // 使用最终浓度计算百分比
+                    val percentValue = viewModel.calculateConcentrationPercentage(actualConcentrationValue, viewModel.maxConcentration.collectAsState().value) ?: 0.0
+
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         Text(text = stringResource(R.string.concentration_percent), style = MaterialTheme.typography.titleMedium)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = stringResource(R.string.concentration_percent_value, percentValue), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    val actualConcentrationValue = viewModel.calculateActualConcentration(percentValue, project?.maxConcentration)
-                    if (actualConcentrationValue != null) {
-                        Text(text = stringResource(R.string.actual_concentration, project?.maxConcentration ?: 100.0, concentrationUnit), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) // 使用传入的 concentrationUnit
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = stringResource(R.string.concentration_value, actualConcentrationValue, concentrationUnit), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) // 使用传入的 concentrationUnit
-                    }
+                    Text(text = stringResource(R.string.actual_concentration, viewModel.maxConcentration.collectAsState().value, concentrationUnit), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = stringResource(R.string.concentration_value, actualConcentrationValue, concentrationUnit), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+
                 } ?: Text(text = stringResource(R.string.unable_to_measure), color = MaterialTheme.colorScheme.error)
             } else {
                 Box(modifier = Modifier

@@ -174,8 +174,8 @@ class SettingsRepository @Inject constructor(
         // 默认浓度单位集合
         val DEFAULT_CONCENTRATION_UNITS = setOf("ng/ml", "μg/ml", "mg/ml", "g/ml", "mol/L", "mmol/L", "μmol/L", "nmol/L")
         // 默认行数
-        val DEFAULT_ROWS = 8
+        val DEFAULT_ROWS = 12
         // 默认列数
-        val DEFAULT_COLUMNS = 12
+        val DEFAULT_COLUMNS = 8
     }
 } 

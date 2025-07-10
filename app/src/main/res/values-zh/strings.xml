@@ -50,7 +50,7 @@
     
     <!-- About Screen -->
     <string name="about_us">关于我们</string>
-    <string name="version">版本 1.0.0</string>
+    <string name="version">版本 2.2.0</string>
     <string name="app_description">FluoColorQuant是一款高效的比色与荧光高通量检测软件，通过先进的图像处理和机器学习算法，为您提供精准的传感器数据分析。</string>
     <string name="feature_highlights">功能特点</string>
     <string name="high_precision">高精度检测</string>
@@ -109,7 +109,7 @@
     <string name="app_name_short">FluoColor</string>
     <string name="app_subtitle">智能检测分析平台</string>
     <string name="loading_progress">加载中... %1$d%%</string>
-    <string name="copyright">© 2025 FluoColor科技</string>
+    <string name="copyright">© Minzu University of China\nSensor and Microsystem Lab</string>
     <string name="app_icon_description">应用图标</string>
     
     <!-- Result Screen -->
@@ -159,6 +159,14 @@
     <string name="error_no_projects_found">未找到任何项目数据</string>
     <string name="standard_detection_starting">开始标准检测…</string>
     <string name="switch_to_standard_detection">切换到标准检测</string>
+    
+    <!-- Plate Size Settings -->
+    <string name="plate_size_limit_exceeded">孔板尺寸超出限制。总孔数不应超过96。</string>
+    <string name="plate_size_description">行 × 列的总孔数不应超过96。</string>
+    <string name="input_rows_columns">请输入行数和列数。</string>
+    <string name="row_limit_exceeded">行数超出范围。</string>
+    <string name="column_limit_exceeded">列数超出范围。</string>
+    <string name="input_number_only">请只输入数字。</string>
     
     <!-- ResultScreen Additional -->
     <string name="detection_mode_res">检测模式: %1$s</string>
@@ -213,57 +221,57 @@
     <string name="detection_results">检测结果</string>
     <string name="export">导出</string>
     <string name="loading_result_data">加载结果数据...</string>
-    
+
     <!-- Export Components -->
-    <string name="export_title">导出</string>
+    <string name="export_title">导出选项</string>
     <string name="export_data_csv">导出数据 (CSV)</string>
-    <string name="export_data_csv_desc">将浓度数据导出为CSV文件</string>
+    <string name="export_data_csv_desc">将检测数据导出为CSV表格文件</string>
     <string name="export_chart_png">导出图表 (PNG)</string>
-    <string name="export_chart_png_desc">将浓度热力图和数值图导出为PNG图片</string>
-    <string name="export_report_pdf">导出完整报告 (PDF)</string>
-    <string name="export_report_pdf_desc">将检测结果及参数导出为PDF报告</string>
-    <string name="csv_saved">CSV文件已保存到下载文件夹</string>
-    <string name="csv_failed">导出CSV文件失败</string>
-    <string name="charts_saved">浓度图表已保存为PNG图片</string>
-    <string name="charts_failed">导出图表失败</string>
-    <string name="pdf_saved">PDF报告已保存到下载文件夹</string>
-    <string name="pdf_failed">导出PDF报告失败</string>
-    <string name="csv_header_line_format">孔位,孔位索引,预测浓度(%%%%),实际浓度(%1$s)\n</string>
-    <string name="csv_label_project_name_colon">项目名称:</string>
-    <string name="csv_label_detection_mode_colon">检测模式:</string>
-    <string name="csv_label_recognition_type_colon">识别类型:</string>
-    <string name="csv_label_max_concentration_colon">最大浓度:</string>
-    <string name="csv_label_creation_time_colon">创建时间:</string>
-    <string name="bitmap_title_heatmap_with_name">浓度热力图 - %s</string>
-    <string name="bitmap_legend_concentration_range_format">浓度范围: 0 - %1$s %2$s</string>
-    <string name="bitmap_title_value_distribution_with_name">浓度数值分布 - %s</string>
+    <string name="export_chart_png_desc">将热力图和浓度图表导出为PNG图片</string>
+    <string name="export_report_pdf">导出报告 (PDF)</string>
+    <string name="export_report_pdf_desc">生成包含所有数据和图表的完整PDF报告</string>
+    <string name="csv_saved">CSV文件已保存</string>
+    <string name="csv_failed">CSV文件保存失败</string>
+    <string name="charts_saved">图表已保存</string>
+    <string name="charts_failed">图表保存失败</string>
+    <string name="csv_label_project_name_colon">项目名称：</string>
+    <string name="csv_label_detection_mode_colon">检测模式：</string>
+    <string name="csv_label_recognition_type_colon">识别类型：</string>
+    <string name="csv_label_max_concentration_colon">最大浓度：</string>
+    <string name="csv_label_creation_time_colon">创建时间：</string>
+    <string name="csv_header_line_format">孔位,索引,浓度百分比,浓度(%s)</string>
+    <string name="bitmap_title_heatmap_with_name">%s - 浓度热力图</string>
+    <string name="bitmap_title_value_distribution_with_name">%s - 浓度分布图</string>
+    <string name="bitmap_legend_concentration_range_format">浓度范围: 0 - %s %s</string>
     <string name="bitmap_axis_label_concentration_with_unit">浓度 (%s)</string>
-    <string name="bitmap_axis_label_well_id_capital">孔位ID</string>
-    <string name="pdf_report_main_title">FluoColor 检测报告</string>
+    <string name="bitmap_axis_label_well_id_capital">孔位编号</string>
+    <string name="pdf_report_main_title">分析报告</string>
     <string name="pdf_header_project_info">项目信息</string>
     <string name="pdf_label_project_name_format">项目名称: %s</string>
     <string name="pdf_label_detection_mode_format">检测模式: %s</string>
     <string name="pdf_label_recognition_type_format">识别类型: %s</string>
-    <string name="pdf_label_max_concentration_format">最大浓度: %1$s %2$s</string>
+    <string name="pdf_label_max_concentration_format">最大浓度: %s %s</string>
     <string name="pdf_label_creation_time_format">创建时间: %s</string>
     <string name="pdf_header_detection_run_info">检测运行信息</string>
     <string name="pdf_label_detection_model_format">检测模型: %s</string>
-    <string name="pdf_label_concentration_model_format">浓度预测模型: %s</string>
+    <string name="pdf_label_concentration_model_format">浓度模型: %s</string>
     <string name="pdf_label_confidence_threshold_format">置信度阈值: %s</string>
-    <string name="pdf_label_iou_threshold_format">IoU阈值: %s</string>
-    <string name="pdf_label_wells_detected_count_format">检测到的孔位数量: %s</string>
+    <string name="pdf_label_iou_threshold_format">IOU阈值: %s</string>
+    <string name="pdf_label_wells_detected_count_format">检测到孔位数: %s</string>
     <string name="pdf_header_statistics">统计信息</string>
-    <string name="pdf_label_valid_data_points_format">有效数据点数量: %d</string>
-    <string name="pdf_label_avg_predicted_concentration_format">平均预测浓度: %.2f%%%%</string>
-    <string name="pdf_label_max_predicted_concentration_format">最大预测浓度: %.2f%%%%</string>
-    <string name="pdf_label_min_predicted_concentration_format">最小预测浓度: %.2f%%%%</string>
+    <string name="pdf_label_valid_data_points_format">有效数据点: %d</string>
+    <string name="pdf_label_avg_predicted_concentration_format">平均预测浓度百分比: %.2f%%</string>
+    <string name="pdf_label_max_predicted_concentration_format">最高预测浓度百分比: %.2f%%</string>
+    <string name="pdf_label_min_predicted_concentration_format">最低预测浓度百分比: %.2f%%</string>
     <string name="pdf_label_avg_actual_concentration_format">平均实际浓度: %.2f %s</string>
-    <string name="pdf_label_max_actual_concentration_format">最大实际浓度: %.2f %s</string>
-    <string name="pdf_label_min_actual_concentration_format">最小实际浓度: %.2f %s</string>
-    <string name="pdf_report_continued_title">FluoColor 检测报告 - 续</string>
-    <string name="pdf_header_concentration_distribution_chart">浓度数值分布图</string>
-    <string name="pdf_footer_generated_on_app_format">生成时间: %1$s | 使用FluoColor应用生成</string>
-    
+    <string name="pdf_label_max_actual_concentration_format">最高实际浓度: %.2f %s</string>
+    <string name="pdf_label_min_actual_concentration_format">最低实际浓度: %.2f %s</string>
+    <string name="pdf_header_concentration_distribution_chart">浓度分布图</string>
+    <string name="pdf_report_continued_title">分析报告（续）</string>
+    <string name="pdf_footer_generated_on_app_format">由FluoColorQuant生成于 %s</string>
+    <string name="pdf_saved">PDF报告已保存到下载文件夹</string>
+    <string name="pdf_failed">导出PDF报告失败</string>
+
     <!-- New Project Screen -->
     <string name="new_project_title">新建项目</string>
     <string name="project_name">项目名称</string>
@@ -318,9 +326,6 @@
     <string name="row_column_settings">孔板尺寸</string>
     <string name="rows">行数</string>
     <string name="columns">列数</string>
-    <string name="row_limit_exceeded">超出最大行限制 (8)</string>
-    <string name="column_limit_exceeded">超出最大列限制 (12)</string>
-    <string name="input_number_only">请只输入数字</string>
     
     <!-- WellDetectionScreen -->
     <string name="well_detection_title">孔阵检测</string>
@@ -341,7 +346,8 @@
     <string name="saving_detection_results">正在保存检测结果...</string>
     <string name="save_detection_failed">保存检测结果失败</string>
     <string name="save_detection_failed_with_error">保存检测结果失败: %1$s</string>
-    <string name="image_uri_empty">图像URI为空，无法进行检测</string>
+    <string name="image_uri_empty">图像URI为空，无法执行检测</string>
+    <string name="detection_not_complete">检测尚未完成，请稍候</string>
     
     <!-- CurveFittingScreen -->
     <string name="curve_fitting_title">孔位处理与预览</string>
@@ -578,6 +584,16 @@
     <string name="parameter_d">参数 d</string>
     <string name="parameter_e">参数 e</string>
     <string name="parameter_g">参数 g</string>
+    <string name="curve_fitting_result_title">曲线拟合结果</string>
+    <string name="fitting_function">拟合函数</string>
+    <string name="concentration_label">浓度</string>
+    <string name="pixel_value_label">像素值</string>
+    <string name="equation">方程式</string>
+    <string name="concentration_predictions">浓度预测结果</string>
+    <string name="fitting_result_saved">拟合结果已保存</string>
+    <string name="save_and_return">保存并返回</string>
+    <string name="no_fitting_results">没有找到拟合结果</string>
+    <string name="return_to_curve_fitting">返回曲线拟合</string>
     <string name="fitting_quality">拟合质量</string>
     <string name="curve_parameters">曲线参数</string>
     <string name="column_type">列类型</string>
@@ -615,5 +631,188 @@
     <string name="no_default_layout">未设置默认孔板布局</string>
     <string name="no_curve_model">无可用曲线模型</string>
 
+    <!-- Analyte Selection and Configuration -->
+    <string name="select_analytes">选择分析物</string>
+    <string name="search_analytes">搜索分析物</string>
+    <string name="selected_analytes_count">已选择: %1$d</string>
+    <string name="no_matching_analytes">未找到匹配的分析物</string>
+    <string name="no_analytes_available">无可用分析物</string>
+    <string name="analyte_configuration">分析物配置</string>
+    <string name="configure_analytes">配置分析物</string>
+    <string name="add_analytes">添加分析物</string>
+    <string name="no_analytes_selected">未选择分析物</string>
+    <string name="configure_at_least_one_analyte">请至少配置一个分析物</string>
+    <string name="unit">单位</string>
+    <string name="remove">移除</string>
 
+    <!-- 结果显示相关字符串 -->
+    <string name="concentration_unit_res">浓度单位: %s</string>
+    <string name="concentration_value_format">浓度: %.2f %s</string>
+
+    <!-- PDF导出相关字符串 -->
+    <string name="pdf_title_analysis_report">分析报告</string>
+    <string name="pdf_header_project_information">项目信息</string>
+    <string name="pdf_label_project_name">项目名称: %s</string>
+    <string name="pdf_label_creation_date">创建日期: %s</string>
+    <string name="pdf_label_detection_mode">检测模式: %s</string>
+    <string name="pdf_label_recognition_type">识别类型: %s</string>
+    <string name="pdf_label_plate_layout">孔板布局: %s</string>
+    <string name="pdf_label_max_concentration">最大浓度: %s</string>
+    <string name="pdf_header_heatmap">浓度热力图</string>
+    <string name="pdf_header_concentration_distribution">浓度分布图</string>
+    <string name="pdf_header_result_data">结果数据</string>
+    <string name="pdf_table_header_well">孔位</string>
+    <string name="pdf_table_header_row">行</string>
+    <string name="pdf_table_header_column">列</string>
+    <string name="pdf_table_header_raw_value">原始值</string>
+    <string name="pdf_table_header_percentage">百分比</string>
+    <string name="pdf_table_header_concentration">浓度</string>
+    <string name="pdf_note_more_results">... 更多 %d 条结果未显示</string>
+    <string name="pdf_footer_generated_date">生成时间: %s</string>
+    <string name="pdf_footer_app_name">FluoColorQuant</string>
+    <string name="pdf_export_success">PDF报告已导出至: %s</string>
+    <string name="pdf_export_error">导出PDF失败: %s</string>
+
+    <!-- New additions -->
+    <string name="analysis_method">分析方法</string>
+    <string name="dl_model_option">浓度预测模型</string>
+    <string name="curve_fit_option">标准曲线拟合</string>
+
+    <!-- 孔位布局相关 -->
+    <string name="well_layout_title">孔位布局</string>
+    <string name="real_wells_preview">真实孔位预览</string>
+    <string name="virtual_layout_board">虚拟布局板</string>
+    <string name="select_role_type">选择角色类型</string>
+    <string name="role_standard">标准品</string>
+    <string name="role_sample">样本</string>
+    <string name="role_blank">空白对照</string>
+    <string name="role_qc">质控品</string>
+    <string name="role_unknown">未知</string>
+    <string name="role_none">清除</string>
+    <string name="select_template">选择模板</string>
+    <string name="manual_fitting">手动拟合</string>
+    <string name="apply_template">应用模板</string>
+    <string name="no_template_available">无可用模板</string>
+    <string name="well_occupied">此孔位已分配给 %1$s。请先清除。</string>
+    <string name="template_conflict">模板 \'%1$s\' 中的部分孔位已被占用，这些孔位将不会被覆盖</string>
+    <string name="save_template_failed">保存模板失败</string>
+    <string name="concentration_input_title">标准品浓度输入</string>
+    <string name="select_fitting_functions">选择拟合函数</string>
+    <string name="select_pixel_types">选择像素类型</string>
+    <string name="calculating_fitting">正在计算拟合结果...</string>
+    <string name="fitting_result">拟合结果</string>
+    <string name="best_fit">最佳拟合</string>
+    <string name="other_fitting_results">其他拟合结果</string>
+    <string name="r_squared">R² = %.4f</string>
+    <string name="save_as_template">保存为模板</string>
+    <string name="template_not_fit">模板布局不适合当前项目的行列数</string>
+    <string name="need_more_standards">至少需要 4 个标准品才能拟合</string>
+    <string name="input_concentration">输入浓度</string>
+    <string name="well_label">%1$s</string>
+    <string name="well_role_label">%1$s-%2$s</string>
+    <string name="no_template_selected">未选择模板</string>
+    <string name="no_analyte_selected">未选择分析物</string>
+    <string name="no_role_type_selected">未选择角色类型</string>
+    <string name="mark_wells_hint">请为 %1$s 手动定义样本和标准品孔位</string>
+    <string name="process_next">处理下一步</string>
+    <string name="well_layout_complete">孔位布局已完成</string>
+    <string name="well_layout_incomplete">孔位布局未完成</string>
+    <string name="curve_fitting">曲线拟合</string>
+    <string name="pixel_extraction_complete">像素提取完成</string>
+    <string name="pixel_extraction_in_progress">正在提取像素值 (%1$d%%)...</string>
+    <string name="pixel_extraction_failed">像素提取失败: %1$s</string>
+    <string name="process_failed">处理失败，请检查数据后重试</string>
+
+    <!-- 添加缺失的字符串资源 -->
+    <string name="image_load_failed">图像加载失败</string>
+    <string name="well_plate">孔板</string>
+
+    <!-- 新增错误提示字符串 -->
+    <string name="project_not_found">项目不存在</string>
+    <string name="original_image_missing">原始图像缺失</string>
+    <string name="initialization_failed">初始化失败: %s</string>
+    <string name="original_image_load_error">无法加载原始图像</string>
+    <string name="standard_wells_count_hint">已选择 %1$d 个标准品，还需要 %2$d 个</string>
+
+    <!-- Multi-analyte Processing Workflow -->
+    <string name="process_next_analyte">处理下一个分析物</string>
+    <string name="analyte_configuration_status">已配置: %1$d/%2$d 个分析物</string>
+    <string name="calculate_all_results">计算所有结果</string>
+    <string name="finalize_and_calculate">完成并计算</string>
+    <string name="all_analytes_configured">所有分析物已配置完成</string>
+    <string name="analyte_processed_successfully">分析物处理成功</string>
+    <string name="analyte_process_failed">分析物处理失败</string>
+    <string name="manual_configuration_needed">此分析物需要手动配置</string>
+
+    <!-- 手动拟合对话框 -->
+    <string name="alternative_fits">备选拟合结果</string>
+    <string name="no_valid_fitting_results">没有找到有效的拟合结果</string>
+    <string name="confirm_and_continue">确认并继续</string>
+    <string name="auto_processing_info">系统正在自动处理您的样本，请稍候...</string>
+
+    <!-- 新增: 模型预测相关字符串 -->
+    <string name="dl_model_prediction">深度学习模型预测</string>
+    <string name="select_model">选择预测模型</string>
+    <string name="available_models">可用模型</string>
+    <string name="apply_model">应用模型</string>
+    <string name="model_applied_successfully">模型应用成功</string>
+    <string name="show_results">显示结果</string>
+
+    <!-- 新增: 模型预测进度和状态相关字符串 -->
+    <string name="model_prediction_in_progress">正在调用模型预测...</string>
+    <string name="model_prediction_start">开始模型预测</string>
+    <string name="model_prediction_processing">模型预测处理中 (%1$d%%)...</string>
+    <string name="model_prediction_complete">模型预测完成</string>
+    <string name="model_prediction_failed">模型预测失败: %1$s</string>
+    <string name="preparing_image_data">正在准备图像数据...</string>
+    <string name="loading_analyte_info">正在加载分析物信息...</string>
+    <string name="preparing_single_analyte_layout">正在准备单分析物布局...</string>
+    <string name="cropping_well_images">正在裁切孔位图像...</string>
+    <string name="extracting_pixel_values">正在提取像素值...</string>
+    <string name="loading_well_data">正在加载孔位数据...</string>
+    <string name="loading_templates">正在加载模板...</string>
+    <string name="processing_analyte">正在处理分析物: %1$s...</string>
+    <string name="curve_fitting_for_analyte">正在为 %1$s 执行曲线拟合...</string>
+    <string name="updating_fitting_status">正在更新 %1$s 的拟合状态...</string>
+    <string name="processing_completed">处理完成</string>
+    <string name="applying_fitting_results">正在应用拟合结果...</string>
+    <string name="calculating_sample_concentration">正在计算样本浓度...</string>
+    <string name="updating_database">正在更新数据库...</string>
+    <string name="processing_failed_message">处理失败: %1$s</string>
+    <string name="calculating_all_sample_concentration">正在计算所有样本浓度...</string>
+    <string name="processing_sample_data">正在处理样本数据...</string>
+    <string name="curve_fitting_in_progress">正在进行曲线拟合...</string>
+    <string name="saving_fitting_model">正在保存拟合模型...</string>
+    <string name="processing_complete_navigating">处理完成，准备导航...</string>
+    <string name="well_detection_not_found">未找到孔位结果</string>
+    <string name="project_not_exist">项目不存在</string>
+    <string name="model_template_not_found">模板关联的曲线模型未找到</string>
+    <string name="applying_template_layout_failed">应用模板布局失败: %1$s</string>
+    <string name="calculating_well_concentration_failed">计算孔位 %1$d 浓度失败: %2$s</string>
+    <string name="marking_well_failed">标记孔位失败</string>
+    <string name="invalid_well_index">无效的孔位索引: %1$d (虚拟坐标: %2$d, %3$d)</string>
+    <string name="setting_standard_concentration_failed">设置标准品浓度失败</string>
+    <string name="processing_analyte_failed">处理分析物失败</string>
+    <string name="analyte_not_found">处理分析物失败：找不到ID为 %1$s 的分析物</string>
+    <string name="insufficient_standard_count">分析物 %1$s 的标准品数量不足，无法进行拟合</string>
+    <string name="insufficient_standard_points">分析物 %1$s 的有效标准点数量不足</string>
+    <string name="curve_fitting_failed">分析物 %1$s 拟合失败: %2$s</string>
+    <string name="applying_fitting_results_failed">应用拟合结果失败: %1$s</string>
+    <string name="execution_fitting_calculation_failed">执行拟合计算失败</string>
+    <string name="save_fitting_result_as_template_failed">保存拟合结果为模板失败</string>
+    <string name="insufficient_standards_for_fitting">标准品数量不足，无法进行曲线拟合</string>
+    <string name="no_samples_to_process">没有找到需要处理的样本</string>
+    <string name="insufficient_standard_points_for_fitting">有效标准点数量不足，无法进行曲线拟合</string>
+    <string name="curve_fitting_failed_with_error">曲线拟合失败: %1$s</string>
+    <string name="sample_processing_error">处理样本时发生错误: %1$s</string>
+    <string name="processing_failed_with_error">处理失败: %1$s</string>
+    <string name="final_concentration_calculation_failed">最终浓度计算失败</string>
+    <string name="curve_fitting_workflow_failed">曲线拟合工作流执行失败</string>
+    <string name="curve_fitting_preparation_failed">曲线拟合准备失败: %1$s</string>
+    <string name="model_prediction_failed_no_analyte">应用DL模型失败：未选择分析物</string>
+    <string name="no_sample_wells">分析物 %1$s 没有标记为样本的孔位，不执行预测。</string>
+    <string name="model_file_not_found">无法找到模型文件: %1$s</string>
+    <string name="dl_prediction_workflow_failed">深度学习模型预测失败</string>
+    <string name="auto_prediction_failed">自动预测失败: %1$s</string>
+    <string name="missing_original_image">原始图像丢失，无法处理孔位</string>
 </resources> 

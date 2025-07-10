@@ -27,14 +27,18 @@ sealed class Screen(open val route: String) {
         }
     }
     object CurveFitting : Screen("curve_fitting") {
-        fun createRoute(runId: String, imageUri: String? = null): String {
-            return if (imageUri != null) {
-                "$route/$runId?imageUri=$imageUri"
-            } else {
-                "$route/$runId"
-            }
+        // projectId, runId, imageUri 现在都是路由路径的一部分
+        fun createRoute(projectId: String, runId: String, imageUri: String): String {
+            return "$route/$projectId/$runId/$imageUri"
         }
     }
+    // 添加了 CurveFittingResult 屏幕对象
+    object CurveFittingResult : Screen("curve_fitting_result") {
+        fun createRoute(projectId: String, analyteId: String): String {
+            return "$route/$projectId/$analyteId"
+        }
+    }
+
     object Result : Screen("result") {
         fun createRoute(runId: String): String {
             return "$route/$runId"
@@ -48,7 +52,7 @@ sealed class Screen(open val route: String) {
     object AnalyteManagement : Screen("analyte_management")
     object ReagentLibrary : Screen("reagent_library")
     object CurveModelLibrary : Screen("curve_model_library")
-    
+
     // 实验模板管理相关路由
     object ExperimentTemplateManagement : Screen("experiment_template_management")
     object CreateExperimentTemplate : Screen("create_experiment_template") {
@@ -60,7 +64,7 @@ sealed class Screen(open val route: String) {
     // 曲线模型输入相关路由
     object ManualCurveInput : Screen("manual_curve_input")
     object ManualDataInput : Screen("manual_data_input")
-    
+
     // 带参数的路由
     class DetailRoute(val id: String) : Screen("detail/$id")
-} 
+}

@@ -1,7 +1,9 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
+import android.content.ContentValues.TAG
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.dao.WellResultDao
@@ -9,6 +11,7 @@ import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.data.repository.WellResultRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.data.repository.DetectionRunRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,7 +33,8 @@ import com.muc.fluocolorquant.ui.viewmodels.EnhancedWellDetection
 class ConcentrationViewModel @Inject constructor(
     private val wellResultRepository: WellResultRepository,
     private val wellResultDao: WellResultDao, // 注入DAO以便直接查询
-    private val projectRepository: ProjectRepository
+    private val projectRepository: ProjectRepository,
+    private val detectionRunRepository: DetectionRunRepository
 ) : ViewModel() {
     // 浓度预测状态
     sealed class ConcentrationState {
@@ -176,12 +180,11 @@ class ConcentrationViewModel @Inject constructor(
                             detectedRectRight = enhancedWell.rect.right,
                             detectedRectBottom = enhancedWell.rect.bottom,
                             detectionConfidence = enhancedWell.confidence,
-                            croppedImageIdentifier = null,
-                            // 添加圆形检测信息到额外字段
-                            manualCropRectLeft = enhancedWell.circleX,
-                            manualCropRectTop = enhancedWell.circleY,
-                            manualCropRectRight = enhancedWell.radius,
-                            manualCropRectBottom = enhancedWell.centerColor?.toFloat() // 使用额外字段存储颜色值
+                            croppedImageIdentifier = null                            // 添加圆形检测信息到额外字段
+//                          manualCropRectLeft = enhancedWell.circleX,
+//                          manualCropRectTop = enhancedWell.circleY,
+//                          manualCropRectRight = enhancedWell.radius,
+//                          manualCropRectBottom = enhancedWell.centerColor?.toFloat() // 使用额外字段存储颜色值
                         )
                     }
                 
@@ -205,105 +208,6 @@ class ConcentrationViewModel @Inject constructor(
     }
     
     /**
-     * 第一阶段：仅裁剪孔位图像，不进行浓度预测
-     * 使用并行处理加速图像裁剪
-     * @param runId 运行ID
-     */
-    fun cropWellImagesOnly(runId: String? = null) {
-        _concentrationState.value = ConcentrationState.Loading
-        android.util.Log.d("ConcentrationViewModel", "Starting well images cropping...")
-        
-        val actualRunId = runId ?: _currentRunId.value
-        if (actualRunId == null) {
-            _concentrationState.value = ConcentrationState.Error("缺少运行ID")
-            android.util.Log.e("ConcentrationViewModel", "Run ID is missing for cropping.")
-            return
-        }
-        
-        val bitmap = _originalBitmap.value
-        if (bitmap == null) {
-            _concentrationState.value = ConcentrationState.Error("缺少原始图像")
-            android.util.Log.e("ConcentrationViewModel", "Original bitmap is missing for cropping.")
-            return
-        }
-        
-        viewModelScope.launch {
-            try {
-                android.util.Log.d("ConcentrationViewModel", "Calling repository cropWellsWithParallelProcessing for runId: $actualRunId")
-                // 并行裁剪孔位图像
-                val croppedWellResults = wellResultRepository.cropWellsWithParallelProcessing(
-                    runId = actualRunId,
-                    originalBitmap = bitmap
-                )
-                
-                if (croppedWellResults.isNotEmpty()) {
-                    android.util.Log.d("ConcentrationViewModel", "Successfully cropped ${croppedWellResults.size} well images")
-                    // 更新到图像裁剪完成状态
-                    _concentrationState.value = ConcentrationState.ImagesCropped(croppedWellResults)
-                } else {
-                    android.util.Log.e("ConcentrationViewModel", "Failed to crop well images")
-                    _concentrationState.value = ConcentrationState.Error("孔位图像裁剪失败")
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ConcentrationViewModel", "Exception during cropping well images", e)
-                _concentrationState.value = ConcentrationState.Error("孔位图像裁剪失败: ${e.message}")
-            }
-        }
-    }
-    
-    /**
-     * 第二阶段：使用已裁剪的孔位图像进行浓度预测
-     * 在后台执行，不阻塞UI
-     * @param runId 运行ID
-     */
-    fun predictConcentrationInBackground(runId: String? = null) {
-        val actualRunId = runId ?: _currentRunId.value
-        if (actualRunId == null) {
-            android.util.Log.e("ConcentrationViewModel", "Run ID is missing for background prediction.")
-            return
-        }
-        
-        // 设置正在预测标志
-        _isPredicting.value = true
-        _predictionProgress.value = 0
-        
-        viewModelScope.launch {
-            try {
-                android.util.Log.d("ConcentrationViewModel", "Starting background concentration prediction for runId: $actualRunId")
-                // 在后台预测浓度，并传递进度回调函数
-                val predictedWellResults = wellResultRepository.predictConcentrationOnly(
-                    runId = actualRunId,
-                    progressCallback = { progress ->
-                        // 更新进度条
-                        _predictionProgress.value = progress
-                        android.util.Log.d("ConcentrationViewModel", "Prediction progress: $progress%")
-                    }
-                )
-                
-                // 预测完成后更新进度和状态
-                _predictionProgress.value = 100
-                _isPredicting.value = false
-                
-                if (predictedWellResults.isNotEmpty()) {
-                    android.util.Log.d("ConcentrationViewModel", "Background prediction successful for ${predictedWellResults.size} wells")
-                    // 只有当当前状态是ImagesCropped时才更新为Success，避免覆盖其他状态
-                    val currentState = _concentrationState.value
-                    if (currentState is ConcentrationState.ImagesCropped || currentState is ConcentrationState.Success) {
-                        _concentrationState.value = ConcentrationState.Success(predictedWellResults)
-                    }
-                } else {
-                    android.util.Log.e("ConcentrationViewModel", "Background prediction failed to produce results")
-                    // 不更新UI状态，让用户继续看到图像，只记录日志
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ConcentrationViewModel", "Exception during background prediction", e)
-                _isPredicting.value = false
-                // 不更新UI状态，让用户继续看到图像，只记录日志
-            }
-        }
-    }
-    
-    /**
      * 分阶段处理：先裁剪图像，显示给用户，然后在后台预测浓度
      * @param runId 运行ID
      */
@@ -315,21 +219,110 @@ class ConcentrationViewModel @Inject constructor(
             return
         }
         
-        viewModelScope.launch {
-            // 第一阶段：裁剪图像
-            cropWellImagesOnly(actualRunId)
-            
-            // 等待裁剪完成
-            while (_concentrationState.value !is ConcentrationState.ImagesCropped) {
-                // 检查是否失败
-                if (_concentrationState.value is ConcentrationState.Error) {
+        android.util.Log.d("ConcentrationViewModel", "开始分阶段处理，runId: $actualRunId")
+        
+        // 检查原始图像是否存在
+        if (_originalBitmap.value == null) {
+            _concentrationState.value = ConcentrationState.Error("缺少原始图像")
+            android.util.Log.e("ConcentrationViewModel", "Original bitmap is missing for staged processing.")
+            return
+        }
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 第一阶段：裁剪图像
+                android.util.Log.d("ConcentrationViewModel", "第一阶段：开始裁剪孔位图像")
+                
+                // 更新UI状态为加载中
+                withContext(Dispatchers.Main) {
+                    _concentrationState.value = ConcentrationState.Loading
+                }
+                
+                // 获取原始图像
+                val bitmap = _originalBitmap.value
+                if (bitmap == null) {
+                    withContext(Dispatchers.Main) {
+                        _concentrationState.value = ConcentrationState.Error("缺少原始图像")
+                    }
+                    android.util.Log.e("ConcentrationViewModel", "Original bitmap is missing for cropping.")
                     return@launch
                 }
-                kotlinx.coroutines.delay(100)
+                
+                // 并行裁剪孔位图像
+                val croppedWellResults = wellResultRepository.cropWellsWithParallelProcessing(
+                    runId = actualRunId,
+                    originalBitmap = bitmap
+                )
+                
+                if (croppedWellResults.isNotEmpty()) {
+                    android.util.Log.d("ConcentrationViewModel", "成功裁剪 ${croppedWellResults.size} 个孔位图像")
+                    
+                    // 更新UI状态为图像裁剪完成
+                    withContext(Dispatchers.Main) {
+                        _concentrationState.value = ConcentrationState.ImagesCropped(croppedWellResults)
+                    }
+                    
+                    // 第二阶段：在后台预测浓度
+                    android.util.Log.d("ConcentrationViewModel", "第二阶段：开始在后台预测浓度")
+                    
+                    // 设置正在预测标志
+                    withContext(Dispatchers.Main) {
+                        _isPredicting.value = true
+                        _predictionProgress.value = 0
+                    }
+                    
+                    try {
+                        // 在后台预测浓度，并传递进度回调函数
+                        val predictedWellResults = wellResultRepository.predictConcentrationOnly(
+                            runId = actualRunId,
+                            progressCallback = { progress ->
+                                // 更新进度条
+                                _predictionProgress.value = progress
+                                android.util.Log.d("ConcentrationViewModel", "浓度预测进度: $progress%")
+                            }
+                        )
+                        
+                        // 预测完成后更新进度和状态
+                        _predictionProgress.value = 100
+                        
+                        if (predictedWellResults.isNotEmpty()) {
+                            android.util.Log.d("ConcentrationViewModel", "浓度预测成功，共 ${predictedWellResults.size} 个结果")
+                            
+                            // 更新UI状态为预测完成
+                            withContext(Dispatchers.Main) {
+                                _concentrationState.value = ConcentrationState.Success(predictedWellResults)
+                                _isPredicting.value = false
+                            }
+                        } else {
+                            android.util.Log.e("ConcentrationViewModel", "浓度预测失败，未返回结果")
+                            
+                            // 保持ImagesCropped状态，但更新预测标志
+                            withContext(Dispatchers.Main) {
+                                _isPredicting.value = false
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("ConcentrationViewModel", "浓度预测异常: ${e.message}", e)
+                        
+                        // 保持ImagesCropped状态，但更新预测标志
+                        withContext(Dispatchers.Main) {
+                            _isPredicting.value = false
+                        }
+                    }
+                } else {
+                    android.util.Log.e("ConcentrationViewModel", "孔位图像裁剪失败，未返回结果")
+                    
+                    withContext(Dispatchers.Main) {
+                        _concentrationState.value = ConcentrationState.Error("孔位图像裁剪失败")
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ConcentrationViewModel", "分阶段处理异常: ${e.message}", e)
+                
+                withContext(Dispatchers.Main) {
+                    _concentrationState.value = ConcentrationState.Error("处理失败: ${e.message}")
+                }
             }
-            
-            // 第二阶段：在后台预测浓度
-            predictConcentrationInBackground(actualRunId)
         }
     }
     
@@ -431,5 +424,243 @@ class ConcentrationViewModel @Inject constructor(
      */
     fun selectWell(index: Int?) {
         _selectedWellIndex.value = index
+    }
+
+    /**
+     * 加载检测运行数据
+     * @param runId 运行ID
+     */
+    fun loadDetectionRun(runId: String) {
+        viewModelScope.launch {
+            try {
+                android.util.Log.d("ConcentrationViewModel", "开始加载检测运行数据: $runId")
+                _currentRunId.value = runId
+                
+                // 加载项目信息
+                val detectionRun = withContext(Dispatchers.IO) {
+                    detectionRunRepository.getDetectionRunById(runId)
+                }
+                
+                if (detectionRun != null) {
+                    val projectId = detectionRun.projectId
+                    android.util.Log.d("ConcentrationViewModel", "检测运行关联的项目ID: $projectId")
+                    
+                    val project = withContext(Dispatchers.IO) {
+                        projectRepository.getProjectById(projectId)
+                    }
+                    
+                    if (project != null) {
+                        android.util.Log.d("ConcentrationViewModel", "成功加载项目: ${project.id}, ${project.name}, 分析方法: ${project.analysisMethod}")
+                        _currentProject.value = project
+                        _currentProjectId.value = projectId
+                        
+                        // 加载孔位结果
+                        val results = withContext(Dispatchers.IO) {
+                            wellResultRepository.getWellResultsByRunId(runId)
+                        }
+                        
+                        android.util.Log.d("ConcentrationViewModel", "加载了 ${results.size} 个孔位结果")
+                        
+                        // 根据状态更新
+                        if (results.isNotEmpty()) {
+                            val hasCroppedImages = results.any { it.croppedImageIdentifier != null }
+                            val hasPredictions = results.any { it.predictedConcentration != null }
+                            
+                            if (hasPredictions) {
+                                android.util.Log.d("ConcentrationViewModel", "孔位结果包含浓度预测，更新为Success状态")
+                                _concentrationState.value = ConcentrationState.Success(results)
+                            } else if (hasCroppedImages) {
+                                android.util.Log.d("ConcentrationViewModel", "孔位结果包含裁剪图像，更新为ImagesCropped状态")
+                                _concentrationState.value = ConcentrationState.ImagesCropped(results)
+                            } else {
+                                android.util.Log.d("ConcentrationViewModel", "孔位结果不包含裁剪图像或浓度预测，更新为Idle状态")
+                                _concentrationState.value = ConcentrationState.Idle
+                            }
+                        } else {
+                            android.util.Log.w("ConcentrationViewModel", "没有找到孔位结果，更新为Idle状态")
+                            _concentrationState.value = ConcentrationState.Idle
+                        }
+                    } else {
+                        android.util.Log.e("ConcentrationViewModel", "项目不存在: $projectId")
+                        _concentrationState.value = ConcentrationState.Error("项目不存在")
+                    }
+                } else {
+                    android.util.Log.e("ConcentrationViewModel", "检测运行数据不存在: $runId")
+                    _concentrationState.value = ConcentrationState.Error("检测运行数据不存在")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ConcentrationViewModel", "加载检测运行数据异常: ${e.message}", e)
+                _concentrationState.value = ConcentrationState.Error("加载检测运行数据失败: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 更新孔位结果的像素值
+     */
+    fun updateWellResultPixelValues(resultId: Long, pixelValuesJson: String) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val wellResult = wellResultRepository.getWellResultById(resultId)
+                    if (wellResult != null) {
+                        val updatedWellResult = wellResult.copy(
+                            pixelValueJson = pixelValuesJson
+                        )
+                        wellResultRepository.updateWellResult(updatedWellResult)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "更新孔位像素值失败: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * 更新孔位结果
+     */
+    suspend fun updateWellResult(wellResult: WellResult) {
+        withContext(Dispatchers.IO) {
+            wellResultRepository.updateWellResult(wellResult)
+        }
+    }
+
+    /**
+     * 第一阶段：仅裁剪孔位图像，不进行浓度预测
+     * 使用并行处理加速图像裁剪
+     * @param runId 运行ID
+     */
+    fun cropWellImagesOnly(runId: String? = null) {
+        val actualRunId = runId ?: _currentRunId.value
+        if (actualRunId == null) {
+            _concentrationState.value = ConcentrationState.Error("缺少运行ID")
+            android.util.Log.e("ConcentrationViewModel", "Run ID is missing for cropping.")
+            return
+        }
+        
+        android.util.Log.d("ConcentrationViewModel", "开始裁剪孔位图像，runId: $actualRunId")
+        
+        // 检查原始图像是否存在
+        val bitmap = _originalBitmap.value
+        if (bitmap == null) {
+            _concentrationState.value = ConcentrationState.Error("缺少原始图像")
+            android.util.Log.e("ConcentrationViewModel", "Original bitmap is missing for cropping.")
+            return
+        }
+        
+        // 更新UI状态为加载中
+        _concentrationState.value = ConcentrationState.Loading
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                android.util.Log.d("ConcentrationViewModel", "调用仓库裁剪孔位图像，runId: $actualRunId")
+                
+                // 并行裁剪孔位图像
+                val croppedWellResults = wellResultRepository.cropWellsWithParallelProcessing(
+                    runId = actualRunId,
+                    originalBitmap = bitmap
+                )
+                
+                withContext(Dispatchers.Main) {
+                    if (croppedWellResults.isNotEmpty()) {
+                        android.util.Log.d("ConcentrationViewModel", "成功裁剪 ${croppedWellResults.size} 个孔位图像")
+                        // 更新到图像裁剪完成状态
+                        _concentrationState.value = ConcentrationState.ImagesCropped(croppedWellResults)
+                    } else {
+                        android.util.Log.e("ConcentrationViewModel", "孔位图像裁剪失败，未返回结果")
+                        _concentrationState.value = ConcentrationState.Error("孔位图像裁剪失败")
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ConcentrationViewModel", "裁剪孔位图像异常: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    _concentrationState.value = ConcentrationState.Error("孔位图像裁剪失败: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    /**
+     * 第二阶段：使用已裁剪的孔位图像进行浓度预测
+     * 在后台执行，不阻塞UI
+     * @param runId 运行ID
+     */
+    fun predictConcentrationInBackground(runId: String? = null) {
+        val actualRunId = runId ?: _currentRunId.value
+        if (actualRunId == null) {
+            android.util.Log.e("ConcentrationViewModel", "Run ID is missing for background prediction.")
+            return
+        }
+        
+        // 设置正在预测标志
+        _isPredicting.value = true
+        _predictionProgress.value = 0
+        
+        viewModelScope.launch(Dispatchers.IO) { // 使用IO调度器，避免阻塞主线程
+            try {
+                android.util.Log.d("ConcentrationViewModel", "Starting background concentration prediction for runId: $actualRunId")
+                // 在后台预测浓度，并传递进度回调函数
+                val predictedWellResults = wellResultRepository.predictConcentrationOnly(
+                    runId = actualRunId,
+                    progressCallback = { progress ->
+                        // 更新进度条
+                        _predictionProgress.value = progress
+                        android.util.Log.d("ConcentrationViewModel", "Prediction progress: $progress%")
+                    }
+                )
+                
+                // 预测完成后更新进度和状态
+                _predictionProgress.value = 100
+                
+                if (predictedWellResults.isNotEmpty()) {
+                    android.util.Log.d("ConcentrationViewModel", "Background prediction successful for ${predictedWellResults.size} wells")
+                    
+                    // 切换到主线程更新UI状态
+                    withContext(Dispatchers.Main) {
+                        // 只有当当前状态是ImagesCropped时才更新为Success，避免覆盖其他状态
+                        val currentState = _concentrationState.value
+                        if (currentState is ConcentrationState.ImagesCropped || 
+                            currentState is ConcentrationState.Success || 
+                            currentState is ConcentrationState.Loading) {
+                            android.util.Log.d("ConcentrationViewModel", "更新状态为Success，从${currentState::class.simpleName}")
+                            _concentrationState.value = ConcentrationState.Success(predictedWellResults)
+                        } else {
+                            android.util.Log.w("ConcentrationViewModel", "未更新状态，当前状态为: ${currentState::class.simpleName}")
+                        }
+                        
+                        // 最后更新预测标志，确保UI状态先更新
+                        _isPredicting.value = false
+                    }
+                } else {
+                    android.util.Log.e("ConcentrationViewModel", "Background prediction failed to produce results")
+                    
+                    // 切换到主线程更新UI状态
+                    withContext(Dispatchers.Main) {
+                        // 如果没有结果但已经有裁剪图像，保持ImagesCropped状态
+                        val currentState = _concentrationState.value
+                        if (currentState !is ConcentrationState.ImagesCropped) {
+                            _concentrationState.value = ConcentrationState.Error("浓度预测失败：未返回结果")
+                        }
+                        
+                        // 更新预测标志
+                        _isPredicting.value = false
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ConcentrationViewModel", "Exception during background prediction", e)
+                
+                // 切换到主线程更新UI状态
+                withContext(Dispatchers.Main) {
+                    // 如果出现异常但已经有裁剪图像，保持ImagesCropped状态
+                    val currentState = _concentrationState.value
+                    if (currentState !is ConcentrationState.ImagesCropped) {
+                        _concentrationState.value = ConcentrationState.Error("浓度预测失败: ${e.message}")
+                    }
+                    
+                    // 更新预测标志
+                    _isPredicting.value = false
+                }
+            }
+        }
     }
 } 

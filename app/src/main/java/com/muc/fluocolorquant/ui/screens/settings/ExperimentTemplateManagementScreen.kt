@@ -92,7 +92,7 @@ import androidx.compose.foundation.shape.CircleShape
 import org.json.JSONObject
 import com.muc.fluocolorquant.ui.components.LatexView
 import com.muc.fluocolorquant.ui.components.InteractivePlateGrid
-import com.muc.fluocolorquant.ui.components.WellRoleType
+import com.muc.fluocolorquant.data.enums.WellRoleType
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
 import com.muc.fluocolorquant.ui.components.charts.ChartData
 import com.muc.fluocolorquant.ui.components.charts.ChartPoint
@@ -572,11 +572,11 @@ fun TemplateItem(
                                     .padding(top = 8.dp, bottom = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                LegendItem(role = WellRoleType.SAMPLE, label = stringResource(R.string.legend_sample))
-                                LegendItem(role = WellRoleType.STANDARD, label = stringResource(R.string.legend_standard))
-                                LegendItem(role = WellRoleType.BLANK, label = stringResource(R.string.legend_blank))
-                                LegendItem(role = WellRoleType.CONTROL, label = stringResource(R.string.legend_control))
-                                LegendItem(role = WellRoleType.EMPTY, label = stringResource(R.string.legend_empty))
+                                LegendItem(role = WellRoleType.SAMPLE.code, label = stringResource(R.string.legend_sample))
+                                LegendItem(role = WellRoleType.STANDARD.code, label = stringResource(R.string.legend_standard))
+                                LegendItem(role = WellRoleType.BLANK.code, label = stringResource(R.string.legend_blank))
+                                LegendItem(role = WellRoleType.QUALITY_CONTROL.code, label = stringResource(R.string.legend_control))
+                                LegendItem(role = WellRoleType.NONE.code, label = stringResource(R.string.legend_empty))
                             }
                         } else {
                             Text(
@@ -660,13 +660,7 @@ private fun LegendItem(
     role: String,
     label: String
 ) {
-    val roleColors = mapOf(
-        WellRoleType.SAMPLE to Color(0xFF4CAF50),    // 样本 - 绿色
-        WellRoleType.STANDARD to Color(0xFF2196F3),  // 标准品 - 蓝色
-        WellRoleType.BLANK to Color(0xFFFFFFFF),     // 空白 - 白色
-        WellRoleType.CONTROL to Color(0xFFFF9800),   // 质控 - 橙色
-        WellRoleType.EMPTY to Color(0xFFEEEEEE)      // 空 - 浅灰色
-    )
+    val roleType = WellRoleType.fromCode(role)
     
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -676,7 +670,7 @@ private fun LegendItem(
             modifier = Modifier
                 .size(12.dp)
                 .clip(CircleShape)
-                .background(roleColors[role] ?: Color.LightGray)
+                .background(roleType.color)
                 .border(0.5.dp, Color.Gray.copy(alpha = 0.5f), CircleShape)
         )
         

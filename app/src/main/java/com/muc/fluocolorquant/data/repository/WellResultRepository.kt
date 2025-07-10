@@ -113,10 +113,7 @@ class WellResultRepository @Inject constructor(
                     detectedRectBottom = detection.rect.bottom,
                     detectionConfidence = detection.confidence,
                     croppedImageIdentifier = null,
-                    manualCropRectLeft = null,
-                    manualCropRectTop = null,
-                    manualCropRectRight = null,
-                    manualCropRectBottom = null
+                    roleType = "NONE" // 默认角色类型，未分配
                 )
             }
             
@@ -436,7 +433,7 @@ class WellResultRepository @Inject constructor(
     /**
      * 将资源文件提取到本地文件系统
      */
-    private fun assetFilePath(context: Context, assetName: String): String? {
+    fun assetFilePath(context: Context, assetName: String): String? {
         try {
             // 从完整路径中提取文件名和目录
             val lastSeparatorIndex = assetName.lastIndexOf('/')
@@ -544,10 +541,7 @@ class WellResultRepository @Inject constructor(
                 detectedRectBottom = null,
                 detectionConfidence = null,
                 croppedImageIdentifier = croppedImageUri.toString(),
-                manualCropRectLeft = null,
-                manualCropRectTop = null,
-                manualCropRectRight = null,
-                manualCropRectBottom = null
+                roleType = "Sample" // 默认角色类型
             )
             
             wellResultDao.insertWellResult(wellResult)
@@ -764,6 +758,18 @@ class WellResultRepository @Inject constructor(
     }
     
     /**
+     * 为了向后兼容旧代码，提供predictConcentrationByModel作为predictConcentrationOnly的别名
+     * @param runId 运行ID
+     * @return 预测成功的孔位列表
+     */
+    suspend fun predictConcentrationByModel(
+        runId: String
+    ): List<WellResult> = withContext(Dispatchers.IO) {
+        // 直接调用现有的predictConcentrationOnly方法，不传递进度回调
+        predictConcentrationOnly(runId) {}
+    }
+    
+    /**
      * 使用并行处理方式裁剪孔位图像，提高处理速度
      * @param runId 运行ID
      * @param originalBitmap 原始图像
@@ -860,5 +866,99 @@ class WellResultRepository @Inject constructor(
                 null
             }
         }
+    }
+
+    /**
+     * 根据检测框坐标裁剪孔位图像，并更新数据库中的图像标识符
+     * @param runId 运行ID
+     * @param originalBitmap 原始图像
+     * @return 更新后的孔位结果列表
+     */
+    suspend fun cropAndSaveWellImages(
+        runId: String,
+        originalBitmap: Bitmap
+    ): List<WellResult> = withContext(Dispatchers.IO) {
+        try {
+            val wellResults = wellResultDao.getWellResultsByRunId(runId)
+            if (wellResults.isEmpty()) {
+                throw Exception("找不到运行ID为 $runId 的孔位结果")
+            }
+
+            Log.d(TAG, "开始裁剪 ${wellResults.size} 个孔位的图像")
+
+            val updatedResults = coroutineScope {
+                wellResults.map { wellResult ->
+                    async(Dispatchers.Default) {
+                        try {
+                            val rect = RectF(
+                                wellResult.detectedRectLeft ?: 0f,
+                                wellResult.detectedRectTop ?: 0f,
+                                wellResult.detectedRectRight ?: 0f,
+                                wellResult.detectedRectBottom ?: 0f
+                            )
+                            val croppedBitmap = cropWellImage(originalBitmap, rect)
+                            val identifier = saveWellImage(croppedBitmap, runId, wellResult.wellIndex)
+                            wellResult.copy(croppedImageIdentifier = identifier)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "处理孔位 #${wellResult.wellIndex} 失败", e)
+                            wellResult // 如果单个失败，返回原始结果
+                        }
+                    }
+                }.awaitAll()
+            }
+
+            // 批量更新数据库
+            wellResultDao.updateWellResults(updatedResults)
+            Log.d(TAG, "成功裁剪并更新了 ${updatedResults.size} 个孔位的图像标识符")
+            updatedResults
+
+        } catch (e: Exception) {
+            Log.e(TAG, "裁剪和保存孔位图像失败", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * 根据运行ID获取孔位结果
+     * @param runId 运行ID
+     * @return 孔位结果列表
+     */
+    suspend fun getWellResultsByRunId(runId: String): List<WellResult> {
+        return wellResultDao.getWellResultsByRunId(runId)
+    }
+
+    /**
+     * 根据运行ID和分析物ID获取孔位结果
+     * @param runId 运行ID
+     * @param analyteId 分析物ID
+     * @return 孔位结果列表
+     */
+    suspend fun getWellResultsByRunIdAndAnalyteId(runId: String, analyteId: String): List<WellResult> {
+        return wellResultDao.getWellResultsByRunIdAndAnalyteId(runId, analyteId)
+    }
+
+    /**
+     * 根据结果ID获取孔位结果
+     * @param resultId 结果ID
+     * @return 孔位结果
+     */
+    suspend fun getWellResultById(resultId: Long): WellResult? {
+        return wellResultDao.getWellResultById(resultId)
+    }
+
+    /**
+     * 更新孔位结果
+     * @param wellResult 要更新的孔位结果
+     */
+    suspend fun updateWellResult(wellResult: WellResult) {
+        wellResultDao.updateWellResult(wellResult)
+    }
+    
+    /**
+     * 批量更新孔位结果
+     * @param wellResults 要更新的孔位结果列表
+     */
+    suspend fun updateWellResults(wellResults: List<WellResult>) {
+        wellResultDao.updateWellResults(wellResults)
     }
 } 

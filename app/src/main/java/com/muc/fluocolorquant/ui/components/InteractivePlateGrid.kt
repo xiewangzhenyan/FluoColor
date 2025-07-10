@@ -25,28 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-/**
- * 孔位角色类型
- */
-object WellRoleType {
-    const val SAMPLE = "sample"
-    const val STANDARD = "standard"
-    const val BLANK = "blank"
-    const val CONTROL = "control"
-    const val EMPTY = "empty"
-}
-
-/**
- * 孔位角色颜色映射
- */
-val roleColors = mapOf(
-    WellRoleType.SAMPLE to Color(0xFF4CAF50),    // 样本 - 绿色
-    WellRoleType.STANDARD to Color(0xFF2196F3),  // 标准品 - 蓝色
-    WellRoleType.BLANK to Color(0xFFFFFFFF),     // 空白 - 白色
-    WellRoleType.CONTROL to Color(0xFFFF9800),   // 质控 - 橙色
-    WellRoleType.EMPTY to Color(0xFFEEEEEE)      // 空 - 浅灰色
-)
+import com.muc.fluocolorquant.data.enums.WellRoleType
 
 /**
  * 交互式孔板网格组件
@@ -112,8 +91,8 @@ fun InteractivePlateGrid(
 
                 for (col in 0 until columns) {
                     val wellIndex = row * columns + col
-                    val role = layout[wellIndex] ?: WellRoleType.EMPTY
-                    val backgroundColor = roleColors[role] ?: Color.LightGray
+                    val roleType = WellRoleType.fromCode(layout[wellIndex])
+                    val backgroundColor = roleType.color
 
                     Box(
                         modifier = Modifier
@@ -141,11 +120,11 @@ fun RoleSelector(
     modifier: Modifier = Modifier
 ) {
     val roles = listOf(
-        Pair(WellRoleType.SAMPLE, "样本"),
-        Pair(WellRoleType.STANDARD, "标准品"),
-        Pair(WellRoleType.BLANK, "空白"),
-        Pair(WellRoleType.CONTROL, "质控"),
-        Pair(WellRoleType.EMPTY, "清除")
+        Pair(WellRoleType.SAMPLE.code, "样本"),
+        Pair(WellRoleType.STANDARD.code, "标准品"),
+        Pair(WellRoleType.BLANK.code, "空白"),
+        Pair(WellRoleType.QUALITY_CONTROL.code, "质控"),
+        Pair(WellRoleType.NONE.code, "清除")
     )
 
     Row(
@@ -154,7 +133,8 @@ fun RoleSelector(
     ) {
         roles.forEach { (role, label) ->
             val isSelected = role == selectedRole
-            val backgroundColor = roleColors[role] ?: Color.LightGray
+            val roleType = WellRoleType.fromCode(role)
+            val backgroundColor = roleType.color
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,

@@ -13,7 +13,7 @@ import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.dao.AnalyteDao
 import com.muc.fluocolorquant.data.dao.ReagentDao
 import com.muc.fluocolorquant.data.dao.CurveModelDao
-import com.muc.fluocolorquant.data.dao.PlateLayoutDao
+import com.muc.fluocolorquant.data.dao.ProjectAnalyteJoinDao
 import com.muc.fluocolorquant.data.dao.ExperimentTemplateDao
 import dagger.Module
 import dagger.Provides
@@ -42,10 +42,218 @@ object DatabaseModule {
             AppDatabase::class.java,
             "fluocolor_database"
         )
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
         .addCallback(prepopulateCallback)  // 添加预填充回调
         .fallbackToDestructiveMigration() // 版本更新时，如果没有提供迁移路径，则重建数据库
         .build()
+    }
+    
+    // 版本6到版本7的迁移策略
+    private val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 1. 创建临时表，包含新字段 dlModelName
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `project_analytes_join_temp` (
+                    `projectId` TEXT NOT NULL,
+                    `analyteId` TEXT NOT NULL,
+                    `maxConcentration` REAL,
+                    `concentrationUnit` TEXT,
+                    `fkTemplateId` TEXT,
+                    `dlModelName` TEXT,
+                    PRIMARY KEY(`projectId`, `analyteId`),
+                    FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`fkTemplateId`) REFERENCES `experiment_templates`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """
+            )
+            
+            // 2. 从原表复制数据到临时表，新字段设为NULL
+            database.execSQL(
+                """
+                INSERT INTO project_analytes_join_temp (projectId, analyteId, maxConcentration, concentrationUnit, fkTemplateId, dlModelName)
+                SELECT projectId, analyteId, maxConcentration, concentrationUnit, fkTemplateId, NULL FROM project_analytes_join
+                """
+            )
+            
+            // 3. 删除原表并重命名临时表
+            database.execSQL("DROP TABLE project_analytes_join")
+            database.execSQL("ALTER TABLE project_analytes_join_temp RENAME TO project_analytes_join")
+            
+            // 4. 重建索引
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_projectId` ON `project_analytes_join` (`projectId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_analyteId` ON `project_analytes_join` (`analyteId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_fkTemplateId` ON `project_analytes_join` (`fkTemplateId`)")
+        }
+    }
+
+    // 版本5到版本6的迁移策略
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 1. 首先修改 project_analytes_join 表，添加新字段
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `project_analytes_join_temp` (
+                    `projectId` TEXT NOT NULL,
+                    `analyteId` TEXT NOT NULL,
+                    `maxConcentration` REAL,
+                    `concentrationUnit` TEXT,
+                    `fkTemplateId` TEXT,
+                    PRIMARY KEY(`projectId`, `analyteId`),
+                    FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`fkTemplateId`) REFERENCES `experiment_templates`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """
+            )
+            
+            // 2. 复制已有的数据到新表，新增字段设为NULL
+            database.execSQL(
+                """
+                INSERT INTO project_analytes_join_temp (projectId, analyteId, maxConcentration, concentrationUnit, fkTemplateId)
+                SELECT projectId, analyteId, NULL, NULL, NULL FROM project_analytes_join
+                """
+            )
+            
+            // 3. 删除旧表，重命名新表
+            database.execSQL("DROP TABLE project_analytes_join")
+            database.execSQL("ALTER TABLE project_analytes_join_temp RENAME TO project_analytes_join")
+            
+            // 4. 创建新索引
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_projectId` ON `project_analytes_join` (`projectId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_analyteId` ON `project_analytes_join` (`analyteId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_fkTemplateId` ON `project_analytes_join` (`fkTemplateId`)")
+            
+            // 5. 将 projects 表中的 maxConcentration 和 concentrationUnit 数据迁移到关联表中
+            database.execSQL(
+                """
+                UPDATE project_analytes_join
+                SET maxConcentration = (
+                    SELECT maxConcentration FROM projects 
+                    WHERE projects.id = project_analytes_join.projectId
+                ),
+                concentrationUnit = (
+                    SELECT concentrationUnit FROM projects 
+                    WHERE projects.id = project_analytes_join.projectId
+                )
+                """
+            )
+            
+            // 6. 创建新的 projects 表临时表，不包含已移除的字段
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `projects_temp` (
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `detectionMode` TEXT NOT NULL,
+                    `recognitionType` TEXT NOT NULL,
+                    `imageUri` TEXT NOT NULL,
+                    `rows` INTEGER NOT NULL,
+                    `columns` INTEGER NOT NULL,
+                    `createTime` INTEGER NOT NULL,
+                    `userId` TEXT NOT NULL,
+                    `lastRunTimestamp` INTEGER,
+                    `analysisMethod` TEXT NOT NULL,
+                    `fkCurveModelId` TEXT,
+                    `finalCurveModelJson` TEXT,
+                    PRIMARY KEY(`id`)
+                )
+                """
+            )
+            
+            // 7. 复制 projects 表数据到临时表，排除已移除的字段
+            database.execSQL(
+                """
+                INSERT INTO projects_temp (
+                    id, name, detectionMode, recognitionType, imageUri, 
+                    rows, columns, createTime, userId, lastRunTimestamp, 
+                    analysisMethod, fkCurveModelId, finalCurveModelJson
+                )
+                SELECT 
+                    id, name, detectionMode, recognitionType, imageUri, 
+                    rows, columns, createTime, userId, lastRunTimestamp, 
+                    analysisMethod, fkCurveModelId, finalCurveModelJson
+                FROM projects
+                """
+            )
+            
+            // 8. 删除旧表，重命名新表
+            database.execSQL("DROP TABLE projects")
+            database.execSQL("ALTER TABLE projects_temp RENAME TO projects")
+        }
+    }
+    
+    // 版本4到版本5的迁移策略
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 1. 删除 plate_layouts 表
+            database.execSQL("DROP TABLE IF EXISTS plate_layouts")
+
+            // 2. 创建 project_analytes_join 表
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `project_analytes_join` (
+                    `projectId` TEXT NOT NULL,
+                    `analyteId` TEXT NOT NULL,
+                    PRIMARY KEY(`projectId`, `analyteId`),
+                    FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """
+            )
+
+            // 3. 创建索引
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_projectId` ON `project_analytes_join` (`projectId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_analyteId` ON `project_analytes_join` (`analyteId`)")
+
+            // 4. 修改 well_results 表结构
+            // 删除孔位手动裁剪相关字段
+            database.execSQL("CREATE TABLE IF NOT EXISTS `well_results_temp` ("+
+                "`resultId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "+
+                "`runId` TEXT, `projectId` TEXT NOT NULL, `wellIndex` INTEGER NOT NULL, "+
+                "`predictedConcentration` REAL, `trueConcentration` REAL, "+
+                "`isStandard` INTEGER NOT NULL DEFAULT 0, "+
+                "`detectedRectLeft` REAL, `detectedRectTop` REAL, "+
+                "`detectedRectRight` REAL, `detectedRectBottom` REAL, "+
+                "`detectionConfidence` REAL, `croppedImageIdentifier` TEXT, "+
+                "`pixelValueJson` TEXT, `fkAnalyteId` TEXT, "+
+                "`isOutOfRange` INTEGER NOT NULL DEFAULT 0, `roleType` TEXT, "+
+                "FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE, "+
+                "FOREIGN KEY(`runId`) REFERENCES `detection_runs`(`runId`) ON UPDATE NO ACTION ON DELETE CASCADE, "+
+                "FOREIGN KEY(`fkAnalyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL)")
+
+            // 拷贝数据
+            database.execSQL(
+                """
+                INSERT INTO well_results_temp (
+                    resultId, runId, projectId, wellIndex, 
+                    predictedConcentration, trueConcentration, 
+                    isStandard, detectedRectLeft, detectedRectTop, 
+                    detectedRectRight, detectedRectBottom, 
+                    detectionConfidence, croppedImageIdentifier, 
+                    pixelValueJson, fkAnalyteId, isOutOfRange
+                ) 
+                SELECT 
+                    resultId, runId, projectId, wellIndex, 
+                    predictedConcentration, trueConcentration, 
+                    isStandard, detectedRectLeft, detectedRectTop, 
+                    detectedRectRight, detectedRectBottom, 
+                    detectionConfidence, croppedImageIdentifier, 
+                    pixelValueJson, fkAnalyteId, isOutOfRange
+                FROM well_results
+                """
+            )
+
+            // 删除旧表并重命名新表
+            database.execSQL("DROP TABLE well_results")
+            database.execSQL("ALTER TABLE well_results_temp RENAME TO well_results")
+
+            // 重建索引
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_well_results_projectId` ON `well_results` (`projectId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_well_results_runId` ON `well_results` (`runId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_well_results_fkAnalyteId` ON `well_results` (`fkAnalyteId`)")
+        }
     }
     
     // 版本1到版本2的迁移策略
@@ -153,155 +361,6 @@ object DatabaseModule {
     @Provides
     fun provideReagentDao(appDatabase: AppDatabase): ReagentDao {
         return appDatabase.reagentDao()
-    }
-    
-    // 版本5到版本6的迁移策略
-    private val MIGRATION_5_6 = object : Migration(5, 6) {
-        override fun migrate(database: SupportSQLiteDatabase) {
-            // 1. 创建新表
-            // 创建 analytes 表
-            database.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS `analytes` (
-                    `id` TEXT NOT NULL, 
-                    `name` TEXT NOT NULL, 
-                    PRIMARY KEY(`id`)
-                )
-                """
-            )
-            
-            // 创建 reagents 表
-            database.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS `reagents` (
-                    `id` TEXT NOT NULL, 
-                    `analyteId` TEXT NOT NULL, 
-                    `reagentName` TEXT NOT NULL, 
-                    `reagentType` TEXT NOT NULL, 
-                    `manufacturer` TEXT, 
-                    `molecularWeight` REAL, 
-                    PRIMARY KEY(`id`),
-                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
-                )
-                """
-            )
-            
-            // 创建 curve_models 表
-            database.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS `curve_models` (
-                    `id` TEXT NOT NULL, 
-                    `modelName` TEXT NOT NULL, 
-                    `analyteId` TEXT NOT NULL, 
-                    `functionType` TEXT NOT NULL, 
-                    `pixelType` TEXT NOT NULL, 
-                    `parametersJson` TEXT NOT NULL, 
-                    `rSquared` REAL NOT NULL, 
-                    `reliableRangeMin` REAL NOT NULL, 
-                    `reliableRangeMax` REAL NOT NULL, 
-                    PRIMARY KEY(`id`),
-                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
-                )
-                """
-            )
-            
-            // 创建 plate_layouts 表
-            database.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS `plate_layouts` (
-                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
-                    `projectId` TEXT NOT NULL, 
-                    `wellIndex` INTEGER NOT NULL, 
-                    `analyteId` TEXT, 
-                    `roleType` TEXT NOT NULL,
-                    FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
-                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
-                )
-                """
-            )
-            
-            // 创建索引
-            database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_analytes_name` ON `analytes` (`name`)")
-            
-            // 2. 修改现有表
-            // 修改 projects 表，添加新字段
-            database.execSQL("ALTER TABLE `projects` ADD COLUMN `analysisMethod` TEXT NOT NULL DEFAULT 'DL_MODEL'")
-            database.execSQL("ALTER TABLE `projects` ADD COLUMN `fkCurveModelId` TEXT")
-            database.execSQL("ALTER TABLE `projects` ADD COLUMN `finalCurveModelJson` TEXT")
-            
-            // 修改 well_results 表，添加新字段
-            database.execSQL("ALTER TABLE `well_results` ADD COLUMN `pixelValueJson` TEXT")
-            database.execSQL("ALTER TABLE `well_results` ADD COLUMN `fkAnalyteId` TEXT")
-            database.execSQL("ALTER TABLE `well_results` ADD COLUMN `isOutOfRange` INTEGER NOT NULL DEFAULT 0")
-            
-            // 3. 创建外键索引
-            database.execSQL("CREATE INDEX IF NOT EXISTS `index_well_results_fkAnalyteId` ON `well_results` (`fkAnalyteId`)")
-            database.execSQL("CREATE INDEX IF NOT EXISTS `index_plate_layouts_projectId` ON `plate_layouts` (`projectId`)")
-            database.execSQL("CREATE INDEX IF NOT EXISTS `index_plate_layouts_analyteId` ON `plate_layouts` (`analyteId`)")
-        }
-    }
-    
-    // 版本6到版本7的迁移策略
-    private val MIGRATION_6_7 = object : Migration(6, 7) {
-        override fun migrate(database: SupportSQLiteDatabase) {
-            // 1. 修改 curve_models 表结构
-            
-            // 先创建一个临时表，包含所有旧字段以及新增字段
-            database.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS `curve_models_temp` (
-                    `id` TEXT NOT NULL, 
-                    `modelName` TEXT NOT NULL, 
-                    `analyteId` TEXT NOT NULL, 
-                    `reagentId` TEXT,
-                    `functionType` TEXT NOT NULL, 
-                    `pixelType` TEXT NOT NULL, 
-                    `parametersJson` TEXT NOT NULL, 
-                    `rSquared` REAL NOT NULL, 
-                    `reliableRangeMin` REAL NOT NULL, 
-                    `reliableRangeMax` REAL NOT NULL,
-                    `createTime` INTEGER,
-                    PRIMARY KEY(`id`),
-                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
-                    FOREIGN KEY(`reagentId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
-                )
-                """
-            )
-            
-            // 将旧表数据复制到临时表
-            database.execSQL(
-                """
-                INSERT INTO `curve_models_temp` (
-                    `id`, `modelName`, `analyteId`, `functionType`, 
-                    `pixelType`, `parametersJson`, `rSquared`, 
-                    `reliableRangeMin`, `reliableRangeMax`
-                )
-                SELECT 
-                    `id`, `modelName`, `analyteId`, `functionType`, 
-                    `pixelType`, `parametersJson`, `rSquared`, 
-                    `reliableRangeMin`, `reliableRangeMax`
-                FROM `curve_models`
-                """
-            )
-            
-            // 删除旧表
-            database.execSQL("DROP TABLE `curve_models`")
-            
-            // 重命名临时表为正式表
-            database.execSQL("ALTER TABLE `curve_models_temp` RENAME TO `curve_models`")
-            
-            // 创建索引
-            database.execSQL("CREATE INDEX IF NOT EXISTS `index_curve_models_analyteId` ON `curve_models` (`analyteId`)")
-            database.execSQL("CREATE INDEX IF NOT EXISTS `index_curve_models_reagentId` ON `curve_models` (`reagentId`)")
-        }
-    }
-    
-    // 版本7到版本8的迁移策略 - 添加unit字段到reagents表
-    private val MIGRATION_7_8 = object : Migration(7, 8) {
-        override fun migrate(database: SupportSQLiteDatabase) {
-            // 添加unit字段到reagents表
-            database.execSQL("ALTER TABLE `reagents` ADD COLUMN `unit` TEXT")
-        }
     }
     
     // 数据库预填充回调
@@ -461,8 +520,8 @@ object DatabaseModule {
     }
     
     @Provides
-    fun providePlateLayoutDao(appDatabase: AppDatabase): PlateLayoutDao {
-        return appDatabase.plateLayoutDao()
+    fun provideProjectAnalyteJoinDao(appDatabase: AppDatabase): ProjectAnalyteJoinDao {
+        return appDatabase.projectAnalyteJoinDao()
     }
     
     @Provides

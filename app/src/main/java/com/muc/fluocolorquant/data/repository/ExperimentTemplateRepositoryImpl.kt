@@ -24,7 +24,7 @@ class ExperimentTemplateRepositoryImpl @Inject constructor(
     /**
      * 获取指定分析物的所有实验模板
      */
-    override fun getTemplatesByAnalyteId(analyteId: String): Flow<List<ExperimentTemplate>> {
+    override suspend fun getTemplatesByAnalyteId(analyteId: String): List<ExperimentTemplate> {
         return experimentTemplateDao.getTemplatesByAnalyteId(analyteId)
     }
 

@@ -419,16 +419,21 @@ fun ManualDataInputScreen(
                             val curveFunction = viewModel.getCurveFunction()
 
                             if (curveFunction != null) {
+                                // 提前获取所有需要的字符串资源
+                                val concentrationLabel = stringResource(R.string.concentration)
+                                val pixelTypeLabel = selectedPixelType?.displayName ?: ""
+                                val titleText = "${result.function.displayName} 拟合曲线"
+                                
                                 // 使用新的CurveChart重载函数替换原有的计算逻辑
                                 CurveChart(
                                     fittedCurve = curveFunction,
                                     selectedFunction = result.function,
                                     parameters = result.params,
-                                    xAxisLabel = stringResource(R.string.concentration),
-                                    yAxisLabel = selectedPixelType?.displayName ?: "",
-                                    title = "${result.function.displayName} 拟合曲线",
+                                    xAxisLabel = concentrationLabel,
+                                    yAxisLabel = pixelTypeLabel,
+                                    title = titleText,
                                     modifier = Modifier.height(250.dp),
-                                    dataPoints = result.dataPoints // 传递拟合结果中的数据点
+                                    dataPoints = result.standardPoints
                                 )
                                 
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -442,9 +447,9 @@ fun ManualDataInputScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 
                                 // 参数显示
-                                result.params.forEach { paramEntry ->
+                                result.params.entries.toList().forEachIndexed { index, entry ->
                                     Text(
-                                        text = "${paramEntry.key} = ${String.format("%.6f", paramEntry.value)}",
+                                        text = "${entry.key} = ${String.format("%.6f", entry.value)}",
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                 }
@@ -452,13 +457,14 @@ fun ManualDataInputScreen(
                                 Spacer(modifier = Modifier.height(16.dp))
                                 
                                 // 指标表格
-                                val metricsMap = result.metrics.entries.associate { entry ->
-                                    entry.key to String.format("%.2f", entry.value)
-                                }
+                                val metricsTitle = stringResource(R.string.fitting_quality)
+                                val metricsMap = mapOf(
+                                    "R²" to String.format("%.4f", result.rSquared)
+                                )
                                 
                                 MetricsTable(
                                     metrics = metricsMap,
-                                    title = stringResource(R.string.fitting_quality)
+                                    title = metricsTitle
                                 )
                                 
                                 Spacer(modifier = Modifier.height(16.dp))

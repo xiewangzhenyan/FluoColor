@@ -10,6 +10,7 @@ import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.WellResult
+import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +31,7 @@ class ResultViewModel @Inject constructor(
     private val wellResultDao: WellResultDao,
     private val projectDao: ProjectDao,
     private val detectionRunDao: DetectionRunDao,
+    val projectAnalyteJoinRepository: ProjectAnalyteJoinRepository,
     private val application: Application // 新增：注入Application以获取Context
 ) : ViewModel() {
     // 结果数据加载状态
@@ -58,6 +60,28 @@ class ResultViewModel @Inject constructor(
     private val _maxConcentration = MutableStateFlow(100.0)
     val maxConcentration: StateFlow<Double> = _maxConcentration.asStateFlow()
 
+    // 当前项目
+    private val _currentProject = MutableStateFlow<Project?>(null)
+    val currentProject: StateFlow<Project?> = _currentProject.asStateFlow()
+
+    /**
+     * 从项目分析物配置中获取浓度单位和最大浓度
+     * @param projectId 项目ID
+     * @return Pair<String, Double> 浓度单位和最大浓度
+     */
+    private suspend fun getProjectConfigValuesAsync(projectId: String): Pair<String, Double> {
+        // 获取项目的第一个分析物配置
+        val analyteJoin = withContext(Dispatchers.IO) {
+            projectAnalyteJoinRepository.getFirstProjectAnalyteJoin(projectId)
+        }
+
+        // 如果存在配置，则返回其浓度单位和最大浓度；否则返回默认值
+        return Pair(
+            analyteJoin?.concentrationUnit ?: "ng/ml",
+            analyteJoin?.maxConcentration ?: 100.0
+        )
+    }
+
     /**
      * 根据项目ID加载结果数据
      * 用于手动裁剪模式
@@ -77,8 +101,14 @@ class ResultViewModel @Inject constructor(
                     return@launch
                 }
 
+                // 更新当前项目
+                _currentProject.value = project
+
+                // 获取浓度单位和最大浓度
+                val (concentrationUnitValue, maxConcentrationValue) = getProjectConfigValuesAsync(projectId)
+
                 // 更新浓度单位
-                _concentrationUnit.value = project.concentrationUnit ?: "ng/ml" // 如果项目中没有单位，则回退到 "ng/ml"
+                _concentrationUnit.value = concentrationUnitValue
 
                 // 对于手动模式，加载该项目下的所有孔位结果
                 val wellResults = withContext(Dispatchers.IO) {
@@ -86,7 +116,7 @@ class ResultViewModel @Inject constructor(
                 }
 
                 // 设置浓度范围
-                updateConcentrationRange(wellResults, project.maxConcentration)
+                updateConcentrationRange(wellResults, maxConcentrationValue)
 
                 // 更新结果状态
                 _resultState.value = ResultState.Success(
@@ -130,8 +160,14 @@ class ResultViewModel @Inject constructor(
                     return@launch
                 }
 
+                // 更新当前项目
+                _currentProject.value = project
+
+                // 获取浓度单位和最大浓度
+                val (concentrationUnitValue, maxConcentrationValue) = getProjectConfigValuesAsync(project.id)
+
                 // 更新浓度单位
-                _concentrationUnit.value = project.concentrationUnit ?: "ng/ml" // 如果项目中没有单位，则回退到 "ng/ml"
+                _concentrationUnit.value = concentrationUnitValue
 
                 // 加载孔位结果
                 val wellResults = withContext(Dispatchers.IO) {
@@ -139,7 +175,7 @@ class ResultViewModel @Inject constructor(
                 }
 
                 // 设置浓度范围
-                updateConcentrationRange(wellResults, project.maxConcentration)
+                updateConcentrationRange(wellResults, maxConcentrationValue)
 
                 // 更新结果状态
                 _resultState.value = ResultState.Success(
@@ -161,19 +197,14 @@ class ResultViewModel @Inject constructor(
         // 确保有设定最大浓度值，否则使用默认值100.0
         val maxConc = projectMaxConcentration ?: 100.0
 
-        // 找出所有有效浓度百分比
-        val validPercentages = wellResults
+        // 【修正】现在 predictedConcentration 已经是最终浓度值，直接用它来计算范围
+        val validConcentrations = wellResults
             .mapNotNull { it.predictedConcentration }
-            .filter { it.isFinite() && it >= 0 && it <= 100 }
+            .filter { it.isFinite() && it >= 0 }
 
-        if (validPercentages.isNotEmpty()) {
-            // 最小浓度总是从0开始
-            _minConcentration.value = 0.0
-
-            // 最大浓度是百分比的最大值（最大100%）乘以项目设定的最大浓度值
-            // 如果没有有效预测值，则使用100%（完全饱和）
-            val maxPercentage = validPercentages.maxOrNull() ?: 100.0
-            _maxConcentration.value = (maxPercentage / 100.0) * maxConc
+        if (validConcentrations.isNotEmpty()) {
+            _minConcentration.value = 0.0 // 浓度范围下限始终为0
+            _maxConcentration.value = maxOf(validConcentrations.maxOrNull() ?: maxConc, maxConc) // 热力图上限取（实际最大值 和 项目设定最大值）中的较大者
         } else {
             // 默认范围
             _minConcentration.value = 0.0
@@ -182,18 +213,16 @@ class ResultViewModel @Inject constructor(
     }
 
     /**
-     * 计算实际浓度值（将百分比转换为实际浓度）
-     * @param percentValue 浓度百分比（0-100）
+     * 【新增】计算浓度百分比，用于UI显示
+     * @param actualValue 实际浓度值
      * @param maxConcentration 最大浓度值
-     * @return 实际浓度值
+     * @return 浓度百分比
      */
-    fun calculateActualConcentration(percentValue: Double?, maxConcentration: Double?): Double? {
-        if (percentValue == null || !percentValue.isFinite() || percentValue < 0) {
-            return null
-        }
-
-        val maxConc = maxConcentration ?: 100.0 // 如果项目没有最大浓度，默认使用100.0
-        return (percentValue / 100.0) * maxConc
+    fun calculateConcentrationPercentage(actualValue: Double?, maxConcentration: Double?): Double? {
+        if (actualValue == null || !actualValue.isFinite()) return null
+        val maxConc = maxConcentration ?: 100.0
+        if (maxConc <= 0) return 0.0
+        return (actualValue / maxConc) * 100.0
     }
 
     /**
@@ -230,8 +259,14 @@ class ResultViewModel @Inject constructor(
                 }
 
                 if (latestProject != null) {
+                    // 更新当前项目
+                    _currentProject.value = latestProject
+
+                    // 获取浓度单位和最大浓度
+                    val (concentrationUnitValue, maxConcentrationValue) = getProjectConfigValuesAsync(latestProject.id)
+
                     // 更新浓度单位
-                    _concentrationUnit.value = latestProject.concentrationUnit ?: "ng/ml" // 如果项目中没有单位，则回退到 "ng/ml"
+                    _concentrationUnit.value = concentrationUnitValue
 
                     // 如果找到最新项目，加载其结果
                     val wellResults = withContext(Dispatchers.IO) {
@@ -244,7 +279,7 @@ class ResultViewModel @Inject constructor(
                     }
 
                     // 设置浓度范围
-                    updateConcentrationRange(wellResults, latestProject.maxConcentration)
+                    updateConcentrationRange(wellResults, maxConcentrationValue)
 
                     // 更新结果状态
                     _resultState.value = ResultState.Success(
@@ -253,7 +288,6 @@ class ResultViewModel @Inject constructor(
                         detectionRun = latestRun
                     )
                 } else {
-                    // 如果没有找到项目，显示错误
                     _resultState.value = ResultState.Error(application.getString(R.string.error_no_projects_found))
                 }
             } catch (e: Exception) {

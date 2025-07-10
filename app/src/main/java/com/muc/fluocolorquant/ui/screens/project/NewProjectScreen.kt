@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -56,15 +58,19 @@ import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.PermissionStatus
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.heightIn
+import com.muc.fluocolorquant.ui.viewmodels.AnalyteConfig
 
 // 检测模式枚举
 enum class DetectionMode {
     FLUORESCENCE, COLORIMETRIC
 }
 
-// 识别类型枚举
-enum class RecognitionType {
-    AUTO, MANUAL
+// 分析方法枚举
+enum class AnalysisMethod {
+    DL_MODEL, CURVE_FIT
 }
 
 @Composable
@@ -120,7 +126,7 @@ fun NewProjectScreen(
         ) 
     }
     
-    var recognitionType by rememberSaveable { mutableStateOf(RecognitionType.AUTO) }
+    var analysisMethod by rememberSaveable { mutableStateOf(AnalysisMethod.DL_MODEL) }
     var projectImageUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var maxConcentration by rememberSaveable { mutableStateOf("") }
     
@@ -142,7 +148,7 @@ fun NewProjectScreen(
     
     var showImagePickerDialog by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
-    var isRecognitionTypeMenuExpanded by remember { mutableStateOf(false) }
+    var isAnalysisMethodMenuExpanded by remember { mutableStateOf(false) }
     var isConcentrationUnitMenuExpanded by remember { mutableStateOf(false) }
 
     // 当默认检测模式变化时，更新当前检测模式
@@ -278,6 +284,15 @@ fun NewProjectScreen(
         }
     }
 
+    // 获取可用的分析物列表
+    val availableAnalytes by projectViewModel.availableAnalytes.collectAsState()
+    
+    // 获取已选中的分析物配置
+    val selectedAnalyteConfigs by projectViewModel.selectedAnalyteConfigs.collectAsState()
+    
+    // 显示分析物选择对话框
+    var showAnalyteSelectionDialog by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -388,9 +403,9 @@ fun NewProjectScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 识别类型下拉菜单
+            // 分析方法下拉菜单
             Text(
-                text = stringResource(R.string.recognition_type),
+                text = stringResource(R.string.analysis_method),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 8.dp),
@@ -399,20 +414,20 @@ fun NewProjectScreen(
             )
 
             ExposedDropdownMenuBox(
-                expanded = isRecognitionTypeMenuExpanded,
-                onExpandedChange = { isRecognitionTypeMenuExpanded = !isRecognitionTypeMenuExpanded },
+                expanded = isAnalysisMethodMenuExpanded,
+                onExpandedChange = { isAnalysisMethodMenuExpanded = !isAnalysisMethodMenuExpanded },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
             ) {
                 OutlinedTextField(
-                    value = when (recognitionType) {
-                        RecognitionType.AUTO -> stringResource(R.string.auto_recognition_option)
-                        RecognitionType.MANUAL -> stringResource(R.string.manual_crop_option)
+                    value = when (analysisMethod) {
+                        AnalysisMethod.DL_MODEL -> stringResource(R.string.dl_model_option)
+                        AnalysisMethod.CURVE_FIT -> stringResource(R.string.curve_fit_option)
                     },
                     onValueChange = { /* No action needed for readOnly field */ },
                     readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isRecognitionTypeMenuExpanded) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isAnalysisMethodMenuExpanded) },
                     modifier = Modifier
                         .menuAnchor() // Important for ExposedDropdownMenuBox
                         .fillMaxWidth(),
@@ -429,19 +444,19 @@ fun NewProjectScreen(
                 )
 
                 ExposedDropdownMenu(
-                    expanded = isRecognitionTypeMenuExpanded,
-                    onDismissRequest = { isRecognitionTypeMenuExpanded = false },
-                    modifier = Modifier.fillMaxWidth(0.9f) // Keep original width factor
+                    expanded = isAnalysisMethodMenuExpanded,
+                    onDismissRequest = { isAnalysisMethodMenuExpanded = false },
+                    modifier = Modifier.fillMaxWidth() // 使下拉菜单宽度与输入框匹配
                 ) {
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.auto_recognition_option)) },
+                        text = { Text(stringResource(R.string.dl_model_option)) },
                         onClick = {
-                            recognitionType = RecognitionType.AUTO
-                            isRecognitionTypeMenuExpanded = false
+                            analysisMethod = AnalysisMethod.DL_MODEL
+                            isAnalysisMethodMenuExpanded = false
                         },
                         leadingIcon = {
                             Icon(
-                                imageVector = Icons.Default.AutoAwesome,
+                                imageVector = Icons.Default.AutoAwesome, // 更新为更合适的图标
                                 contentDescription = null,
                                 tint = Color(0xFF5D6B98)
                             )
@@ -449,19 +464,115 @@ fun NewProjectScreen(
                     )
 
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.manual_crop_option)) },
+                        text = { Text(stringResource(R.string.curve_fit_option)) },
                         onClick = {
-                            recognitionType = RecognitionType.MANUAL
-                            isRecognitionTypeMenuExpanded = false
+                            analysisMethod = AnalysisMethod.CURVE_FIT
+                            isAnalysisMethodMenuExpanded = false
                         },
                         leadingIcon = {
                             Icon(
-                                imageVector = Icons.Default.ContentCut,
+                                imageVector = Icons.Default.AutoGraph, // 更新为更合适的图标
                                 contentDescription = null,
                                 tint = Color(0xFF5D6B98)
                             )
                         }
                     )
+                }
+            }
+
+            // 分析物配置部分 - 移动到分析方法下方，并始终显示（无论选择哪种分析方法）
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // 分析物选择和配置部分
+            Text(
+                text = stringResource(R.string.analyte_configuration),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF333333)
+            )
+            
+            if (selectedAnalyteConfigs.isEmpty()) {
+                // 无分析物时显示提示和添加按钮
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = stringResource(R.string.no_analytes_selected),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFF666666)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Button(
+                        onClick = { showAnalyteSelectionDialog = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF5D6B98)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.add_analytes))
+                    }
+                }
+            } else {
+                // 显示已选择的分析物配置列表
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                ) {
+                    // 分析物列表
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 300.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        selectedAnalyteConfigs.forEach { analyteConfig ->
+                            AnalyteConfigItem(
+                                analyteConfig = analyteConfig,
+                                availableUnits = availableConcentrationUnits.toList(),
+                                onConfigChanged = { analyteId, newConcentration, newUnit ->
+                                    projectViewModel.updateAnalyteConfig(
+                                        analyteId = analyteId,
+                                        newConcentration = newConcentration,
+                                        newUnit = newUnit
+                                    )
+                                },
+                                onDelete = { analyteId ->
+                                    projectViewModel.removeAnalyteConfig(analyteId)
+                                }
+                            )
+                        }
+                    }
+                    
+                    // 添加分析物按钮
+                    Button(
+                        onClick = { showAnalyteSelectionDialog = true },
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .padding(top = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF5D6B98)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.add_analytes))
+                    }
                 }
             }
 
@@ -655,13 +766,14 @@ fun NewProjectScreen(
                                 rowInputError = false
                             } else if (value.matches(Regex("^[0-9]+$"))) {
                                 val numValue = value.toInt()
-                                if (numValue in 1..8) {
+                                // 检查行*列是否小于等于96
+                                if (numValue > 0 && numValue * columns <= 96) {
                                     rowsText = value
                                     rows = numValue
                                     rowInputError = false
                                 } else {
                                     rowInputError = true
-                                    toastManager.showToast(context.getString(R.string.row_limit_exceeded), ToastType.WARNING)
+                                    toastManager.showToast(context.getString(R.string.plate_size_limit_exceeded), ToastType.WARNING)
                                 }
                             } else {
                                 // 非数字输入，不更新值，显示错误
@@ -716,13 +828,14 @@ fun NewProjectScreen(
                                 columnInputError = false
                             } else if (value.matches(Regex("^[0-9]+$"))) {
                                 val numValue = value.toInt()
-                                if (numValue in 1..12) {
+                                // 检查行*列是否小于等于96
+                                if (numValue > 0 && rows * numValue <= 96) {
                                     columnsText = value
                                     columns = numValue
                                     columnInputError = false
                                 } else {
                                     columnInputError = true
-                                    toastManager.showToast(context.getString(R.string.column_limit_exceeded), ToastType.WARNING)
+                                    toastManager.showToast(context.getString(R.string.plate_size_limit_exceeded), ToastType.WARNING)
                                 }
                             } else {
                                 // 非数字输入，不更新值，显示错误
@@ -756,108 +869,10 @@ fun NewProjectScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 最大浓度标题和输入框
-            Text(
-                text = stringResource(R.string.max_concentration),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF333333)
-            )
-            
-            // 最大浓度输入框
-            OutlinedTextField(
-                value = maxConcentration,
-                onValueChange = { 
-                    // 仅允许数字输入
-                    if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) {
-                        maxConcentration = it
-                    }
-                },
-                label = { Text(stringResource(R.string.max_concentration)) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Science,
-                        contentDescription = null,
-                        tint = Color(0xFF5D6B98)
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                colors = TextFieldDefaults.outlinedTextFieldColors(
-                    focusedBorderColor = Color(0xFF5D6B98),
-                    unfocusedBorderColor = Color(0xFFDDDDDD)
-                ),
-                shape = RoundedCornerShape(8.dp),
-                keyboardOptions = KeyboardOptions.Default.copy(
-                    keyboardType = KeyboardType.Number
-                ),
-                singleLine = true
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 浓度单位选择
-            Text(
-                text = stringResource(R.string.concentration_unit),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF333333)
-            )
-
-            ExposedDropdownMenuBox(
-                expanded = isConcentrationUnitMenuExpanded,
-                onExpandedChange = { isConcentrationUnitMenuExpanded = !isConcentrationUnitMenuExpanded },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp)
-            ) {
-                OutlinedTextField(
-                    value = concentrationUnit,
-                    onValueChange = { /* No action needed for readOnly field */ },
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isConcentrationUnitMenuExpanded) },
-                    modifier = Modifier
-                        .menuAnchor() // Important for ExposedDropdownMenuBox
-                        .fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF5D6B98),
-                        unfocusedBorderColor = Color(0xFFDDDDDD),
-                        focusedTrailingIconColor = Color(0xFF5D6B98),
-                        unfocusedTrailingIconColor = Color(0xFF5D6B98),
-                        disabledTextColor = LocalContentColor.current,
-                        disabledBorderColor = Color(0xFFDDDDDD),
-                        disabledTrailingIconColor = Color(0xFF5D6B98)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                ExposedDropdownMenu(
-                    expanded = isConcentrationUnitMenuExpanded,
-                    onDismissRequest = { isConcentrationUnitMenuExpanded = false },
-                    modifier = Modifier.fillMaxWidth(0.9f) // Keep original width factor
-                ) {
-                    availableConcentrationUnits.toList().sorted().forEach { unit ->
-                        DropdownMenuItem(
-                            text = { Text(unit) },
-                            onClick = {
-                                concentrationUnit = unit
-                                isConcentrationUnitMenuExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
             // 提交按钮
             Button(
                 onClick = {
+                    // 创建项目前检查行列是否已输入
                     if (projectName.isBlank()) {
                         toastManager.showToast(enterProjectNameMessage, ToastType.WARNING)
                         return@Button
@@ -868,10 +883,19 @@ fun NewProjectScreen(
                         return@Button
                     }
 
-                    isSubmitting = true
+                    // 检查是否选择了至少一个分析物（无论选择哪种分析方法）
+                    if (selectedAnalyteConfigs.isEmpty()) {
+                        toastManager.showToast(context.getString(R.string.configure_at_least_one_analyte), ToastType.WARNING)
+                        return@Button
+                    }
+                    
+                    // 检查行列是否已输入
+                    if (rows <= 0 || columns <= 0) {
+                        toastManager.showToast(context.getString(R.string.input_rows_columns), ToastType.WARNING)
+                        return@Button
+                    }
 
-                    // 解析最大浓度，如果为空则使用默认值
-                    val maxConc = if (maxConcentration.isBlank()) null else maxConcentration.toDoubleOrNull()
+                    isSubmitting = true
 
                     // 创建项目 - 使用当前用户ID
                     scope.launch {
@@ -879,22 +903,17 @@ fun NewProjectScreen(
                             val newProjectId = projectViewModel.createProject(
                                 name = projectName,
                                 detectionMode = detectionMode,
-                                recognitionType = recognitionType,
+                                analysisMethod = analysisMethod,
                                 imageUri = projectImageUri.toString(),
-                                maxConcentration = maxConc,
-                                concentrationUnit = concentrationUnit,
                                 userId = currentUser?.id.toString(), // 使用当前用户ID
                                 rows = rows,
-                                columns = columns,
-                                analysisMethod = "DL_MODEL", // 默认使用深度学习模型分析
-                                fkCurveModelId = null, // 默认不使用曲线模型
-                                finalCurveModelJson = null // 默认无曲线模型JSON
+                                columns = columns
                             )
 
                             if (newProjectId != null) {
                                 toastManager.showToast(projectCreationSuccessMessage, ToastType.SUCCESS)
                                 
-                                // 根据是否启用图像矫正和识别类型决定导航
+                                // 根据是否启用图像矫正和分析方法决定导航
                                 if (enableImageCorrection) {
                                     // 导航到图像矫正页面 - 使用 createRoute 方法
                                     navController.navigate(
@@ -903,26 +922,13 @@ fun NewProjectScreen(
                                         popUpTo(Screen.NewProject.route) { inclusive = true }
                                     }
                                 } else {
-                                    // 根据识别类型决定导航
-                                    if (recognitionType == RecognitionType.AUTO) {
-                                        // 自动识别 - 导航到孔阵检测页面，使用 createRoute 方法
-                                        navController.navigate(
-                                            Screen.WellDetection.createRoute(Uri.encode(projectImageUri.toString()), newProjectId)
-                                        ) {
-                                            // 可选: 设置导航选项，例如弹出当前页面
-                                            popUpTo(Screen.NewProject.route) { inclusive = true }
-                                        }
-                                    } else {
-                                        // 手动裁剪 - 立即分析裁剪图像
-                                        android.util.Log.d("NewProjectScreen", "开始分析手动裁剪图像: $newProjectId, ${projectImageUri.toString()}")
-                                        // 设置为加载状态
-                                        toastManager.showToast(analyzingImageMessage, ToastType.INFO)
-                                        // 调用浓度预测
-                                        concentrationViewModel.analyzeManualCroppedImage(
-                                            projectId = newProjectId,
-                                            croppedImageUri = projectImageUri!!
-                                        )
-                                        // 不立即返回，等浓度预测完成后通过LaunchedEffect中的监听跳转
+                                    // 无论选择哪种分析方法，都先导航到孔阵检测页面
+                                    // 这确保了标准曲线拟合也能正确检测孔位并进行像素提取
+                                    navController.navigate(
+                                        Screen.WellDetection.createRoute(Uri.encode(projectImageUri.toString()), newProjectId)
+                                    ) {
+                                        // 可选: 设置导航选项，例如弹出当前页面
+                                        popUpTo(Screen.NewProject.route) { inclusive = true }
                                     }
                                 }
                             } else {
@@ -1065,6 +1071,21 @@ fun NewProjectScreen(
                     }
                 },
                 confirmButton = {}
+            )
+        }
+
+        // 分析物选择对话框
+        if (showAnalyteSelectionDialog) {
+            AnalyteSelectionDialog(
+                availableAnalytes = availableAnalytes,
+                selectedAnalytes = selectedAnalyteConfigs.map { it.analyte },
+                onConfirm = { analytes ->
+                    projectViewModel.onAnalyteSelectionChanged(analytes)
+                    showAnalyteSelectionDialog = false
+                },
+                onDismiss = {
+                    showAnalyteSelectionDialog = false
+                }
             )
         }
     }

@@ -22,11 +22,11 @@ interface ExperimentTemplateRepository {
     suspend fun getTemplateById(id: String): ExperimentTemplate?
     
     /**
-     * 根据分析物ID获取相关的实验模板
+     * 根据分析物ID获取实验模板
      * @param analyteId 分析物ID
-     * @return 实验模板列表流
+     * @return 实验模板列表
      */
-    fun getTemplatesByAnalyteId(analyteId: String): Flow<List<ExperimentTemplate>>
+    suspend fun getTemplatesByAnalyteId(analyteId: String): List<ExperimentTemplate>
     
     /**
      * 保存实验模板（新增或更新）

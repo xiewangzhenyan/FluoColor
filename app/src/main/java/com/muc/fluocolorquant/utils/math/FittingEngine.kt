@@ -13,6 +13,7 @@ import kotlin.math.exp
 import kotlin.math.sqrt
 import kotlin.math.abs
 import java.text.DecimalFormat
+import com.muc.fluocolorquant.data.enums.PixelType
 
 /**
  * 曲线拟合引擎
@@ -319,11 +320,14 @@ object FittingEngine {
         if (dataPoints.size < 2) {
             return FittingResult(
                 function = FittingFunction.LINEAR,
-                params = emptyMap(),
-                metrics = emptyMap(),
+                parameters = doubleArrayOf(),
+                formula = "",
+                rSquared = 0.0,
+                standardPoints = dataPoints,
+                curvePoints = emptyList(),
                 isSuccess = false,
                 errorMessage = "数据点数量不足，至少需要2个点",
-                dataPoints = dataPoints
+                allMetrics = mapOf("R²" to 0.0)
             )
         }
 
@@ -343,14 +347,17 @@ object FittingEngine {
         }
 
         // 找到 R² 最高的结果
-        return results.maxByOrNull { it.metrics["R²"] ?: 0.0 }
+        return results.maxByOrNull { it.rSquared }
             ?: FittingResult(
                 function = FittingFunction.LINEAR,
-                params = emptyMap(),
-                metrics = emptyMap(),
+                parameters = doubleArrayOf(),
+                formula = "",
+                rSquared = 0.0,
+                standardPoints = dataPoints,
+                curvePoints = emptyList(),
                 isSuccess = false,
                 errorMessage = "所有函数拟合均失败",
-                dataPoints = dataPoints
+                allMetrics = mapOf("R²" to 0.0)
             )
     }
 
@@ -364,16 +371,19 @@ object FittingEngine {
         if (dataPoints.size < 2) {
             return FittingResult(
                 function = function,
-                params = emptyMap(),
-                metrics = emptyMap(),
+                parameters = doubleArrayOf(),
+                formula = "",
+                rSquared = 0.0,
+                standardPoints = dataPoints,
+                curvePoints = emptyList(),
                 isSuccess = false,
                 errorMessage = "数据点数量不足，至少需要2个点",
-                dataPoints = dataPoints
+                allMetrics = mapOf("R²" to 0.0)
             )
         }
 
         try {
-            val params = when (function) {
+            val paramsMap = when (function) {
                 FittingFunction.LINEAR -> fitLinear(dataPoints)
                 FittingFunction.QUADRATIC -> fitPolynomial(dataPoints, 2)
                 FittingFunction.CUBIC -> fitPolynomial(dataPoints, 3)
@@ -386,29 +396,88 @@ object FittingEngine {
                 else -> fitLinear(dataPoints)
             }
 
+            // 将Map参数转换为DoubleArray
+            val paramKeys = when (function) {
+                FittingFunction.LINEAR -> listOf("a", "b")
+                FittingFunction.QUADRATIC -> listOf("a", "b", "c")
+                FittingFunction.CUBIC -> listOf("a", "b", "c", "d")
+                FittingFunction.QUARTIC -> listOf("a", "b", "c", "d", "e")
+                FittingFunction.EXPONENTIAL -> listOf("a", "b")
+                FittingFunction.POWER -> listOf("a", "b")
+                FittingFunction.LOG -> listOf("a", "b")
+                FittingFunction.RODBARD -> listOf("a", "b", "c", "d")
+                else -> listOf("a", "b")
+            }
+            
+            val parameters = paramKeys.map { paramsMap[it] ?: 0.0 }.toDoubleArray()
+
             // 计算拟合指标
             val observed = dataPoints.map { it.second }
-            val predicted = dataPoints.map { (x, _) -> calculate(function, params, x) }
+            val predicted = dataPoints.map { (x, _) -> calculate(function, paramsMap, x) }
             val metrics = MetricsCalculator.calculateAllMetrics(
-                observed, predicted, params.size
+                observed, predicted, parameters.size
             )
+
+            // 生成公式
+            val formula = generateFormula(function, paramsMap)
+            
+            // 生成曲线点
+            val curvePoints = generateCurvePoints(function, paramsMap, dataPoints)
 
             return FittingResult(
                 function = function,
-                params = params,
-                metrics = metrics,
-                isSuccess = true,
-                dataPoints = dataPoints
+                parameters = parameters,
+                formula = formula,
+                rSquared = metrics["R²"] ?: 0.0,
+                standardPoints = dataPoints,
+                curvePoints = curvePoints,
+                allMetrics = metrics,
+                isSuccess = true
             )
         } catch (e: Exception) {
             return FittingResult(
                 function = function,
-                params = emptyMap(),
-                metrics = emptyMap(),
+                parameters = doubleArrayOf(),
+                formula = "",
+                rSquared = 0.0,
+                standardPoints = dataPoints,
+                curvePoints = emptyList(),
                 isSuccess = false,
                 errorMessage = e.message ?: "拟合失败",
-                dataPoints = dataPoints
+                allMetrics = mapOf("R²" to 0.0)
             )
+        }
+    }
+
+    /**
+     * 为特定像素类型和函数类型执行拟合
+     * @param dataPoints 数据点列表，每个点为(浓度, 像素值)的对
+     * @param function 拟合函数类型
+     * @param pixelType 像素类型
+     * @return 拟合结果对象
+     */
+    fun fitCurve(
+        dataPoints: List<Pair<Double, Double>>,
+        function: FittingFunction,
+        pixelType: PixelType? = null
+    ): FittingResult? {
+        if (dataPoints.size < 4) {
+            return null // 不足4个点无法进行有效拟合
+        }
+
+        try {
+            // 调用现有的fitSingle函数执行拟合
+            val result = fitSingle(dataPoints, function)
+            
+            // 如果拟合成功，返回带有PixelType的结果
+            if (result.isSuccess) {
+                return result.copy(pixelType = pixelType)
+            }
+            
+            return null
+        } catch (e: Exception) {
+            // 拟合失败
+            return null
         }
     }
 
@@ -808,5 +877,181 @@ object FittingEngine {
      */
     fun createFunctionFromParameters(function: FittingFunction, params: Map<String, Double>): (Double) -> Double {
         return { x -> calculate(function, params, x) }
+    }
+
+    /**
+     * 生成公式字符串
+     */
+    private fun generateFormula(function: FittingFunction, params: Map<String, Double>): String {
+        return when (function) {
+            FittingFunction.LINEAR -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                "y = ${formatDouble(a)}x + ${formatDouble(b)}"
+            }
+            FittingFunction.QUADRATIC -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                "y = ${formatDouble(a)}x² + ${formatDouble(b)}x + ${formatDouble(c)}"
+            }
+            // 其他函数类型...
+            else -> "y = f(x)"
+        }
+    }
+
+    /**
+     * 生成曲线点
+     */
+    private fun generateCurvePoints(
+        function: FittingFunction,
+        params: Map<String, Double>,
+        dataPoints: List<Pair<Double, Double>>
+    ): List<Pair<Double, Double>> {
+        val points = mutableListOf<Pair<Double, Double>>()
+        
+        // 获取浓度范围
+        val xValues = dataPoints.map { it.first }
+        val minX = xValues.minOrNull() ?: 0.0
+        val maxX = xValues.maxOrNull() ?: 0.0
+        val range = maxX - minX
+        val start = if (minX > 0) minX / 2 else 0.0
+        val end = maxX + range / 2
+        
+        // 生成100个点
+        val steps = 100
+        val step = (end - start) / steps
+        
+        for (i in 0..steps) {
+            val x = start + i * step
+            val y = calculate(function, params, x)
+            points.add(Pair(x, y))
+        }
+        
+        return points
+    }
+
+    /**
+     * 格式化双精度浮点数为LaTeX格式
+     */
+    private fun formatDouble(value: Double): String {
+        if (abs(value) < 1e-9) return "0"
+        return if (value == value.toLong().toDouble()) {
+            value.toLong().toString()
+        } else {
+            DecimalFormat("0.###").format(value)
+        }
+    }
+
+    /**
+     * 根据拟合参数和像素值预测浓度
+     * @param parameters 拟合参数数组
+     * @param function 拟合函数类型
+     * @param pixelValue 像素值
+     * @return 预测的浓度值
+     */
+    fun predictConcentration(
+        parameters: DoubleArray,
+        function: FittingFunction,
+        pixelValue: Double
+    ): Double {
+        // 将DoubleArray转换为Map
+        val paramMap = when (function) {
+            FittingFunction.LINEAR -> mapOf(
+                "a" to parameters.getOrElse(0) { 0.0 },
+                "b" to parameters.getOrElse(1) { 0.0 }
+            )
+            FittingFunction.QUADRATIC -> mapOf(
+                "a" to parameters.getOrElse(0) { 0.0 },
+                "b" to parameters.getOrElse(1) { 0.0 },
+                "c" to parameters.getOrElse(2) { 0.0 }
+            )
+            FittingFunction.CUBIC -> mapOf(
+                "a" to parameters.getOrElse(0) { 0.0 },
+                "b" to parameters.getOrElse(1) { 0.0 },
+                "c" to parameters.getOrElse(2) { 0.0 },
+                "d" to parameters.getOrElse(3) { 0.0 }
+            )
+            FittingFunction.QUARTIC -> mapOf(
+                "a" to parameters.getOrElse(0) { 0.0 },
+                "b" to parameters.getOrElse(1) { 0.0 },
+                "c" to parameters.getOrElse(2) { 0.0 },
+                "d" to parameters.getOrElse(3) { 0.0 },
+                "e" to parameters.getOrElse(4) { 0.0 }
+            )
+            FittingFunction.EXPONENTIAL -> mapOf(
+                "a" to parameters.getOrElse(0) { 0.0 },
+                "b" to parameters.getOrElse(1) { 0.0 }
+            )
+            FittingFunction.POWER -> mapOf(
+                "a" to parameters.getOrElse(0) { 0.0 },
+                "b" to parameters.getOrElse(1) { 0.0 }
+            )
+            FittingFunction.LOG -> mapOf(
+                "a" to parameters.getOrElse(0) { 0.0 },
+                "b" to parameters.getOrElse(1) { 0.0 }
+            )
+            FittingFunction.RODBARD -> mapOf(
+                "a" to parameters.getOrElse(0) { 0.0 },
+                "b" to parameters.getOrElse(1) { 0.0 },
+                "c" to parameters.getOrElse(2) { 0.0 },
+                "d" to parameters.getOrElse(3) { 0.0 }
+            )
+            else -> mapOf(
+                "a" to parameters.getOrElse(0) { 0.0 },
+                "b" to parameters.getOrElse(1) { 0.0 }
+            )
+        }
+        
+        return when (function) {
+            FittingFunction.LINEAR -> {
+                val a = paramMap["a"] ?: 0.0
+                val b = paramMap["b"] ?: 0.0
+                
+                if (a == 0.0) return 0.0
+                return (pixelValue - b) / a
+            }
+            FittingFunction.QUADRATIC -> {
+                val a = paramMap["a"] ?: 0.0
+                val b = paramMap["b"] ?: 0.0
+                val c = paramMap["c"] ?: 0.0
+                
+                // 求解一元二次方程 ax^2 + bx + (c - pixelValue) = 0
+                if (a == 0.0) {
+                    // 退化为线性方程
+                    if (b == 0.0) return 0.0
+                    return (pixelValue - c) / b
+                }
+                
+                val discriminant = b * b - 4 * a * (c - pixelValue)
+                if (discriminant < 0) return 0.0
+                
+                val x1 = (-b + sqrt(discriminant)) / (2 * a)
+                val x2 = (-b - sqrt(discriminant)) / (2 * a)
+                
+                // 返回正值解
+                return if (x1 > 0) x1 else if (x2 > 0) x2 else 0.0
+            }
+            // 其他函数类型也可以添加...
+            else -> {
+                // 通用方法：使用二分查找逼近解
+                var low = 0.0
+                var high = 1000.0 // 假设最大浓度值为1000
+                
+                // 二分查找30次应该足够精确
+                repeat(30) {
+                    val mid = (low + high) / 2
+                    val value = calculate(function, paramMap, mid)
+                    
+                    if (value < pixelValue) {
+                        low = mid
+                    } else {
+                        high = mid
+                    }
+                }
+                
+                return (low + high) / 2
+            }
+        }
     }
 } 

@@ -41,7 +41,10 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.data.model.WellResult
+import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.data.repository.WellResultRepository
 import org.opencv.core.MatOfPoint
 import org.opencv.core.MatOfPoint2f
 
@@ -138,8 +141,15 @@ data class EnhancedWellDetection(
 @HiltViewModel
 class DetectionViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val projectRepository: ProjectRepository
+    private val projectRepository: ProjectRepository,
+    private val wellResultRepository: WellResultRepository,
+    private val wellResultDao: WellResultDao
 ) : ViewModel() {
+    // 在类内部定义TAG常量
+    companion object {
+        private const val TAG = "DetectionViewModel"
+    }
+
     // 定义检测状态
     sealed class DetectionState {
         object Idle : DetectionState()
@@ -709,33 +719,68 @@ class DetectionViewModel @Inject constructor(
     }
 
     /**
-     * 保存检测结果，以便后续处理
+     * 保存检测结果
+     * @param detections 检测到的孔位列表
+     * @param projectId 项目ID
+     * @param confThreshold 置信度阈值
+     * @param iouThreshold IoU阈值
+     * @return 生成的runId，如果保存失败则返回null
      */
-    fun saveDetectionResults(): List<RectF>? {
-        val currentState = _detectionState.value
-        return if (currentState is DetectionState.Success) {
-            currentState.detections.map { it.rect }
-        } else {
-            null
-        }
-    }
-
-    /**
-     * 加载项目信息
-     */
-    fun loadProject(projectId: String) {
-        viewModelScope.launch {
-            try {
-                val project = projectRepository.getProjectById(projectId)
-                _currentProject.value = project
+    suspend fun saveDetectionResults(
+        detections: List<WellDetection>,
+        projectId: String,
+        confThreshold: Float = 0.25f,
+        iouThreshold: Float = 0.45f
+    ): String? {
+        return try {
+            android.util.Log.d(TAG, "开始保存检测结果，projectId: $projectId, 检测数量: ${detections.size}")
+            
+            // 调用仓库保存检测结果
+            val runId = wellResultRepository.saveDetectionResults(
+                projectId = projectId,
+                detections = detections,
+                confThreshold = confThreshold,
+                iouThreshold = iouThreshold
+            )
+            
+            android.util.Log.d(TAG, "检测结果保存成功，runId: $runId")
+            
+            // 如果有增强型检测结果，将其与runId关联并保存到数据库
+            val enhancedResults = _enhancedDetections.value
+            if (enhancedResults.isNotEmpty() && runId != null) {
+                android.util.Log.d(TAG, "保存增强型检测结果，数量: ${enhancedResults.size}")
                 
-                // 根据项目的行列数更新最大孔位数
-                project?.let {
-                    _maxWellCount.value = it.rows * it.columns
+                // 保存增强型检测的颜色信息，仅保存检测到了圆心和颜色的信息
+                val wellsWithColorInfo = enhancedResults
+                    .filter { it.circleX != null && it.circleY != null && it.radius != null && it.centerColor != null }
+                    .map { enhancedWell ->
+                        WellResult(
+                            runId = runId,
+                            projectId = projectId,
+                            wellIndex = enhancedWell.id,
+                            predictedConcentration = null, // 暂未预测浓度
+                            trueConcentration = null,
+                            isStandard = false,
+                            detectedRectLeft = enhancedWell.rect.left,
+                            detectedRectTop = enhancedWell.rect.top,
+                            detectedRectRight = enhancedWell.rect.right,
+                            detectedRectBottom = enhancedWell.rect.bottom,
+                            detectionConfidence = enhancedWell.confidence,
+                            croppedImageIdentifier = null,
+                        )
+                    }
+                
+                // 更新已有孔位信息
+                if (wellsWithColorInfo.isNotEmpty()) {
+                    wellResultDao.updateWellResults(wellsWithColorInfo)
+                    Log.d(TAG, "已保存 ${wellsWithColorInfo.size} 个增强型检测结果")
                 }
-            } catch (e: Exception) {
-                Log.e("DetectionViewModel", "加载项目失败: ${e.message}", e)
             }
+            
+            runId
+        } catch (e: Exception) {
+            Log.e(TAG, "保存检测结果失败", e)
+            null
         }
     }
 
@@ -1385,6 +1430,37 @@ class DetectionViewModel @Inject constructor(
         }
         
         return null
+    }
+
+    /**
+     * 保存检测结果的简化版本，仅返回检测框列表
+     */
+    fun saveDetectionResults(): List<RectF>? {
+        val currentState = _detectionState.value
+        return if (currentState is DetectionState.Success) {
+            currentState.detections.map { it.rect }
+        } else {
+            null
+        }
+    }
+    
+    /**
+     * 加载项目信息
+     */
+    fun loadProject(projectId: String) {
+        viewModelScope.launch {
+            try {
+                val project = projectRepository.getProjectById(projectId)
+                _currentProject.value = project
+                
+                // 根据项目的行列数更新最大孔位数
+                project?.let {
+                    _maxWellCount.value = it.rows * it.columns
+                }
+            } catch (e: Exception) {
+                Log.e("DetectionViewModel", "加载项目失败: ${e.message}", e)
+            }
+        }
     }
 } 
  

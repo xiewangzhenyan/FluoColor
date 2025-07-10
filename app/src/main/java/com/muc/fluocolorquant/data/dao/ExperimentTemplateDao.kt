@@ -30,7 +30,7 @@ interface ExperimentTemplateDao {
      * 根据分析物ID获取实验模板
      */
     @Query("SELECT * FROM experiment_templates WHERE analyteId = :analyteId ORDER BY updatedAt DESC")
-    fun getTemplatesByAnalyteId(analyteId: String): Flow<List<ExperimentTemplate>>
+    suspend fun getTemplatesByAnalyteId(analyteId: String): List<ExperimentTemplate>
     
     /**
      * 插入实验模板，如果已存在则替换

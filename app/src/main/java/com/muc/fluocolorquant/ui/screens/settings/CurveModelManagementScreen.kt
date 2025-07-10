@@ -76,6 +76,7 @@ import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.CurveModelViewModel
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import androidx.compose.ui.text.font.FontWeight
+import java.util.Locale
 
 /**
  * 曲线模型管理页面
@@ -416,7 +417,7 @@ fun ExpandableCurveModelItem(
                     // 如果有R²，显示它
                     model.metrics?.get("R²")?.let {
                         Text(
-                            text = "R² = ${String.format("%.2f", it)}",
+                            text = "R² = ${String.format("%.4f", it)}",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -516,7 +517,8 @@ fun ExpandableCurveModelItem(
                                         modifier = Modifier.weight(1f)
                                     )
                                     Text(
-                                        text = String.format("%.2f", value)
+                                        // 使用 "%.4g" 格式化，能智能显示科学计数法或小数
+                                        text = String.format(Locale.US, "%.4g", value)
                                     )
                                 }
                             }
@@ -529,7 +531,8 @@ fun ExpandableCurveModelItem(
                     model.metrics?.let {
                         if (it.isNotEmpty()) {
                             MetricsTable(
-                                metrics = it.mapValues { entry -> String.format("%.2f", entry.value) },
+                                // 使用 "%.4g" 格式化
+                                metrics = it.mapValues { entry -> String.format(Locale.US, "%.4g", entry.value) },
                                 title = stringResource(R.string.fitting_quality)
                             )
                             

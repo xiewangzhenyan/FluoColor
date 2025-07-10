@@ -84,4 +84,13 @@ interface WellResultDao {
      */
     @Query("DELETE FROM well_results WHERE resultId = :resultId")
     suspend fun deleteWellResult(resultId: Long)
+
+    /**
+     * 根据运行ID和分析物ID获取孔位结果
+     * @param runId 运行ID
+     * @param analyteId 分析物ID
+     * @return 孔位结果列表
+     */
+    @Query("SELECT * FROM well_results WHERE runId = :runId AND fkAnalyteId = :analyteId")
+    suspend fun getWellResultsByRunIdAndAnalyteId(runId: String, analyteId: String): List<WellResult>
 } 

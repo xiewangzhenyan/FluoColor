@@ -113,6 +113,7 @@ fun WellDetectionScreen(
     // 保存原始图像到浓度预测ViewModel
     LaunchedEffect(originalBitmap) {
         originalBitmap?.let {
+            android.util.Log.d("WellDetectionScreen", "将原始图像传递给ConcentrationViewModel, 大小: ${it.width}x${it.height}")
             concentrationViewModel.setOriginalBitmap(it)
         }
     }
@@ -141,9 +142,12 @@ fun WellDetectionScreen(
                 return@handleContinue
             }
 
-            // 如果使用了增强型检测，将增强型检测结果传递给浓度ViewModel
-            if (isEnhancedDetection) {
-                concentrationViewModel.setEnhancedDetections(enhancedDetections)
+            // 确保原始图像存在
+            val originalBitmap = viewModel.originalBitmap.value
+            if (originalBitmap == null) {
+                android.util.Log.e("WellDetectionScreen", "原始图像为空，无法继续")
+                toastManager.showToast(context.getString(R.string.original_image_load_error), ToastType.ERROR)
+                return@handleContinue
             }
 
             // 显示保存进度Toast
@@ -151,30 +155,51 @@ fun WellDetectionScreen(
 
             coroutineScope.launch {
                 try {
-                    // 保存检测结果
-                    val newRunId = concentrationViewModel.saveDetectionResults(
+                    // 保存检测结果 - 直接使用 DetectionViewModel 保存，不再通过 ConcentrationViewModel
+                    android.util.Log.d("WellDetectionScreen", "开始保存检测结果，共 ${detections.size} 个孔位")
+                    val newRunId = viewModel.saveDetectionResults(
                         detections = detections, // 这里传递的是包含用户拖动调整后的孔位信息
                         projectId = projectId
                     )
 
                     // 检查runId是否为空
                     if (newRunId != null) {
-                        // 导航到曲线拟合屏幕，同时传递原始图像URI
-                        navController.navigate(Screen.CurveFitting.createRoute(newRunId, decodedImageUri)) {
-                            popUpTo(Screen.WellDetection.route) {
-                                inclusive = true
+                        android.util.Log.d("WellDetectionScreen", "检测结果保存成功，runId: $newRunId")
+                        
+                        // 确保projectId不为空，传递projectId到CurveFittingScreen
+                        android.util.Log.d("WellDetectionScreen", "导航到曲线拟合屏幕，projectId: $projectId, runId: $newRunId")
+                        
+                        // 对URI进行编码，避免特殊字符导致的导航问题
+                        if (!decodedImageUri.isNullOrEmpty()) {
+                            val encodedUri = android.net.Uri.encode(decodedImageUri)
+                            android.util.Log.d("WellDetectionScreen", "原始URI: $decodedImageUri")
+                            android.util.Log.d("WellDetectionScreen", "编码后URI: $encodedUri")
+                            
+                            navController.navigate(Screen.CurveFitting.createRoute(projectId, newRunId, encodedUri)) {
+                                popUpTo(Screen.WellDetection.route) {
+                                    inclusive = true
+                                }
                             }
+                        } else {
+                            // 如果imageUri意外为空，给出提示
+                            toastManager.showToast(context.getString(R.string.image_uri_empty), ToastType.ERROR)
+                            android.util.Log.e("WellDetectionScreen", "无法获取图像信息，导航失败")
                         }
                     } else {
+                        android.util.Log.e("WellDetectionScreen", "保存检测结果失败，runId为空")
                         toastManager.showToast(saveDetectionFailedMsg, ToastType.ERROR)
                     }
                 } catch (e: Exception) {
+                    android.util.Log.e("WellDetectionScreen", "保存检测结果异常: ${e.message}", e)
                     toastManager.showToast(
                         String.format(saveDetectionFailedWithErrorMsg, e.message ?: ""),
                         ToastType.ERROR
                     )
                 }
             }
+        } else {
+            android.util.Log.e("WellDetectionScreen", "当前状态不是成功状态，无法继续")
+            toastManager.showToast(context.getString(R.string.detection_not_complete), ToastType.ERROR)
         }
     }
 

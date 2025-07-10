@@ -16,8 +16,6 @@ data class Project(
     val detectionMode: String,     // 检测模式: FLUORESCENCE(荧光检测) 或 COLORIMETRIC(比色检测)
     val recognitionType: String,   // 识别类型: AUTO(自动识别) 或 MANUAL(手动裁剪)
     val imageUri: String,          // 项目图片URI
-    val maxConcentration: Double?, // 最大浓度值(ng/ml)，可为null
-    val concentrationUnit: String?,// 浓度单位，可为null
     val rows: Int,                 // 孔阵行数
     val columns: Int,              // 孔阵列数
     val createTime: Date,          // 创建时间

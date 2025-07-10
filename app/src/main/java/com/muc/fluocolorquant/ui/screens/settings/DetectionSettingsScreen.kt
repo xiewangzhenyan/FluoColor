@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -60,6 +61,10 @@ import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.runtime.LaunchedEffect
 
 private const val TAG = "DetectionSettingsScreen"
 
@@ -85,6 +90,17 @@ fun DetectionSettingsScreen(
     val defaultColumns by viewModel.defaultColumns.collectAsState()
     val pixelExtractionMethod by viewModel.pixelExtractionMethod.collectAsState()
     val imagePreprocessingEnabled by viewModel.imagePreprocessingEnabled.collectAsState()
+
+    // 添加LaunchedEffect确保页面打开时刷新设置
+    LaunchedEffect(Unit) {
+        viewModel.refreshSettings()
+    }
+
+    // 将行列输入框的状态提升到这里，使保存按钮可以访问
+    var rowsText by remember(defaultRows) { mutableStateOf(defaultRows.toString()) }
+    var rowInputError by remember { mutableStateOf(false) }
+    var columnsText by remember(defaultColumns) { mutableStateOf(defaultColumns.toString()) }
+    var columnInputError by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -309,41 +325,227 @@ fun DetectionSettingsScreen(
             
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // 行数输入
-                OutlinedTextField(
-                    value = defaultRows.toString(),
-                    onValueChange = { newValue ->
-                        newValue.toIntOrNull()?.let { rows ->
-                            if (rows > 0 && rows <= 16) { // 限制行数范围
-                                viewModel.setDefaultRows(rows)
-                            }
-                        }
-                    },
-                    label = { Text(stringResource(R.string.rows)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                Column(
                     modifier = Modifier.weight(1f)
-                )
-                
-                Spacer(modifier = Modifier.width(16.dp))
+                ) {
+                    
+                    OutlinedTextField(
+                        value = rowsText,
+                        onValueChange = { value ->
+                            // 允许空输入，但不自动填充默认值
+                            if (value.isEmpty()) {
+                                rowsText = value
+                                rowInputError = false
+                                // 不再调用 viewModel.setDefaultRows(12)
+                            } else if (value.matches(Regex("^[0-9]+$"))) {
+                                val numValue = value.toInt()
+                                // 检查行*列是否小于等于96
+                                val columns: Int = defaultColumns
+                                if (numValue > 0 && numValue * columns <= 96) {
+                                    rowsText = value
+                                    viewModel.setDefaultRows(numValue)
+                                    rowInputError = false
+                                } else {
+                                    rowInputError = true
+                                    toastManager.showToast(
+                                        message = context.getString(R.string.plate_size_limit_exceeded),
+                                        type = ToastType.WARNING
+                                    )
+                                }
+                            } else {
+                                // 非数字输入，不更新值，显示错误
+                                rowInputError = true
+                                toastManager.showToast(
+                                    message = context.getString(R.string.input_number_only),
+                                    type = ToastType.ERROR
+                                )
+                            }
+                        },
+                        label = { Text(stringResource(R.string.rows)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.GridView,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (rowInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = if (rowInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                            errorBorderColor = MaterialTheme.colorScheme.error
+                        ),
+                        shape = MaterialTheme.shapes.small,
+                        isError = rowInputError
+                    )
+                }
                 
                 // 列数输入
-                OutlinedTextField(
-                    value = defaultColumns.toString(),
-                    onValueChange = { newValue ->
-                        newValue.toIntOrNull()?.let { columns ->
-                            if (columns > 0 && columns <= 24) { // 限制列数范围
-                                viewModel.setDefaultColumns(columns)
-                            }
-                        }
-                    },
-                    label = { Text(stringResource(R.string.columns)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                Column(
                     modifier = Modifier.weight(1f)
+                ) {
+                    
+                    OutlinedTextField(
+                        value = columnsText,
+                        onValueChange = { value ->
+                            // 允许空输入，但不自动填充默认值
+                            if (value.isEmpty()) {
+                                columnsText = value
+                                columnInputError = false
+                                // 不再调用 viewModel.setDefaultColumns(8)
+                            } else if (value.matches(Regex("^[0-9]+$"))) {
+                                val numValue = value.toInt()
+                                // 检查行*列是否小于等于96
+                                val rows: Int = defaultRows
+                                if (numValue > 0 && rows * numValue <= 96) {
+                                    columnsText = value
+                                    viewModel.setDefaultColumns(numValue)
+                                    columnInputError = false
+                                } else {
+                                    columnInputError = true
+                                    toastManager.showToast(
+                                        message = context.getString(R.string.plate_size_limit_exceeded),
+                                        type = ToastType.WARNING
+                                    )
+                                }
+                            } else {
+                                // 非数字输入，不更新值，显示错误
+                                columnInputError = true
+                                toastManager.showToast(
+                                    message = context.getString(R.string.input_number_only),
+                                    type = ToastType.ERROR
+                                )
+                            }
+                        },
+                        label = { Text(stringResource(R.string.columns)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.GridView,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (columnInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = if (columnInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                            errorBorderColor = MaterialTheme.colorScheme.error
+                        ),
+                        shape = MaterialTheme.shapes.small,
+                        isError = columnInputError
+                    )
+                }
+            }
+            
+            // 添加说明文字
+            Text(
+                text = stringResource(R.string.plate_size_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
+            // 添加保存按钮
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Button(
+                onClick = {
+                    // 检查行列输入是否为空，如果为空则使用上次保存的合法值
+                    if (rowsText.isEmpty() && columnsText.isEmpty()) {
+                        // 两个都为空，不做任何操作，保持原来的值
+                        toastManager.showToast(
+                            message = context.getString(R.string.settings_update_success),
+                            type = ToastType.SUCCESS
+                        )
+                    } else if (rowsText.isEmpty()) {
+                        // 行为空，列不为空
+                        if (columnsText.matches(Regex("^[0-9]+$"))) {
+                            val numColumns = columnsText.toInt()
+                            // 检查行*列是否小于等于96
+                            val rows: Int = defaultRows
+                            if (rows * numColumns <= 96) {
+                                viewModel.setDefaultColumns(numColumns)
+                                toastManager.showToast(
+                                    message = context.getString(R.string.settings_update_success),
+                                    type = ToastType.SUCCESS
+                                )
+                            } else {
+                                toastManager.showToast(
+                                    message = context.getString(R.string.plate_size_limit_exceeded),
+                                    type = ToastType.WARNING
+                                )
+                            }
+                        } else {
+                            toastManager.showToast(
+                                message = context.getString(R.string.input_number_only),
+                                type = ToastType.ERROR
+                            )
+                        }
+                    } else if (columnsText.isEmpty()) {
+                        // 列为空，行不为空
+                        if (rowsText.matches(Regex("^[0-9]+$"))) {
+                            val numRows = rowsText.toInt()
+                            // 检查行*列是否小于等于96
+                            val columns: Int = defaultColumns
+                            if (numRows * columns <= 96) {
+                                viewModel.setDefaultRows(numRows)
+                                toastManager.showToast(
+                                    message = context.getString(R.string.settings_update_success),
+                                    type = ToastType.SUCCESS
+                                )
+                            } else {
+                                toastManager.showToast(
+                                    message = context.getString(R.string.plate_size_limit_exceeded),
+                                    type = ToastType.WARNING
+                                )
+                            }
+                        } else {
+                            toastManager.showToast(
+                                message = context.getString(R.string.input_number_only),
+                                type = ToastType.ERROR
+                            )
+                        }
+                    } else {
+                        // 两个都不为空
+                        if (rowsText.matches(Regex("^[0-9]+$")) && columnsText.matches(Regex("^[0-9]+$"))) {
+                            val numRows = rowsText.toInt()
+                            val numColumns = columnsText.toInt()
+                            // 检查行*列是否小于等于96
+                            if (numRows * numColumns <= 96) {
+                                viewModel.setDefaultRows(numRows)
+                                viewModel.setDefaultColumns(numColumns)
+                                toastManager.showToast(
+                                    message = context.getString(R.string.settings_update_success),
+                                    type = ToastType.SUCCESS
+                                )
+                            } else {
+                                toastManager.showToast(
+                                    message = context.getString(R.string.plate_size_limit_exceeded),
+                                    type = ToastType.WARNING
+                                )
+                            }
+                        } else {
+                            toastManager.showToast(
+                                message = context.getString(R.string.input_number_only),
+                                type = ToastType.ERROR
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
                 )
+            ) {
+                Text(stringResource(R.string.save))
             }
         }
     }

@@ -17,8 +17,8 @@ import com.muc.fluocolorquant.data.repository.ReagentRepository
 import com.muc.fluocolorquant.data.repository.ReagentRepositoryImpl
 import com.muc.fluocolorquant.data.repository.CurveModelRepository
 import com.muc.fluocolorquant.data.repository.CurveModelRepositoryImpl
-import com.muc.fluocolorquant.data.repository.PlateLayoutRepository
-import com.muc.fluocolorquant.data.repository.PlateLayoutRepositoryImpl
+import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
+import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepositoryImpl
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepositoryImpl
 import dagger.Binds
@@ -65,13 +65,13 @@ abstract class RepositoryModule {
     ): CurveModelRepository
     
     /**
-     * 提供孔板布局仓库实现
+     * 提供项目-分析物关联仓库实现
      */
     @Binds
     @Singleton
-    abstract fun providePlateLayoutRepository(
-        plateLayoutRepositoryImpl: PlateLayoutRepositoryImpl
-    ): PlateLayoutRepository
+    abstract fun provideProjectAnalyteJoinRepository(
+        projectAnalyteJoinRepositoryImpl: ProjectAnalyteJoinRepositoryImpl
+    ): ProjectAnalyteJoinRepository
     
     /**
      * 提供实验模板仓库实现

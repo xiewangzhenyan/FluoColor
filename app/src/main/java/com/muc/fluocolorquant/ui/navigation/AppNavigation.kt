@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.muc.fluocolorquant.ui.screens.auth.LoginScreen
 import com.muc.fluocolorquant.ui.screens.auth.RegisterScreen
+import com.muc.fluocolorquant.ui.screens.curvefitting.CurveFittingResultScreen
 import com.muc.fluocolorquant.ui.screens.curvefitting.CurveFittingScreen
 import com.muc.fluocolorquant.ui.screens.detection.WellDetectionScreen
 import com.muc.fluocolorquant.ui.screens.home.HomeScreen
@@ -29,7 +30,7 @@ import com.muc.fluocolorquant.ui.screens.settings.ManualCurveInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ManualDataInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ExperimentTemplateManagementScreen
 import com.muc.fluocolorquant.ui.screens.settings.CreateExperimentTemplateScreen
-import com.muc.fluocolorquant.utils.animatedComposable
+// import com.muc.fluocolorquant.utils.animatedComposable
 
 @Composable
 fun AppNavigation(navController: NavHostController, startDestination: String = Screen.Splash.route) {
@@ -40,27 +41,27 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         composable(route = Screen.Splash.route) {
             SplashScreen(navController = navController)
         }
-        
+
         composable(route = Screen.Login.route) {
             LoginScreen(navController = navController)
         }
-        
+
         composable(route = Screen.Register.route) {
             RegisterScreen(navController = navController)
         }
-        
+
         composable(route = Screen.Home.route) {
             HomeScreen(navController = navController)
         }
-        
+
         // 添加新项目创建页面
         composable(route = Screen.NewProject.route) {
             NewProjectScreen(navController = navController)
         }
-        
+
         // 图片裁剪页面
         composable(
-            route = "${Screen.ImageCrop.route}?imageUri={imageUri}",
+            route = Screen.ImageCrop.createRoute("{imageUri}"), // Use the createRoute pattern without calling it directly
             arguments = listOf(
                 navArgument("imageUri") {
                     type = NavType.StringType
@@ -70,16 +71,15 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         ) { backStackEntry ->
             val imageUriString = backStackEntry.arguments?.getString("imageUri")
-            val imageUri = if (imageUriString != null) Uri.parse(imageUriString) else null
             ImageCropScreen(
                 navController = navController,
                 imageUri = imageUriString
             )
         }
-        
-        // 图像矫正页面 - 更新为路径参数格式
+
+        // 图像矫正页面
         composable(
-            route = "${Screen.ImageCorrection.route}/{imageUri}/{projectId}",
+            route = Screen.ImageCorrection.createRoute("{imageUri}", "{projectId}"), // Use the createRoute pattern
             arguments = listOf(
                 navArgument("imageUri") {
                     type = NavType.StringType
@@ -97,10 +97,10 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
                 projectId = projectId
             )
         }
-        
-        // 孔阵检测页面 - 更新为路径参数格式
+
+        // 孔阵检测页面
         composable(
-            route = "${Screen.WellDetection.route}/{imageUri}/{projectId}",
+            route = Screen.WellDetection.createRoute("{imageUri}", "{projectId}"), // Use the createRoute pattern
             arguments = listOf(
                 navArgument("imageUri") {
                     type = NavType.StringType
@@ -112,43 +112,60 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         ) { backStackEntry ->
             val imageUriString = backStackEntry.arguments?.getString("imageUri")
             val projectId = backStackEntry.arguments?.getString("projectId")
-            
+
             // 日志输出，记录URI参数
             android.util.Log.d("AppNavigation", "WellDetection接收到imageUri: $imageUriString")
-            
+
             WellDetectionScreen(
                 navController = navController,
                 imageUri = imageUriString,
                 projectId = projectId
             )
         }
-        
-        // 曲线拟合/浓度预测页面 - 更新为路径参数格式
+
+        // 曲线拟合/浓度预测页面
         composable(
-            route = "${Screen.CurveFitting.route}/{runId}?imageUri={imageUri}",
+            // 1. 更新路由格式，imageUri现在是路径的一部分
+            route = Screen.CurveFitting.route + "/{projectId}/{runId}/{imageUri}",
             arguments = listOf(
-                navArgument("runId") {
-                    type = NavType.StringType
-                },
-                navArgument("imageUri") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                }
+                navArgument("projectId") { type = NavType.StringType },
+                navArgument("runId") { type = NavType.StringType },
+                // 2. imageUri不再是可空的查询参数
+                navArgument("imageUri") { type = NavType.StringType }
             )
         ) { backStackEntry ->
+            val projectId = backStackEntry.arguments?.getString("projectId")
             val runId = backStackEntry.arguments?.getString("runId")
+            // 3. 直接获取 imageUri，它现在是必需的
             val imageUri = backStackEntry.arguments?.getString("imageUri")
             CurveFittingScreen(
                 navController = navController,
+                projectId = projectId,
                 runId = runId,
-                imageUri = imageUri
+                imageUri = imageUri // 将获取到的（编码的）URI传递下去
             )
         }
-        
-        // 结果展示页面 - 更新为路径参数格式
+
+        // 曲线拟合结果页面
         composable(
-            route = "${Screen.Result.route}/{runId}",
+            route = Screen.CurveFittingResult.route + "/{projectId}/{analyteId}",
+            arguments = listOf(
+                navArgument("projectId") { type = NavType.StringType },
+                navArgument("analyteId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val projectId = backStackEntry.arguments?.getString("projectId")
+            val analyteId = backStackEntry.arguments?.getString("analyteId")
+            CurveFittingResultScreen(
+                navController = navController,
+                projectId = projectId ?: "",
+                analyteId = analyteId ?: ""
+            )
+        }
+
+        // 结果展示页面
+        composable(
+            route = Screen.Result.createRoute("{runId}"), // Use the createRoute pattern
             arguments = listOf(
                 navArgument("runId") {
                     type = NavType.StringType
@@ -161,21 +178,21 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
                 runId = runId
             )
         }
-        
+
         composable(route = Screen.Profile.route) {
             ProfileScreen(navController = navController)
         }
-        
+
         // 设置页面
         composable(route = Screen.Settings.route) {
             SettingsScreen(navController = navController)
         }
-        
+
         // 应用设置页面
         composable(route = Screen.AppSettings.route) {
             AppSettingsScreen(navController = navController)
         }
-        
+
         // 检测设置页面
         composable(route = Screen.DetectionSettings.route) {
             DetectionSettingsScreen(navController = navController)
@@ -184,7 +201,6 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         // 分析物管理页面
         composable(route = Screen.AnalyteManagement.route) {
             AnalyteManagementScreen(
-                // 移除 navController = navController
                 navigateBack = { navController.navigateUp() }
             )
         }
@@ -192,34 +208,33 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         // 试剂库页面
         composable(route = Screen.ReagentLibrary.route) {
             ReagentLibraryScreen(
-                // 移除 navController = navController
                 navigateBack = { navController.navigateUp() }
             )
         }
-        
+
         // 曲线模型库页面
         composable(route = Screen.CurveModelLibrary.route) {
             CurveModelManagementScreen(navController = navController)
         }
-        
+
         // 手动曲线输入页面
         composable(route = Screen.ManualCurveInput.route) {
             ManualCurveInputScreen(navController = navController)
         }
-        
+
         // 手动数据输入页面
         composable(route = Screen.ManualDataInput.route) {
             ManualDataInputScreen(navController = navController)
         }
-        
+
         // 实验模板管理页面
         composable(route = Screen.ExperimentTemplateManagement.route) {
             ExperimentTemplateManagementScreen(navController = navController)
         }
-        
+
         // 创建/编辑实验模板页面
         composable(
-            route = "${Screen.CreateExperimentTemplate.route}?templateId={templateId}",
+            route = Screen.CreateExperimentTemplate.createRoute("{templateId}"), // Use the createRoute pattern
             arguments = listOf(
                 navArgument("templateId") {
                     type = NavType.StringType
@@ -234,12 +249,12 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
                 templateId = templateId
             )
         }
-        
+
         // 历史记录页面
         composable(route = Screen.History.route) {
             HistoryScreen(navController = navController)
         }
-        
+
         // 其他导航路由...
     }
-} 
+}
