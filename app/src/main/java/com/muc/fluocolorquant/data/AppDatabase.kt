@@ -39,7 +39,7 @@ import com.muc.fluocolorquant.data.converters.Converters
         ProjectAnalyteJoin::class,
         ExperimentTemplate::class
     ],
-    version = 7,  // 版本号从6升级到7，因为添加了新字段dlModelName
+    version = 8,  // 版本号从7升级到8，以适应新的字段结构变化
     exportSchema = false
 )
 @TypeConverters(Converters::class)

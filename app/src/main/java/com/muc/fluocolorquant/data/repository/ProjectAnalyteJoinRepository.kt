@@ -88,6 +88,20 @@ interface ProjectAnalyteJoinRepository {
      * @return 项目分析物配置，如果不存在则返回null
      */
     suspend fun getFirstProjectAnalyteJoin(projectId: String): ProjectAnalyteJoin?
+    
+    /**
+     * 获取指定项目和分析物的关联配置
+     * @param projectId 项目ID
+     * @param analyteId 分析物ID
+     * @return 项目分析物配置，如果不存在则返回null
+     */
+    suspend fun getProjectAnalyteJoin(projectId: String, analyteId: String): ProjectAnalyteJoin?
+    
+    /**
+     * 更新项目分析物关联配置
+     * @param join 要更新的项目分析物关联对象
+     */
+    suspend fun updateProjectAnalyteJoin(join: ProjectAnalyteJoin)
 }
 
 /**
@@ -165,5 +179,16 @@ class ProjectAnalyteJoinRepositoryImpl @Inject constructor(
     
     override suspend fun getFirstProjectAnalyteJoin(projectId: String): ProjectAnalyteJoin? {
         return projectAnalyteJoinDao.getFirstProjectAnalyteJoin(projectId)
+    }
+    
+    override suspend fun getProjectAnalyteJoin(projectId: String, analyteId: String): ProjectAnalyteJoin? {
+        // 查询指定项目和分析物的关联配置
+        val joins = projectAnalyteJoinDao.getProjectAnalyteJoins(projectId)
+        return joins.find { it.analyteId == analyteId }
+    }
+    
+    override suspend fun updateProjectAnalyteJoin(join: ProjectAnalyteJoin) {
+        // 更新项目分析物关联配置
+        projectAnalyteJoinDao.insert(join) // 使用REPLACE策略更新
     }
 } 

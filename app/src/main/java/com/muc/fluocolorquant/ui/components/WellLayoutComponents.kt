@@ -217,6 +217,7 @@ fun VirtualLayoutInteractionBoard(
     wellResults: List<WellResult>,
     standardWellsCount: Int,
     availableDlModels: List<String>, // 新增: DL模型参数
+    analyteFittingStatus: Set<String> = emptySet(), // 新增: 已配置的分析物ID集合
     onAnalyteSelected: (String) -> Unit,
     onRoleTypeSelected: (WellRoleType) -> Unit,
     onTemplateSelected: (String) -> Unit,
@@ -320,12 +321,16 @@ fun VirtualLayoutInteractionBoard(
         } else {
             // 曲线拟合模式 - 模板选择或手动拟合
             if (selectedAnalyte != null) {
+                // 检查当前选中的分析物是否已配置
+                val isCurrentAnalyteConfigured = selectedAnalyte.id in analyteFittingStatus
+                
                 TemplateSelector(
                     availableTemplates = availableTemplates.filter { it.analyteId == selectedAnalyte.id },
                     onTemplateSelected = onTemplateSelected,
                     onManualFittingClicked = onManualFittingClicked,
                     standardWellsCount = standardWellsCount,
-                    hasEnoughStandards = standardWellsCount >= 4
+                    hasEnoughStandards = standardWellsCount >= 4,
+                    isAnalyteConfigured = isCurrentAnalyteConfigured // 传递当前分析物是否已配置
                 )
             }
         }
@@ -724,8 +729,9 @@ fun TemplateSelector(
     availableTemplates: List<ExperimentTemplate>,
     onTemplateSelected: (String) -> Unit,
     onManualFittingClicked: () -> Unit,
-    standardWellsCount: Int, // 新增：当前标准品数量
-    hasEnoughStandards: Boolean, // 新增：是否有足够标准品
+    standardWellsCount: Int,
+    hasEnoughStandards: Boolean,
+    isAnalyteConfigured: Boolean = false, // 新增参数：当前分析物是否已配置
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -747,8 +753,8 @@ fun TemplateSelector(
                 OutlinedButton(
                     onClick = { expanded = true },
                     modifier = Modifier.fillMaxWidth(),
-                    // 当没有可用模板时，禁用按钮
-                    enabled = availableTemplates.isNotEmpty()
+                    // 当没有可用模板时或分析物已配置时，禁用按钮
+                    enabled = availableTemplates.isNotEmpty() && !isAnalyteConfigured
                 ) {
                     Text(
                         text = if (availableTemplates.isNotEmpty())
@@ -778,10 +784,10 @@ fun TemplateSelector(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // 手动拟合按钮 - 根据标准品数量控制状态
+            // 手动拟合按钮 - 根据标准品数量控制状态，并考虑分析物是否已配置
             Button(
                 onClick = onManualFittingClicked,
-                enabled = hasEnoughStandards, // 根据标准品数量控制按钮状态
+                enabled = hasEnoughStandards && !isAnalyteConfigured, // 同时考虑标准品数量和分析物配置状态
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
@@ -791,8 +797,9 @@ fun TemplateSelector(
             }
         }
 
-        // 显示标准品数量提示
-        if (!hasEnoughStandards) {
+        // 显示提示信息
+        if (!hasEnoughStandards && !isAnalyteConfigured) {
+            // 仅当分析物未配置且标准品不足时显示
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = stringResource(
@@ -801,6 +808,16 @@ fun TemplateSelector(
                     4 - standardWellsCount
                 ),
                 color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        } else if (isAnalyteConfigured) {
+            // 当分析物已配置时显示已配置提示
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.analyte_already_configured),
+                color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()

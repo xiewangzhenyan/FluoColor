@@ -379,6 +379,7 @@ fun CurveFittingScreen(
                             wellResults = results,
                             standardWellsCount = standardCount,
                             availableDlModels = wellLayoutViewModel.availableDlModels.collectAsState().value,
+                            analyteFittingStatus = analyteFittingStatus.keys, // 只传递分析物ID的集合
                             onAnalyteSelected = { wellLayoutViewModel.selectAnalyte(it) },
                             onRoleTypeSelected = { wellLayoutViewModel.selectRoleType(it) },
                             onTemplateSelected = { wellLayoutViewModel.selectTemplate(it) },

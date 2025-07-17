@@ -17,7 +17,7 @@ import com.muc.fluocolorquant.ui.screens.imagecrop.ImageCropScreen
 import com.muc.fluocolorquant.ui.screens.image.ImageCorrectionScreen
 import com.muc.fluocolorquant.ui.screens.profile.ProfileScreen
 import com.muc.fluocolorquant.ui.screens.project.NewProjectScreen
-import com.muc.fluocolorquant.ui.screens.result.ResultScreen
+import com.muc.fluocolorquant.ui.screens.result.NewResultScreen
 import com.muc.fluocolorquant.ui.screens.settings.AppSettingsScreen
 import com.muc.fluocolorquant.ui.screens.settings.DetectionSettingsScreen
 import com.muc.fluocolorquant.ui.screens.settings.SettingsScreen
@@ -163,9 +163,9 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         }
 
-        // 结果展示页面
+        // 结果展示页面 - 使用新的结果展示页面替代旧版
         composable(
-            route = Screen.Result.createRoute("{runId}"), // Use the createRoute pattern
+            route = Screen.Result.createRoute("{runId}"),
             arguments = listOf(
                 navArgument("runId") {
                     type = NavType.StringType
@@ -173,7 +173,23 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         ) { backStackEntry ->
             val runId = backStackEntry.arguments?.getString("runId")
-            ResultScreen(
+            NewResultScreen(
+                navController = navController,
+                runId = runId
+            )
+        }
+
+        // 新的结果展示页面（显式路由）
+        composable(
+            route = Screen.NewResult.createRoute("{runId}"),
+            arguments = listOf(
+                navArgument("runId") {
+                    type = NavType.StringType
+                }
+            )
+        ) { backStackEntry ->
+            val runId = backStackEntry.arguments?.getString("runId")
+            NewResultScreen(
                 navController = navController,
                 runId = runId
             )

@@ -90,19 +90,19 @@ fun NewProjectScreen(
 
     // 获取浓度预测状态
     val concentrationState by concentrationViewModel.concentrationState.collectAsState()
-    
+
     // 刷新设置，确保获取最新的设置值
     LaunchedEffect(Unit) {
         settingsViewModel.refreshSettings()
     }
-    
+
     // 获取默认浓度单位和可用单位列表
     val defaultDetectionMode by settingsViewModel.defaultDetectionMode.collectAsState()
     val defaultConcentrationUnit by settingsViewModel.defaultConcentrationUnit.collectAsState()
     val availableConcentrationUnits by settingsViewModel.concentrationUnits.collectAsState()
     val defaultRows by settingsViewModel.defaultRows.collectAsState()
     val defaultColumns by settingsViewModel.defaultColumns.collectAsState()
-    
+
     // 提前获取所有需要在非Composable上下文中使用的字符串资源
     val tempFileCreationErrorMessage = stringResource(R.string.temp_file_creation_error)
     val cameraPermissionRequiredMessage = stringResource(R.string.camera_permission_required)
@@ -114,56 +114,39 @@ fun NewProjectScreen(
 
     // 状态管理 - 使用rememberSaveable而不是remember
     var projectName by rememberSaveable { mutableStateOf("") }
-    
-    // 根据默认设置初始化检测模式
-    var detectionMode by rememberSaveable(defaultDetectionMode) { 
+
+    // 【最终修复】仅在首次组合时根据默认值初始化，之后不再受默认值变化影响
+    var detectionMode by rememberSaveable {
         mutableStateOf(
-            when (defaultDetectionMode) {
-                "FLUORESCENCE" -> DetectionMode.FLUORESCENCE
-                "COLORIMETRIC" -> DetectionMode.COLORIMETRIC
-                else -> DetectionMode.FLUORESCENCE
-            }
-        ) 
+            if (defaultDetectionMode == "COLORIMETRIC") DetectionMode.COLORIMETRIC
+            else DetectionMode.FLUORESCENCE
+        )
     }
-    
+
     var analysisMethod by rememberSaveable { mutableStateOf(AnalysisMethod.DL_MODEL) }
     var projectImageUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var maxConcentration by rememberSaveable { mutableStateOf("") }
-    
+
     // 根据默认设置初始化浓度单位
-    var concentrationUnit by rememberSaveable(defaultConcentrationUnit) { 
-        mutableStateOf(defaultConcentrationUnit) 
+    var concentrationUnit by rememberSaveable(defaultConcentrationUnit) {
+        mutableStateOf(defaultConcentrationUnit)
     }
-    
+
     // 根据默认设置初始化行列
-    var rows by rememberSaveable(defaultRows) { 
-        mutableStateOf(defaultRows) 
+    var rows by rememberSaveable(defaultRows) {
+        mutableStateOf(defaultRows)
     }
-    var columns by rememberSaveable(defaultColumns) { 
-        mutableStateOf(defaultColumns) 
+    var columns by rememberSaveable(defaultColumns) {
+        mutableStateOf(defaultColumns)
     }
-    
+
     // 添加图像矫正选项
     var enableImageCorrection by rememberSaveable { mutableStateOf(false) }
-    
+
     var showImagePickerDialog by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
     var isAnalysisMethodMenuExpanded by remember { mutableStateOf(false) }
     var isConcentrationUnitMenuExpanded by remember { mutableStateOf(false) }
-
-    // 当默认检测模式变化时，更新当前检测模式
-    LaunchedEffect(defaultDetectionMode) {
-        detectionMode = when (defaultDetectionMode) {
-            "FLUORESCENCE" -> DetectionMode.FLUORESCENCE
-            "COLORIMETRIC" -> DetectionMode.COLORIMETRIC
-            else -> DetectionMode.FLUORESCENCE
-        }
-    }
-    
-    // 当默认浓度单位变化时，更新当前浓度单位
-    LaunchedEffect(defaultConcentrationUnit) {
-        concentrationUnit = defaultConcentrationUnit
-    }
 
     // 检查裁剪后的图片URI
     val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
@@ -179,8 +162,8 @@ fun NewProjectScreen(
     LaunchedEffect(concentrationState) {
         if (concentrationState is ConcentrationViewModel.ConcentrationState.Success) {
             // 获取当前项目ID
-            val projectId = concentrationViewModel.currentProjectId.value
-            if (projectId != null) {
+            val projectIdValue = concentrationViewModel.currentProjectId.value
+            if (projectIdValue != null) {
                 // 获取当前运行ID（如果有）
                 val runId = concentrationViewModel.getCurrentRunId()
                 // 导航到结果页面
@@ -286,10 +269,10 @@ fun NewProjectScreen(
 
     // 获取可用的分析物列表
     val availableAnalytes by projectViewModel.availableAnalytes.collectAsState()
-    
+
     // 获取已选中的分析物配置
     val selectedAnalyteConfigs by projectViewModel.selectedAnalyteConfigs.collectAsState()
-    
+
     // 显示分析物选择对话框
     var showAnalyteSelectionDialog by remember { mutableStateOf(false) }
 
@@ -482,7 +465,7 @@ fun NewProjectScreen(
 
             // 分析物配置部分 - 移动到分析方法下方，并始终显示（无论选择哪种分析方法）
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // 分析物选择和配置部分
             Text(
                 text = stringResource(R.string.analyte_configuration),
@@ -492,7 +475,7 @@ fun NewProjectScreen(
                 fontWeight = FontWeight.Medium,
                 color = Color(0xFF333333)
             )
-            
+
             if (selectedAnalyteConfigs.isEmpty()) {
                 // 无分析物时显示提示和添加按钮
                 Column(
@@ -506,9 +489,9 @@ fun NewProjectScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color(0xFF666666)
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Button(
                         onClick = { showAnalyteSelectionDialog = true },
                         colors = ButtonDefaults.buttonColors(
@@ -554,7 +537,7 @@ fun NewProjectScreen(
                             )
                         }
                     }
-                    
+
                     // 添加分析物按钮
                     Button(
                         onClick = { showAnalyteSelectionDialog = true },
@@ -576,74 +559,74 @@ fun NewProjectScreen(
                 }
             }
 
-            // 添加图像矫正选项
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Text(
-                text = stringResource(R.string.image_correction),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF333333)
-            )
-            
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 启用图像矫正
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { enableImageCorrection = true }
-                ) {
-                    RadioButton(
-                        selected = enableImageCorrection,
-                        onClick = { enableImageCorrection = true },
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = Color(0xFF5D6B98)
-                        )
-                    )
-                    Text(
-                        text = stringResource(R.string.yes),
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-
-                // 禁用图像矫正
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { enableImageCorrection = false }
-                ) {
-                    RadioButton(
-                        selected = !enableImageCorrection,
-                        onClick = { enableImageCorrection = false },
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = Color(0xFF5D6B98)
-                        )
-                    )
-                    Text(
-                        text = stringResource(R.string.no),
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-            }
-            
-            // 在项目图片部分之后添加图像矫正描述
-            if (enableImageCorrection) {
-                Text(
-                    text = stringResource(R.string.image_correction_description),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-            }
+//            // 添加图像矫正选项
+//            Spacer(modifier = Modifier.height(16.dp))
+//
+//            Text(
+//                text = stringResource(R.string.image_correction),
+//                modifier = Modifier
+//                    .fillMaxWidth()
+//                    .padding(bottom = 8.dp),
+//                fontWeight = FontWeight.Medium,
+//                color = Color(0xFF333333)
+//            )
+//
+//            Row(
+//                modifier = Modifier
+//                    .fillMaxWidth()
+//                    .padding(bottom = 16.dp),
+//                verticalAlignment = Alignment.CenterVertically
+//            ) {
+//                // 启用图像矫正
+//                Row(
+//                    verticalAlignment = Alignment.CenterVertically,
+//                    modifier = Modifier
+//                        .weight(1f)
+//                        .clickable { enableImageCorrection = true }
+//                ) {
+//                    RadioButton(
+//                        selected = enableImageCorrection,
+//                        onClick = { enableImageCorrection = true },
+//                        colors = RadioButtonDefaults.colors(
+//                            selectedColor = Color(0xFF5D6B98)
+//                        )
+//                    )
+//                    Text(
+//                        text = stringResource(R.string.yes),
+//                        modifier = Modifier.padding(start = 8.dp)
+//                    )
+//                }
+//
+//                // 禁用图像矫正
+//                Row(
+//                    verticalAlignment = Alignment.CenterVertically,
+//                    modifier = Modifier
+//                        .weight(1f)
+//                        .clickable { enableImageCorrection = false }
+//                ) {
+//                    RadioButton(
+//                        selected = !enableImageCorrection,
+//                        onClick = { enableImageCorrection = false },
+//                        colors = RadioButtonDefaults.colors(
+//                            selectedColor = Color(0xFF5D6B98)
+//                        )
+//                    )
+//                    Text(
+//                        text = stringResource(R.string.no),
+//                        modifier = Modifier.padding(start = 8.dp)
+//                    )
+//                }
+//            }
+//
+//            // 在项目图片部分之后添加图像矫正描述
+//            if (enableImageCorrection) {
+//                Text(
+//                    text = stringResource(R.string.image_correction_description),
+//                    style = MaterialTheme.typography.bodySmall,
+//                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+//                    modifier = Modifier.padding(bottom = 16.dp)
+//                )
+//            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -734,7 +717,7 @@ fun NewProjectScreen(
                 fontWeight = FontWeight.Medium,
                 color = Color(0xFF333333)
             )
-            
+
             // 行列输入框放在同一行
             Row(
                 modifier = Modifier
@@ -752,11 +735,11 @@ fun NewProjectScreen(
                         color = Color(0xFF666666),
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
-                    
+
                     // 使用与SettingsScreen相同的逻辑
                     var rowsText by remember(rows) { mutableStateOf(rows.toString()) }
                     var rowInputError by remember { mutableStateOf(false) }
-                    
+
                     OutlinedTextField(
                         value = rowsText,
                         onValueChange = { value ->
@@ -803,7 +786,7 @@ fun NewProjectScreen(
                         isError = rowInputError
                     )
                 }
-                
+
                 // 列数输入框
                 Column(
                     modifier = Modifier.weight(1f)
@@ -814,11 +797,11 @@ fun NewProjectScreen(
                         color = Color(0xFF666666),
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
-                    
+
                     // 使用与SettingsScreen相同的逻辑
                     var columnsText by remember(columns) { mutableStateOf(columns.toString()) }
                     var columnInputError by remember { mutableStateOf(false) }
-                    
+
                     OutlinedTextField(
                         value = columnsText,
                         onValueChange = { value ->
@@ -888,7 +871,7 @@ fun NewProjectScreen(
                         toastManager.showToast(context.getString(R.string.configure_at_least_one_analyte), ToastType.WARNING)
                         return@Button
                     }
-                    
+
                     // 检查行列是否已输入
                     if (rows <= 0 || columns <= 0) {
                         toastManager.showToast(context.getString(R.string.input_rows_columns), ToastType.WARNING)
@@ -912,7 +895,7 @@ fun NewProjectScreen(
 
                             if (newProjectId != null) {
                                 toastManager.showToast(projectCreationSuccessMessage, ToastType.SUCCESS)
-                                
+
                                 // 根据是否启用图像矫正和分析方法决定导航
                                 if (enableImageCorrection) {
                                     // 导航到图像矫正页面 - 使用 createRoute 方法
@@ -1089,4 +1072,4 @@ fun NewProjectScreen(
             )
         }
     }
-} 
+}

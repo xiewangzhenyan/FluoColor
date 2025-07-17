@@ -86,6 +86,15 @@ class ReagentViewModel @Inject constructor(
     val error: StateFlow<String?> = _error
     
     /**
+     * 根据ID获取试剂
+     * @param id 试剂ID
+     * @return 试剂对象，如果不存在则返回null
+     */
+    suspend fun getReagentById(id: String): Reagent? {
+        return reagentRepository.getReagentById(id)
+    }
+    
+    /**
      * 添加试剂
      * @param analyteId 分析物ID
      * @param reagentName 试剂名称

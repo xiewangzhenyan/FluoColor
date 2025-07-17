@@ -23,7 +23,8 @@ data class Project(
     val lastRunTimestamp: Date?,   // 最后一次运行时间，方便排序
     
     // 新增字段 - 2.0.0版本
-    val analysisMethod: String,    // 分析方法: "DL_MODEL"(深度学习模型) 或 "CURVE_FIT"(曲线拟合)
-    val fkCurveModelId: String?,   // 外键，关联到curve_models表
-    val finalCurveModelJson: String? // 最终曲线模型的JSON存储，用于结果溯源
+    val analysisMethod: String     // 分析方法: "DL_MODEL"(深度学习模型) 或 "CURVE_FIT"(曲线拟合)
+    // 以下字段已移除，移至project_analytes_join表
+    // val fkCurveModelId: String?,   // 外键，关联到curve_models表
+    // val finalCurveModelJson: String? // 最终曲线模型的JSON存储，用于结果溯源
 ) 

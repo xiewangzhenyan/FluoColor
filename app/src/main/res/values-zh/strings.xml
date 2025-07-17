@@ -50,7 +50,7 @@
     
     <!-- About Screen -->
     <string name="about_us">关于我们</string>
-    <string name="version">版本 2.2.0</string>
+    <string name="version">版本 1.0.0</string>
     <string name="app_description">FluoColorQuant是一款高效的比色与荧光高通量检测软件，通过先进的图像处理和机器学习算法，为您提供精准的传感器数据分析。</string>
     <string name="feature_highlights">功能特点</string>
     <string name="high_precision">高精度检测</string>
@@ -62,7 +62,7 @@
     <string name="offline_use">离线使用</string>
     <string name="offline_use_description">无需网络连接，保护您的数据安全</string>
     <string name="contact_us">联系我们</string>
-    <string name="contact_info">邮箱: support@fluocolorquant.com\n网站: www.fluocolorquant.com</string>
+    <string name="contact_info">邮箱: zxgeng@muc.edu.cn\n电话: 13930681592</string>
     
     <!-- User Menu -->
     <string name="settings">设置</string>
@@ -248,6 +248,39 @@
     <string name="pdf_report_main_title">分析报告</string>
     <string name="pdf_header_project_info">项目信息</string>
     <string name="pdf_label_project_name_format">项目名称: %s</string>
+    
+    <!-- New Result Screen Strings -->
+    <string name="analysis_plan_for">%s 分析方案</string>
+    <string name="analysis_method_res">分析方法: %s</string>
+    <string name="curve_fitting_analysis">标准曲线拟合</string>
+    <string name="deep_learning_analysis">深度学习模型</string>
+    <string name="template_used_res">使用模板: %s</string>
+    <string name="no_template_used">未使用模板</string>
+    <string name="antigen_manufacturer_placeholder">抗原生产商: %s</string>
+    <string name="antibody_manufacturer_placeholder">抗体生产商: %s</string>
+    <string name="reliable_range_format">可靠范围: %s - %s %s</string>
+    
+    <string name="result_display">结果展示</string>
+    <string name="heatmap">热力图</string>
+    <string name="value_map">数值图</string>
+    <string name="trend_chart">趋势图</string>
+    <string name="standard_curve">标准曲线</string>
+    <string name="no_standard_curve_data">无标准曲线数据</string>
+    
+    <string name="prediction_accuracy_validation">预测精度验证</string>
+    <string name="input_true_values_to_compare">校准对比</string>
+    <string name="concentration_regression_analysis">浓度回归分析</string>
+    <string name="regression_metrics">回归指标</string>
+    <string name="bland_altman_analysis">Bland-Altman分析</string>
+    <string name="agreement_metrics">一致性指标</string>
+    <string name="input_true_concentrations">输入真实浓度值</string>
+    <string name="generate_validation_report">生成验证报告</string>
+    <string name="predicted_concentration_format">预测值: %.4f %s</string>
+    <string name="true_concentration">真实浓度</string>
+    
+    <string name="no_analytes_found">该项目中未找到分析物</string>
+    <string name="no_data_for_analyte">该分析物无可用数据</string>
+    <string name="concentration_chart_for">%s 浓度图表</string>
     <string name="pdf_label_detection_mode_format">检测模式: %s</string>
     <string name="pdf_label_recognition_type_format">识别类型: %s</string>
     <string name="pdf_label_max_concentration_format">最大浓度: %s %s</string>
@@ -481,7 +514,6 @@
     <string name="analyte_already_exists">分析物已存在</string>
     <string name="confirm_delete_analyte">确定要删除该分析物吗？</string>
     <string name="delete_analyte_title">删除分析物</string>
-    <string name="no_analytes_found">未找到分析物</string>
     <string name="add_your_first_analyte">添加您的第一个分析物开始使用</string>
 
 
@@ -732,7 +764,8 @@
     <string name="original_image_missing">原始图像缺失</string>
     <string name="initialization_failed">初始化失败: %s</string>
     <string name="original_image_load_error">无法加载原始图像</string>
-    <string name="standard_wells_count_hint">已选择 %1$d 个标准品，还需要 %2$d 个</string>
+    <string name="standard_wells_count_hint">已选择 %1$d 个标准品，还需 %2$d 个</string>
+    <string name="analyte_already_configured">此分析物已完成配置</string>
 
     <!-- Multi-analyte Processing Workflow -->
     <string name="process_next_analyte">处理下一个分析物</string>
@@ -815,4 +848,58 @@
     <string name="dl_prediction_workflow_failed">深度学习模型预测失败</string>
     <string name="auto_prediction_failed">自动预测失败: %1$s</string>
     <string name="missing_original_image">原始图像丢失，无法处理孔位</string>
+    <!-- 新增：用于项目信息展示中显示分析物列表 -->
+    <string name="analytes_in_project">分析物：%s</string>
+    
+    <!-- 新增：试剂信息展示 -->
+    <string name="antigen_manufacturer">抗原：%1$s (%2$s)</string>
+    <string name="antibody_manufacturer">抗体：%1$s (%2$s)</string>
+
+    <!-- 添加图表相关字符串 -->
+    <string name="chart_concentration">浓度</string>
+    <string name="chart_pixel_value">像素值</string>
+    <string name="chart_mean">平均值</string>
+    <string name="chart_difference">差值</string>
+    <string name="chart_predicted">预测值</string>
+    <string name="chart_actual">实际值</string>
+
+    <!-- Validation Report -->
+    <string name="generating_validation_report">正在生成验证报告...</string>
+
+    <!-- Export Dialog -->
+    <string name="select_analytes_to_export">选择要导出的分析物</string>
+    <string name="export_analyte_selection_title">选择分析物</string>
+    <string name="export_analyte_selection_message">选择一个或多个要包含在导出中的分析物</string>
+    <string name="export_select_all">全选</string>
+    <string name="export_deselect_all">取消全选</string>
+    <string name="export_no_analytes">没有可导出的分析物</string>
+    <string name="export_in_progress">正在导出...</string>
+    <string name="export_pdf_success">PDF报告已成功导出至下载文件夹</string>
+    <string name="export_png_success">图表图片已成功导出至下载文件夹</string>
+    <string name="export_csv_success">数据文件已成功导出至下载文件夹</string>
+    <string name="export_error">导出失败: %1$s</string>
+    <string name="export_file_path">文件已保存到: %1$s</string>
+    
+    <!-- PDF Export Report Strings -->
+    <string name="pdf_title_fluocolorquant_report">FluoColorQuant检测报告</string>
+    <string name="pdf_report_content_overview">报告内容概览</string>
+    <string name="pdf_chapter_title_format">第%1$d章: %2$s分析报告</string>
+    <string name="pdf_analysis_plan_title">分析方案</string>
+    <string name="pdf_analysis_method_title">分析方法:</string>
+    <string name="pdf_analysis_dl_model">浓度预测模型</string>
+    <string name="pdf_analysis_curve_fit">标准曲线拟合</string>
+    <string name="pdf_template_used_title">使用模板:</string>
+    <string name="pdf_no_template">无</string>
+    <string name="pdf_standard_curve_title">标准曲线</string>
+    <string name="pdf_concentration_distribution_title">浓度分布</string>
+    <string name="pdf_heatmap_title">浓度热力图</string>
+    <string name="pdf_trend_chart_title">浓度趋势图</string>
+    <string name="pdf_validation_title">预测精度验证</string>
+    <string name="pdf_regression_title">回归分析</string>
+    <string name="pdf_bland_altman_title">Bland-Altman分析</string>
+    <string name="pdf_metrics_title">性能指标</string>
+    <string name="pdf_appendix_title">附录: 原始数据</string>
+    <string name="pdf_generated_on">报告生成于: %1$s</string>
+    <string name="pdf_page_number">第%1$d页 共%2$d页</string>
+
 </resources> 

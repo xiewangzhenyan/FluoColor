@@ -18,6 +18,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,15 +40,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Info // 用于记录总数图标
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Title
@@ -107,6 +113,7 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
@@ -130,6 +137,7 @@ fun HistoryScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val filterSettings by viewModel.filterSettings.collectAsState()
     val sortSettings by viewModel.sortSettings.collectAsState()
+    val allAnalytes by viewModel.allAnalytes.collectAsState()
 
     // UI状态
     var showFilterDialog by remember { mutableStateOf(false) }
@@ -150,11 +158,11 @@ fun HistoryScreen(
     val toastManager = LocalToastManager.current
     val context = LocalContext.current // 获取context
     val coroutineScope = rememberCoroutineScope()
-    
+
     // 提前获取需要在协程中使用的字符串资源
     val noRunFoundMessage = stringResource(R.string.no_run_found_for_project)
     val errorLoadingMessage = stringResource(R.string.error_loading_project_data)
-    
+
     // 处理项目点击的函数，明确指定类型为 (Project) -> Unit
     val handleProjectClick: (Project) -> Unit = { project ->
         if (isSelectionMode) {
@@ -227,7 +235,7 @@ fun HistoryScreen(
                         ) {
                             // 计算实际选中数量
                             val actualSelectedCount = selectedProjects.size
-                            
+
                             // 只有在有选择项且处于选择模式时显示计数
                             if (isSelectionMode && actualSelectedCount > 0) {
                                 Text(stringResource(R.string.history_selected_items_title, actualSelectedCount))
@@ -414,7 +422,8 @@ fun HistoryScreen(
                         viewModel.setSearchQuery("")
                         viewModel.setTimeFilter(HistoryViewModel.TimeRange.ALL)
                         viewModel.setDetectionModeFilter(emptySet())
-                        viewModel.setRecognitionTypeFilter(emptySet())
+                        viewModel.setAnalysisMethodFilter(emptySet())
+                        viewModel.setAnalyteFilter(emptySet())
                     }
                 )
             }
@@ -457,12 +466,12 @@ fun HistoryScreen(
         // 筛选对话框
         if (showFilterDialog) {
             FilterDialog(
-                currentTimeRange = filterSettings.timeRange,
-                currentDetectionModes = filterSettings.detectionModes,
-                currentRecognitionTypes = filterSettings.recognitionTypes,
+                filterSettings = filterSettings,
+                allAnalytes = allAnalytes,
                 onTimeRangeSelected = { viewModel.setTimeFilter(it) },
                 onDetectionModesSelected = { viewModel.setDetectionModeFilter(it) },
-                onRecognitionTypesSelected = { viewModel.setRecognitionTypeFilter(it) },
+                onAnalysisMethodsSelected = { viewModel.setAnalysisMethodFilter(it) },
+                onAnalytesSelected = { viewModel.setAnalyteFilter(it) },
                 onDismiss = { showFilterDialog = false }
             )
         }
@@ -488,11 +497,11 @@ fun HistoryScreen(
                     if (isSelectionMode && selectedProjects.isNotEmpty()) {
                         // 先保存一份要删除的项目ID
                         val projectsToDelete = selectedProjects.toList()
-                        
+
                         // 立即清除选择状态和模式，不等待删除完成
                         selectedProjects.clear()
                         isSelectionMode = false
-                        
+
                         // 然后执行删除
                         viewModel.deleteProjects(projectsToDelete)
                     } else if (projectToDelete != null) {
@@ -706,11 +715,11 @@ fun ProjectItem(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // 识别类型
-                val recognitionTypeText = when (project.recognitionType) {
-                    "AUTO" -> stringResource(R.string.auto_recognition)
-                    "MANUAL" -> stringResource(R.string.manual_crop)
-                    else -> project.recognitionType
+                // 【已修改】识别类型 -> 分析方法
+                val analysisMethodText = when (project.analysisMethod) {
+                    "DL_MODEL" -> stringResource(R.string.deep_learning_analysis)
+                    "CURVE_FIT" -> stringResource(R.string.curve_fitting_analysis)
+                    else -> project.analysisMethod
                 }
 
                 Row(
@@ -727,7 +736,7 @@ fun ProjectItem(
                     Spacer(modifier = Modifier.width(4.dp))
 
                     Text(
-                        text = recognitionTypeText,
+                        text = analysisMethodText,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.secondary
                     )
@@ -777,161 +786,163 @@ fun ProjectItem(
     }
 }
 
+
+/**
+ * 【已修改】筛选对话框，优化了UI布局和交互
+ */
 @Composable
 fun FilterDialog(
-    currentTimeRange: HistoryViewModel.TimeRange,
-    currentDetectionModes: Set<String>,
-    currentRecognitionTypes: Set<String>,
+    filterSettings: HistoryViewModel.FilterSettings,
+    allAnalytes: List<Analyte>,
     onTimeRangeSelected: (HistoryViewModel.TimeRange) -> Unit,
     onDetectionModesSelected: (Set<String>) -> Unit,
-    onRecognitionTypesSelected: (Set<String>) -> Unit,
+    onAnalysisMethodsSelected: (Set<String>) -> Unit,
+    onAnalytesSelected: (Set<String>) -> Unit,
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface
+            shape = RoundedCornerShape(28.dp), // 增加圆角
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp
         ) {
             Column(
                 modifier = Modifier
                     .padding(24.dp)
-                    .verticalScroll(rememberScrollState())
+                    .heightIn(max = 720.dp) // 限制对话框最大高度
             ) {
-                // 标题
-                Text(
-                    text = stringResource(R.string.history_filter_dialog_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // 时间筛选
-                Text(
-                    text = stringResource(R.string.time_range),
-                    style = MaterialTheme.typography.titleMedium
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 时间选项
-                Column(
+                // --- 标题 ---
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    TimeFilterChip(
-                        label = stringResource(R.string.all_time),
-                        selected = currentTimeRange is HistoryViewModel.TimeRange.ALL,
-                        onClick = { onTimeRangeSelected(HistoryViewModel.TimeRange.ALL) }
+                    Icon(
+                        imageVector = Icons.Default.FilterList,
+                        contentDescription = stringResource(R.string.filter),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
                     )
-
-                    TimeFilterChip(
-                        label = stringResource(R.string.today),
-                        selected = currentTimeRange is HistoryViewModel.TimeRange.TODAY,
-                        onClick = { onTimeRangeSelected(HistoryViewModel.TimeRange.TODAY) }
-                    )
-
-                    TimeFilterChip(
-                        label = stringResource(R.string.last_7_days),
-                        selected = currentTimeRange is HistoryViewModel.TimeRange.LAST_WEEK,
-                        onClick = { onTimeRangeSelected(HistoryViewModel.TimeRange.LAST_WEEK) }
-                    )
-
-                    TimeFilterChip(
-                        label = stringResource(R.string.last_30_days),
-                        selected = currentTimeRange is HistoryViewModel.TimeRange.LAST_MONTH,
-                        onClick = { onTimeRangeSelected(HistoryViewModel.TimeRange.LAST_MONTH) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // 检测模式筛选
-                Text(
-                    text = stringResource(R.string.detection_mode),
-                    style = MaterialTheme.typography.titleMedium
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 检测模式选项
-                var localDetectionModes by remember { mutableStateOf(currentDetectionModes) }
-
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    DetectionModeFilterChip(
-                        label = stringResource(R.string.history_fluorescence_label), // 使用较短标签
-                        selected = "FLUORESCENCE" in localDetectionModes,
-                        onClick = {
-                            localDetectionModes = if ("FLUORESCENCE" in localDetectionModes) {
-                                localDetectionModes - "FLUORESCENCE"
-                            } else {
-                                localDetectionModes + "FLUORESCENCE"
-                            }
-                            onDetectionModesSelected(localDetectionModes)
-                        }
-                    )
-
                     Spacer(modifier = Modifier.width(8.dp))
-
-                    DetectionModeFilterChip(
-                        label = stringResource(R.string.history_colorimetric_label), // 使用较短标签
-                        selected = "COLORIMETRIC" in localDetectionModes,
-                        onClick = {
-                            localDetectionModes = if ("COLORIMETRIC" in localDetectionModes) {
-                                localDetectionModes - "COLORIMETRIC"
-                            } else {
-                                localDetectionModes + "COLORIMETRIC"
-                            }
-                            onDetectionModesSelected(localDetectionModes)
-                        }
+                    Text(
+                        text = stringResource(R.string.history_filter_dialog_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
                     )
                 }
+                Spacer(modifier = Modifier.height(16.dp))
+                Divider()
 
-                Spacer(modifier = Modifier.height(24.dp))
 
-                // 识别类型筛选
-                Text(
-                    text = stringResource(R.string.recognition_type),
-                    style = MaterialTheme.typography.titleMedium
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 识别类型选项
-                var localRecognitionTypes by remember { mutableStateOf(currentRecognitionTypes) }
-
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    RecognitionTypeFilterChip(
-                        label = stringResource(R.string.history_auto_recognition_label), // 使用较短标签
-                        selected = "AUTO" in localRecognitionTypes,
-                        onClick = {
-                            localRecognitionTypes = if ("AUTO" in localRecognitionTypes) {
-                                localRecognitionTypes - "AUTO"
-                            } else {
-                                localRecognitionTypes + "AUTO"
+                // --- 可滚动内容区域 ---
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false) // 占据可用空间，但内容溢出时可滚动
+                        .verticalScroll(rememberScrollState())
+                        .padding(top = 16.dp) // 与分割线保持距离
+                ) {
+                    // 1. 检测模式筛选
+                    FilterSection(
+                        title = stringResource(R.string.detection_mode),
+                        icon = Icons.Default.Science
+                    ) {
+                        val detectionModes = setOf("FLUORESCENCE", "COLORIMETRIC")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            detectionModes.forEach { mode ->
+                                FilterChip(
+                                    selected = mode in filterSettings.detectionModes,
+                                    onClick = {
+                                        val newSet = filterSettings.detectionModes.toMutableSet()
+                                        if (mode in newSet) newSet.remove(mode) else newSet.add(mode)
+                                        onDetectionModesSelected(newSet)
+                                    },
+                                    label = {
+                                        Text(
+                                            when (mode) {
+                                                "FLUORESCENCE" -> stringResource(R.string.history_fluorescence_label)
+                                                else -> stringResource(R.string.history_colorimetric_label)
+                                            }
+                                        )
+                                    }
+                                )
                             }
-                            onRecognitionTypesSelected(localRecognitionTypes)
                         }
-                    )
+                    }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    RecognitionTypeFilterChip(
-                        label = stringResource(R.string.history_manual_crop_label), // 使用较短标签
-                        selected = "MANUAL" in localRecognitionTypes,
-                        onClick = {
-                            localRecognitionTypes = if ("MANUAL" in localRecognitionTypes) {
-                                localRecognitionTypes - "MANUAL"
-                            } else {
-                                localRecognitionTypes + "MANUAL"
+                    // 2. 分析方法筛选
+                    FilterSection(
+                        title = stringResource(R.string.analysis_method),
+                        icon = Icons.Default.Analytics
+                    ) {
+                        val analysisMethods = setOf("DL_MODEL", "CURVE_FIT")
+                        // 【已修改】使用Column使每个选项占一行
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            analysisMethods.forEach { method ->
+                                FilterChip(
+                                    selected = method in filterSettings.analysisMethods,
+                                    onClick = {
+                                        val newSet = filterSettings.analysisMethods.toMutableSet()
+                                        if (method in newSet) newSet.remove(method) else newSet.add(method)
+                                        onAnalysisMethodsSelected(newSet)
+                                    },
+                                    label = {
+                                        Text(
+                                            when (method) {
+                                                "DL_MODEL" -> stringResource(R.string.dl_model_option)
+                                                else -> stringResource(R.string.curve_fit_option)
+                                            }
+                                        )
+                                    }
+                                )
                             }
-                            onRecognitionTypesSelected(localRecognitionTypes)
                         }
-                    )
+                    }
+
+                    // 3. 分析物筛选
+                    FilterSection(
+                        title = stringResource(R.string.analyte),
+                        icon = Icons.Default.Search
+                    ) {
+                        AnalyteFilterSelector(
+                            allAnalytes = allAnalytes,
+                            selectedAnalyteIds = filterSettings.analyteIds,
+                            onSelectionChanged = onAnalytesSelected
+                        )
+                    }
+
+                    // 4. 时间筛选
+                    FilterSection(
+                        title = stringResource(R.string.time_range),
+                        icon = Icons.Default.DateRange
+                    ) {
+                        val timeRanges = listOf(
+                            HistoryViewModel.TimeRange.ALL to stringResource(R.string.all_time),
+                            HistoryViewModel.TimeRange.TODAY to stringResource(R.string.today),
+                            HistoryViewModel.TimeRange.LAST_WEEK to stringResource(R.string.last_7_days),
+                            HistoryViewModel.TimeRange.LAST_MONTH to stringResource(R.string.last_30_days)
+                        )
+                        // 【已修改】使用 chunked(2) 实现两列布局
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            timeRanges.chunked(2).forEach { rowItems ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    rowItems.forEach { (range, label) ->
+                                        TimeFilterChip(
+                                            label = label,
+                                            selected = filterSettings.timeRange == range,
+                                            onClick = { onTimeRangeSelected(range) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // 按钮
+                // --- 底部按钮 ---
+                Spacer(modifier = Modifier.height(16.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
@@ -940,16 +951,113 @@ fun FilterDialog(
                         onClick = {
                             onTimeRangeSelected(HistoryViewModel.TimeRange.ALL)
                             onDetectionModesSelected(emptySet())
-                            onRecognitionTypesSelected(emptySet())
+                            onAnalysisMethodsSelected(emptySet())
+                            onAnalytesSelected(emptySet())
                         }
                     ) {
                         Text(stringResource(R.string.reset))
                     }
-
                     Spacer(modifier = Modifier.width(8.dp))
-
                     Button(onClick = onDismiss) {
                         Text(stringResource(R.string.done))
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+/**
+ * 【已修改】为筛选部分增加图标和优化样式
+ */
+@Composable
+private fun FilterSection(
+    title: String,
+    icon: ImageVector, // 修改为必传，并添加图标
+    content: @Composable () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold // 加粗标题
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Box(modifier = Modifier.padding(start = 4.dp)) { // 内容稍微缩进
+            content()
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun AnalyteFilterSelector(
+    allAnalytes: List<Analyte>,
+    selectedAnalyteIds: Set<String>,
+    onSelectionChanged: (Set<String>) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredAnalytes = if (searchQuery.isBlank()) {
+        allAnalytes
+    } else {
+        allAnalytes.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    }
+
+    Column {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(stringResource(R.string.search_analytes)) },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
+            singleLine = true
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp) // 给一个固定高度，使其可滚动
+                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
+        ) {
+            LazyColumn {
+                if(filteredAnalytes.isEmpty()) {
+                    item {
+                        Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(stringResource(R.string.no_matching_analytes))
+                        }
+                    }
+                } else {
+                    items(filteredAnalytes, key = { it.id }) { analyte ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val newSet = selectedAnalyteIds.toMutableSet()
+                                    if (analyte.id in newSet) newSet.remove(analyte.id) else newSet.add(analyte.id)
+                                    onSelectionChanged(newSet)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (analyte.id in selectedAnalyteIds) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                contentDescription = null,
+                                tint = if (analyte.id in selectedAnalyteIds) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(analyte.name)
+                        }
                     }
                 }
             }
@@ -961,7 +1069,8 @@ fun FilterDialog(
 fun TimeFilterChip(
     label: String,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     FilterChip(
         selected = selected,
@@ -970,39 +1079,7 @@ fun TimeFilterChip(
         leadingIcon = if (selected) {
             { Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp)) }
         } else null,
-        modifier = Modifier.padding(vertical = 4.dp)
-    )
-}
-
-@Composable
-fun DetectionModeFilterChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label) },
-        leadingIcon = if (selected) {
-            { Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp)) }
-        } else null
-    )
-}
-
-@Composable
-fun RecognitionTypeFilterChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label) },
-        leadingIcon = if (selected) {
-            { Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp)) }
-        } else null
+        modifier = modifier.padding(vertical = 4.dp)
     )
 }
 

@@ -44,6 +44,13 @@ sealed class Screen(open val route: String) {
             return "$route/$runId"
         }
     }
+    
+    // 添加新的结果展示页面路由
+    object NewResult : Screen("new_result") {
+        fun createRoute(runId: String): String {
+            return "$route/$runId"
+        }
+    }
     object History : Screen("history")
     object Settings : Screen("settings")
     object Profile : Screen("profile")

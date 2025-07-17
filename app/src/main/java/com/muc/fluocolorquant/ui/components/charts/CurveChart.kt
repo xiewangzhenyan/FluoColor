@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -48,6 +49,8 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 import java.math.BigDecimal
 import java.math.RoundingMode
+import com.muc.fluocolorquant.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * 曲线图表组件
@@ -71,8 +74,18 @@ fun CurveChart(
     // 获取当前密度，用于dp到px的转换
     val density = LocalDensity.current
 
-    // 始终使用 "Concentration" 作为 X 轴标签
-    val xAxisLabelText = "Concentration"
+    // 根据图表类型确定x轴标签显示内容
+    val xAxisLabelText = when (data.chartType) {
+        "BLAND_ALTMAN" -> stringResource(id = R.string.chart_mean)
+        "REGRESSION" -> stringResource(id = R.string.chart_predicted)
+        else -> data.xAxisLabel.ifEmpty { stringResource(id = R.string.chart_concentration) }
+    }
+
+    val yAxisLabelText = when (data.chartType) {
+        "BLAND_ALTMAN" -> stringResource(id = R.string.chart_difference)
+        "REGRESSION" -> stringResource(id = R.string.chart_actual)
+        else -> data.yAxisLabel.ifEmpty { stringResource(id = R.string.chart_pixel_value) }
+    }
 
     val availableFunctions = remember {
         FittingFunction.values().filter { it != FittingFunction.INTERPOLATION }
@@ -285,6 +298,127 @@ fun CurveChart(
                     }
                 }
 
+                // 绘制特殊类型的图表元素
+                when (data.chartType) {
+                    "BLAND_ALTMAN" -> {
+                        // 绘制均值线、上限线和下限线
+                        val meanLine = data.additionalLines["mean"] ?: emptyList()
+                        val upperLine = data.additionalLines["upperLimit"] ?: emptyList()
+                        val lowerLine = data.additionalLines["lowerLimit"] ?: emptyList()
+                        
+                        // 均值线 - 绿色
+                        if (meanLine.size >= 2) {
+                            // 确保绘制水平线
+                            val y = graphEndY - ((meanLine[0].second - yMin) / yDiff * graphHeight).toFloat()
+                            
+                            drawLine(
+                                color = Color.Green,
+                                start = Offset(graphStartX, y),
+                                end = Offset(graphEndX, y),
+                                strokeWidth = 2f
+                            )
+                            
+                            // 绘制均值标签
+                            val labelText = "Mean"
+                            drawText(
+                                textMeasurer = textMeasurer,
+                                text = labelText,
+                                style = TextStyle(color = Color.Green, fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                topLeft = Offset(
+                                    x = graphEndX - 40f,
+                                    y = y - 15f
+                                )
+                            )
+                        }
+                        
+                        // 上限线 - 红色，虚线
+                        if (upperLine.size >= 2) {
+                            // 确保绘制水平线
+                            val y = graphEndY - ((upperLine[0].second - yMin) / yDiff * graphHeight).toFloat()
+                            
+                            drawLine(
+                                color = Color.Red,
+                                start = Offset(graphStartX, y),
+                                end = Offset(graphEndX, y),
+                                strokeWidth = 2f,
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                            )
+
+                            // 绘制上限标签
+                            val labelText = "Upper"
+                            drawText(
+                                textMeasurer = textMeasurer,
+                                text = labelText,
+                                style = TextStyle(color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                topLeft = Offset(
+                                    x = graphEndX - 40f,
+                                    y = y - 15f
+                                )
+                            )
+                        }
+                        
+                        // 下限线 - 红色，虚线
+                        if (lowerLine.size >= 2) {
+                            // 确保绘制水平线
+                            val y = graphEndY - ((lowerLine[0].second - yMin) / yDiff * graphHeight).toFloat()
+                            
+                            drawLine(
+                                color = Color.Red,
+                                start = Offset(graphStartX, y),
+                                end = Offset(graphEndX, y),
+                                strokeWidth = 2f,
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                            )
+
+                            // 绘制下限标签
+                            val labelText = "Lower"
+                            drawText(
+                                textMeasurer = textMeasurer,
+                                text = labelText,
+                                style = TextStyle(color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                topLeft = Offset(
+                                    x = graphEndX - 40f,
+                                    y = y + 5f
+                                )
+                            )
+                        }
+                    }
+                    "REGRESSION" -> {
+                        // 为回归分析图表绘制辅助元素（理想线和回归线）
+                        
+                        // 绘制理想线 y=x (浅灰色)
+                        val idealPoints = data.standardPoints
+                        if (idealPoints.size >= 2) {
+                            val path = Path()
+                            var firstPoint = true
+                            
+                            for (point in idealPoints) {
+                                val xRatio = if (xDiff != 0.0) (point.first - xMin) / xDiff else 0.0
+                                val yRatio = if (yDiff != 0.0) (point.second - yMin) / yDiff else 0.0
+                                
+                                val pointX = graphStartX + (xRatio * graphWidth).toFloat()
+                                val pointY = graphEndY - (yRatio * graphHeight).toFloat()
+                                
+                                if (firstPoint) {
+                                    path.moveTo(pointX, pointY)
+                                    firstPoint = false
+                                } else {
+                                    path.lineTo(pointX, pointY)
+                                }
+                            }
+                            
+                            drawPath(
+                                path = path,
+                                color = Color.Gray.copy(alpha = 0.5f),
+                                style = Stroke(width = 2f)
+                            )
+                        }
+                    }
+                    else -> {
+                        // 默认的图表绘制行为，无需特殊处理
+                    }
+                }
+
                 // 绘制拟合曲线
                 data.fittedCurve?.let { curve ->
                     val path = Path()
@@ -327,6 +461,42 @@ fun CurveChart(
                         style = Stroke(width = 3f)
                     )
                 }
+                
+                // 绘制一般的曲线数据
+                if (data.curvePoints.isNotEmpty()) {
+                    val path = Path()
+                    var firstPoint = true
+                    
+                    for (point in data.curvePoints) {
+                        // 确保点在范围内
+                        val x = point.first
+                        val y = point.second
+                        
+                        if (x < xMin || x > xMax || y < yMin || y > yMax) {
+                            continue
+                        }
+                        
+                        // 计算屏幕坐标
+                        val xRatio = if (xDiff != 0.0) (x - xMin) / xDiff else 0.0
+                        val yRatio = if (yDiff != 0.0) (y - yMin) / yDiff else 0.0
+                        
+                        val pointX = graphStartX + (xRatio * graphWidth).toFloat()
+                        val pointY = graphEndY - (yRatio * graphHeight).toFloat()
+                        
+                        if (firstPoint) {
+                            path.moveTo(pointX, pointY)
+                            firstPoint = false
+                        } else {
+                            path.lineTo(pointX, pointY)
+                        }
+                    }
+                    
+                    drawPath(
+                        path = path,
+                        color = data.curveColor,
+                        style = Stroke(width = 2f)
+                    )
+                }
 
                 // 绘制散点
                 val pointOffsets = mutableListOf<Offset>() // 保存所有点的屏幕坐标
@@ -351,36 +521,38 @@ fun CurveChart(
 
                 // 绘制十字定位辅助线 - 使用曲线点位置或选中的数据点
                 curvePointPosition?.let { position ->
-                    // 确保十字线限制在图表区域内
-                    val boundedX = position.x.coerceIn(graphStartX, graphEndX)
-                    val boundedY = position.y.coerceIn(graphStartY, graphEndY)
+                    // 确保十字线限制在图表区域内，且不是NaN
+                    if (!position.x.isNaN() && !position.y.isNaN()) {
+                        val boundedX = position.x.coerceIn(graphStartX, graphEndX)
+                        val boundedY = position.y.coerceIn(graphStartY, graphEndY)
 
-                    // 垂直线
-                    drawLine(
-                        color = Color.Red,
-                        start = Offset(boundedX, graphStartY),
-                        end = Offset(boundedX, graphEndY),
-                        strokeWidth = 1f
-                    )
+                        // 垂直线
+                        drawLine(
+                            color = Color.Red,
+                            start = Offset(boundedX, graphStartY),
+                            end = Offset(boundedX, graphEndY),
+                            strokeWidth = 1f
+                        )
 
-                    // 水平线
-                    drawLine(
-                        color = Color.Red,
-                        start = Offset(graphStartX, boundedY),
-                        end = Offset(graphEndX, boundedY),
-                        strokeWidth = 1f
-                    )
-                    
-                    // 绘制十字线交叉点的小圆点
-                    drawCircle(
-                        color = Color.Red,
-                        radius = 4f,
-                        center = Offset(boundedX, boundedY)
-                    )
+                        // 水平线
+                        drawLine(
+                            color = Color.Red,
+                            start = Offset(graphStartX, boundedY),
+                            end = Offset(graphEndX, boundedY),
+                            strokeWidth = 1f
+                        )
+                        
+                        // 绘制十字线交叉点的小圆点
+                        drawCircle(
+                            color = Color.Red,
+                            radius = 4f,
+                            center = Offset(boundedX, boundedY)
+                        )
+                    }
                 }
 
                 // 测量和绘制坐标轴标签
-                // X轴标签 - 始终使用 "Concentration"
+                // X轴标签
                 val xAxisTextStyle = TextStyle(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
@@ -417,7 +589,7 @@ fun CurveChart(
 
                     // 绘制文本，现在是水平的（但canvas已旋转）
                     canvas.nativeCanvas.drawText(
-                        data.yAxisLabel,
+                        yAxisLabelText,
                         0f,  // 居中对齐
                         10f,  // y坐标（现在是水平方向）
                         android.graphics.Paint().apply {
@@ -434,60 +606,82 @@ fun CurveChart(
 
             // 显示选中点或曲线点的数值
             curvePointPosition?.let { position ->
-                // 判断点的位置，决定悬浮窗出现在上方还是下方
-                val halfHeight = with(density) { 125.dp.toPx() } // 画布高度的一半
-                val isInUpperHalf = position.y < halfHeight
-                
-                // 获取数值
-                val (concValue, pixelValue) = if (selectedPointIndex != null) {
-                    // 如果是选中的数据点，直接显示数据点的值
-                    data.scatterPoints?.getOrNull(selectedPointIndex!!)?.let { point ->
-                        Pair(point.x, point.y)
-                    } ?: Pair(0.0, 0.0)
-                } else {
-                    // 如果是曲线上的点，计算对应的值
-                    val chartWidth = with(density) { 250.dp.toPx() } // 估计的图表宽度
-                    val leftPadding = 70f
-                    val rightPadding = 40f
-                    val graphWidth = (chartWidth - leftPadding - rightPadding) * 0.9f
-                    val innerPaddingX = (chartWidth - leftPadding - rightPadding) * 0.05f
-                    val graphStartX = leftPadding + innerPaddingX
+                // 确保位置不是NaN
+                if (!position.x.isNaN() && !position.y.isNaN()) {
+                    // 判断点的位置，决定悬浮窗出现在上方还是下方
+                    val halfHeight = with(density) { 125.dp.toPx() } // 画布高度的一半
+                    val isInUpperHalf = position.y < halfHeight
                     
-                    val xMin = data.xRange.first
-                    val xMax = data.xRange.second
-                    val xDiff = xMax - xMin
+                    // 获取数值
+                    val (xValue, yValue) = if (selectedPointIndex != null) {
+                        // 如果是选中的数据点，直接显示数据点的值
+                        data.scatterPoints?.getOrNull(selectedPointIndex!!)?.let { point ->
+                            Pair(point.x, point.y)
+                        } ?: Pair(0.0, 0.0)
+                    } else {
+                        // 如果是曲线上的点，计算对应的值
+                        val chartWidth = with(density) { 250.dp.toPx() } // 估计的图表宽度
+                        val leftPadding = 70f
+                        val rightPadding = 40f
+                        val graphWidth = (chartWidth - leftPadding - rightPadding) * 0.9f
+                        val innerPaddingX = (chartWidth - leftPadding - rightPadding) * 0.05f
+                        val graphStartX = leftPadding + innerPaddingX
+                        
+                        val xMin = data.xRange.first
+                        val xMax = data.xRange.second
+                        val xDiff = xMax - xMin
+                        
+                        // 从屏幕坐标转换回数据坐标
+                        val xRatio = (position.x - graphStartX) / graphWidth
+                        val xValue = xMin + (xRatio * xDiff)
+                        
+                        // 使用拟合曲线函数计算y值
+                        val yValue = data.fittedCurve?.let { curve ->
+                            try {
+                                curve(xValue)
+                            } catch (e: Exception) {
+                                0.0
+                            }
+                        } ?: 0.0
+                        
+                        Pair(xValue, yValue)
+                    }
                     
-                    // 从屏幕坐标转换回数据坐标
-                    val xRatio = (position.x - graphStartX) / graphWidth
-                    val xValue = xMin + (xRatio * xDiff)
-                    
-                    // 使用拟合曲线函数计算y值
-                    val yValue = data.fittedCurve?.let { curve ->
-                        try {
-                            curve(xValue)
-                        } catch (e: Exception) {
-                            0.0
+                    // 检查值是否有效
+                    if (!xValue.isNaN() && !xValue.isInfinite() && !yValue.isNaN() && !yValue.isInfinite()) {
+                        // 根据图表类型，提供不同的标签和格式
+                        val (xLabel, yLabel) = when (data.chartType) {
+                            "BLAND_ALTMAN" -> Pair(
+                                stringResource(id = R.string.chart_mean), 
+                                stringResource(id = R.string.chart_difference)
+                            )
+                            "REGRESSION" -> Pair(
+                                stringResource(id = R.string.chart_predicted), 
+                                stringResource(id = R.string.chart_actual)
+                            )
+                            else -> Pair(
+                                stringResource(id = R.string.chart_concentration), 
+                                stringResource(id = R.string.chart_pixel_value)
+                            )
                         }
-                    } ?: 0.0
-                    
-                    Pair(xValue, yValue)
-                }
-                
-                Card(
-                    modifier = Modifier
-                        .align(if (isInUpperHalf) Alignment.BottomCenter else Alignment.TopCenter)
-                        .padding(
-                            top = if (isInUpperHalf) 0.dp else 8.dp,
-                            bottom = if (isInUpperHalf) 8.dp else 0.dp
-                        ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                ) {
-                    Text(
-                        text = "Conc. : ${String.format("%.4f", concValue)}\n" +
-                               "Pixel : ${String.format("%.4f", pixelValue)}",
-                        modifier = Modifier.padding(8.dp),
-                        style = TextStyle(fontSize = 12.sp)
-                    )
+                        
+                        Card(
+                            modifier = Modifier
+                                .align(if (isInUpperHalf) Alignment.BottomCenter else Alignment.TopCenter)
+                                .padding(
+                                    top = if (isInUpperHalf) 0.dp else 8.dp,
+                                    bottom = if (isInUpperHalf) 8.dp else 0.dp
+                                ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Text(
+                                text = "$xLabel: ${String.format("%.4f", xValue)}\n" +
+                                       "$yLabel: ${String.format("%.4f", yValue)}",
+                                modifier = Modifier.padding(8.dp),
+                                style = TextStyle(fontSize = 12.sp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -540,11 +734,22 @@ private fun findNearestPointToPosition(data: ChartData, position: Offset, size: 
     var closestPointOffset: Offset? = null
 
     points.forEachIndexed { index, point ->
+        // 确保点的值是有效的
+        if (point.x.isNaN() || point.y.isNaN()) {
+            return@forEachIndexed
+        }
+        
         val xRatio = if (xDiff != 0.0) (point.x - xMin) / xDiff else 0.0
         val yRatio = if (yDiff != 0.0) (point.y - yMin) / yDiff else 0.0
 
         val pointX = graphStartX + (xRatio * graphWidth).toFloat()
         val pointY = graphEndY - (yRatio * graphHeight).toFloat()
+        
+        // 确保计算的坐标不是NaN
+        if (pointX.isNaN() || pointY.isNaN()) {
+            return@forEachIndexed
+        }
+        
         val pointOffset = Offset(pointX, pointY)
 
         // 计算水平和垂直距离
@@ -639,7 +844,12 @@ private fun findPointOnCurve(data: ChartData, position: Offset, size: androidx.c
             val yRatio = if (yDiff != 0.0) (yValue - yMin) / yDiff else 0.0
             val pointY = graphEndY - (yRatio * graphHeight).toFloat()
             
-            Offset(boundedX, pointY)
+            // 确保计算的坐标不是NaN
+            if (boundedX.isNaN() || pointY.isNaN()) {
+                null
+            } else {
+                Offset(boundedX, pointY)
+            }
         }
     } catch (e: Exception) {
         null
@@ -735,6 +945,12 @@ fun CurveChart(
                         yMax += 1.0
                     }
 
+                    // 添加额外的安全检查，确保没有NaN或Infinite值
+                    if (adjustedXMin.isNaN() || adjustedXMin.isInfinite()) adjustedXMin = 0.0
+                    if (adjustedXMax.isNaN() || adjustedXMax.isInfinite()) adjustedXMax = 100.0
+                    if (yMin.isNaN() || yMin.isInfinite()) yMin = 0.0
+                    if (yMax.isNaN() || yMax.isInfinite()) yMax = 10.0
+
                     if (yValues.isNotEmpty() || scatterPoints != null) {
                         Result.success(
                             ChartData(
@@ -753,13 +969,13 @@ fun CurveChart(
                             )
                         )
                     } else {
-                        Result.failure(Exception("无效的参数导致曲线无法绘制"))
+                        Result.failure(Exception("Invalid parameters, curve cannot be drawn"))
                     }
                 } catch (e: Exception) {
                     Result.failure(e)
                 }
             } else {
-                Result.failure(Exception("请提供有效的函数和参数"))
+                Result.failure(Exception("Please provide valid function and parameters"))
             }
         }
     }.value
@@ -780,7 +996,7 @@ fun CurveChart(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = error.message ?: "未知错误",
+                        text = error.message ?: "Unknown error",
                         color = MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.Center
                     )

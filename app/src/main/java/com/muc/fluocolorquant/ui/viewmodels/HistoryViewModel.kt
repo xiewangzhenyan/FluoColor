@@ -1,16 +1,23 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
+import android.annotation.SuppressLint
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.SessionManager
+import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.data.repository.AnalyteRepository
+import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.WellResultRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -25,62 +32,73 @@ import javax.inject.Inject
 class HistoryViewModel @Inject constructor(
     private val projectRepository: ProjectRepository,
     private val sessionManager: SessionManager,
-    private val wellResultRepository: WellResultRepository
+    private val wellResultRepository: WellResultRepository,
+    private val analyteRepository: AnalyteRepository,
+    private val projectAnalyteJoinRepository: ProjectAnalyteJoinRepository
 ) : ViewModel() {
 
     // 原始项目列表
     private val _projects = MutableStateFlow<List<Project>>(emptyList())
-    
+
     // 筛选后的项目列表（用于UI显示）
     private val _filteredProjects = MutableStateFlow<List<Project>>(emptyList())
     val filteredProjects: StateFlow<List<Project>> = _filteredProjects.asStateFlow()
-    
+
     // 加载状态
     private val _loadingState = MutableStateFlow<LoadingState>(LoadingState.Loading)
     val loadingState: StateFlow<LoadingState> = _loadingState.asStateFlow()
-    
+
     // 删除操作状态
     private val _deleteState = MutableStateFlow<DeleteState>(DeleteState.Idle)
     val deleteState: StateFlow<DeleteState> = _deleteState.asStateFlow()
-    
+
     // 当前搜索关键词
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-    
+
     // 当前筛选设置
     private val _filterSettings = MutableStateFlow(FilterSettings())
     val filterSettings: StateFlow<FilterSettings> = _filterSettings.asStateFlow()
-    
+
     // 当前排序设置
     private val _sortSettings = MutableStateFlow(SortSettings())
     val sortSettings: StateFlow<SortSettings> = _sortSettings.asStateFlow()
-    
+
+    // 所有可用的分析物
+    val allAnalytes: StateFlow<List<Analyte>> = analyteRepository.getAllAnalytes()
+        .catch { e -> _loadingState.value = LoadingState.Error(e.message ?: "加载分析物列表失败") }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     init {
         // 初始加载用户项目
         loadUserProjects()
     }
-    
+
     /**
      * 加载当前用户的项目列表
      */
     fun loadUserProjects() {
         viewModelScope.launch {
             _loadingState.value = LoadingState.Loading
-            
+
             try {
                 // 获取当前用户ID
                 val userId = sessionManager.userIdFlow.first() ?: return@launch
-                
+
                 // 获取当前用户的所有项目
-                val userProjects = projectRepository.getAllProjects().filter { 
-                    it.userId == userId.toString() 
+                val userProjects = projectRepository.getAllProjects().filter {
+                    it.userId == userId.toString()
                 }
-                
+
                 _projects.value = userProjects
-                
+
                 // 应用当前筛选和排序
                 applyFiltersAndSort()
-                
+
                 _loadingState.value = if (userProjects.isEmpty()) {
                     LoadingState.Empty
                 } else {
@@ -91,7 +109,7 @@ class HistoryViewModel @Inject constructor(
             }
         }
     }
-    
+
     /**
      * 设置搜索关键词
      */
@@ -99,7 +117,7 @@ class HistoryViewModel @Inject constructor(
         _searchQuery.value = query
         applyFiltersAndSort()
     }
-    
+
     /**
      * 设置时间筛选范围
      */
@@ -107,7 +125,7 @@ class HistoryViewModel @Inject constructor(
         _filterSettings.update { it.copy(timeRange = timeRange) }
         applyFiltersAndSort()
     }
-    
+
     /**
      * 设置检测模式筛选
      */
@@ -115,15 +133,23 @@ class HistoryViewModel @Inject constructor(
         _filterSettings.update { it.copy(detectionModes = modes) }
         applyFiltersAndSort()
     }
-    
+
     /**
-     * 设置识别类型筛选
+     * 设置分析方法筛选
      */
-    fun setRecognitionTypeFilter(types: Set<String>) {
-        _filterSettings.update { it.copy(recognitionTypes = types) }
+    fun setAnalysisMethodFilter(methods: Set<String>) {
+        _filterSettings.update { it.copy(analysisMethods = methods) }
         applyFiltersAndSort()
     }
-    
+
+    /**
+     * 设置分析物筛选
+     */
+    fun setAnalyteFilter(analyteIds: Set<String>) {
+        _filterSettings.update { it.copy(analyteIds = analyteIds) }
+        applyFiltersAndSort()
+    }
+
     /**
      * 设置排序方式
      */
@@ -131,27 +157,27 @@ class HistoryViewModel @Inject constructor(
         _sortSettings.update { it.copy(field = field, direction = direction) }
         applyFiltersAndSort()
     }
-    
+
     /**
      * 删除项目
      */
     fun deleteProject(projectId: String) {
         viewModelScope.launch {
             _deleteState.value = DeleteState.Loading
-            
+
             try {
                 projectRepository.deleteProject(projectId)
-                
+
                 // 从本地列表移除
                 _projects.update { projects ->
                     projects.filter { it.id != projectId }
                 }
-                
+
                 // 应用筛选和排序
                 applyFiltersAndSort()
-                
+
                 _deleteState.value = DeleteState.Success
-                
+
                 // 重置状态
                 viewModelScope.launch {
                     _deleteState.value = DeleteState.Idle
@@ -161,30 +187,30 @@ class HistoryViewModel @Inject constructor(
             }
         }
     }
-    
+
     /**
      * 批量删除项目
      */
     fun deleteProjects(projectIds: List<String>) {
         viewModelScope.launch {
             _deleteState.value = DeleteState.Loading
-            
+
             try {
                 // 逐个删除项目
                 projectIds.forEach { projectId ->
                     projectRepository.deleteProject(projectId)
                 }
-                
+
                 // 从本地列表移除
                 _projects.update { projects ->
                     projects.filter { it.id !in projectIds }
                 }
-                
+
                 // 应用筛选和排序
                 applyFiltersAndSort()
-                
+
                 _deleteState.value = DeleteState.Success
-                
+
                 // 重置状态
                 viewModelScope.launch {
                     _deleteState.value = DeleteState.Idle
@@ -194,21 +220,28 @@ class HistoryViewModel @Inject constructor(
             }
         }
     }
-    
+
     /**
      * 应用所有筛选和排序
      */
     private fun applyFiltersAndSort() {
         viewModelScope.launch {
+            // 获取项目与分析物的关联关系
+            val projectAnalyteMap = mutableMapOf<String, List<String>>()
+            _projects.value.forEach { project ->
+                projectAnalyteMap[project.id] = projectAnalyteJoinRepository.getAnalytesByProjectId(project.id).first().map { it.id }
+            }
+
             val filtered = _projects.value
                 .filter { project -> applySearchFilter(project) }
                 .filter { project -> applyTimeFilter(project) }
                 .filter { project -> applyDetectionModeFilter(project) }
-                .filter { project -> applyRecognitionTypeFilter(project) }
+                .filter { project -> applyAnalysisMethodFilter(project) }
+                .filter { project -> applyAnalyteFilter(project, projectAnalyteMap) }
                 .sortedWith(createComparator())
-            
+
             _filteredProjects.value = filtered
-            
+
             // 更新加载状态
             _loadingState.value = if (_projects.value.isEmpty()) {
                 LoadingState.Empty
@@ -219,17 +252,17 @@ class HistoryViewModel @Inject constructor(
             }
         }
     }
-    
+
     /**
      * 应用搜索筛选
      */
     private fun applySearchFilter(project: Project): Boolean {
         val query = _searchQuery.value
         if (query.isBlank()) return true
-        
+
         return project.name.contains(query, ignoreCase = true)
     }
-    
+
     /**
      * 应用时间筛选
      */
@@ -242,30 +275,43 @@ class HistoryViewModel @Inject constructor(
             is TimeRange.CUSTOM -> isWithinDateRange(project.createTime, timeRange.startDate, timeRange.endDate)
         }
     }
-    
+
     /**
      * 应用检测模式筛选
      */
     private fun applyDetectionModeFilter(project: Project): Boolean {
         val modes = _filterSettings.value.detectionModes
         if (modes.isEmpty()) return true
-        
+
         return project.detectionMode in modes
     }
-    
+
     /**
-     * 应用识别类型筛选
+     * 应用分析方法筛选
      */
-    private fun applyRecognitionTypeFilter(project: Project): Boolean {
-        val types = _filterSettings.value.recognitionTypes
-        if (types.isEmpty()) return true
-        
-        return project.recognitionType in types
+    private fun applyAnalysisMethodFilter(project: Project): Boolean {
+        val methods = _filterSettings.value.analysisMethods
+        if (methods.isEmpty()) return true
+
+        return project.analysisMethod in methods
     }
-    
+
+    /**
+     * 应用分析物筛选
+     */
+    private fun applyAnalyteFilter(project: Project, projectAnalyteMap: Map<String, List<String>>): Boolean {
+        val selectedAnalyteIds = _filterSettings.value.analyteIds
+        if (selectedAnalyteIds.isEmpty()) return true
+
+        val projectAnalytes = projectAnalyteMap[project.id] ?: emptyList()
+        // 检查项目的分析物列表是否包含任何一个选中的分析物
+        return projectAnalytes.any { it in selectedAnalyteIds }
+    }
+
     /**
      * 创建排序比较器
      */
+    @SuppressLint("NewApi")
     private fun createComparator(): Comparator<Project> {
         val settings = _sortSettings.value
         val baseComparator = when (settings.field) {
@@ -273,37 +319,37 @@ class HistoryViewModel @Inject constructor(
             SortField.CREATE_TIME -> compareBy<Project> { it.createTime }
             SortField.LAST_RUN -> compareBy<Project> { it.lastRunTimestamp ?: Date(0) }
         }
-        
+
         return if (settings.direction == SortDirection.ASCENDING) {
             baseComparator
         } else {
             baseComparator.reversed()
         }
     }
-    
+
     // 工具函数：检查日期是否为今天
     private fun isToday(date: Date): Boolean {
         val today = Calendar.getInstance()
         val calendar = Calendar.getInstance().apply { time = date }
-        
+
         return today.get(Calendar.YEAR) == calendar.get(Calendar.YEAR) &&
                 today.get(Calendar.DAY_OF_YEAR) == calendar.get(Calendar.DAY_OF_YEAR)
     }
-    
+
     // 工具函数：检查日期是否在指定天数内
     private fun isWithinDays(date: Date, days: Int): Boolean {
         val calendar = Calendar.getInstance()
         calendar.add(Calendar.DAY_OF_YEAR, -days)
         val startDate = calendar.time
-        
+
         return date.after(startDate)
     }
-    
+
     // 工具函数：检查日期是否在指定范围内
     private fun isWithinDateRange(date: Date, startDate: Date, endDate: Date): Boolean {
         return date.after(startDate) && date.before(endDate)
     }
-    
+
     /**
      * 获取项目对应的最新运行ID
      * @param projectId 项目ID
@@ -317,7 +363,7 @@ class HistoryViewModel @Inject constructor(
             null
         }
     }
-    
+
     /**
      * 加载状态
      */
@@ -328,7 +374,7 @@ class HistoryViewModel @Inject constructor(
         object FilteredEmpty : LoadingState()
         data class Error(val message: String) : LoadingState()
     }
-    
+
     /**
      * 删除状态
      */
@@ -338,16 +384,17 @@ class HistoryViewModel @Inject constructor(
         object Success : DeleteState()
         data class Error(val message: String) : DeleteState()
     }
-    
+
     /**
      * 筛选设置
      */
     data class FilterSettings(
         val timeRange: TimeRange = TimeRange.ALL,
         val detectionModes: Set<String> = emptySet(),
-        val recognitionTypes: Set<String> = emptySet()
+        val analysisMethods: Set<String> = emptySet(),
+        val analyteIds: Set<String> = emptySet()
     )
-    
+
     /**
      * 时间范围
      */
@@ -358,7 +405,7 @@ class HistoryViewModel @Inject constructor(
         object LAST_MONTH : TimeRange()
         data class CUSTOM(val startDate: Date, val endDate: Date) : TimeRange()
     }
-    
+
     /**
      * 排序设置
      */
@@ -366,18 +413,18 @@ class HistoryViewModel @Inject constructor(
         val field: SortField = SortField.CREATE_TIME,
         val direction: SortDirection = SortDirection.DESCENDING
     )
-    
+
     /**
      * 排序字段
      */
     enum class SortField {
         NAME, CREATE_TIME, LAST_RUN
     }
-    
+
     /**
      * 排序方向
      */
     enum class SortDirection {
         ASCENDING, DESCENDING
     }
-} 
+}

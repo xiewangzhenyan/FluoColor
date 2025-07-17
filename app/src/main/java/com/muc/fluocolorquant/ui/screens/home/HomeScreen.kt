@@ -1,12 +1,15 @@
 package com.muc.fluocolorquant.ui.screens.home
 
+import android.net.Uri
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,23 +24,42 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,55 +69,31 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.muc.fluocolorquant.R
-import com.muc.fluocolorquant.ui.components.AnimatedPrimaryButton
-import com.muc.fluocolorquant.ui.components.AnimatedSecondaryButton
-import com.muc.fluocolorquant.ui.navigation.Screen
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import androidx.hilt.navigation.compose.hiltViewModel
-import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Divider
-import androidx.compose.runtime.collectAsState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
-import android.widget.Toast
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.foundation.Image
-import androidx.compose.ui.layout.ContentScale
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import coil.size.Size
-import android.net.Uri
-import androidx.compose.foundation.shape.CircleShape
-import android.util.Log
-import androidx.compose.material3.Button
-import androidx.compose.ui.text.font.FontWeight
+import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.navigation.Screen
+import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 data class BottomNavItem(
     val title: String,
@@ -112,27 +110,27 @@ fun HomeScreen(
 ) {
     // 获取上下文
     val context = LocalContext.current
-    
+
     // 底部导航项
     val bottomNavItems = listOf(
         BottomNavItem(title = stringResource(R.string.home_tab), icon = Icons.Default.Home),
         BottomNavItem(title = stringResource(R.string.history_tab), icon = Icons.Default.List),
         BottomNavItem(title = stringResource(R.string.about_tab), icon = Icons.Default.Info)
     )
-    
+
     // 页面状态
     val pagerState = rememberPagerState(initialPage = 0) { bottomNavItems.size }
     val coroutineScope = rememberCoroutineScope()
-    
+
     // 在顶部操作栏中添加用户信息和退出登录选项
     val currentUser by userViewModel.currentUser.collectAsState()
-    
+
     // 提前获取字符串资源
     val unknownUserString = stringResource(R.string.unknown_user)
-    
+
     // 记录页面是否刚刚进入，避免刚进入页面就立即检查并导航
     val initialComposition = remember { mutableStateOf(true) }
-    
+
     // 检查用户状态，如果是Unknown User，跳转到登录页面
     // 但要避免在初始化时和登录后立即导航，这可能导致导航循环
     LaunchedEffect(currentUser) {
@@ -145,7 +143,7 @@ fun HomeScreen(
         // 第一次渲染后将标记设为false
         initialComposition.value = false
     }
-    
+
     // 监听导航返回事件，确保用户数据更新
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     LaunchedEffect(navBackStackEntry) {
@@ -154,7 +152,7 @@ fun HomeScreen(
             userViewModel.refreshUserData()
         }
     }
-    
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -191,9 +189,9 @@ fun HomeScreen(
                                         imageVector = item.icon,
                                         contentDescription = item.title,
                                         modifier = Modifier.size(if (pagerState.currentPage == index) 28.dp else 24.dp),
-                                        tint = if (pagerState.currentPage == index) 
-                                            MaterialTheme.colorScheme.primary 
-                                        else 
+                                        tint = if (pagerState.currentPage == index)
+                                            MaterialTheme.colorScheme.primary
+                                        else
                                             MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -205,9 +203,9 @@ fun HomeScreen(
                                         imageVector = item.icon,
                                         contentDescription = item.title,
                                         modifier = Modifier.size(if (pagerState.currentPage == index) 28.dp else 24.dp),
-                                        tint = if (pagerState.currentPage == index) 
-                                            MaterialTheme.colorScheme.primary 
-                                        else 
+                                        tint = if (pagerState.currentPage == index)
+                                            MaterialTheme.colorScheme.primary
+                                        else
                                             MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -216,14 +214,14 @@ fun HomeScreen(
                                     imageVector = item.icon,
                                     contentDescription = item.title,
                                     modifier = Modifier.size(if (pagerState.currentPage == index) 28.dp else 24.dp),
-                                    tint = if (pagerState.currentPage == index) 
-                                        MaterialTheme.colorScheme.primary 
-                                    else 
+                                    tint = if (pagerState.currentPage == index)
+                                        MaterialTheme.colorScheme.primary
+                                    else
                                         MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         },
-                        label = { 
+                        label = {
                             Text(
                                 text = item.title,
                                 fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Normal,
@@ -231,7 +229,7 @@ fun HomeScreen(
                                     MaterialTheme.colorScheme.primary
                                 else
                                     MaterialTheme.colorScheme.onSurfaceVariant
-                            ) 
+                            )
                         },
                         selected = pagerState.currentPage == index,
                         onClick = {
@@ -273,7 +271,7 @@ fun HomePageContent(
     // 获取上下文
     val context = LocalContext.current
     val currentUser by userViewModel.currentUser.collectAsState()
-    
+
     // 提前获取字符串资源
     val unknownUserString = stringResource(R.string.unknown_user)
 
@@ -281,7 +279,7 @@ fun HomePageContent(
     val newProjectCardVisible = remember { MutableTransitionState(false) }
     val functionsCardVisible = remember { MutableTransitionState(false) }
     val headerVisible = remember { MutableTransitionState(false) }
-    
+
     // 启动动画序列
     LaunchedEffect(key1 = true) {
         headerVisible.targetState = true
@@ -290,7 +288,7 @@ fun HomePageContent(
         delay(200)
         functionsCardVisible.targetState = true
     }
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -301,17 +299,17 @@ fun HomePageContent(
         // 标题动画
         AnimatedVisibility(
             visibleState = headerVisible,
-            enter = fadeIn(animationSpec = tween(500)) + 
+            enter = fadeIn(animationSpec = tween(500)) +
                     slideInVertically(animationSpec = tween(500)) { it / 2 }
         ) {
             Text(
-                text = stringResource(R.string.detection_mode_selection),
+                text = stringResource(R.string.new_detection_project),
                 style = MaterialTheme.typography.headlineMedium,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 24.dp, top = 8.dp)
+                modifier = Modifier.padding(bottom = 16.dp, top = 8.dp)
             )
         }
-        
+
         // 新建项目卡片
         AnimatedVisibility(
             visibleState = newProjectCardVisible,
@@ -323,7 +321,7 @@ fun HomePageContent(
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { 
+                    .clickable {
                         // 检查用户状态
                         if (currentUser == null || currentUser?.username == unknownUserString) {
                             navController.navigate(Screen.Login.route) {
@@ -370,32 +368,45 @@ fun HomePageContent(
                             )
                         }
                     }
-                    
+
+                    // 添加banner图片
                     Spacer(modifier = Modifier.height(16.dp))
-                    
+                    Image(
+                        painter = painterResource(id = R.drawable.banner),
+                        contentDescription = "检测仪器",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
                     Button(
-                        onClick = { 
+                        onClick = {
                             // 检查用户状态
                             if (currentUser == null || currentUser?.username == unknownUserString) {
                                 navController.navigate(Screen.Login.route) {
                                     popUpTo(navController.graph.id) { inclusive = true }
                                 }
                             } else {
-                            try {
-                                navController.navigate(Screen.NewProject.route)
-                            } catch (e: Exception) {
-                                Log.e("HomeScreen", "导航错误: ${e.message}", e)
-                                Toast.makeText(context, "导航错误: ${e.message}", Toast.LENGTH_SHORT).show()
+                                try {
+                                    navController.navigate(Screen.NewProject.route)
+                                } catch (e: Exception) {
+                                    Log.e("HomeScreen", "导航错误: ${e.message}", e)
+                                    Toast.makeText(context, "导航错误: ${e.message}", Toast.LENGTH_SHORT).show()
                                 }
                             }
-                        }
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(stringResource(R.string.new_project))
                     }
                 }
             }
         }
-        
+
         // 功能说明卡片
         AnimatedVisibility(
             visibleState = functionsCardVisible,
@@ -424,30 +435,34 @@ fun HomePageContent(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    
-                    FunctionItem(
+
+                    FunctionItemWithIcon(
+                        icon = Icons.Filled.Palette,
                         title = stringResource(R.string.colorimetric_detection),
                         description = stringResource(R.string.colorimetric_description)
                     )
-                    
-                    FunctionItem(
+
+                    FunctionItemWithIcon(
+                        icon = Icons.Filled.Science,
                         title = stringResource(R.string.fluorescence_detection),
                         description = stringResource(R.string.fluorescence_description)
                     )
-                    
-                    FunctionItem(
+
+                    FunctionItemWithIcon(
+                        icon = Icons.Filled.GridOn,
                         title = stringResource(R.string.auto_well_recognition),
                         description = stringResource(R.string.auto_well_description)
                     )
-                    
-                    FunctionItem(
+
+                    FunctionItemWithIcon(
+                        icon = Icons.Filled.ShowChart,
                         title = stringResource(R.string.concentration_curve),
                         description = stringResource(R.string.concentration_description)
                     )
                 }
             }
         }
-        
+
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
@@ -458,10 +473,10 @@ fun HistoryPageContent(
     userViewModel: UserViewModel = hiltViewModel()
 ) {
     val currentUser by userViewModel.currentUser.collectAsState()
-    
+
     // 提前获取字符串资源
     val unknownUserString = stringResource(R.string.unknown_user)
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -475,7 +490,7 @@ fun HistoryPageContent(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(vertical = 16.dp)
         )
-        
+
         // 显示历史记录简要信息
         Card(
             modifier = Modifier
@@ -500,16 +515,16 @@ fun HistoryPageContent(
                         .padding(bottom = 8.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 Text(
                     text = stringResource(R.string.view_history_projects),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
                 )
-                
+
                 Text(
                     text = stringResource(R.string.history_description),
                     style = MaterialTheme.typography.bodyMedium,
@@ -517,12 +532,12 @@ fun HistoryPageContent(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 // 查看更多按钮
                 Button(
-                    onClick = { 
+                    onClick = {
                         // 检查用户状态
                         if (currentUser == null || currentUser?.username == unknownUserString) {
                             navController.navigate(Screen.Login.route) {
@@ -540,7 +555,7 @@ fun HistoryPageContent(
                 }
             }
         }
-        
+
         // 历史功能介绍卡片
         Card(
             modifier = Modifier
@@ -561,23 +576,27 @@ fun HistoryPageContent(
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                
-                HistoryFeatureItem(
+
+                HistoryFeatureItemWithIcon(
+                    icon = Icons.Filled.Folder,
                     title = stringResource(R.string.project_management),
                     description = stringResource(R.string.project_management_description)
                 )
-                
-                HistoryFeatureItem(
+
+                HistoryFeatureItemWithIcon(
+                    icon = Icons.Filled.Assessment,
                     title = stringResource(R.string.result_viewing),
                     description = stringResource(R.string.result_viewing_description)
                 )
-                
-                HistoryFeatureItem(
+
+                HistoryFeatureItemWithIcon(
+                    icon = Icons.Filled.FilterList,
                     title = stringResource(R.string.data_filtering),
                     description = stringResource(R.string.data_filtering_description)
                 )
-                
-                HistoryFeatureItem(
+
+                HistoryFeatureItemWithIcon(
+                    icon = Icons.Filled.Search,
                     title = stringResource(R.string.quick_search),
                     description = stringResource(R.string.quick_search_description)
                 )
@@ -603,7 +622,7 @@ fun HistoryFeatureItem(
                 .clip(RoundedCornerShape(4.dp))
                 .background(MaterialTheme.colorScheme.onPrimaryContainer)
         )
-        
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -639,7 +658,7 @@ fun AboutPageContent() {
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(vertical = 16.dp)
         )
-        
+
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -660,14 +679,14 @@ fun AboutPageContent() {
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                
+
                 Text(
                     text = stringResource(R.string.version),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
-                
+
                 Text(
                     text = stringResource(R.string.app_description),
                     style = MaterialTheme.typography.bodyMedium,
@@ -677,7 +696,7 @@ fun AboutPageContent() {
                 )
             }
         }
-        
+
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -697,29 +716,29 @@ fun AboutPageContent() {
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                
+
                 FunctionItem(
                     title = stringResource(R.string.high_precision),
                     description = stringResource(R.string.high_precision_description)
                 )
-                
+
                 FunctionItem(
                     title = stringResource(R.string.multiple_analysis_modes),
                     description = stringResource(R.string.multiple_analysis_description)
                 )
-                
+
                 FunctionItem(
                     title = stringResource(R.string.data_export),
                     description = stringResource(R.string.data_export_description)
                 )
-                
+
                 FunctionItem(
                     title = stringResource(R.string.offline_use),
                     description = stringResource(R.string.offline_use_description)
                 )
             }
         }
-        
+
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -740,7 +759,7 @@ fun AboutPageContent() {
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                
+
                 Text(
                     text = stringResource(R.string.contact_info),
                     style = MaterialTheme.typography.bodyMedium,
@@ -769,7 +788,7 @@ fun FunctionItem(
                 .clip(RoundedCornerShape(4.dp))
                 .background(MaterialTheme.colorScheme.primary)
         )
-        
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -799,7 +818,7 @@ fun UserMenu(
     var showLogoutDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val currentUser by userViewModel.currentUser.collectAsState()
-    
+
     // 提前获取字符串资源
     val unknownUserString = stringResource(R.string.unknown_user)
 
@@ -869,7 +888,7 @@ fun UserMenu(
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = currentUser?.username ?: unknownUserString,
@@ -885,7 +904,7 @@ fun UserMenu(
             // 设置选项
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.settings)) },
-                onClick = { 
+                onClick = {
                     expanded = false
                     // 检查用户状态
                     if (currentUser == null || currentUser?.username == unknownUserString) {
@@ -893,7 +912,7 @@ fun UserMenu(
                             popUpTo(navController.graph.id) { inclusive = true }
                         }
                     } else {
-                    navController.navigate(Screen.Settings.route)
+                        navController.navigate(Screen.Settings.route)
                     }
                 },
                 leadingIcon = {
@@ -916,7 +935,7 @@ fun UserMenu(
                             popUpTo(navController.graph.id) { inclusive = true }
                         }
                     } else {
-                    navController.navigate(Screen.Profile.route)
+                        navController.navigate(Screen.Profile.route)
                     }
                 },
                 leadingIcon = {
@@ -931,7 +950,7 @@ fun UserMenu(
             // 退出登录选项
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.logout)) },
-                onClick = { 
+                onClick = {
                     expanded = false
                     showLogoutDialog = true
                 },
@@ -983,4 +1002,82 @@ fun UserMenu(
             )
         }
     }
-} 
+}
+
+@Composable
+fun FunctionItemWithIcon(
+    icon: ImageVector,
+    title: String,
+    description: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+@Composable
+fun HistoryFeatureItemWithIcon(
+    icon: ImageVector,
+    title: String,
+    description: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+            )
+        }
+    }
+}

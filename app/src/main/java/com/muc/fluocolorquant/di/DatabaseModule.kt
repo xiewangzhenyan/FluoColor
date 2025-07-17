@@ -42,7 +42,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "fluocolor_database"
         )
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
         .addCallback(prepopulateCallback)  // 添加预填充回调
         .fallbackToDestructiveMigration() // 版本更新时，如果没有提供迁移路径，则重建数据库
         .build()
@@ -344,6 +344,111 @@ object DatabaseModule {
             database.execSQL("CREATE INDEX IF NOT EXISTS `index_experiment_templates_reagentAntigenId` ON `experiment_templates` (`reagentAntigenId`)")
             database.execSQL("CREATE INDEX IF NOT EXISTS `index_experiment_templates_reagentAntibodyId` ON `experiment_templates` (`reagentAntibodyId`)")
             database.execSQL("CREATE INDEX IF NOT EXISTS `index_experiment_templates_fkCurveModelId` ON `experiment_templates` (`fkCurveModelId`)")
+        }
+    }
+    
+    // 版本7到版本8的迁移策略
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 1. 创建临时表，包含新字段 fkCurveModelId
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `project_analytes_join_temp` (
+                    `projectId` TEXT NOT NULL,
+                    `analyteId` TEXT NOT NULL,
+                    `maxConcentration` REAL,
+                    `concentrationUnit` TEXT,
+                    `fkTemplateId` TEXT,
+                    `dlModelName` TEXT,
+                    `fkCurveModelId` TEXT,
+                    PRIMARY KEY(`projectId`, `analyteId`),
+                    FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`fkTemplateId`) REFERENCES `experiment_templates`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL,
+                    FOREIGN KEY(`fkCurveModelId`) REFERENCES `curve_models`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """
+            )
+            
+            // 2. 从原表复制数据到临时表，新字段设为NULL
+            database.execSQL(
+                """
+                INSERT INTO project_analytes_join_temp (
+                    projectId, analyteId, maxConcentration, concentrationUnit, 
+                    fkTemplateId, dlModelName, fkCurveModelId
+                )
+                SELECT 
+                    projectId, analyteId, maxConcentration, concentrationUnit, 
+                    fkTemplateId, dlModelName, NULL 
+                FROM project_analytes_join
+                """
+            )
+            
+            // 3. 删除原表并重命名临时表
+            database.execSQL("DROP TABLE project_analytes_join")
+            database.execSQL("ALTER TABLE project_analytes_join_temp RENAME TO project_analytes_join")
+            
+            // 4. 重建索引
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_projectId` ON `project_analytes_join` (`projectId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_analyteId` ON `project_analytes_join` (`analyteId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_fkTemplateId` ON `project_analytes_join` (`fkTemplateId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_project_analytes_join_fkCurveModelId` ON `project_analytes_join` (`fkCurveModelId`)")
+            
+            // 5. 从projects表中迁移fkCurveModelId到project_analytes_join表
+            // 对于每个项目，查找其所有的关联分析物，并更新它们的fkCurveModelId
+            database.execSQL(
+                """
+                UPDATE project_analytes_join
+                SET fkCurveModelId = (
+                    SELECT fkCurveModelId FROM projects 
+                    WHERE projects.id = project_analytes_join.projectId
+                )
+                WHERE EXISTS (
+                    SELECT 1 FROM projects 
+                    WHERE projects.id = project_analytes_join.projectId AND projects.fkCurveModelId IS NOT NULL
+                )
+                """
+            )
+            
+            // 6. 创建projects表临时表，移除字段
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `projects_temp` (
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `detectionMode` TEXT NOT NULL,
+                    `recognitionType` TEXT NOT NULL,
+                    `imageUri` TEXT NOT NULL,
+                    `rows` INTEGER NOT NULL,
+                    `columns` INTEGER NOT NULL,
+                    `createTime` INTEGER NOT NULL,
+                    `userId` TEXT NOT NULL,
+                    `lastRunTimestamp` INTEGER,
+                    `analysisMethod` TEXT NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """
+            )
+            
+            // 7. 复制projects表数据到临时表，排除已移除的字段
+            database.execSQL(
+                """
+                INSERT INTO projects_temp (
+                    id, name, detectionMode, recognitionType, imageUri, 
+                    rows, columns, createTime, userId, lastRunTimestamp, 
+                    analysisMethod
+                )
+                SELECT 
+                    id, name, detectionMode, recognitionType, imageUri, 
+                    rows, columns, createTime, userId, lastRunTimestamp, 
+                    analysisMethod
+                FROM projects
+                """
+            )
+            
+            // 8. 删除旧表，重命名新表
+            database.execSQL("DROP TABLE projects")
+            database.execSQL("ALTER TABLE projects_temp RENAME TO projects")
         }
     }
     

@@ -77,7 +77,7 @@ object MetricsCalculator {
         // 返回计算结果，确保所有值都是有限的
         return mapOf(
             "R²" to clampedR2,
-            "Adjusted R²" to clampedAdjustedR2,
+            "Adj. R²" to clampedAdjustedR2,
             "MSE" to mse,
             "RMSE" to rmse,
             "MAE" to mae

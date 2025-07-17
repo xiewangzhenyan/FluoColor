@@ -489,6 +489,28 @@ class WellLayoutViewModel @Inject constructor(
                 currentStatus[selectedAnalyteId] = fittingResult
                 _analyteFittingStatus.value = currentStatus
 
+                // 6. 【新增】更新ProjectAnalyteJoin表，保存模板ID和曲线模型ID
+                withContext(Dispatchers.IO) {
+                    try {
+                        // 查找现有的关联记录
+                        val join = projectAnalyteJoinRepository.getProjectAnalyteJoin(project.id, selectedAnalyteId)
+                        
+                        if (join != null) {
+                            // 更新现有记录
+                            val updatedJoin = join.copy(
+                                fkTemplateId = template.id,
+                                fkCurveModelId = template.fkCurveModelId
+                            )
+                            projectAnalyteJoinRepository.updateProjectAnalyteJoin(updatedJoin)
+                            Log.d(TAG, "已更新ProjectAnalyteJoin: 模板ID=${template.id}, 曲线模型ID=${template.fkCurveModelId}")
+                        } else {
+                            Log.w(TAG, "未找到项目和分析物的关联记录，无法更新模板信息")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "更新ProjectAnalyteJoin失败: ${e.message}", e)
+                    }
+                }
+
                 updateAnalyteLayouts()
             } catch (e: Exception) {
                 Log.e(TAG, "应用模板布局失败", e)
@@ -917,26 +939,64 @@ class WellLayoutViewModel @Inject constructor(
     fun confirmManualFit(result: FittingResult) {
         viewModelScope.launch {
             val analyteId = _selectedAnalyte.value?.id ?: return@launch
+            val projectId = _currentProject.value?.id ?: return@launch
             _layoutState.value = LayoutState.Processing("正在应用拟合结果...", 0)
             _isFittingLoading.value = true
 
             try {
-                // 1. 更新分析物处理状态
+                // 1. 创建新的CurveModel并保存到数据库
+                val curveModelId = UUID.randomUUID().toString()
+                val curveModel = CurveModel(
+                    id = curveModelId,
+                    name = "${_selectedAnalyte.value?.name ?: "Unknown"}_Manual_${System.currentTimeMillis()}",
+                    function = result.function,
+                    pixelType = result.pixelType ?: PixelType.GREEN,
+                    parameters = result.params,
+                    metrics = result.allMetrics,
+                    dataPoints = result.standardPoints,
+                    createdAt = Date()
+                )
+                
+                withContext(Dispatchers.IO) {
+                    curveModelRepository.saveCurveModel(curveModel)
+                    Log.d(TAG, "已创建并保存手动拟合曲线模型: $curveModelId")
+                    
+                    // 2. 更新ProjectAnalyteJoin表，保存曲线模型ID
+                    try {
+                        // 查找现有的关联记录
+                        val join = projectAnalyteJoinRepository.getProjectAnalyteJoin(projectId, analyteId)
+                        
+                        if (join != null) {
+                            // 更新现有记录，只更新fkCurveModelId，保留其他字段
+                            val updatedJoin = join.copy(
+                                fkCurveModelId = curveModelId
+                            )
+                            projectAnalyteJoinRepository.updateProjectAnalyteJoin(updatedJoin)
+                            Log.d(TAG, "已更新ProjectAnalyteJoin: 曲线模型ID=$curveModelId")
+                        } else {
+                            Log.w(TAG, "未找到项目和分析物的关联记录，无法更新曲线模型信息")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "更新ProjectAnalyteJoin失败: ${e.message}", e)
+                    }
+                }
+
+                // 3. 更新分析物处理状态
                 val currentStatus = _analyteFittingStatus.value.toMutableMap()
                 currentStatus[analyteId] = result
                 _analyteFittingStatus.value = currentStatus
 
-                // 2. 准备要更新的孔位列表
+                // 4. 准备要更新的孔位列表
                 val wellsToUpdate = mutableListOf<WellResult>()
 
-                // 3. 为标准品回填预测浓度
+                // 5. 为标准品回填预测浓度
                 getStandardWells().forEach { well ->
                     if (well.trueConcentration != null) {
                         wellsToUpdate.add(well.copy(predictedConcentration = well.trueConcentration))
                     }
                 }
 
-                // 4. 计算并更新样本浓度
+                // 6. 计算并更新样本浓度
                 _layoutState.value = LayoutState.Processing("正在计算样本浓度...", 60)
                 withContext(Dispatchers.Default) {
                     getSampleWells().forEach { well ->
@@ -960,7 +1020,7 @@ class WellLayoutViewModel @Inject constructor(
                     }
                 }
 
-                // 5. 批量更新数据库
+                // 7. 批量更新数据库
                 _layoutState.value = LayoutState.Processing("正在更新数据库...", 80)
                 if (wellsToUpdate.isNotEmpty()) {
                     withContext(Dispatchers.IO) {
@@ -974,7 +1034,7 @@ class WellLayoutViewModel @Inject constructor(
                     }
                 }
 
-                // 6. 【关键】自动切换到下一个未配置的分析物
+                // 8. 【关键】自动切换到下一个未配置的分析物
                 val nextAnalyte = _availableAnalytes.value.find { it.id !in _analyteFittingStatus.value.keys }
                 if(nextAnalyte != null) {
                     selectAnalyte(nextAnalyte.id)
@@ -1430,6 +1490,17 @@ class WellLayoutViewModel @Inject constructor(
             try {
                 val allWellResults = _wellResults.value.toMutableList()
                 val wellsToUpdate = mutableListOf<WellResult>()
+                val project = _currentProject.value
+                
+                // 检查是否是DL模型预测方法
+                val isDlModel = project?.analysisMethod == "DL_MODEL"
+                
+                if (isDlModel) {
+                    Log.d(TAG, "检测到深度学习模型预测方法，跳过曲线拟合浓度计算")
+                    _layoutState.value = LayoutState.Ready
+                    onComplete(true)
+                    return@launch
+                }
 
                 // 遍历所有已配置的分析物
                 _analyteFittingStatus.value.forEach { (analyteId, fittingResult) ->
@@ -1442,8 +1513,14 @@ class WellLayoutViewModel @Inject constructor(
                     samples.forEach { well ->
                         well.pixelValueJson?.let { json ->
                             try {
+                                // 确保pixelType不为null，如果为null则使用默认值
+                                val pixelType = fittingResult.pixelType ?: run {
+                                    Log.w(TAG, "样本 ${well.wellIndex} 的像素类型为null，使用默认GREEN类型")
+                                    PixelType.GREEN
+                                }
+                                
                                 val pixelMap = PixelExtractionUtils.jsonToMap(json)
-                                val pixelValue = pixelMap[fittingResult.pixelType?.identifier]
+                                val pixelValue = pixelMap[pixelType.identifier]
                                 if (pixelValue != null) {
                                     val concentration = FittingEngine.predictConcentration(
                                         fittingResult.parameters,
@@ -1461,7 +1538,7 @@ class WellLayoutViewModel @Inject constructor(
                                         Log.d(TAG, "样本 ${well.wellIndex} 计算浓度: $concentration")
                                     }
                                 } else {
-                                    Log.w(TAG, "样本 ${well.wellIndex} 没有所需的像素值类型: ${fittingResult.pixelType?.displayName}")
+                                    Log.w(TAG, "样本 ${well.wellIndex} 没有所需的像素值类型: ${pixelType.displayName}")
                                 }
                             } catch (e: Exception) {
                                 Log.e(TAG, "处理样本 ${well.wellIndex} 出错: ${e.message}", e)
@@ -1668,7 +1745,9 @@ class WellLayoutViewModel @Inject constructor(
     fun applyDlModel(modelName: String, onComplete: () -> Unit) {
         viewModelScope.launch {
             val selectedAnalyteId = _selectedAnalyte.value?.id
-            if (selectedAnalyteId == null) {
+            val projectId = _currentProject.value?.id
+            
+            if (selectedAnalyteId == null || projectId == null) {
                 Log.e(TAG, context.getString(R.string.model_prediction_failed_no_analyte))
                 onComplete()
                 return@launch
@@ -1692,6 +1771,27 @@ class WellLayoutViewModel @Inject constructor(
                     10
                 )
                 val runId = _currentRunId.value ?: return@launch
+                
+                // 1. 【新增】更新ProjectAnalyteJoin表，保存DL模型名称
+                withContext(Dispatchers.IO) {
+                    try {
+                        // 查找现有的关联记录
+                        val join = projectAnalyteJoinRepository.getProjectAnalyteJoin(projectId, selectedAnalyteId)
+                        
+                        if (join != null) {
+                            // 更新现有记录，只更新dlModelName，保留其他字段
+                            val updatedJoin = join.copy(
+                                dlModelName = modelName
+                            )
+                            projectAnalyteJoinRepository.updateProjectAnalyteJoin(updatedJoin)
+                            Log.d(TAG, "已更新ProjectAnalyteJoin: DL模型名称=$modelName")
+                        } else {
+                            Log.w(TAG, "未找到项目和分析物的关联记录，无法更新DL模型信息")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "更新ProjectAnalyteJoin失败: ${e.message}", e)
+                    }
+                }
                 
                 // 进度更新到25%
                 delay(300)
@@ -1757,7 +1857,7 @@ class WellLayoutViewModel @Inject constructor(
                     updatedWells
                 }
 
-                // 更新数据库 - 进度更新到90%
+                // 2. 更新数据库 - 进度更新到90%
                 _layoutState.value = LayoutState.AutoProcessing(
                     context.getString(R.string.updating_database),
                     90
@@ -1769,7 +1869,7 @@ class WellLayoutViewModel @Inject constructor(
                     _wellResults.value = withContext(Dispatchers.IO) { wellResultDao.getWellResultsByRunId(runId) }
                 }
 
-                // 标记当前分析物为已处理
+                // 3. 标记当前分析物为已处理
                 val dummyResult = FittingResult(
                     function = FittingFunction.LINEAR,
                     parameters = doubleArrayOf(1.0, 0.0),
@@ -1783,7 +1883,7 @@ class WellLayoutViewModel @Inject constructor(
                 currentStatus[selectedAnalyteId] = dummyResult
                 _analyteFittingStatus.value = currentStatus
 
-                // 完成状态 - 100%
+                // 4. 完成状态 - 100%
                 _layoutState.value = LayoutState.AutoProcessing(
                     context.getString(R.string.model_prediction_complete),
                     100

@@ -170,8 +170,6 @@ class ProjectViewModel @Inject constructor(
                 userId = userId ?: "guest",
                 lastRunTimestamp = null, // 新项目还没有运行记录
                 analysisMethod = analysisMethod.name,
-                fkCurveModelId = null, // 这将在后续步骤中设置（如果需要）
-                finalCurveModelJson = null // 这将在后续步骤中设置（如果需要）
             )
             
             // 保存项目到数据库

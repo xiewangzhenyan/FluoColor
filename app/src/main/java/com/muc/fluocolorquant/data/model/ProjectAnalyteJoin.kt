@@ -15,12 +15,14 @@ import androidx.room.Index
     foreignKeys = [
         ForeignKey(entity = Project::class, parentColumns = ["id"], childColumns = ["projectId"], onDelete = ForeignKey.CASCADE),
         ForeignKey(entity = Analyte::class, parentColumns = ["id"], childColumns = ["analyteId"], onDelete = ForeignKey.CASCADE),
-        ForeignKey(entity = ExperimentTemplate::class, parentColumns = ["id"], childColumns = ["fkTemplateId"], onDelete = ForeignKey.SET_NULL)
+        ForeignKey(entity = ExperimentTemplate::class, parentColumns = ["id"], childColumns = ["fkTemplateId"], onDelete = ForeignKey.SET_NULL),
+        ForeignKey(entity = CurveModel::class, parentColumns = ["id"], childColumns = ["fkCurveModelId"], onDelete = ForeignKey.SET_NULL)
     ],
     indices = [
         Index("projectId"),
         Index("analyteId"),
-        Index("fkTemplateId")
+        Index("fkTemplateId"),
+        Index("fkCurveModelId")
     ]
 )
 data class ProjectAnalyteJoin(
@@ -38,5 +40,9 @@ data class ProjectAnalyteJoin(
     
     // --- 新增字段，用于深度学习模型预测 ---
     // 记录用户为该分析物选择的深度学习模型名称
-    val dlModelName: String? = null
+    val dlModelName: String? = null,
+    
+    // --- 新增字段，从Project表移入的字段 ---
+    // 记录该分析物关联的曲线模型ID，可以是从模板获取或手动拟合创建
+    val fkCurveModelId: String? = null
 ) 

@@ -62,7 +62,7 @@
     <string name="offline_use">Offline Use</string>
     <string name="offline_use_description">No network connection required, protecting your data security</string>
     <string name="contact_us">Contact Us</string>
-    <string name="contact_info">Email: support@fluocolorquant.com\nWebsite: www.fluocolorquant.com</string>
+    <string name="contact_info">Email: zxgeng@muc.edu.cn\n Telephone: 13930681592</string>
 
     <!-- User Menu -->
     <string name="settings">Settings</string>
@@ -697,6 +697,7 @@
     <string name="input_concentration">Enter Concentration</string>
     <string name="need_more_standards">At least 4 standard wells are required for curve fitting</string>
     <string name="standard_wells_count_hint">Selected %1$d standards, need %2$d more</string>
+    <string name="analyte_already_configured">This analyte has already been configured</string>
     <string name="concentration_input_title">Standard Concentration Input</string>
     <string name="select_fitting_functions">Select Fitting Functions</string>
     <string name="select_pixel_types">Select Pixel Types</string>
@@ -755,66 +756,150 @@
     <string name="available_models">Available Models</string>
     <string name="apply_model">Apply Model</string>
     <string name="model_applied_successfully">Model applied successfully</string>
-    
-    <!-- 新增: 模型预测进度和状态相关字符串 -->
-    <string name="model_prediction_in_progress">正在调用模型预测...</string>
-    <string name="model_prediction_start">开始模型预测</string>
-    <string name="model_prediction_processing">模型预测处理中 (%1$d%%)...</string>
-    <string name="model_prediction_complete">模型预测完成</string>
-    <string name="model_prediction_failed">模型预测失败: %1$s</string>
-    <string name="preparing_image_data">正在准备图像数据...</string>
-    <string name="loading_analyte_info">正在加载分析物信息...</string>
-    <string name="preparing_single_analyte_layout">正在准备单分析物布局...</string>
-    <string name="cropping_well_images">正在裁切孔位图像...</string>
-    <string name="extracting_pixel_values">正在提取像素值...</string>
-    <string name="loading_well_data">正在加载孔位数据...</string>
-    <string name="loading_templates">正在加载模板...</string>
-    <string name="processing_analyte">正在处理分析物: %1$s...</string>
-    <string name="curve_fitting_for_analyte">正在为 %1$s 执行曲线拟合...</string>
-    <string name="updating_fitting_status">正在更新 %1$s 的拟合状态...</string>
-    <string name="processing_completed">处理完成</string>
-    <string name="applying_fitting_results">正在应用拟合结果...</string>
-    <string name="calculating_sample_concentration">正在计算样本浓度...</string>
-    <string name="updating_database">正在更新数据库...</string>
-    <string name="processing_failed_message">处理失败: %1$s</string>
-    <string name="calculating_all_sample_concentration">正在计算所有样本浓度...</string>
-    <string name="processing_sample_data">正在处理样本数据...</string>
-    <string name="curve_fitting_in_progress">正在进行曲线拟合...</string>
-    <string name="saving_fitting_model">正在保存拟合模型...</string>
-    <string name="processing_complete_navigating">处理完成，准备导航...</string>
-    <string name="well_detection_not_found">未找到孔位结果</string>
-    <string name="project_not_exist">项目不存在</string>
-    <string name="model_template_not_found">模板关联的曲线模型未找到</string>
-    <string name="applying_template_layout_failed">应用模板布局失败: %1$s</string>
-    <string name="calculating_well_concentration_failed">计算孔位 %1$d 浓度失败: %2$s</string>
-    <string name="marking_well_failed">标记孔位失败</string>
-    <string name="invalid_well_index">无效的孔位索引: %1$d (虚拟坐标: %2$d, %3$d)</string>
-    <string name="setting_standard_concentration_failed">设置标准品浓度失败</string>
-    <string name="processing_analyte_failed">处理分析物失败</string>
-    <string name="analyte_not_found">处理分析物失败：找不到ID为 %1$s 的分析物</string>
-    <string name="insufficient_standard_count">分析物 %1$s 的标准品数量不足，无法进行拟合</string>
-    <string name="insufficient_standard_points">分析物 %1$s 的有效标准点数量不足</string>
-    <string name="curve_fitting_failed">分析物 %1$s 拟合失败: %2$s</string>
-    <string name="applying_fitting_results_failed">应用拟合结果失败: %1$s</string>
-    <string name="execution_fitting_calculation_failed">执行拟合计算失败</string>
-    <string name="save_fitting_result_as_template_failed">保存拟合结果为模板失败</string>
-    <string name="insufficient_standards_for_fitting">标准品数量不足，无法进行曲线拟合</string>
-    <string name="no_samples_to_process">没有找到需要处理的样本</string>
-    <string name="insufficient_standard_points_for_fitting">有效标准点数量不足，无法进行曲线拟合</string>
-    <string name="curve_fitting_failed_with_error">曲线拟合失败: %1$s</string>
-    <string name="sample_processing_error">处理样本时发生错误: %1$s</string>
-    <string name="processing_failed_with_error">处理失败: %1$s</string>
-    <string name="final_concentration_calculation_failed">最终浓度计算失败</string>
-    <string name="curve_fitting_workflow_failed">曲线拟合工作流执行失败</string>
-    <string name="curve_fitting_preparation_failed">曲线拟合准备失败: %1$s</string>
-    <string name="model_prediction_failed_no_analyte">应用DL模型失败：未选择分析物</string>
-    <string name="no_sample_wells">分析物 %1$s 没有标记为样本的孔位，不执行预测。</string>
-    <string name="model_file_not_found">无法找到模型文件: %1$s</string>
-    <string name="dl_prediction_workflow_failed">深度学习模型预测失败</string>
-    <string name="auto_prediction_failed">自动预测失败: %1$s</string>
-    <string name="missing_original_image">原始图像丢失，无法处理孔位</string>
+
+    <!-- New: Model Prediction Progress and Status Strings -->
+    <string name="model_prediction_in_progress">Running model prediction...</string>
+    <string name="model_prediction_start">Starting model prediction</string>
+    <string name="model_prediction_processing">Model prediction in progress (%1$d%%)...</string>
+    <string name="model_prediction_complete">Model prediction completed</string>
+    <string name="model_prediction_failed">Model prediction failed: %1$s</string>
+    <string name="preparing_image_data">Preparing image data...</string>
+    <string name="loading_analyte_info">Loading analyte information...</string>
+    <string name="preparing_single_analyte_layout">Preparing single-analyte layout...</string>
+    <string name="cropping_well_images">Cropping well images...</string>
+    <string name="extracting_pixel_values">Extracting pixel values...</string>
+    <string name="loading_well_data">Loading well data...</string>
+    <string name="loading_templates">Loading templates...</string>
+    <string name="processing_analyte">Processing analyte: %1$s...</string>
+    <string name="curve_fitting_for_analyte">Performing curve fitting for %1$s...</string>
+    <string name="updating_fitting_status">Updating fitting status for %1$s...</string>
+    <string name="processing_completed">Processing completed</string>
+    <string name="applying_fitting_results">Applying fitting results...</string>
+    <string name="calculating_sample_concentration">Calculating sample concentrations...</string>
+    <string name="updating_database">Updating database...</string>
+    <string name="processing_failed_message">Processing failed: %1$s</string>
+    <string name="calculating_all_sample_concentration">Calculating concentrations for all samples...</string>
+    <string name="processing_sample_data">Processing sample data...</string>
+    <string name="curve_fitting_in_progress">Curve fitting in progress...</string>
+    <string name="saving_fitting_model">Saving fitting model...</string>
+    <string name="processing_complete_navigating">Processing complete. Preparing to navigate...</string>
+    <string name="well_detection_not_found">Well detection result not found</string>
+    <string name="project_not_exist">Project does not exist</string>
+    <string name="model_template_not_found">Curve model linked to the template was not found</string>
+    <string name="applying_template_layout_failed">Failed to apply template layout: %1$s</string>
+    <string name="calculating_well_concentration_failed">Failed to calculate concentration for well %1$d: %2$s</string>
+    <string name="marking_well_failed">Failed to mark well</string>
+    <string name="invalid_well_index">Invalid well index: %1$d (virtual coordinates: %2$d, %3$d)</string>
+    <string name="setting_standard_concentration_failed">Failed to set standard concentrations</string>
+    <string name="processing_analyte_failed">Failed to process analyte</string>
+    <string name="analyte_not_found">Failed to process analyte: analyte with ID %1$s not found</string>
+    <string name="insufficient_standard_count">Insufficient number of standards for analyte %1$s to perform fitting</string>
+    <string name="insufficient_standard_points">Not enough valid standard points for analyte %1$s</string>
+    <string name="curve_fitting_failed">Fitting failed for analyte %1$s: %2$s</string>
+    <string name="applying_fitting_results_failed">Failed to apply fitting results: %1$s</string>
+    <string name="execution_fitting_calculation_failed">Failed to execute fitting calculation</string>
+    <string name="save_fitting_result_as_template_failed">Failed to save fitting result as template</string>
+    <string name="insufficient_standards_for_fitting">Not enough standards to perform curve fitting</string>
+    <string name="no_samples_to_process">No samples found to process</string>
+    <string name="insufficient_standard_points_for_fitting">Not enough valid standard points to perform curve fitting</string>
+    <string name="curve_fitting_failed_with_error">Curve fitting failed: %1$s</string>
+    <string name="sample_processing_error">Error occurred while processing sample: %1$s</string>
+    <string name="processing_failed_with_error">Processing failed: %1$s</string>
+    <string name="final_concentration_calculation_failed">Final concentration calculation failed</string>
+    <string name="curve_fitting_workflow_failed">Curve fitting workflow failed</string>
+    <string name="curve_fitting_preparation_failed">Curve fitting preparation failed: %1$s</string>
+    <string name="model_prediction_failed_no_analyte">Failed to apply DL model: no analyte selected</string>
+    <string name="no_sample_wells">No wells marked as samples for analyte %1$s, skipping prediction.</string>
+    <string name="model_file_not_found">Model file not found: %1$s</string>
+    <string name="dl_prediction_workflow_failed">Deep learning model prediction failed</string>
+    <string name="auto_prediction_failed">Auto prediction failed: %1$s</string>
+    <string name="missing_original_image">Original image missing, cannot process wells</string>
+
 
     <!-- 查找并添加"显示结果"字符串 -->
     <string name="show_results">Show Results</string>
+    
+    <!-- New Result Screen Strings -->
+    <string name="analysis_plan_for">Analysis Plan for %s</string>
+    <string name="analysis_method_res">Analysis Method: %s</string>
+    <string name="curve_fitting_analysis">Standard Curve Fitting</string>
+    <string name="deep_learning_analysis">Deep Learning Model</string>
+    <string name="template_used_res">Template Used: %s</string>
+    <string name="no_template_used">No Template Used</string>
+    <string name="antigen_manufacturer_placeholder">Antigen Manufacturer: %s</string>
+    <string name="antibody_manufacturer_placeholder">Antibody Manufacturer: %s</string>
+    <string name="reliable_range_format">Reliable Range: %s - %s %s</string>
+    
+    <string name="result_display">Result Display</string>
+    <string name="heatmap">Heatmap</string>
+    <string name="value_map">Value Map</string>
+    <string name="trend_chart">Trend Chart</string>
+    <string name="standard_curve">Standard Curve</string>
+    <string name="no_standard_curve_data">No standard curve data available</string>
+    
+    <string name="prediction_accuracy_validation">Prediction Accuracy Validation</string>
+    <string name="input_true_values_to_compare">Calibrate and Compare</string>
+    <string name="concentration_regression_analysis">Concentration Regression Analysis</string>
+    <string name="regression_metrics">Regression Metrics</string>
+    <string name="bland_altman_analysis">Bland-Altman Analysis</string>
+    <string name="agreement_metrics">Agreement Metrics</string>
+    <string name="input_true_concentrations">Input True Concentrations</string>
+    <string name="generate_validation_report">Generate Validation Report</string>
+    <string name="predicted_concentration_format">Predicted: %.4f %s</string>
+    <string name="true_concentration">True Concentration</string>
+    <string name="no_data_for_analyte">No data available for this analyte</string>
+    <string name="concentration_chart_for">Concentration Chart for %s</string>
+    <string name="generating_validation_report">Generating validation report...</string>
+
+    <!-- 新增：用于项目信息展示中显示分析物列表 -->
+    <string name="analytes_in_project">Analytes: %s</string>
+    
+    <!-- 新增：试剂信息展示 -->
+    <string name="antigen_manufacturer">Antigen: %1$s (%2$s)</string>
+    <string name="antibody_manufacturer">Antibody: %1$s (%2$s)</string>
+
+    <!-- 添加图表相关字符串 -->
+    <string name="chart_concentration">Concentration</string>
+    <string name="chart_pixel_value">Pixel Value</string>
+    <string name="chart_mean">Mean</string>
+    <string name="chart_difference">Difference</string>
+    <string name="chart_predicted">Predicted</string>
+    <string name="chart_actual">Actual</string>
+
+    <!-- Export Dialog -->
+    <string name="select_analytes_to_export">Select Analytes to Export</string>
+    <string name="export_analyte_selection_title">Select analytes</string>
+    <string name="export_analyte_selection_message">Select one or more analytes to include in the export</string>
+    <string name="export_select_all">Select All</string>
+    <string name="export_deselect_all">Deselect All</string>
+    <string name="export_no_analytes">No analytes available for export</string>
+    <string name="export_in_progress">Export in progress...</string>
+    <string name="export_pdf_success">PDF report exported successfully to Downloads folder</string>
+    <string name="export_png_success">Chart images exported successfully to Downloads folder</string>
+    <string name="export_csv_success">Data file exported successfully to Downloads folder</string>
+    <string name="export_error">Export failed: %1$s</string>
+    <string name="export_file_path">File saved to: %1$s</string>
+    
+    <!-- PDF Export Report Strings -->
+    <string name="pdf_title_fluocolorquant_report">FluoColorQuant Detection Report</string>
+    <string name="pdf_report_content_overview">Report Content Overview</string>
+    <string name="pdf_chapter_title_format">Chapter %1$d: %2$s Analysis Report</string>
+    <string name="pdf_analysis_plan_title">Analysis Plan</string>
+    <string name="pdf_analysis_method_title">Analysis Method:</string>
+    <string name="pdf_analysis_dl_model">Concentration Prediction Model</string>
+    <string name="pdf_analysis_curve_fit">Standard Curve Fitting</string>
+    <string name="pdf_template_used_title">Template Used:</string>
+    <string name="pdf_no_template">None</string>
+    <string name="pdf_standard_curve_title">Standard Curve</string>
+    <string name="pdf_concentration_distribution_title">Concentration Distribution</string>
+    <string name="pdf_heatmap_title">Concentration Heatmap</string>
+    <string name="pdf_trend_chart_title">Concentration Trend Chart</string>
+    <string name="pdf_validation_title">Prediction Accuracy Validation</string>
+    <string name="pdf_regression_title">Regression Analysis</string>
+    <string name="pdf_bland_altman_title">Bland-Altman Analysis</string>
+    <string name="pdf_metrics_title">Performance Metrics</string>
+    <string name="pdf_appendix_title">Appendix: Raw Data</string>
+    <string name="pdf_generated_on">Report generated on: %1$s</string>
+    <string name="pdf_page_number">Page %1$d of %2$d</string>
 
 </resources>
