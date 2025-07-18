@@ -23,7 +23,7 @@ object FittingEngine {
 
     /**
      * 将函数参数格式化为LaTeX表达式
-     * 
+     *
      * @param function 函数类型
      * @param params 参数值映射表
      * @return 格式化后的LaTeX表达式字符串
@@ -43,13 +43,13 @@ object FittingEngine {
 
         // 按照参数名称长度降序排序，确保先替换较长的参数名（例如，先替换"a1"再替换"a"）
         val sortedParams = function.requiredParams.sortedByDescending { it.length }
-        
+
         // 针对不同的函数类型，采用不同的替换策略
         when (function) {
             // 多项式函数使用简单的直接替换
-            FittingFunction.LINEAR, 
-            FittingFunction.QUADRATIC, 
-            FittingFunction.CUBIC, 
+            FittingFunction.LINEAR,
+            FittingFunction.QUADRATIC,
+            FittingFunction.CUBIC,
             FittingFunction.QUARTIC -> {
                 // 对于多项式函数，使用简单的直接替换
                 sortedParams.forEach { paramName ->
@@ -59,205 +59,205 @@ object FittingEngine {
                     }
                 }
             }
-            
+
             // 指数函数需要特殊处理
             FittingFunction.EXPONENTIAL -> {
                 // 处理a参数（简单替换）
                 params["a"]?.let { a ->
                     latexString = latexString.replace(
-                        "a \\cdot e", 
+                        "a \\cdot e",
                         "${formatValue(a)} \\cdot e"
                     )
                 }
-                
+
                 // 处理b参数（位于指数上标位置）
                 params["b"]?.let { b ->
                     latexString = latexString.replace(
-                        "e^{bx}", 
+                        "e^{bx}",
                         "e^{${formatValue(b)}x}"
                     )
                 }
             }
-            
+
             // 带偏移量的指数函数
             FittingFunction.EXPONENTIAL_WITH_OFFSET -> {
                 // 处理a参数（简单替换）
                 params["a"]?.let { a ->
                     latexString = latexString.replace(
-                        "a \\cdot e", 
+                        "a \\cdot e",
                         "${formatValue(a)} \\cdot e"
                     )
                 }
-                
+
                 // 处理b参数（位于指数上标位置）
                 params["b"]?.let { b ->
                     latexString = latexString.replace(
-                        "e^{-bx}", 
+                        "e^{-bx}",
                         "e^{-${formatValue(b)}x}"
                     )
                 }
-                
+
                 // 处理c参数（简单替换）
                 params["c"]?.let { c ->
                     latexString = latexString.replace(
-                        " + c", 
+                        " + c",
                         " + ${formatValue(c)}"
                     )
                 }
             }
-            
+
             // 高斯函数
             FittingFunction.GAUSSIAN -> {
                 // 处理a参数（简单替换）
                 params["a"]?.let { a ->
                     latexString = latexString.replace(
-                        "a + ", 
+                        "a + ",
                         "${formatValue(a)} + "
                     )
                 }
-                
+
                 // 处理b参数（简单替换）
                 params["b"]?.let { b ->
                     latexString = latexString.replace(
-                        "(b-a)", 
+                        "(b-a)",
                         "(${formatValue(b)}-" + (params["a"]?.let { formatValue(it) } ?: "a") + ")"
                     )
                 }
-                
+
                 // 处理c参数（位于指数内）
                 params["c"]?.let { c ->
                     latexString = latexString.replace(
-                        "(x-c)", 
+                        "(x-c)",
                         "(x-${formatValue(c)})"
                     )
                 }
-                
+
                 // 处理d参数（位于指数内分母）
                 params["d"]?.let { d ->
                     latexString = latexString.replace(
-                        "2d^2", 
+                        "2d^2",
                         "2${formatValue(d)}^2"
                     )
                 }
             }
-            
+
             // 指数恢复函数
             FittingFunction.EXPONENTIAL_RECOVERY -> {
                 // 处理a参数（简单替换）
                 params["a"]?.let { a ->
                     latexString = latexString.replace(
-                        "a \\cdot", 
+                        "a \\cdot",
                         "${formatValue(a)} \\cdot"
                     )
                 }
-                
+
                 // 处理b参数（位于指数上标位置）
                 params["b"]?.let { b ->
                     latexString = latexString.replace(
-                        "e^{-bx}", 
+                        "e^{-bx}",
                         "e^{-${formatValue(b)}x}"
                     )
                 }
             }
-            
+
             // 一般Gompertz函数
             FittingFunction.GENERAL_GOMPERTZ -> {
                 // 处理a参数（简单替换）
                 params["a"]?.let { a ->
                     latexString = latexString.replace(
-                        "a \\cdot", 
+                        "a \\cdot",
                         "${formatValue(a)} \\cdot"
                     )
                 }
-                
+
                 // 处理b参数（指数内）
                 params["b"]?.let { b ->
                     latexString = latexString.replace(
-                        "-b \\cdot", 
+                        "-b \\cdot",
                         "-${formatValue(b)} \\cdot"
                     )
                 }
-                
+
                 // 处理c参数（指数内的指数项）
                 params["c"]?.let { c ->
                     latexString = latexString.replace(
-                        "e^{-cx", 
+                        "e^{-cx",
                         "e^{-${formatValue(c)}x"
                     )
                 }
-                
+
                 // 处理d参数（x的幂）
                 params["d"]?.let { d ->
                     latexString = latexString.replace(
-                        "x^d}", 
+                        "x^d}",
                         "x^${formatValue(d)}}"
                     )
                 }
             }
-            
+
             // Gompertz函数
             FittingFunction.GOMPERTZ -> {
                 // 处理a参数（简单替换）
                 params["a"]?.let { a ->
                     latexString = latexString.replace(
-                        "a \\cdot", 
+                        "a \\cdot",
                         "${formatValue(a)} \\cdot"
                     )
                 }
-                
+
                 // 处理b参数（指数内）
                 params["b"]?.let { b ->
                     latexString = latexString.replace(
-                        "-b \\cdot", 
+                        "-b \\cdot",
                         "-${formatValue(b)} \\cdot"
                     )
                 }
-                
+
                 // 处理c参数（指数内的指数项）
                 params["c"]?.let { c ->
                     latexString = latexString.replace(
-                        "e^{-cx}", 
+                        "e^{-cx}",
                         "e^{-${formatValue(c)}x}"
                     )
                 }
             }
-            
+
             // Richards函数
             FittingFunction.RICHARDS -> {
                 // 处理a参数（简单替换）
                 params["a"]?.let { a ->
                     latexString = latexString.replace(
-                        "\\frac{a}", 
+                        "\\frac{a}",
                         "\\frac{${formatValue(a)}}"
                     )
                 }
-                
+
                 // 修复：特别处理Richards函数的b参数，直接针对整个表达式部分替换
                 params["b"]?.let { b ->
                     // 修改替换策略，针对整个表达式进行处理
                     latexString = latexString.replace(
-                        "(1+b \\cdot e", 
+                        "(1+b \\cdot e",
                         "(1+${formatValue(b)} \\cdot e"
                     )
                 }
-                
+
                 // 处理c参数（指数内）
                 params["c"]?.let { c ->
                     latexString = latexString.replace(
-                        "e^{-cx}", 
+                        "e^{-cx}",
                         "e^{-${formatValue(c)}x}"
                     )
                 }
-                
+
                 // 处理d参数（分数上标）
                 params["d"]?.let { d ->
                     latexString = latexString.replace(
-                        "\\frac{1}{d}}", 
+                        "\\frac{1}{d}}",
                         "\\frac{1}{${formatValue(d)}}}"
                     )
                 }
             }
-            
+
             // 其他函数使用正则表达式替换
             else -> {
                 sortedParams.forEach { paramName ->
@@ -408,7 +408,7 @@ object FittingEngine {
                 FittingFunction.RODBARD -> listOf("a", "b", "c", "d")
                 else -> listOf("a", "b")
             }
-            
+
             val parameters = paramKeys.map { paramsMap[it] ?: 0.0 }.toDoubleArray()
 
             // 计算拟合指标
@@ -420,7 +420,7 @@ object FittingEngine {
 
             // 生成公式
             val formula = generateFormula(function, paramsMap)
-            
+
             // 生成曲线点
             val curvePoints = generateCurvePoints(function, paramsMap, dataPoints)
 
@@ -468,12 +468,12 @@ object FittingEngine {
         try {
             // 调用现有的fitSingle函数执行拟合
             val result = fitSingle(dataPoints, function)
-            
+
             // 如果拟合成功，返回带有PixelType的结果
             if (result.isSuccess) {
                 return result.copy(pixelType = pixelType)
             }
-            
+
             return null
         } catch (e: Exception) {
             // 拟合失败
@@ -508,24 +508,24 @@ object FittingEngine {
         val fitter = PolynomialCurveFitter.create(degree)
         val points = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
         val coefficients = fitter.fit(points)
-        
+
         return when (degree) {
             2 -> mapOf(
-                "a" to coefficients[2], 
-                "b" to coefficients[1], 
+                "a" to coefficients[2],
+                "b" to coefficients[1],
                 "c" to coefficients[0]
             )
             3 -> mapOf(
-                "a" to coefficients[3], 
-                "b" to coefficients[2], 
-                "c" to coefficients[1], 
+                "a" to coefficients[3],
+                "b" to coefficients[2],
+                "c" to coefficients[1],
                 "d" to coefficients[0]
             )
             4 -> mapOf(
-                "a" to coefficients[4], 
-                "b" to coefficients[3], 
-                "c" to coefficients[2], 
-                "d" to coefficients[1], 
+                "a" to coefficients[4],
+                "b" to coefficients[3],
+                "c" to coefficients[2],
+                "d" to coefficients[1],
                 "e" to coefficients[0]
             )
             else -> mapOf("a" to coefficients[1], "b" to coefficients[0])
@@ -542,7 +542,7 @@ object FittingEngine {
         // 对数转换后线性拟合
         val transformedPoints = dataPoints.filter { it.second > 0 }
             .map { (x, y) -> Pair(x, ln(y)) }
-        
+
         val linearParams = fitLinear(transformedPoints)
         return mapOf(
             "a" to exp(linearParams["b"] ?: 0.0),
@@ -557,7 +557,7 @@ object FittingEngine {
         // 对数转换后线性拟合
         val transformedPoints = dataPoints.filter { it.first > 0 && it.second > 0 }
             .map { (x, y) -> Pair(ln(x), ln(y)) }
-        
+
         val linearParams = fitLinear(transformedPoints)
         return mapOf(
             "a" to exp(linearParams["b"] ?: 0.0),
@@ -572,7 +572,7 @@ object FittingEngine {
         // 变换x后线性拟合
         val transformedPoints = dataPoints.filter { it.first > 0 }
             .map { (x, y) -> Pair(ln(x), y) }
-        
+
         val linearParams = fitLinear(transformedPoints)
         return mapOf(
             "a" to (linearParams["b"] ?: 0.0),
@@ -589,7 +589,7 @@ object FittingEngine {
         val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
         val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
         val xMid = dataPoints.map { it.first }.average()
-        
+
         return mapOf(
             "a" to yMin,
             "b" to 1.0,
@@ -677,7 +677,7 @@ object FittingEngine {
         val b = params["b"] ?: 1.0
         val c = params["c"] ?: 1.0
         val d = params["d"] ?: 0.0
-        
+
         return if (c > 0) {
             d + (a - d) / (1 + (x / c).pow(b))
         } else {
@@ -723,7 +723,7 @@ object FittingEngine {
         val a = params["a"] ?: 0.0
         val b = params["b"] ?: 1.0
         val c = params["c"] ?: 1.0
-        
+
         return if (c > 0) {
             a * (1 / (1 + (x / c).pow(b)))
         } else {
@@ -770,7 +770,7 @@ object FittingEngine {
         val c = params["c"] ?: 1.0
         val d = params["d"] ?: 0.0
         val g = params["g"] ?: 1.0
-        
+
         return if (c > 0) {
             d + (a - d) / (1 + (x / c).pow(b)).pow(g)
         } else {
@@ -795,7 +795,7 @@ object FittingEngine {
         val a = params["a"] ?: 0.0
         val b = params["b"] ?: 1.0
         val c = params["c"] ?: 1.0
-        
+
         return if (x >= 0) {
             a * x.pow(b) / (c.pow(b) + x.pow(b))
         } else {
@@ -811,7 +811,7 @@ object FittingEngine {
         val b = params["b"] ?: 0.0
         val c = params["c"] ?: 0.0
         val d = params["d"] ?: 1.0
-        
+
         return if (x >= 0) {
             a * exp(-b * exp(-c * x.pow(d)))
         } else {
@@ -827,7 +827,7 @@ object FittingEngine {
         val b = params["b"] ?: 0.0
         val c = params["c"] ?: 0.0
         val d = params["d"] ?: 1.0
-        
+
         return if (d != 0.0) {
             a / (1 + b * exp(-c * x)).pow(1 / d)
         } else {
@@ -842,28 +842,28 @@ object FittingEngine {
         // 插值需要有序的点对，这里简化处理
         val points = params.entries
             .filter { it.key.startsWith("x") && it.key.length > 1 }
-            .map { 
+            .map {
                 val index = it.key.substring(1).toIntOrNull() ?: 0
                 Pair(it.value, params["y$index"] ?: 0.0)
             }
             .sortedBy { it.first }
-        
+
         if (points.isEmpty()) return 0.0
         if (points.size == 1) return points[0].second
-        
+
         // 找到x所在的区间
         for (i in 0 until points.size - 1) {
             val x1 = points[i].first
             val y1 = points[i].second
             val x2 = points[i + 1].first
             val y2 = points[i + 1].second
-            
+
             if (x >= x1 && x <= x2) {
                 // 线性插值
                 return y1 + (y2 - y1) * (x - x1) / (x2 - x1)
             }
         }
-        
+
         // 超出范围时的外推
         return if (x < points.first().first) {
             points.first().second
@@ -909,7 +909,7 @@ object FittingEngine {
         dataPoints: List<Pair<Double, Double>>
     ): List<Pair<Double, Double>> {
         val points = mutableListOf<Pair<Double, Double>>()
-        
+
         // 获取浓度范围
         val xValues = dataPoints.map { it.first }
         val minX = xValues.minOrNull() ?: 0.0
@@ -917,17 +917,17 @@ object FittingEngine {
         val range = maxX - minX
         val start = if (minX > 0) minX / 2 else 0.0
         val end = maxX + range / 2
-        
+
         // 生成100个点
         val steps = 100
         val step = (end - start) / steps
-        
+
         for (i in 0..steps) {
             val x = start + i * step
             val y = calculate(function, params, x)
             points.add(Pair(x, y))
         }
-        
+
         return points
     }
 
@@ -1002,12 +1002,12 @@ object FittingEngine {
                 "b" to parameters.getOrElse(1) { 0.0 }
             )
         }
-        
+
         return when (function) {
             FittingFunction.LINEAR -> {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
-                
+
                 if (a == 0.0) return 0.0
                 return (pixelValue - b) / a
             }
@@ -1015,20 +1015,20 @@ object FittingEngine {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
                 val c = paramMap["c"] ?: 0.0
-                
+
                 // 求解一元二次方程 ax^2 + bx + (c - pixelValue) = 0
                 if (a == 0.0) {
                     // 退化为线性方程
                     if (b == 0.0) return 0.0
                     return (pixelValue - c) / b
                 }
-                
+
                 val discriminant = b * b - 4 * a * (c - pixelValue)
                 if (discriminant < 0) return 0.0
-                
+
                 val x1 = (-b + sqrt(discriminant)) / (2 * a)
                 val x2 = (-b - sqrt(discriminant)) / (2 * a)
-                
+
                 // 返回正值解
                 return if (x1 > 0) x1 else if (x2 > 0) x2 else 0.0
             }
@@ -1037,19 +1037,19 @@ object FittingEngine {
                 // 通用方法：使用二分查找逼近解
                 var low = 0.0
                 var high = 1000.0 // 假设最大浓度值为1000
-                
+
                 // 二分查找30次应该足够精确
                 repeat(30) {
                     val mid = (low + high) / 2
                     val value = calculate(function, paramMap, mid)
-                    
+
                     if (value < pixelValue) {
                         low = mid
                     } else {
                         high = mid
                     }
                 }
-                
+
                 return (low + high) / 2
             }
         }

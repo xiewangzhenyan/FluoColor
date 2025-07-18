@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="400dp"
+    android:viewportWidth="300"
+    android:viewportHeight="400">
+
+    <!-- 背景 -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M0,0h300v400h-300z" />
+
+    <group
+        android:name="circles"
+        android:pivotX="150"
+        android:pivotY="200"
+        android:rotation="-5"
+        android:scaleX="0.95"
+        android:scaleY="1.05">
+        <!-- 第1行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,30a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,30a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,30a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,30a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,30a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,30a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,30a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,30a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第2行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,60a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,60a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,60a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,60a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,60a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,60a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,60a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,60a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第3行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,90a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,90a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,90a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,90a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,90a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,90a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,90a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,90a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第4行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,120a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,120a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,120a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,120a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,120a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,120a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,120a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,120a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第5行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,150a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,150a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,150a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,150a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,150a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,150a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,150a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,150a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第6行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,180a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,180a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,180a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,180a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,180a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,180a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,180a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,180a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第7行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,210a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,210a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,210a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,210a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,210a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,210a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,210a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,210a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第8行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,240a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,240a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,240a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,240a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,240a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,240a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,240a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,240a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第9行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,270a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,270a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,270a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,270a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,270a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,270a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,270a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,270a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第10行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,300a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,300a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,300a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,300a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,300a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,300a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,300a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,300a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第11行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,330a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,330a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,330a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,330a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,330a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,330a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,330a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,330a10,10 0 1,1 0,0.01"/>
+
+        <!-- 第12行 -->
+        <path android:fillColor="#00FF00" android:pathData="M30,360a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M60,360a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M90,360a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M120,360a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M150,360a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M180,360a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M210,360a10,10 0 1,1 0,0.01"/>
+        <path android:fillColor="#00FF00" android:pathData="M240,360a10,10 0 1,1 0,0.01"/>
+    </group>
+</vector>

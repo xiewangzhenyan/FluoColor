@@ -17,12 +17,9 @@ android {
         versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        
+
         ndk {
-            abiFilters.add("armeabi-v7a")
-            abiFilters.add("arm64-v8a")
-            abiFilters.add("x86")
-            abiFilters.add("x86_64")
+            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
         }
     }
 
@@ -35,8 +32,16 @@ android {
             )
         }
     }
-    
+
+    // --- 已修正的打包选项 ---
     packaging {
+        // 针对本地库 (.so 文件) 的配置
+        jniLibs {
+            // 这行代码是关键。它告诉 Gradle，当遇到多个 libc++_shared.so 文件时，
+            // 只选择第一个，从而解决合并冲突。
+            pickFirsts.add("lib/*/libc++_shared.so")
+        }
+        // 针对 Java 资源的配置 (保持不变)
         resources {
             pickFirsts.add("META-INF/INDEX.LIST")
             pickFirsts.add("META-INF/io.netty.versions.properties")
@@ -44,21 +49,9 @@ android {
             excludes.add("META-INF/LICENSE.txt")
             excludes.add("META-INF/NOTICE.txt")
             excludes.add("META-INF/DEPENDENCIES")
-            
-            // 解决本机库冲突
-//            pickFirsts.add("lib/arm64-v8a/libc++_shared.so")
-//            pickFirsts.add("lib/armeabi-v7a/libc++_shared.so")
-//            pickFirsts.add("lib/x86/libc++_shared.so")
-//            pickFirsts.add("lib/x86_64/libc++_shared.so")
-        }
-        jniLibs {
-            useLegacyPackaging = true
-            // 添加以下行来解决 libc++_shared.so 冲突
-            // 这会告诉 Gradle 优先选择它遇到的第一个 libc++_shared.so 文件
-            pickFirsts.add("lib/*/libc++_shared.so")
         }
     }
-    
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -75,6 +68,7 @@ android {
 }
 
 dependencies {
+    // 您的所有依赖项保持不变
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -100,7 +94,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation("org.pytorch:pytorch_android_lite:1.13.1")
     implementation("org.pytorch:pytorch_android_torchvision_lite:1.13.1")
-//    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.0")
     implementation(libs.accompanist.permissions)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.datastore.preferences.core)
@@ -108,15 +101,13 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.ucrop)
     implementation(libs.androidx.appcompat)
-    
-    // 使用com.github.quickbirdstudios:opencv-android依赖
+
+    //使用com.github.quickbirdstudios:opencv-android依赖
     implementation("com.quickbirdstudios:opencv:4.5.3.0")
-
-    // 添加Apache Commons Math3库 - 用于曲线拟合计算
+    //添加Apache Commons Math3库－用于曲线拟合计算
     implementation("org.apache.commons:commons-math3:3.6.1")
-
-    // 添加这一行来引入AndroidMath库
-    implementation("com.github.gregcockroft:AndroidMath:ALPHA")
+    //添加这一行来引入jlatexmath库
+    implementation("ru.noties:jlatexmath-android:0.2.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

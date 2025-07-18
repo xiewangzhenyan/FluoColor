@@ -7,11 +7,12 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.agog.mathdisplay.MTMathView
+import ru.noties.jlatexmath.JLatexMathDrawable
+import ru.noties.jlatexmath.JLatexMathView
 
 /**
  * 一个用于在Jetpack Compose中显示LaTeX公式的Composable组件。
- * 它内部封装了AndroidMath库的MTMathView。
+ * 它内部封装了 jlatexmath-android 库的 JLatexMathView。
  *
  * @param latex LaTeX字符串。
  * @param modifier 修改器。
@@ -25,25 +26,30 @@ fun LatexView(
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
     val density = LocalDensity.current
     // 将Compose的sp单位转换为View系统使用的像素单位
-    val fontSizeInPixels = with(density) { 20.sp.toPx() }
+    val textSizeInPixels = with(density) { 20.sp.toPx() }
 
     AndroidView(
         modifier = modifier,
         factory = { context ->
             // 在factory中创建并初始化View
-            MTMathView(context).apply {
-                this.latex = latex
-                this.textColor = textColor.toArgb()
-                this.fontSize = fontSizeInPixels
-                // 使用显示模式以获得更好的公式外观
-                this.labelMode = MTMathView.MTMathViewMode.KMTMathViewModeDisplay
+            JLatexMathView(context).apply {
+                // jlatexmath-android 使用 drawable 来设置公式
+                val drawable = JLatexMathDrawable.builder(latex)
+                    .textSize(textSizeInPixels)
+                    .color(textColor.toArgb())
+                    .align(JLatexMathDrawable.ALIGN_CENTER) // 居中对齐
+                    .build()
+                this.setLatexDrawable(drawable)
             }
         },
         update = { view ->
             // 当Composable重组时，更新View的属性
-            view.latex = latex
-            view.textColor = textColor.toArgb()
-            view.fontSize = fontSizeInPixels
+            val drawable = JLatexMathDrawable.builder(latex)
+                .textSize(textSizeInPixels)
+                .color(textColor.toArgb())
+                .align(JLatexMathDrawable.ALIGN_CENTER) // 居中对齐
+                .build()
+            view.setLatexDrawable(drawable)
         }
     )
 }

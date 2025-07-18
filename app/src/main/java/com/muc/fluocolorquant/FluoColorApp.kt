@@ -2,6 +2,7 @@ package com.muc.fluocolorquant
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.muc.fluocolorquant.data.repository.SettingsRepository
@@ -52,12 +53,12 @@ class FluoColorApp : Application() {
         // 也可以在此处完成。对于语言，attachBaseContext 已经处理了初始设置。
         applicationScope.launch {
             val currentLang = settingsRepository.languageFlow.first() // For logging or other non-UI tasks
-            android.util.Log.i("FluoColorApp", "Application onCreate: Language set to: $currentLang")
+            Log.i("FluoColorApp", "Application onCreate: Language set to: $currentLang")
             
             // 记录其他设置信息
             val detectionMode = settingsRepository.defaultDetectionModeFlow.first()
             val concentrationUnit = settingsRepository.defaultConcentrationUnitFlow.first()
-            android.util.Log.i("FluoColorApp", "Default settings: Detection mode: $detectionMode, Concentration unit: $concentrationUnit")
+            Log.i("FluoColorApp", "Default settings: Detection mode: $detectionMode, Concentration unit: $concentrationUnit")
         }
     }
 } 
