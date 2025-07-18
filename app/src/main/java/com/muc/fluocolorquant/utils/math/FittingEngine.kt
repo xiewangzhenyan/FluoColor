@@ -6,6 +6,7 @@ import org.apache.commons.math3.fitting.AbstractCurveFitter
 import org.apache.commons.math3.fitting.WeightedObservedPoint
 import org.apache.commons.math3.fitting.leastsquares.LevenbergMarquardtOptimizer
 import org.apache.commons.math3.fitting.PolynomialCurveFitter
+import org.apache.commons.math3.fitting.SimpleCurveFitter
 import kotlin.math.E
 import kotlin.math.ln
 import kotlin.math.pow
@@ -392,23 +393,22 @@ object FittingEngine {
                 FittingFunction.POWER -> fitPower(dataPoints)
                 FittingFunction.LOG -> fitLog(dataPoints)
                 FittingFunction.RODBARD -> fitRodbard(dataPoints)
-                // 为简化示例，其他函数暂时使用线性拟合
-                else -> fitLinear(dataPoints)
+                FittingFunction.GAMMA_VARIATE -> fitGammaVariate(dataPoints)
+                FittingFunction.CUSTOM_LOG -> fitCustomLog(dataPoints)
+                FittingFunction.RODBARD_NIH -> fitRodbardNih(dataPoints)
+                FittingFunction.EXPONENTIAL_WITH_OFFSET -> fitExponentialWithOffset(dataPoints)
+                FittingFunction.GAUSSIAN -> fitGaussian(dataPoints)
+                FittingFunction.EXPONENTIAL_RECOVERY -> fitExponentialRecovery(dataPoints)
+                FittingFunction.LOGISTIC -> fitLogistic(dataPoints)
+                FittingFunction.GOMPERTZ -> fitGompertz(dataPoints)
+                FittingFunction.HILL -> fitHill(dataPoints)
+                FittingFunction.GENERAL_GOMPERTZ -> fitGeneralGompertz(dataPoints)
+                FittingFunction.RICHARDS -> fitRichards(dataPoints)
+                FittingFunction.INTERPOLATION -> fitInterpolation(dataPoints)
             }
 
-            // 将Map参数转换为DoubleArray
-            val paramKeys = when (function) {
-                FittingFunction.LINEAR -> listOf("a", "b")
-                FittingFunction.QUADRATIC -> listOf("a", "b", "c")
-                FittingFunction.CUBIC -> listOf("a", "b", "c", "d")
-                FittingFunction.QUARTIC -> listOf("a", "b", "c", "d", "e")
-                FittingFunction.EXPONENTIAL -> listOf("a", "b")
-                FittingFunction.POWER -> listOf("a", "b")
-                FittingFunction.LOG -> listOf("a", "b")
-                FittingFunction.RODBARD -> listOf("a", "b", "c", "d")
-                else -> listOf("a", "b")
-            }
-
+            // 获取函数对应的参数列表
+            val paramKeys = function.requiredParams
             val parameters = paramKeys.map { paramsMap[it] ?: 0.0 }.toDoubleArray()
 
             // 计算拟合指标
@@ -582,20 +582,748 @@ object FittingEngine {
 
     /**
      * 拟合Rodbard函数 (4PL): y = d + (a-d)/(1+(x/c)^b)
+     * 使用Levenberg-Marquardt优化算法
      */
     private fun fitRodbard(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
-        // 简化实现，实际应使用LevenbergMarquardtOptimizer
-        // 初始参数估计
-        val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
-        val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-        val xMid = dataPoints.map { it.first }.average()
+        return try {
+            // 初始参数估计
+            val yValues = dataPoints.map { it.second }
+            val xValues = dataPoints.map { it.first }
+            val yMin = yValues.minOrNull() ?: 0.0
+            val yMax = yValues.maxOrNull() ?: 1.0
+            val xMid = xValues.average()
+            
+            // 定义4PL函数
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    return d + (a - d) / (1 + (x / c).pow(b))
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    
+                    val ratio = x / c
+                    val powered = ratio.pow(b)
+                    val denominator = 1 + powered
+                    val denominatorSq = denominator * denominator
+                    
+                    return doubleArrayOf(
+                        1.0 / denominator,
+                        -(a - d) * powered * ln(ratio) / denominatorSq,
+                        (a - d) * b * powered / (c * denominatorSq),
+                        1.0 - 1.0 / denominator
+                    )
+                }
+            }
+            
+            // 使用SimpleCurveFitter进行拟合
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMin, 1.0, xMid, yMax))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1],
+                "c" to params[2],
+                "d" to params[3]
+            )
+        } catch (e: Exception) {
+            // 备用方案：返回简单估计值
+            val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            val xMid = dataPoints.map { it.first }.average()
+            
+            mapOf(
+                "a" to yMin,
+                "b" to 1.0,
+                "c" to xMid,
+                "d" to yMax
+            )
+        }
+    }
 
-        return mapOf(
-            "a" to yMin,
-            "b" to 1.0,
-            "c" to xMid,
-            "d" to yMax
-        )
+    /**
+     * 拟合伽马变量函数: y = a·(x-b)^c·e^(-(x-b)/d)
+     */
+    private fun fitGammaVariate(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            // 初始参数估计
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            val xAtYMax = dataPoints.maxByOrNull { it.second }?.first ?: 1.0
+            val xMin = dataPoints.minByOrNull { it.first }?.first ?: 0.0
+            
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    
+                    if (x <= b || a <= 0 || c <= 0 || d <= 0) return 0.0
+                    
+                    val term1 = (x - b).pow(c)
+                    val term2 = exp(-(x - b) / d)
+                    return a * term1 * term2
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    
+                    if (x <= b || a <= 0 || c <= 0 || d <= 0) {
+                        return doubleArrayOf(0.0, 0.0, 0.0, 0.0)
+                    }
+                    
+                    val diff = x - b
+                    val powered = diff.pow(c)
+                    val exponential = exp(-diff / d)
+                    val baseValue = powered * exponential
+                    
+                    return doubleArrayOf(
+                        baseValue,
+                        -a * (c * diff.pow(c - 1) * exponential - powered * exponential / d),
+                        a * powered * ln(diff) * exponential,
+                        a * powered * exponential * diff / (d * d)
+                    )
+                }
+            }
+            
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, xMin, 1.0, 1.0))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1],
+                "c" to params[2],
+                "d" to params[3]
+            )
+        } catch (e: Exception) {
+            // 备用方案
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            val xMin = dataPoints.minByOrNull { it.first }?.first ?: 0.0
+            
+            mapOf(
+                "a" to yMax,
+                "b" to xMin,
+                "c" to 1.0,
+                "d" to 1.0
+            )
+        }
+    }
+
+    /**
+     * 拟合自定义对数函数: y = a + b·ln(x-c)
+     */
+    private fun fitCustomLog(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            val xMin = dataPoints.minByOrNull { it.first }?.first ?: 0.0
+            val offset = if (xMin > 0) xMin * 0.1 else 0.01
+            
+            // 变换数据后进行线性拟合
+            val transformedPoints = dataPoints
+                .filter { it.first > offset }
+                .map { (x, y) -> Pair(ln(x - offset), y) }
+            
+            if (transformedPoints.isEmpty()) {
+                throw Exception("No valid data points for custom log fitting")
+            }
+            
+            val linearParams = fitLinear(transformedPoints)
+            
+            mapOf(
+                "a" to (linearParams["b"] ?: 0.0),
+                "b" to (linearParams["a"] ?: 0.0),
+                "c" to offset
+            )
+        } catch (e: Exception) {
+            // 备用方案：普通对数拟合
+            val logParams = fitLog(dataPoints)
+            mapOf(
+                "a" to (logParams["a"] ?: 0.0),
+                "b" to (logParams["b"] ?: 0.0),
+                "c" to 0.0
+            )
+        }
+    }
+
+    /**
+     * 拟合Rodbard NIH函数: y = a·(1/(1+(x/c)^b))
+     */
+    private fun fitRodbardNih(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            val xMid = dataPoints.map { it.first }.average()
+            
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    
+                    return if (c > 0) {
+                        a * (1 / (1 + (x / c).pow(b)))
+                    } else {
+                        a * (1 / (1 + (x * 0.001).pow(b)))
+                    }
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    
+                    if (c <= 0) {
+                        return doubleArrayOf(0.0, 0.0, 0.0)
+                    }
+                    
+                    val ratio = x / c
+                    val powered = ratio.pow(b)
+                    val denominator = 1 + powered
+                    val denominatorSq = denominator * denominator
+                    
+                    return doubleArrayOf(
+                        1.0 / denominator,
+                        -a * powered * ln(ratio) / denominatorSq,
+                        a * b * powered / (c * denominatorSq)
+                    )
+                }
+            }
+            
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 1.0, xMid))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1],
+                "c" to params[2]
+            )
+        } catch (e: Exception) {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            val xMid = dataPoints.map { it.first }.average()
+            
+            mapOf(
+                "a" to yMax,
+                "b" to 1.0,
+                "c" to xMid
+            )
+        }
+    }
+
+    /**
+     * 拟合带偏移的指数函数: y = a·e^(-b·x) + c
+     */
+    private fun fitExponentialWithOffset(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    return a * exp(-b * x) + c
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val expTerm = exp(-b * x)
+                    
+                    return doubleArrayOf(
+                        expTerm,
+                        -a * x * expTerm,
+                        1.0
+                    )
+                }
+            }
+            
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax - yMin, 0.1, yMin))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1],
+                "c" to params[2]
+            )
+        } catch (e: Exception) {
+            val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            
+            mapOf(
+                "a" to (yMax - yMin),
+                "b" to 0.1,
+                "c" to yMin
+            )
+        }
+    }
+
+    /**
+     * 拟合高斯函数: y = a + (b-a) * e^(-(x-c)²/(2·d²))
+     */
+    private fun fitGaussian(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            val yValues = dataPoints.map { it.second }
+            val xValues = dataPoints.map { it.first }
+            val yMin = yValues.minOrNull() ?: 0.0
+            val yMax = yValues.maxOrNull() ?: 1.0
+            val xAtYMax = dataPoints.maxByOrNull { it.second }?.first ?: 0.0
+            val xRange = (xValues.maxOrNull() ?: 1.0) - (xValues.minOrNull() ?: 0.0)
+            
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    return a + (b - a) * exp(-(x - c).pow(2) / (2 * d.pow(2)))
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    
+                    val diff = x - c
+                    val diffSq = diff * diff
+                    val dSq = d * d
+                    val expTerm = exp(-diffSq / (2 * dSq))
+                    
+                    return doubleArrayOf(
+                        1.0 - expTerm,
+                        expTerm,
+                        (b - a) * expTerm * diff / dSq,
+                        (b - a) * expTerm * diffSq / (d * dSq)
+                    )
+                }
+            }
+            
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMin, yMax, xAtYMax, xRange / 4))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1],
+                "c" to params[2],
+                "d" to params[3]
+            )
+        } catch (e: Exception) {
+            val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            val xAtYMax = dataPoints.maxByOrNull { it.second }?.first ?: 0.0
+            val xRange = (dataPoints.maxByOrNull { it.first }?.first ?: 1.0) - 
+                        (dataPoints.minByOrNull { it.first }?.first ?: 0.0)
+            
+            mapOf(
+                "a" to yMin,
+                "b" to yMax,
+                "c" to xAtYMax,
+                "d" to xRange / 4
+            )
+        }
+    }
+
+    /**
+     * 拟合指数恢复函数: y = a·(1-e^(-b·x))
+     */
+    private fun fitExponentialRecovery(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    return a * (1 - exp(-b * x))
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val expTerm = exp(-b * x)
+                    
+                    return doubleArrayOf(
+                        1 - expTerm,
+                        a * x * expTerm
+                    )
+                }
+            }
+            
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 0.1))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1]
+            )
+        } catch (e: Exception) {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            
+            mapOf(
+                "a" to yMax,
+                "b" to 0.1
+            )
+        }
+    }
+
+    /**
+     * 拟合Logistic函数 (5PL): y = d + (a-d)/(1+(x/c)^b)^g
+     */
+    private fun fitLogistic(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            val yValues = dataPoints.map { it.second }
+            val xValues = dataPoints.map { it.first }
+            val yMin = yValues.minOrNull() ?: 0.0
+            val yMax = yValues.maxOrNull() ?: 1.0
+            val xMid = xValues.average()
+            
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    val g = parameters[4]
+                    
+                    return if (c > 0) {
+                        d + (a - d) / (1 + (x / c).pow(b)).pow(g)
+                    } else {
+                        d + (a - d) / (1 + (x * 0.001).pow(b)).pow(g)
+                    }
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    val g = parameters[4]
+                    
+                    if (c <= 0) {
+                        return doubleArrayOf(0.0, 0.0, 0.0, 0.0, 0.0)
+                    }
+                    
+                    val ratio = x / c
+                    val powered = ratio.pow(b)
+                    val denominator = 1 + powered
+                    val denominatorPowered = denominator.pow(g)
+                    
+                    return doubleArrayOf(
+                        1.0 / denominatorPowered,
+                        -(a - d) * g * powered * ln(ratio) / (denominator * denominatorPowered),
+                        (a - d) * g * b * powered / (c * denominator * denominatorPowered),
+                        1.0 - 1.0 / denominatorPowered,
+                        -(a - d) * ln(denominator) / denominatorPowered
+                    )
+                }
+            }
+            
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMin, 1.0, xMid, yMax, 1.0))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1],
+                "c" to params[2],
+                "d" to params[3],
+                "g" to params[4]
+            )
+        } catch (e: Exception) {
+            val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            val xMid = dataPoints.map { it.first }.average()
+            
+            mapOf(
+                "a" to yMin,
+                "b" to 1.0,
+                "c" to xMid,
+                "d" to yMax,
+                "g" to 1.0
+            )
+        }
+    }
+
+    /**
+     * 拟合Gompertz函数: y = a·e^(-b·e^(-c·x))
+     */
+    private fun fitGompertz(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    return a * exp(-b * exp(-c * x))
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    
+                    val innerExp = exp(-c * x)
+                    val outerExp = exp(-b * innerExp)
+                    
+                    return doubleArrayOf(
+                        outerExp,
+                        -a * innerExp * outerExp,
+                        a * b * x * innerExp * outerExp
+                    )
+                }
+            }
+            
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 1.0, 0.1))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1],
+                "c" to params[2]
+            )
+        } catch (e: Exception) {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            
+            mapOf(
+                "a" to yMax,
+                "b" to 1.0,
+                "c" to 0.1
+            )
+        }
+    }
+
+    /**
+     * 拟合Hill函数: y = a·x^b/(c^b+x^b)
+     */
+    private fun fitHill(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            val xMid = dataPoints.map { it.first }.average()
+            
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    
+                    return if (x >= 0) {
+                        a * x.pow(b) / (c.pow(b) + x.pow(b))
+                    } else {
+                        0.0
+                    }
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    
+                    if (x <= 0) {
+                        return doubleArrayOf(0.0, 0.0, 0.0)
+                    }
+                    
+                    val xPowB = x.pow(b)
+                    val cPowB = c.pow(b)
+                    val denominator = cPowB + xPowB
+                    val denominatorSq = denominator * denominator
+                    
+                    return doubleArrayOf(
+                        xPowB / denominator,
+                        a * xPowB * cPowB * (ln(x) - ln(c)) / denominatorSq,
+                        -a * b * xPowB * cPowB / (c * denominatorSq)
+                    )
+                }
+            }
+            
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 1.0, xMid))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1],
+                "c" to params[2]
+            )
+        } catch (e: Exception) {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            val xMid = dataPoints.map { it.first }.average()
+            
+            mapOf(
+                "a" to yMax,
+                "b" to 1.0,
+                "c" to xMid
+            )
+        }
+    }
+
+    /**
+     * 拟合广义Gompertz函数: y = a·e^(-b·e^(-c·x^d))
+     */
+    private fun fitGeneralGompertz(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    
+                    return if (x >= 0) {
+                        a * exp(-b * exp(-c * x.pow(d)))
+                    } else {
+                        0.0
+                    }
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    
+                    if (x <= 0) {
+                        return doubleArrayOf(0.0, 0.0, 0.0, 0.0)
+                    }
+                    
+                    val xPowD = x.pow(d)
+                    val innerExp = exp(-c * xPowD)
+                    val outerExp = exp(-b * innerExp)
+                    
+                    return doubleArrayOf(
+                        outerExp,
+                        -a * innerExp * outerExp,
+                        a * b * xPowD * innerExp * outerExp,
+                        a * b * c * xPowD * ln(x) * innerExp * outerExp
+                    )
+                }
+            }
+            
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 1.0, 0.1, 1.0))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1],
+                "c" to params[2],
+                "d" to params[3]
+            )
+        } catch (e: Exception) {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            
+            mapOf(
+                "a" to yMax,
+                "b" to 1.0,
+                "c" to 0.1,
+                "d" to 1.0
+            )
+        }
+    }
+
+    /**
+     * 拟合Richards函数: y = a/(1+b·e^(-c·x))^(1/d)
+     */
+    private fun fitRichards(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        return try {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            
+            val function = object : ParametricUnivariateFunction {
+                override fun value(x: Double, parameters: DoubleArray): Double {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    
+                    return if (d != 0.0) {
+                        a / (1 + b * exp(-c * x)).pow(1 / d)
+                    } else {
+                        0.0
+                    }
+                }
+                
+                override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
+                    val a = parameters[0]
+                    val b = parameters[1]
+                    val c = parameters[2]
+                    val d = parameters[3]
+                    
+                    if (d == 0.0) {
+                        return doubleArrayOf(0.0, 0.0, 0.0, 0.0)
+                    }
+                    
+                    val expTerm = exp(-c * x)
+                    val denominator = 1 + b * expTerm
+                    val denominatorPowered = denominator.pow(1 / d)
+                    
+                    return doubleArrayOf(
+                        1.0 / denominatorPowered,
+                        -a * expTerm / (d * denominator * denominatorPowered),
+                        a * b * x * expTerm / (d * denominator * denominatorPowered),
+                        a * ln(denominator) / (d * d * denominatorPowered)
+                    )
+                }
+            }
+            
+            val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 1.0, 0.1, 1.0))
+            val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
+            val params = fitter.fit(observations)
+            
+            mapOf(
+                "a" to params[0],
+                "b" to params[1],
+                "c" to params[2],
+                "d" to params[3]
+            )
+        } catch (e: Exception) {
+            val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
+            
+            mapOf(
+                "a" to yMax,
+                "b" to 1.0,
+                "c" to 0.1,
+                "d" to 1.0
+            )
+        }
+    }
+
+    /**
+     * 拟合插值函数
+     */
+    private fun fitInterpolation(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
+        // 对于插值，我们只需要存储数据点
+        val result = mutableMapOf<String, Double>()
+        
+        // 按x值排序
+        val sortedPoints = dataPoints.sortedBy { it.first }
+        
+        // 存储点对（最多存储前10个点以避免参数过多）
+        val maxPoints = minOf(10, sortedPoints.size)
+        for (i in 0 until maxPoints) {
+            result["x$i"] = sortedPoints[i].first
+            result["y$i"] = sortedPoints[i].second
+        }
+        
+        return result
     }
 
     // 各种函数的计算部分
@@ -895,8 +1623,117 @@ object FittingEngine {
                 val c = params["c"] ?: 0.0
                 "y = ${formatDouble(a)}x² + ${formatDouble(b)}x + ${formatDouble(c)}"
             }
-            // 其他函数类型...
-            else -> "y = f(x)"
+            FittingFunction.CUBIC -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                val d = params["d"] ?: 0.0
+                "y = ${formatDouble(a)}x³ + ${formatDouble(b)}x² + ${formatDouble(c)}x + ${formatDouble(d)}"
+            }
+            FittingFunction.QUARTIC -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                val d = params["d"] ?: 0.0
+                val e = params["e"] ?: 0.0
+                "y = ${formatDouble(a)}x⁴ + ${formatDouble(b)}x³ + ${formatDouble(c)}x² + ${formatDouble(d)}x + ${formatDouble(e)}"
+            }
+            FittingFunction.EXPONENTIAL -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                "y = ${formatDouble(a)} · e^(${formatDouble(b)}x)"
+            }
+            FittingFunction.POWER -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                "y = ${formatDouble(a)} · x^${formatDouble(b)}"
+            }
+            FittingFunction.LOG -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                "y = ${formatDouble(a)} + ${formatDouble(b)} · ln(x)"
+            }
+            FittingFunction.RODBARD -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                val d = params["d"] ?: 0.0
+                "y = ${formatDouble(d)} + (${formatDouble(a)}-${formatDouble(d)})/(1+(x/${formatDouble(c)})^${formatDouble(b)})"
+            }
+            FittingFunction.GAMMA_VARIATE -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                val d = params["d"] ?: 0.0
+                "y = ${formatDouble(a)} · (x-${formatDouble(b)})^${formatDouble(c)} · e^(-(x-${formatDouble(b)})/${formatDouble(d)})"
+            }
+            FittingFunction.CUSTOM_LOG -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                "y = ${formatDouble(a)} + ${formatDouble(b)} · ln(x-${formatDouble(c)})"
+            }
+            FittingFunction.RODBARD_NIH -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                "y = ${formatDouble(a)} · (1/(1+(x/${formatDouble(c)})^${formatDouble(b)}))"
+            }
+            FittingFunction.EXPONENTIAL_WITH_OFFSET -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                "y = ${formatDouble(a)} · e^(-${formatDouble(b)}x) + ${formatDouble(c)}"
+            }
+            FittingFunction.GAUSSIAN -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                val d = params["d"] ?: 0.0
+                "y = ${formatDouble(a)} + (${formatDouble(b)}-${formatDouble(a)}) · e^(-(x-${formatDouble(c)})²/(2·${formatDouble(d)}²))"
+            }
+            FittingFunction.EXPONENTIAL_RECOVERY -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                "y = ${formatDouble(a)} · (1-e^(-${formatDouble(b)}x))"
+            }
+            FittingFunction.LOGISTIC -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                val d = params["d"] ?: 0.0
+                val g = params["g"] ?: 0.0
+                "y = ${formatDouble(d)} + (${formatDouble(a)}-${formatDouble(d)})/(1+(x/${formatDouble(c)})^${formatDouble(b)})^${formatDouble(g)}"
+            }
+            FittingFunction.GOMPERTZ -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                "y = ${formatDouble(a)} · e^(-${formatDouble(b)} · e^(-${formatDouble(c)}x))"
+            }
+            FittingFunction.HILL -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                "y = ${formatDouble(a)} · x^${formatDouble(b)}/(${formatDouble(c)}^${formatDouble(b)}+x^${formatDouble(b)})"
+            }
+            FittingFunction.GENERAL_GOMPERTZ -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                val d = params["d"] ?: 0.0
+                "y = ${formatDouble(a)} · e^(-${formatDouble(b)} · e^(-${formatDouble(c)}x^${formatDouble(d)}))"
+            }
+            FittingFunction.RICHARDS -> {
+                val a = params["a"] ?: 0.0
+                val b = params["b"] ?: 0.0
+                val c = params["c"] ?: 0.0
+                val d = params["d"] ?: 0.0
+                "y = ${formatDouble(a)}/(1+${formatDouble(b)} · e^(-${formatDouble(c)}x))^(1/${formatDouble(d)})"
+            }
+            FittingFunction.INTERPOLATION -> {
+                "y = Interpolation"
+            }
         }
     }
 
@@ -956,61 +1793,18 @@ object FittingEngine {
         pixelValue: Double
     ): Double {
         // 将DoubleArray转换为Map
-        val paramMap = when (function) {
-            FittingFunction.LINEAR -> mapOf(
-                "a" to parameters.getOrElse(0) { 0.0 },
-                "b" to parameters.getOrElse(1) { 0.0 }
-            )
-            FittingFunction.QUADRATIC -> mapOf(
-                "a" to parameters.getOrElse(0) { 0.0 },
-                "b" to parameters.getOrElse(1) { 0.0 },
-                "c" to parameters.getOrElse(2) { 0.0 }
-            )
-            FittingFunction.CUBIC -> mapOf(
-                "a" to parameters.getOrElse(0) { 0.0 },
-                "b" to parameters.getOrElse(1) { 0.0 },
-                "c" to parameters.getOrElse(2) { 0.0 },
-                "d" to parameters.getOrElse(3) { 0.0 }
-            )
-            FittingFunction.QUARTIC -> mapOf(
-                "a" to parameters.getOrElse(0) { 0.0 },
-                "b" to parameters.getOrElse(1) { 0.0 },
-                "c" to parameters.getOrElse(2) { 0.0 },
-                "d" to parameters.getOrElse(3) { 0.0 },
-                "e" to parameters.getOrElse(4) { 0.0 }
-            )
-            FittingFunction.EXPONENTIAL -> mapOf(
-                "a" to parameters.getOrElse(0) { 0.0 },
-                "b" to parameters.getOrElse(1) { 0.0 }
-            )
-            FittingFunction.POWER -> mapOf(
-                "a" to parameters.getOrElse(0) { 0.0 },
-                "b" to parameters.getOrElse(1) { 0.0 }
-            )
-            FittingFunction.LOG -> mapOf(
-                "a" to parameters.getOrElse(0) { 0.0 },
-                "b" to parameters.getOrElse(1) { 0.0 }
-            )
-            FittingFunction.RODBARD -> mapOf(
-                "a" to parameters.getOrElse(0) { 0.0 },
-                "b" to parameters.getOrElse(1) { 0.0 },
-                "c" to parameters.getOrElse(2) { 0.0 },
-                "d" to parameters.getOrElse(3) { 0.0 }
-            )
-            else -> mapOf(
-                "a" to parameters.getOrElse(0) { 0.0 },
-                "b" to parameters.getOrElse(1) { 0.0 }
-            )
-        }
+        val paramMap = function.requiredParams.mapIndexed { index, paramName ->
+            paramName to parameters.getOrElse(index) { 0.0 }
+        }.toMap()
 
         return when (function) {
             FittingFunction.LINEAR -> {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
-
                 if (a == 0.0) return 0.0
                 return (pixelValue - b) / a
             }
+            
             FittingFunction.QUADRATIC -> {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
@@ -1032,26 +1826,210 @@ object FittingEngine {
                 // 返回正值解
                 return if (x1 > 0) x1 else if (x2 > 0) x2 else 0.0
             }
-            // 其他函数类型也可以添加...
-            else -> {
-                // 通用方法：使用二分查找逼近解
-                var low = 0.0
-                var high = 1000.0 // 假设最大浓度值为1000
-
-                // 二分查找30次应该足够精确
-                repeat(30) {
-                    val mid = (low + high) / 2
-                    val value = calculate(function, paramMap, mid)
-
-                    if (value < pixelValue) {
-                        low = mid
-                    } else {
-                        high = mid
+            
+            FittingFunction.EXPONENTIAL -> {
+                val a = paramMap["a"] ?: 0.0
+                val b = paramMap["b"] ?: 0.0
+                if (a <= 0 || b == 0.0 || pixelValue <= 0) return 0.0
+                return ln(pixelValue / a) / b
+            }
+            
+            FittingFunction.POWER -> {
+                val a = paramMap["a"] ?: 0.0
+                val b = paramMap["b"] ?: 0.0
+                if (a <= 0 || b == 0.0 || pixelValue <= 0) return 0.0
+                return (pixelValue / a).pow(1.0 / b)
+            }
+            
+            FittingFunction.LOG -> {
+                val a = paramMap["a"] ?: 0.0
+                val b = paramMap["b"] ?: 0.0
+                if (b == 0.0) return 0.0
+                val expArg = (pixelValue - a) / b
+                return exp(expArg)
+            }
+            
+            FittingFunction.RODBARD -> {
+                // 对于4PL函数，需要数值求解
+                // y = d + (a-d)/(1+(x/c)^b)
+                // 求解 x，使得 f(x) = pixelValue
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.GAMMA_VARIATE -> {
+                // 伽马变量函数需要数值求解
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.CUSTOM_LOG -> {
+                val a = paramMap["a"] ?: 0.0
+                val b = paramMap["b"] ?: 0.0
+                val c = paramMap["c"] ?: 0.0
+                if (b == 0.0) return 0.0
+                val expArg = (pixelValue - a) / b
+                return exp(expArg) + c
+            }
+            
+            FittingFunction.RODBARD_NIH -> {
+                // 需要数值求解
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.EXPONENTIAL_WITH_OFFSET -> {
+                val a = paramMap["a"] ?: 0.0
+                val b = paramMap["b"] ?: 0.0
+                val c = paramMap["c"] ?: 0.0
+                if (a == 0.0 || b == 0.0) return 0.0
+                val adjusted = pixelValue - c
+                if (adjusted <= 0 || adjusted >= a) return 0.0
+                return -ln(adjusted / a) / b
+            }
+            
+            FittingFunction.GAUSSIAN -> {
+                // 高斯函数需要数值求解
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.EXPONENTIAL_RECOVERY -> {
+                val a = paramMap["a"] ?: 0.0
+                val b = paramMap["b"] ?: 0.0
+                if (a == 0.0 || b == 0.0) return 0.0
+                val ratio = pixelValue / a
+                if (ratio >= 1.0 || ratio <= 0.0) return 0.0
+                return -ln(1 - ratio) / b
+            }
+            
+            FittingFunction.LOGISTIC -> {
+                // 5PL函数需要数值求解
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.GOMPERTZ -> {
+                // Gompertz函数需要数值求解
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.HILL -> {
+                // Hill函数需要数值求解
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.GENERAL_GOMPERTZ -> {
+                // 广义Gompertz函数需要数值求解
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.RICHARDS -> {
+                // Richards函数需要数值求解
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.CUBIC -> {
+                // 三次方程需要数值求解
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.QUARTIC -> {
+                // 四次方程需要数值求解
+                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+            }
+            
+            FittingFunction.INTERPOLATION -> {
+                // 插值函数的反向查找
+                val points = mutableListOf<Pair<Double, Double>>()
+                for (i in 0..9) {
+                    val x = paramMap["x$i"]
+                    val y = paramMap["y$i"]
+                    if (x != null && y != null) {
+                        points.add(Pair(y, x)) // 注意这里x和y交换了
                     }
                 }
-
-                return (low + high) / 2
+                
+                if (points.isEmpty()) return 0.0
+                if (points.size == 1) return points[0].second
+                
+                val sortedPoints = points.sortedBy { it.first }
+                
+                // 在排序后的点中查找插值
+                for (i in 0 until sortedPoints.size - 1) {
+                    val y1 = sortedPoints[i].first
+                    val x1 = sortedPoints[i].second
+                    val y2 = sortedPoints[i + 1].first
+                    val x2 = sortedPoints[i + 1].second
+                    
+                    if (pixelValue >= y1 && pixelValue <= y2) {
+                        // 线性插值
+                        return x1 + (x2 - x1) * (pixelValue - y1) / (y2 - y1)
+                    }
+                }
+                
+                // 外推
+                return if (pixelValue < sortedPoints.first().first) {
+                    sortedPoints.first().second
+                } else {
+                    sortedPoints.last().second
+                }
             }
         }
     }
-} 
+
+    /**
+     * 使用二分法求解方程 f(x) = targetValue
+     */
+    private fun solveBisection(
+        paramMap: Map<String, Double>,
+        function: FittingFunction,
+        targetValue: Double,
+        xMin: Double = 0.001,
+        xMax: Double = 1000.0,
+        tolerance: Double = 1e-6,
+        maxIterations: Int = 100
+    ): Double {
+        var low = xMin
+        var high = xMax
+        var iterations = 0
+        
+        // 检查边界条件
+        val fLow = calculate(function, paramMap, low)
+        val fHigh = calculate(function, paramMap, high)
+        
+        // 如果目标值在边界外，扩展搜索范围
+        if (targetValue < fLow && targetValue < fHigh) {
+            if (fLow < fHigh) {
+                high = low
+                low = low / 10
+            } else {
+                low = high
+                high = high * 10
+            }
+        } else if (targetValue > fLow && targetValue > fHigh) {
+            if (fLow > fHigh) {
+                high = low
+                low = low / 10
+            } else {
+                low = high
+                high = high * 10
+            }
+        }
+        
+        while (high - low > tolerance && iterations < maxIterations) {
+            val mid = (low + high) / 2
+            val fMid = calculate(function, paramMap, mid)
+            
+            if (abs(fMid - targetValue) < tolerance) {
+                return mid
+            }
+            
+            val fLowCurrent = calculate(function, paramMap, low)
+            if ((fLowCurrent - targetValue) * (fMid - targetValue) < 0) {
+                high = mid
+            } else {
+                low = mid
+            }
+            
+            iterations++
+        }
+        
+        return (low + high) / 2
+    }
+}
