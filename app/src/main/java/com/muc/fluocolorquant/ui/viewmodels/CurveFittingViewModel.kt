@@ -14,7 +14,7 @@ import com.muc.fluocolorquant.data.repository.CurveModelRepository
 import com.muc.fluocolorquant.data.repository.DetectionRunRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.utils.math.ConcentrationPrediction
-import com.muc.fluocolorquant.utils.math.CurveFittingUtils
+import com.muc.fluocolorquant.utils.math.FittingEngine
 import com.muc.fluocolorquant.utils.math.FittingResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -247,169 +247,47 @@ class CurveFittingViewModel @Inject constructor(
                     return@launch
                 }
                 
-                val concentrations = concentrationsAndPixels.map { it.first }
-                val pixelValues = concentrationsAndPixels.map { it.second }
-                
-                // 执行拟合
-                val parameters = when (function) {
-                    FittingFunction.LINEAR -> {
-                        // 简单线性回归
-                        val sumX = concentrations.sum()
-                        val sumY = pixelValues.sum()
-                        val sumXY = concentrations.zip(pixelValues).sumOf { it.first * it.second }
-                        val sumX2 = concentrations.sumOf { it * it }
-                        val n = concentrations.size
-                        
-                        val slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
-                        val intercept = (sumY - slope * sumX) / n
-                        
-                        doubleArrayOf(intercept, slope)
-                    }
-                    FittingFunction.QUADRATIC -> {
-                        // 简单二次多项式拟合
-                        // 这里只是一个简化版本，实际应该使用矩阵求解
-                        doubleArrayOf(0.0, 1.0, 0.1)
-                    }
-                    else -> {
-                        // 默认线性拟合
-                        val sumX = concentrations.sum()
-                        val sumY = pixelValues.sum()
-                        val sumXY = concentrations.zip(pixelValues).sumOf { it.first * it.second }
-                        val sumX2 = concentrations.sumOf { it * it }
-                        val n = concentrations.size
-                        
-                        val slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
-                        val intercept = (sumY - slope * sumX) / n
-                        
-                        doubleArrayOf(intercept, slope)
-                    }
-                }
-                
-                // 计算R²
-                val yMean = pixelValues.average()
-                val predictedValues = concentrations.map { x ->
-                    when (function) {
-                        FittingFunction.LINEAR -> parameters[0] + parameters[1] * x
-                        FittingFunction.QUADRATIC -> parameters[0] + parameters[1] * x + parameters[2] * x * x
-                        else -> parameters[0] + parameters[1] * x
-                    }
-                }
-                
-                val totalSS = pixelValues.sumOf { (it - yMean) * (it - yMean) }
-                val residualSS = pixelValues.zip(predictedValues).sumOf { (y, yPred) -> 
-                    (y - yPred) * (y - yPred) 
-                }
-                val rSquared = 1.0 - (residualSS / totalSS)
-                
-                // 生成公式
-                val formula = generateFormula(function, parameters)
-                
-                // 生成曲线点
-                val curvePoints = generateCurvePoints(function, parameters, concentrationsAndPixels)
-                
-                // 创建拟合结果
-                val fittingResult = FittingResult(
-                    function = function,
-                    parameters = parameters,
-                    formula = formula,
-                    rSquared = rSquared,
-                    standardPoints = concentrationsAndPixels,
-                    curvePoints = curvePoints,
-                    pixelType = pixelType
-                )
-                
-                // 使用拟合结果预测样本浓度
+                // 提取样本像素值用于预测
                 val samples = _sampleWells.value
-                val predictions = samples.mapNotNull { well ->
+                val samplePixelValues = samples.mapNotNull { well ->
                     if (well.pixelValueJson != null) {
                         val pixelValues = parsePixelValues(well.pixelValueJson)
-                        val pixelValue = pixelValues[pixelType.name]
-                        
-                        if (pixelValue != null) {
-                            // 预测浓度
-                            val concentration = predictConcentration(
-                                pixelValue = pixelValue,
-                                function = function,
-                                parameters = parameters
-                            )
-                            
-                            // 创建预测结果
-                            val wellLabel = getWellLabel(well.virtualRow ?: 0, well.virtualCol ?: 0)
-                            ConcentrationPrediction(
-                                wellLabel = wellLabel,
-                                wellId = well.resultId.toString(),
-                                pixelValue = pixelValue,
-                                concentration = concentration,
-                                pixelType = pixelType
-                            )
-                        } else null
+                        pixelValues[pixelType.name]
                     } else null
                 }
                 
-                // 保存拟合结果
-                val resultWithPredictions = fittingResult.copy(
-                    predictions = predictions
+                // 使用 FittingEngine 执行完整的拟合和预测工作流
+                val fittingResult = FittingEngine.fitWithPredictions(
+                    standardPoints = concentrationsAndPixels,
+                    samplePixelValues = samplePixelValues,
+                    function = function,
+                    pixelType = pixelType
                 )
+                
+                // 更新样本孔位的浓度预测结果
+                fittingResult.predictions.forEachIndexed { index, prediction ->
+                    if (index < samples.size && prediction.isValid) {
+                        val sample = samples[index]
+                        // 更新样本的预测浓度（这里可以根据需要保存到数据库）
+                        val updatedSample = sample.copy(
+                            predictedConcentration = prediction.concentration
+                        )
+                        // 这里可以调用 updateWellResult(updatedSample) 来保存到数据库
+                    }
+                }
                 
                 // 更新拟合结果列表
                 val currentResults = _fittingResults.value.toMutableList()
-                currentResults.add(resultWithPredictions)
+                currentResults.add(fittingResult)
                 _fittingResults.value = currentResults
                 
                 // 选择当前拟合结果
-                _selectedFittingResult.value = resultWithPredictions
+                _selectedFittingResult.value = fittingResult
                 
                 _isLoading.value = false
             } catch (e: Exception) {
                 _isLoading.value = false
                 // 处理错误
-            }
-        }
-    }
-    
-    /**
-     * 预测浓度
-     */
-    private fun predictConcentration(
-        pixelValue: Double,
-        function: FittingFunction,
-        parameters: DoubleArray
-    ): Double {
-        return when (function) {
-            FittingFunction.LINEAR -> {
-                val intercept = parameters[0]
-                val slope = parameters[1]
-                
-                if (slope == 0.0) return 0.0
-                return (pixelValue - intercept) / slope
-            }
-            FittingFunction.QUADRATIC -> {
-                val a = parameters[0]
-                val b = parameters[1]
-                val c = parameters[2]
-                
-                // 求解一元二次方程 ax^2 + bx + c - y = 0
-                val p = b
-                val q = a
-                val r = c - pixelValue
-                
-                // 使用求根公式
-                val discriminant = p * p - 4 * q * r
-                if (discriminant < 0) return 0.0
-                
-                val x1 = (-p + Math.sqrt(discriminant)) / (2 * q)
-                val x2 = (-p - Math.sqrt(discriminant)) / (2 * q)
-                
-                // 返回正值解
-                return if (x1 > 0) x1 else if (x2 > 0) x2 else 0.0
-            }
-            else -> {
-                // 默认线性
-                val intercept = parameters[0]
-                val slope = parameters[1]
-                
-                if (slope == 0.0) return 0.0
-                return (pixelValue - intercept) / slope
             }
         }
     }
@@ -473,60 +351,32 @@ class CurveFittingViewModel @Inject constructor(
                 if (models.isNotEmpty()) {
                     val model = models.first()
                     
-                    // 构造拟合结果
-                    val function = model.function
-                    val pixelType = model.pixelType
-                    val parameters = model.parameters.values.toDoubleArray()
-                    
                     // 提取标准品数据
                     val standardPoints = standards.mapNotNull { well ->
                         val concentration = well.trueConcentration
                         if (concentration != null && well.pixelValueJson != null) {
                             val pixelValues = parsePixelValues(well.pixelValueJson)
-                            val pixelValue = pixelValues[pixelType.name]
+                            val pixelValue = pixelValues[model.pixelType.name]
                             if (pixelValue != null) {
                                 Pair(concentration, pixelValue)
                             } else null
                         } else null
                     }
                     
-                    // 生成曲线点
-                    val curvePoints = generateCurvePoints(function, parameters, standardPoints)
-                    
-                    // 预测样本浓度
-                    val predictions = samples.mapNotNull { well ->
+                    // 提取样本像素值
+                    val samplePixelValues = samples.mapNotNull { well ->
                         if (well.pixelValueJson != null) {
                             val pixelValues = parsePixelValues(well.pixelValueJson)
-                            val pixelValue = pixelValues[pixelType.name]
-                            
-                            if (pixelValue != null) {
-                                val concentration = predictConcentration(
-                                    pixelValue = pixelValue,
-                                    function = function,
-                                    parameters = parameters
-                                )
-                                
-                                val wellLabel = getWellLabel(well.virtualRow ?: 0, well.virtualCol ?: 0)
-                                ConcentrationPrediction(
-                                    wellLabel = wellLabel,
-                                    wellId = well.resultId.toString(),
-                                    pixelValue = pixelValue,
-                                    concentration = concentration,
-                                    pixelType = pixelType
-                                )
-                            } else null
+                            pixelValues[model.pixelType.name]
                         } else null
                     }
                     
-                    val result = FittingResult(
-                        function = function,
-                        parameters = parameters,
-                        formula = generateFormula(function, parameters),
-                        rSquared = model.metrics?.get("rSquared") ?: 0.0,
+                    // 使用 FittingEngine 重新构建拟合结果
+                    val result = FittingEngine.fitWithPredictions(
                         standardPoints = standardPoints,
-                        curvePoints = curvePoints,
-                        pixelType = pixelType,
-                        predictions = predictions
+                        samplePixelValues = samplePixelValues,
+                        function = model.function,
+                        pixelType = model.pixelType
                     )
                     
                     _fittingResults.value = listOf(result)
@@ -539,85 +389,6 @@ class CurveFittingViewModel @Inject constructor(
                 // 处理错误
             }
         }
-    }
-    
-    /**
-     * 根据函数类型和参数生成公式字符串
-     */
-    private fun generateFormula(function: FittingFunction, parameters: DoubleArray): String {
-        return when (function) {
-            FittingFunction.LINEAR -> {
-                val a = parameters[0]
-                val b = parameters[1]
-                "y = ${String.format("%.4f", a)} + ${String.format("%.4f", b)}x"
-            }
-            FittingFunction.QUADRATIC -> {
-                val a = parameters[0]
-                val b = parameters[1]
-                val c = parameters[2]
-                "y = ${String.format("%.4f", a)} + ${String.format("%.4f", b)}x + ${String.format("%.4f", c)}x²"
-            }
-            // 其他函数类型的公式生成...
-            else -> "y = f(x)"
-        }
-    }
-    
-    /**
-     * 生成曲线点
-     */
-    private fun generateCurvePoints(
-        function: FittingFunction,
-        parameters: DoubleArray,
-        standardPoints: List<Pair<Double, Double>>
-    ): List<Pair<Double, Double>> {
-        val points = mutableListOf<Pair<Double, Double>>()
-        
-        // 获取浓度范围
-        val concentrations = standardPoints.map { it.first }
-        val minConc = concentrations.minOrNull() ?: 0.0
-        val maxConc = concentrations.maxOrNull() ?: 0.0
-        val range = maxConc - minConc
-        val start = if (minConc > 0) minConc / 2 else 0.0
-        val end = maxConc + range / 2
-        
-        // 生成100个点
-        val steps = 100
-        val step = (end - start) / steps
-        
-        val f = { x: Double ->
-            when (function) {
-                FittingFunction.LINEAR -> parameters[0] + parameters[1] * x
-                FittingFunction.QUADRATIC -> parameters[0] + parameters[1] * x + parameters[2] * x * x
-                FittingFunction.CUBIC -> parameters[0] + parameters[1] * x + parameters[2] * x * x + parameters[3] * x * x * x
-                FittingFunction.QUARTIC -> parameters[0] + parameters[1] * x + parameters[2] * x * x + parameters[3] * x * x * x + parameters[4] * Math.pow(x, 4.0)
-                FittingFunction.LOG -> parameters[0] + parameters[1] * Math.log(x)
-                FittingFunction.EXPONENTIAL -> parameters[0] * Math.exp(parameters[1] * x)
-                FittingFunction.POWER -> parameters[0] * Math.pow(x, parameters[1])
-                FittingFunction.RODBARD -> {
-                    val a = parameters[0] // 最小渐近值
-                    val b = parameters[1] // Hill斜率
-                    val c = parameters[2] // 拐点（EC50）
-                    val d = parameters[3] // 最大渐近值
-                    d + (a - d) / (1 + Math.pow(x / c, b))
-                }
-                FittingFunction.LOGISTIC -> {
-                    val a = parameters[0] // 最小渐近值
-                    val b = parameters[1] // Hill斜率
-                    val c = parameters[2] // 拐点（EC50）
-                    val d = parameters[3] // 最大渐近值
-                    val g = parameters[4] // 不对称因子
-                    d + (a - d) / Math.pow(1 + Math.pow(x / c, b), g)
-                }
-                else -> parameters[0] + parameters[1] * x // 默认线性
-            }
-        }
-        
-        for (i in 0..steps) {
-            val x = start + i * step
-            points.add(Pair(x, f(x)))
-        }
-        
-        return points
     }
     
     /**
@@ -647,14 +418,27 @@ class CurveFittingViewModel @Inject constructor(
                 
                 // 更新样本孔位的预测浓度
                 result.predictions.forEach { prediction ->
-                    val well = _wellResults.value.find { it.resultId.toString() == prediction.wellId }
-                    if (well != null) {
+                    // 对于 FittingEngine 预测的结果，通过 sampleIndex 来找到对应的样本
+                    val samples = _sampleWells.value
+                    if (prediction.sampleIndex >= 0 && prediction.sampleIndex < samples.size) {
+                        val well = samples[prediction.sampleIndex]
                         val updatedWell = well.copy(
                             predictedConcentration = prediction.concentration
                         )
                         
                         // 调用已有的挂起函数
                         updateWellResult(updatedWell)
+                    } else if (prediction.wellId.isNotEmpty()) {
+                        // 如果有 wellId，通过 wellId 查找
+                        val well = _wellResults.value.find { it.resultId.toString() == prediction.wellId }
+                        if (well != null) {
+                            val updatedWell = well.copy(
+                                predictedConcentration = prediction.concentration
+                            )
+                            
+                            // 调用已有的挂起函数
+                            updateWellResult(updatedWell)
+                        }
                     }
                 }
             } catch (e: Exception) {

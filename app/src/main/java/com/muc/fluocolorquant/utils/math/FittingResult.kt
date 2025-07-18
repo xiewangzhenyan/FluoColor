@@ -71,9 +71,15 @@ data class FittingResult(
  * 浓度预测结果数据类
  */
 data class ConcentrationPrediction(
-    val wellLabel: String,     // 孔位标签（如A1, B2等）
-    val wellId: String,        // 孔位ID
-    val pixelValue: Double,    // 像素值
-    val concentration: Double, // 预测浓度
-    val pixelType: PixelType  // 像素类型
-) 
+    val wellLabel: String = "",     // 孔位标签（如A1, B2等）
+    val wellId: String = "",        // 孔位ID
+    val pixelValue: Double,         // 像素值
+    val concentration: Double,      // 预测浓度（这是主要的属性名）
+    val pixelType: PixelType? = null, // 像素类型（可选）
+    val sampleIndex: Int = -1,      // 样本索引（用于批量预测）
+    val isValid: Boolean = true,    // 预测是否有效
+    val errorMessage: String? = null // 错误信息
+) {
+    // 为了兼容性，提供 predictedConcentration 别名
+    val predictedConcentration: Double get() = concentration
+} 

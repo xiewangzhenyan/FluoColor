@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +21,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -39,14 +42,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -54,11 +60,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.PixelType
+import com.muc.fluocolorquant.ui.components.LatexView
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
 import com.muc.fluocolorquant.ui.components.tables.MetricsTable
 import com.muc.fluocolorquant.ui.viewmodels.ColumnType
 import com.muc.fluocolorquant.ui.viewmodels.CreationFlowState
 import com.muc.fluocolorquant.ui.viewmodels.CurveModelViewModel
+import com.muc.fluocolorquant.utils.math.FittingEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -415,69 +423,103 @@ fun ManualDataInputScreen(
                     // 显示拟合结果
                     fittingResult?.let { result ->
                         if (result.isSuccess) {
-                            // 创建函数
-                            val curveFunction = viewModel.getCurveFunction()
-
-                            if (curveFunction != null) {
-                                // 提前获取所有需要的字符串资源
-                                val concentrationLabel = stringResource(R.string.concentration)
-                                val pixelTypeLabel = selectedPixelType?.displayName ?: ""
-                                val titleText = "${result.function.displayName} 拟合曲线"
-                                
-                                // 使用新的CurveChart重载函数替换原有的计算逻辑
-                                CurveChart(
-                                    fittedCurve = curveFunction,
-                                    selectedFunction = result.function,
-                                    parameters = result.params,
-                                    xAxisLabel = concentrationLabel,
-                                    yAxisLabel = pixelTypeLabel,
-                                    title = titleText,
-                                    modifier = Modifier.height(250.dp),
-                                    dataPoints = result.standardPoints
-                                )
-                                
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                // 拟合函数显示
-                                Text(
-                                    text = "拟合函数: ${result.function.displayName}",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                
-                                Spacer(modifier = Modifier.height(8.dp))
-                                
-                                // 参数显示
-                                result.params.entries.toList().forEachIndexed { index, entry ->
+                            // 提前获取所有需要的字符串资源
+                            val concentrationLabel = stringResource(R.string.concentration)
+                            val pixelTypeLabel = selectedPixelType?.displayName ?: ""
+                            val titleText = "${result.function.displayName} 拟合曲线"
+                            
+                            // 使用FittingEngine中的formatParametersToLatex函数生成LaTeX表达式
+                            val functionLatexExpression = remember(result.function, result.params) {
+                                FittingEngine.formatParametersToLatex(result.function, result.params)
+                            }
+                            
+                            // 直接使用FittingEngine的函数，不依赖ViewModel的计算
+                            val curveFunction = remember(result.function, result.params) {
+                                { x: Double -> FittingEngine.calculate(result.function, result.params, x) }
+                            }
+                            
+                            CurveChart(
+                                fittedCurve = curveFunction,
+                                selectedFunction = result.function,
+                                parameters = result.params,
+                                xAxisLabel = concentrationLabel,
+                                yAxisLabel = pixelTypeLabel,
+                                title = titleText,
+                                modifier = Modifier.height(250.dp),
+                                dataPoints = result.standardPoints
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // 函数表达式卡片 - 参考ManualCurveInputScreen.kt的实现
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
                                     Text(
-                                        text = "${entry.key} = ${String.format("%.6f", entry.value)}",
-                                        style = MaterialTheme.typography.bodyMedium
+                                        text = stringResource(R.string.function_expression),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.align(Alignment.CenterHorizontally)
                                     )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    // 使用 key 来强制重建LatexView，彻底清除其内部错误状态
+                                    key(functionLatexExpression) {
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            LatexView(
+                                                latex = functionLatexExpression,
+                                                modifier = Modifier.padding(vertical = 8.dp)
+                                            )
+                                        }
+                                    }
                                 }
-                                
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                // 指标表格
-                                val metricsTitle = stringResource(R.string.fitting_quality)
-                                val metricsMap = mapOf(
-                                    "R²" to String.format("%.4f", result.rSquared)
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // 拟合函数显示
+                            Text(
+                                text = "拟合函数: ${result.function.displayName}",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // 参数显示
+                            result.params.entries.toList().forEachIndexed { index, entry ->
+                                Text(
+                                    text = "${entry.key} = ${String.format("%.6f", entry.value)}",
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
-                                
-                                MetricsTable(
-                                    metrics = metricsMap,
-                                    title = metricsTitle
-                                )
-                                
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                // 保存模型按钮
-                                Button(
-                                    onClick = { showSaveDialog = true },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Default.Check, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(R.string.save_model))
-                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // 拟合质量指标表格 - 直接使用result.allMetrics，不在UI层计算
+                            val metricsTitle = stringResource(R.string.fitting_quality)
+                            
+                            MetricsTable(
+                                metrics = result.allMetrics.mapValues { (_, value) ->
+                                    String.format("%.4f", value)
+                                },
+                                title = metricsTitle
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // 保存模型按钮
+                            Button(
+                                onClick = { showSaveDialog = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.save_model))
                             }
                         }
                     }

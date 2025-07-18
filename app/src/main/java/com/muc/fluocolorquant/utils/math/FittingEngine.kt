@@ -485,9 +485,9 @@ object FittingEngine {
      * 获取适用于给定数据点的函数类型
      */
     private fun getApplicableFunctions(dataPoints: List<Pair<Double, Double>>): List<FittingFunction> {
-        // 简化起见，返回所有函数
+        // 简化起见，返回所有函数，但排除INTERPOLATION
         // 实际使用时可以根据数据特性筛选适用的函数
-        return FittingFunction.values().toList()
+        return FittingFunction.values().toList().filter { it != FittingFunction.INTERPOLATION }
     }
 
     /**
@@ -592,7 +592,7 @@ object FittingEngine {
             val yMin = yValues.minOrNull() ?: 0.0
             val yMax = yValues.maxOrNull() ?: 1.0
             val xMid = xValues.average()
-            
+
             // 定义4PL函数
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
@@ -602,18 +602,18 @@ object FittingEngine {
                     val d = parameters[3]
                     return d + (a - d) / (1 + (x / c).pow(b))
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
                     val d = parameters[3]
-                    
+
                     val ratio = x / c
                     val powered = ratio.pow(b)
                     val denominator = 1 + powered
                     val denominatorSq = denominator * denominator
-                    
+
                     return doubleArrayOf(
                         1.0 / denominator,
                         -(a - d) * powered * ln(ratio) / denominatorSq,
@@ -622,12 +622,12 @@ object FittingEngine {
                     )
                 }
             }
-            
+
             // 使用SimpleCurveFitter进行拟合
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMin, 1.0, xMid, yMax))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1],
@@ -639,7 +639,7 @@ object FittingEngine {
             val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
             val xMid = dataPoints.map { it.first }.average()
-            
+
             mapOf(
                 "a" to yMin,
                 "b" to 1.0,
@@ -658,36 +658,36 @@ object FittingEngine {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
             val xAtYMax = dataPoints.maxByOrNull { it.second }?.first ?: 1.0
             val xMin = dataPoints.minByOrNull { it.first }?.first ?: 0.0
-            
+
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
                     val d = parameters[3]
-                    
+
                     if (x <= b || a <= 0 || c <= 0 || d <= 0) return 0.0
-                    
+
                     val term1 = (x - b).pow(c)
                     val term2 = exp(-(x - b) / d)
                     return a * term1 * term2
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
                     val d = parameters[3]
-                    
+
                     if (x <= b || a <= 0 || c <= 0 || d <= 0) {
                         return doubleArrayOf(0.0, 0.0, 0.0, 0.0)
                     }
-                    
+
                     val diff = x - b
                     val powered = diff.pow(c)
                     val exponential = exp(-diff / d)
                     val baseValue = powered * exponential
-                    
+
                     return doubleArrayOf(
                         baseValue,
                         -a * (c * diff.pow(c - 1) * exponential - powered * exponential / d),
@@ -696,11 +696,11 @@ object FittingEngine {
                     )
                 }
             }
-            
+
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, xMin, 1.0, 1.0))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1],
@@ -711,7 +711,7 @@ object FittingEngine {
             // 备用方案
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
             val xMin = dataPoints.minByOrNull { it.first }?.first ?: 0.0
-            
+
             mapOf(
                 "a" to yMax,
                 "b" to xMin,
@@ -728,18 +728,18 @@ object FittingEngine {
         return try {
             val xMin = dataPoints.minByOrNull { it.first }?.first ?: 0.0
             val offset = if (xMin > 0) xMin * 0.1 else 0.01
-            
+
             // 变换数据后进行线性拟合
             val transformedPoints = dataPoints
                 .filter { it.first > offset }
                 .map { (x, y) -> Pair(ln(x - offset), y) }
-            
+
             if (transformedPoints.isEmpty()) {
                 throw Exception("No valid data points for custom log fitting")
             }
-            
+
             val linearParams = fitLinear(transformedPoints)
-            
+
             mapOf(
                 "a" to (linearParams["b"] ?: 0.0),
                 "b" to (linearParams["a"] ?: 0.0),
@@ -763,34 +763,34 @@ object FittingEngine {
         return try {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
             val xMid = dataPoints.map { it.first }.average()
-            
+
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
-                    
+
                     return if (c > 0) {
                         a * (1 / (1 + (x / c).pow(b)))
                     } else {
                         a * (1 / (1 + (x * 0.001).pow(b)))
                     }
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
-                    
+
                     if (c <= 0) {
                         return doubleArrayOf(0.0, 0.0, 0.0)
                     }
-                    
+
                     val ratio = x / c
                     val powered = ratio.pow(b)
                     val denominator = 1 + powered
                     val denominatorSq = denominator * denominator
-                    
+
                     return doubleArrayOf(
                         1.0 / denominator,
                         -a * powered * ln(ratio) / denominatorSq,
@@ -798,11 +798,11 @@ object FittingEngine {
                     )
                 }
             }
-            
+
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 1.0, xMid))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1],
@@ -811,7 +811,7 @@ object FittingEngine {
         } catch (e: Exception) {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
             val xMid = dataPoints.map { it.first }.average()
-            
+
             mapOf(
                 "a" to yMax,
                 "b" to 1.0,
@@ -827,7 +827,7 @@ object FittingEngine {
         return try {
             val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-            
+
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
                     val a = parameters[0]
@@ -835,12 +835,12 @@ object FittingEngine {
                     val c = parameters[2]
                     return a * exp(-b * x) + c
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val expTerm = exp(-b * x)
-                    
+
                     return doubleArrayOf(
                         expTerm,
                         -a * x * expTerm,
@@ -848,11 +848,11 @@ object FittingEngine {
                     )
                 }
             }
-            
+
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax - yMin, 0.1, yMin))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1],
@@ -861,7 +861,7 @@ object FittingEngine {
         } catch (e: Exception) {
             val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-            
+
             mapOf(
                 "a" to (yMax - yMin),
                 "b" to 0.1,
@@ -881,7 +881,7 @@ object FittingEngine {
             val yMax = yValues.maxOrNull() ?: 1.0
             val xAtYMax = dataPoints.maxByOrNull { it.second }?.first ?: 0.0
             val xRange = (xValues.maxOrNull() ?: 1.0) - (xValues.minOrNull() ?: 0.0)
-            
+
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
                     val a = parameters[0]
@@ -890,18 +890,18 @@ object FittingEngine {
                     val d = parameters[3]
                     return a + (b - a) * exp(-(x - c).pow(2) / (2 * d.pow(2)))
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
                     val d = parameters[3]
-                    
+
                     val diff = x - c
                     val diffSq = diff * diff
                     val dSq = d * d
                     val expTerm = exp(-diffSq / (2 * dSq))
-                    
+
                     return doubleArrayOf(
                         1.0 - expTerm,
                         expTerm,
@@ -910,11 +910,11 @@ object FittingEngine {
                     )
                 }
             }
-            
+
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMin, yMax, xAtYMax, xRange / 4))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1],
@@ -925,9 +925,9 @@ object FittingEngine {
             val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
             val xAtYMax = dataPoints.maxByOrNull { it.second }?.first ?: 0.0
-            val xRange = (dataPoints.maxByOrNull { it.first }?.first ?: 1.0) - 
-                        (dataPoints.minByOrNull { it.first }?.first ?: 0.0)
-            
+            val xRange = (dataPoints.maxByOrNull { it.first }?.first ?: 1.0) -
+                    (dataPoints.minByOrNull { it.first }?.first ?: 0.0)
+
             mapOf(
                 "a" to yMin,
                 "b" to yMax,
@@ -943,37 +943,37 @@ object FittingEngine {
     private fun fitExponentialRecovery(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
         return try {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-            
+
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
                     val a = parameters[0]
                     val b = parameters[1]
                     return a * (1 - exp(-b * x))
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val expTerm = exp(-b * x)
-                    
+
                     return doubleArrayOf(
                         1 - expTerm,
                         a * x * expTerm
                     )
                 }
             }
-            
+
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 0.1))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1]
             )
         } catch (e: Exception) {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-            
+
             mapOf(
                 "a" to yMax,
                 "b" to 0.1
@@ -991,7 +991,7 @@ object FittingEngine {
             val yMin = yValues.minOrNull() ?: 0.0
             val yMax = yValues.maxOrNull() ?: 1.0
             val xMid = xValues.average()
-            
+
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
                     val a = parameters[0]
@@ -999,30 +999,30 @@ object FittingEngine {
                     val c = parameters[2]
                     val d = parameters[3]
                     val g = parameters[4]
-                    
+
                     return if (c > 0) {
                         d + (a - d) / (1 + (x / c).pow(b)).pow(g)
                     } else {
                         d + (a - d) / (1 + (x * 0.001).pow(b)).pow(g)
                     }
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
                     val d = parameters[3]
                     val g = parameters[4]
-                    
+
                     if (c <= 0) {
                         return doubleArrayOf(0.0, 0.0, 0.0, 0.0, 0.0)
                     }
-                    
+
                     val ratio = x / c
                     val powered = ratio.pow(b)
                     val denominator = 1 + powered
                     val denominatorPowered = denominator.pow(g)
-                    
+
                     return doubleArrayOf(
                         1.0 / denominatorPowered,
                         -(a - d) * g * powered * ln(ratio) / (denominator * denominatorPowered),
@@ -1032,11 +1032,11 @@ object FittingEngine {
                     )
                 }
             }
-            
+
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMin, 1.0, xMid, yMax, 1.0))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1],
@@ -1048,7 +1048,7 @@ object FittingEngine {
             val yMin = dataPoints.minByOrNull { it.second }?.second ?: 0.0
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
             val xMid = dataPoints.map { it.first }.average()
-            
+
             mapOf(
                 "a" to yMin,
                 "b" to 1.0,
@@ -1065,7 +1065,7 @@ object FittingEngine {
     private fun fitGompertz(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
         return try {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-            
+
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
                     val a = parameters[0]
@@ -1073,15 +1073,15 @@ object FittingEngine {
                     val c = parameters[2]
                     return a * exp(-b * exp(-c * x))
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
-                    
+
                     val innerExp = exp(-c * x)
                     val outerExp = exp(-b * innerExp)
-                    
+
                     return doubleArrayOf(
                         outerExp,
                         -a * innerExp * outerExp,
@@ -1089,11 +1089,11 @@ object FittingEngine {
                     )
                 }
             }
-            
+
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 1.0, 0.1))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1],
@@ -1101,7 +1101,7 @@ object FittingEngine {
             )
         } catch (e: Exception) {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-            
+
             mapOf(
                 "a" to yMax,
                 "b" to 1.0,
@@ -1117,34 +1117,34 @@ object FittingEngine {
         return try {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
             val xMid = dataPoints.map { it.first }.average()
-            
+
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
-                    
+
                     return if (x >= 0) {
                         a * x.pow(b) / (c.pow(b) + x.pow(b))
                     } else {
                         0.0
                     }
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
-                    
+
                     if (x <= 0) {
                         return doubleArrayOf(0.0, 0.0, 0.0)
                     }
-                    
+
                     val xPowB = x.pow(b)
                     val cPowB = c.pow(b)
                     val denominator = cPowB + xPowB
                     val denominatorSq = denominator * denominator
-                    
+
                     return doubleArrayOf(
                         xPowB / denominator,
                         a * xPowB * cPowB * (ln(x) - ln(c)) / denominatorSq,
@@ -1152,11 +1152,11 @@ object FittingEngine {
                     )
                 }
             }
-            
+
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 1.0, xMid))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1],
@@ -1165,7 +1165,7 @@ object FittingEngine {
         } catch (e: Exception) {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
             val xMid = dataPoints.map { it.first }.average()
-            
+
             mapOf(
                 "a" to yMax,
                 "b" to 1.0,
@@ -1180,35 +1180,35 @@ object FittingEngine {
     private fun fitGeneralGompertz(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
         return try {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-            
+
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
                     val d = parameters[3]
-                    
+
                     return if (x >= 0) {
                         a * exp(-b * exp(-c * x.pow(d)))
                     } else {
                         0.0
                     }
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
                     val d = parameters[3]
-                    
+
                     if (x <= 0) {
                         return doubleArrayOf(0.0, 0.0, 0.0, 0.0)
                     }
-                    
+
                     val xPowD = x.pow(d)
                     val innerExp = exp(-c * xPowD)
                     val outerExp = exp(-b * innerExp)
-                    
+
                     return doubleArrayOf(
                         outerExp,
                         -a * innerExp * outerExp,
@@ -1217,11 +1217,11 @@ object FittingEngine {
                     )
                 }
             }
-            
+
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 1.0, 0.1, 1.0))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1],
@@ -1230,7 +1230,7 @@ object FittingEngine {
             )
         } catch (e: Exception) {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-            
+
             mapOf(
                 "a" to yMax,
                 "b" to 1.0,
@@ -1246,35 +1246,35 @@ object FittingEngine {
     private fun fitRichards(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
         return try {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-            
+
             val function = object : ParametricUnivariateFunction {
                 override fun value(x: Double, parameters: DoubleArray): Double {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
                     val d = parameters[3]
-                    
+
                     return if (d != 0.0) {
                         a / (1 + b * exp(-c * x)).pow(1 / d)
                     } else {
                         0.0
                     }
                 }
-                
+
                 override fun gradient(x: Double, parameters: DoubleArray): DoubleArray {
                     val a = parameters[0]
                     val b = parameters[1]
                     val c = parameters[2]
                     val d = parameters[3]
-                    
+
                     if (d == 0.0) {
                         return doubleArrayOf(0.0, 0.0, 0.0, 0.0)
                     }
-                    
+
                     val expTerm = exp(-c * x)
                     val denominator = 1 + b * expTerm
                     val denominatorPowered = denominator.pow(1 / d)
-                    
+
                     return doubleArrayOf(
                         1.0 / denominatorPowered,
                         -a * expTerm / (d * denominator * denominatorPowered),
@@ -1283,11 +1283,11 @@ object FittingEngine {
                     )
                 }
             }
-            
+
             val fitter = SimpleCurveFitter.create(function, doubleArrayOf(yMax, 1.0, 0.1, 1.0))
             val observations = dataPoints.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
             val params = fitter.fit(observations)
-            
+
             mapOf(
                 "a" to params[0],
                 "b" to params[1],
@@ -1296,7 +1296,7 @@ object FittingEngine {
             )
         } catch (e: Exception) {
             val yMax = dataPoints.maxByOrNull { it.second }?.second ?: 1.0
-            
+
             mapOf(
                 "a" to yMax,
                 "b" to 1.0,
@@ -1312,17 +1312,17 @@ object FittingEngine {
     private fun fitInterpolation(dataPoints: List<Pair<Double, Double>>): Map<String, Double> {
         // 对于插值，我们只需要存储数据点
         val result = mutableMapOf<String, Double>()
-        
+
         // 按x值排序
         val sortedPoints = dataPoints.sortedBy { it.first }
-        
+
         // 存储点对（最多存储前10个点以避免参数过多）
         val maxPoints = minOf(10, sortedPoints.size)
         for (i in 0 until maxPoints) {
             result["x$i"] = sortedPoints[i].first
             result["y$i"] = sortedPoints[i].second
         }
-        
+
         return result
     }
 
@@ -1804,7 +1804,7 @@ object FittingEngine {
                 if (a == 0.0) return 0.0
                 return (pixelValue - b) / a
             }
-            
+
             FittingFunction.QUADRATIC -> {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
@@ -1826,21 +1826,21 @@ object FittingEngine {
                 // 返回正值解
                 return if (x1 > 0) x1 else if (x2 > 0) x2 else 0.0
             }
-            
+
             FittingFunction.EXPONENTIAL -> {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
                 if (a <= 0 || b == 0.0 || pixelValue <= 0) return 0.0
                 return ln(pixelValue / a) / b
             }
-            
+
             FittingFunction.POWER -> {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
                 if (a <= 0 || b == 0.0 || pixelValue <= 0) return 0.0
                 return (pixelValue / a).pow(1.0 / b)
             }
-            
+
             FittingFunction.LOG -> {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
@@ -1848,19 +1848,19 @@ object FittingEngine {
                 val expArg = (pixelValue - a) / b
                 return exp(expArg)
             }
-            
+
             FittingFunction.RODBARD -> {
                 // 对于4PL函数，需要数值求解
                 // y = d + (a-d)/(1+(x/c)^b)
                 // 求解 x，使得 f(x) = pixelValue
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.GAMMA_VARIATE -> {
                 // 伽马变量函数需要数值求解
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.CUSTOM_LOG -> {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
@@ -1869,12 +1869,12 @@ object FittingEngine {
                 val expArg = (pixelValue - a) / b
                 return exp(expArg) + c
             }
-            
+
             FittingFunction.RODBARD_NIH -> {
                 // 需要数值求解
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.EXPONENTIAL_WITH_OFFSET -> {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
@@ -1884,12 +1884,12 @@ object FittingEngine {
                 if (adjusted <= 0 || adjusted >= a) return 0.0
                 return -ln(adjusted / a) / b
             }
-            
+
             FittingFunction.GAUSSIAN -> {
                 // 高斯函数需要数值求解
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.EXPONENTIAL_RECOVERY -> {
                 val a = paramMap["a"] ?: 0.0
                 val b = paramMap["b"] ?: 0.0
@@ -1898,42 +1898,42 @@ object FittingEngine {
                 if (ratio >= 1.0 || ratio <= 0.0) return 0.0
                 return -ln(1 - ratio) / b
             }
-            
+
             FittingFunction.LOGISTIC -> {
                 // 5PL函数需要数值求解
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.GOMPERTZ -> {
                 // Gompertz函数需要数值求解
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.HILL -> {
                 // Hill函数需要数值求解
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.GENERAL_GOMPERTZ -> {
                 // 广义Gompertz函数需要数值求解
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.RICHARDS -> {
                 // Richards函数需要数值求解
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.CUBIC -> {
                 // 三次方程需要数值求解
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.QUARTIC -> {
                 // 四次方程需要数值求解
                 solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
             }
-            
+
             FittingFunction.INTERPOLATION -> {
                 // 插值函数的反向查找
                 val points = mutableListOf<Pair<Double, Double>>()
@@ -1944,25 +1944,25 @@ object FittingEngine {
                         points.add(Pair(y, x)) // 注意这里x和y交换了
                     }
                 }
-                
+
                 if (points.isEmpty()) return 0.0
                 if (points.size == 1) return points[0].second
-                
+
                 val sortedPoints = points.sortedBy { it.first }
-                
+
                 // 在排序后的点中查找插值
                 for (i in 0 until sortedPoints.size - 1) {
                     val y1 = sortedPoints[i].first
                     val x1 = sortedPoints[i].second
                     val y2 = sortedPoints[i + 1].first
                     val x2 = sortedPoints[i + 1].second
-                    
+
                     if (pixelValue >= y1 && pixelValue <= y2) {
                         // 线性插值
                         return x1 + (x2 - x1) * (pixelValue - y1) / (y2 - y1)
                     }
                 }
-                
+
                 // 外推
                 return if (pixelValue < sortedPoints.first().first) {
                     sortedPoints.first().second
@@ -1988,11 +1988,11 @@ object FittingEngine {
         var low = xMin
         var high = xMax
         var iterations = 0
-        
+
         // 检查边界条件
         val fLow = calculate(function, paramMap, low)
         val fHigh = calculate(function, paramMap, high)
-        
+
         // 如果目标值在边界外，扩展搜索范围
         if (targetValue < fLow && targetValue < fHigh) {
             if (fLow < fHigh) {
@@ -2011,25 +2011,117 @@ object FittingEngine {
                 high = high * 10
             }
         }
-        
+
         while (high - low > tolerance && iterations < maxIterations) {
             val mid = (low + high) / 2
             val fMid = calculate(function, paramMap, mid)
-            
+
             if (abs(fMid - targetValue) < tolerance) {
                 return mid
             }
-            
+
             val fLowCurrent = calculate(function, paramMap, low)
             if ((fLowCurrent - targetValue) * (fMid - targetValue) < 0) {
                 high = mid
             } else {
                 low = mid
             }
-            
+
             iterations++
         }
-        
+
         return (low + high) / 2
+    }
+
+    /**
+     * 执行完整的拟合工作流：标准品拟合 + 样本浓度预测
+     * 
+     * @param standardPoints 标准品数据点（浓度，像素值）
+     * @param samplePixelValues 样本的像素值列表
+     * @param function 拟合函数类型
+     * @param pixelType 像素类型（可选）
+     * @return 包含拟合结果和样本浓度预测的 FittingResult
+     */
+    fun fitWithPredictions(
+        standardPoints: List<Pair<Double, Double>>,
+        samplePixelValues: List<Double>,
+        function: FittingFunction,
+        pixelType: PixelType? = null
+    ): FittingResult {
+        // 执行标准品拟合
+        val fittingResult = fitSingle(standardPoints, function)
+        
+        if (!fittingResult.isSuccess) {
+            return fittingResult
+        }
+        
+        // 预测样本浓度
+        val predictions = samplePixelValues.mapIndexed { index, pixelValue ->
+            try {
+                val concentration = predictConcentration(
+                    fittingResult.parameters,
+                    function,
+                    pixelValue
+                )
+                ConcentrationPrediction(
+                    sampleIndex = index,
+                    pixelValue = pixelValue,
+                    concentration = concentration,
+                    pixelType = pixelType,
+                    isValid = concentration >= 0.0 && concentration.isFinite()
+                )
+            } catch (e: Exception) {
+                ConcentrationPrediction(
+                    sampleIndex = index,
+                    pixelValue = pixelValue,
+                    concentration = 0.0,
+                    pixelType = pixelType,
+                    isValid = false,
+                    errorMessage = e.message
+                )
+            }
+        }
+        
+        // 返回包含预测结果的新 FittingResult
+        return fittingResult.copy(
+            pixelType = pixelType,
+            predictions = predictions
+        )
+    }
+
+    /**
+     * 为样本数据批量预测浓度
+     * 
+     * @param fittingResult 拟合结果
+     * @param samplePixelValues 样本像素值列表
+     * @return 浓度预测结果列表
+     */
+    fun batchPredictConcentrations(
+        fittingResult: FittingResult,
+        samplePixelValues: List<Double>
+    ): List<ConcentrationPrediction> {
+        return samplePixelValues.mapIndexed { index, pixelValue ->
+            try {
+                val concentration = predictConcentration(
+                    fittingResult.parameters,
+                    fittingResult.function,
+                    pixelValue
+                )
+                ConcentrationPrediction(
+                    sampleIndex = index,
+                    pixelValue = pixelValue,
+                    concentration = concentration,
+                    isValid = concentration >= 0.0 && concentration.isFinite()
+                )
+            } catch (e: Exception) {
+                ConcentrationPrediction(
+                    sampleIndex = index,
+                    pixelValue = pixelValue,
+                    concentration = 0.0,
+                    isValid = false,
+                    errorMessage = e.message
+                )
+            }
+        }
     }
 }

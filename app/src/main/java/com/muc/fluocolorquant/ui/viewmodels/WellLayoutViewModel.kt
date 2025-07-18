@@ -1332,10 +1332,10 @@ class WellLayoutViewModel @Inject constructor(
                         val pixelValue = pixelValues[PixelType.GREEN.name] ?: return@mapNotNull null
 
                         // 使用拟合结果预测浓度
-                        val concentration = predictConcentration(
-                            pixelValue = pixelValue,
+                        val concentration = FittingEngine.predictConcentration(
+                            parameters = fittingResult.parameters,
                             function = fittingResult.function,
-                            parameters = fittingResult.parameters
+                            pixelValue = pixelValue
                         )
 
                         // 更新样本的预测浓度
@@ -1384,88 +1384,6 @@ class WellLayoutViewModel @Inject constructor(
     /**
      * 预测浓度
      */
-    private fun predictConcentration(
-        pixelValue: Double,
-        function: FittingFunction,
-        parameters: DoubleArray
-    ): Double {
-        return when (function) {
-            FittingFunction.LINEAR -> {
-                val intercept = parameters[0]
-                val slope = parameters[1]
-
-                if (slope == 0.0) return 0.0
-                return (pixelValue - intercept) / slope
-            }
-            FittingFunction.QUADRATIC -> {
-                val a = parameters[2]  // 二次项系数
-                val b = parameters[1]  // 一次项系数
-                val c = parameters[0]  // 常数项
-
-                // 求解一元二次方程 ax^2 + bx + c - y = 0
-                val p = b
-                val q = a
-                val r = c - pixelValue
-
-                // 使用求根公式
-                if (q == 0.0) {
-                    // 如果二次项系数为0，退化为线性方程
-                    if (p == 0.0) return 0.0
-                    return -r / p
-                }
-
-                val discriminant = p * p - 4 * q * r
-                if (discriminant < 0) return 0.0
-
-                val x1 = (-p + Math.sqrt(discriminant)) / (2 * q)
-                val x2 = (-p - Math.sqrt(discriminant)) / (2 * q)
-
-                // 返回正值解
-                return if (x1 > 0) x1 else if (x2 > 0) x2 else 0.0
-            }
-            FittingFunction.EXPONENTIAL -> {
-                val a = parameters[0]
-                val b = parameters[1]
-
-                if (b == 0.0 || a == 0.0 || pixelValue <= 0) return 0.0
-                return Math.log(pixelValue / a) / b
-            }
-            FittingFunction.POWER -> {
-                val a = parameters[0]
-                val b = parameters[1]
-
-                if (a == 0.0 || b == 0.0 || pixelValue <= 0) return 0.0
-                return Math.pow(pixelValue / a, 1.0 / b)
-            }
-            FittingFunction.LOG -> {
-                val a = parameters[0]
-                val b = parameters[1]
-
-                if (b == 0.0) return 0.0
-                return Math.exp((pixelValue - a) / b)
-            }
-            FittingFunction.RODBARD -> {
-                val a = parameters[0] // 最小渐近值
-                val b = parameters[1] // Hill斜率
-                val c = parameters[2] // 拐点（EC50）
-                val d = parameters[3] // 最大渐近值
-
-                if (b == 0.0 || a == d) return 0.0
-                val temp = (d - pixelValue) / (pixelValue - a)
-                if (temp <= 0) return 0.0
-                return c * Math.pow(temp, 1.0 / b)
-            }
-            else -> {
-                // 默认线性
-                val intercept = parameters[0]
-                val slope = parameters[1]
-
-                if (slope == 0.0) return 0.0
-                return (pixelValue - intercept) / slope
-            }
-        }
-    }
-
     /**
      * 从JSON字符串解析像素值
      */
