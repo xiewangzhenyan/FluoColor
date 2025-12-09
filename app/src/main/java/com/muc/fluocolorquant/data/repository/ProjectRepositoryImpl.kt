@@ -33,4 +33,13 @@ class ProjectRepositoryImpl @Inject constructor(
     override suspend fun deleteProject(projectId: String) {
         projectDao.deleteProject(projectId)
     }
+
+    override suspend fun updateSpectrumConfig(
+        projectId: String,
+        lightSource: String?,
+        spectrumColumnCount: Int,
+        spectrumColumnMappingJson: String?
+    ) {
+        projectDao.updateSpectrumConfig(projectId, lightSource, spectrumColumnCount, spectrumColumnMappingJson)
+    }
 } 

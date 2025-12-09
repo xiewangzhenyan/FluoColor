@@ -15,6 +15,7 @@ import com.muc.fluocolorquant.data.dao.ReagentDao
 import com.muc.fluocolorquant.data.dao.CurveModelDao
 import com.muc.fluocolorquant.data.dao.ProjectAnalyteJoinDao
 import com.muc.fluocolorquant.data.dao.ExperimentTemplateDao
+import com.muc.fluocolorquant.data.dao.SpectrumDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -42,7 +43,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "fluocolor_database"
         )
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
         .addCallback(prepopulateCallback)  // 添加预填充回调
         .fallbackToDestructiveMigration() // 版本更新时，如果没有提供迁移路径，则重建数据库
         .build()
@@ -347,6 +348,55 @@ object DatabaseModule {
         }
     }
     
+    // 版本8到版本9的迁移策略
+    private val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // 1. 添加项目的光源和光谱列配置
+            database.execSQL("ALTER TABLE projects ADD COLUMN lightSource TEXT")
+            database.execSQL("ALTER TABLE projects ADD COLUMN spectrumColumnCount INTEGER NOT NULL DEFAULT 1")
+            database.execSQL("ALTER TABLE projects ADD COLUMN spectrumColumnMappingJson TEXT")
+
+            // 2. 创建光谱标定表
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `spectrum_calibrations` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `projectId` TEXT NOT NULL,
+                    `columnIndex` INTEGER NOT NULL,
+                    `roiRect` TEXT NOT NULL,
+                    `calibrationType` TEXT NOT NULL,
+                    `coefficients` TEXT NOT NULL,
+                    `referencePoints` TEXT,
+                    FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """
+            )
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_spectrum_calibrations_projectId` ON `spectrum_calibrations` (`projectId`)")
+            database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_spectrum_calibrations_projectId_columnIndex` ON `spectrum_calibrations` (`projectId`, `columnIndex`)")
+
+            // 3. 创建光谱结果表
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `spectrum_results` (
+                    `resultId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `projectId` TEXT NOT NULL,
+                    `columnIndex` INTEGER NOT NULL,
+                    `analyteId` TEXT,
+                    `imagePath` TEXT NOT NULL,
+                    `wavelengths` TEXT NOT NULL,
+                    `intensities` TEXT NOT NULL,
+                    `peakWavelength` REAL,
+                    FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """
+            )
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_spectrum_results_projectId` ON `spectrum_results` (`projectId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_spectrum_results_analyteId` ON `spectrum_results` (`analyteId`)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_spectrum_results_projectId_columnIndex` ON `spectrum_results` (`projectId`, `columnIndex`)")
+        }
+    }
+
     // 版本7到版本8的迁移策略
     private val MIGRATION_7_8 = object : Migration(7, 8) {
         override fun migrate(database: SupportSQLiteDatabase) {
@@ -617,6 +667,11 @@ object DatabaseModule {
     @Provides
     fun provideWellResultDao(appDatabase: AppDatabase): WellResultDao {
         return appDatabase.wellResultDao()
+    }
+
+    @Provides
+    fun provideSpectrumDao(appDatabase: AppDatabase): SpectrumDao {
+        return appDatabase.spectrumDao()
     }
     
     @Provides

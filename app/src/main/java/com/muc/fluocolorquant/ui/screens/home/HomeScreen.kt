@@ -165,7 +165,8 @@ fun HomeScreen(
                 actions = {
                     UserMenu(
                         onLogout = {
-                            userViewModel.logout()
+                            // 退出登录后无需额外操作，回调留空
+                            userViewModel.logout { }
                             // 注意：UserMenu内部会处理导航，这里不需要重复
                         },
                         userViewModel = userViewModel,

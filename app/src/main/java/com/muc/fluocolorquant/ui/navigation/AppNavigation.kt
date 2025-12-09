@@ -2,6 +2,7 @@ package com.muc.fluocolorquant.ui.navigation
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -21,6 +22,7 @@ import com.muc.fluocolorquant.ui.screens.result.NewResultScreen
 import com.muc.fluocolorquant.ui.screens.settings.AppSettingsScreen
 import com.muc.fluocolorquant.ui.screens.settings.DetectionSettingsScreen
 import com.muc.fluocolorquant.ui.screens.settings.SettingsScreen
+import com.muc.fluocolorquant.ui.screens.settings.SpectrumSettingsScreen
 import com.muc.fluocolorquant.ui.screens.splash.SplashScreen
 import com.muc.fluocolorquant.ui.screens.history.HistoryScreen
 import com.muc.fluocolorquant.ui.screens.settings.AnalyteManagementScreen
@@ -30,6 +32,7 @@ import com.muc.fluocolorquant.ui.screens.settings.ManualCurveInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ManualDataInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ExperimentTemplateManagementScreen
 import com.muc.fluocolorquant.ui.screens.settings.CreateExperimentTemplateScreen
+import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
 // import com.muc.fluocolorquant.utils.animatedComposable
 
 @Composable
@@ -54,8 +57,10 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             HomeScreen(navController = navController)
         }
 
-        // 添加新项目创建页面
-        composable(route = Screen.NewProject.route) {
+        // 添加新项目创建页面，支持可选mode参数
+        composable(
+            route = Screen.NewProject.route
+        ) {
             NewProjectScreen(navController = navController)
         }
 
@@ -212,6 +217,13 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         // 检测设置页面
         composable(route = Screen.DetectionSettings.route) {
             DetectionSettingsScreen(navController = navController)
+        }
+
+        composable(route = Screen.SpectrumSettings.route) {
+            SpectrumSettingsScreen(
+                navController = navController,
+                viewModel = hiltViewModel<SettingsViewModel>()
+            )
         }
 
         // 分析物管理页面

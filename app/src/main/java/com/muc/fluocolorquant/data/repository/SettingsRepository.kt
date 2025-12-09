@@ -3,8 +3,9 @@ package com.muc.fluocolorquant.data.repository
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -39,6 +40,12 @@ class SettingsRepository @Inject constructor(
     private val DEFAULT_COLUMNS_KEY = intPreferencesKey("default_columns")
     private val PIXEL_EXTRACTION_METHOD_KEY = stringPreferencesKey("pixel_extraction_method")
     private val IMAGE_PREPROCESSING_ENABLED_KEY = booleanPreferencesKey("image_preprocessing_enabled")
+    private val SPECTRUM_MIN_WAVELENGTH_KEY = floatPreferencesKey("spectrum_min_wavelength")
+    private val SPECTRUM_MAX_WAVELENGTH_KEY = floatPreferencesKey("spectrum_max_wavelength")
+    private val SPECTRUM_SMOOTHING_KEY = intPreferencesKey("spectrum_smoothing")
+    private val SPECTRUM_SENSITIVITY_KEY = stringPreferencesKey("spectrum_sensitivity")
+    private val SPECTRUM_DEFAULT_TRACK_COUNT_KEY = intPreferencesKey("spectrum_default_track_count")
+    private val SPECTRUM_MAX_TRACK_COUNT_KEY = intPreferencesKey("spectrum_max_track_count")
 
     // 获取当前语言设置，默认为系统语言
     val languageFlow: Flow<String> = languageDataStore.data.map { preferences ->
@@ -169,6 +176,72 @@ class SettingsRepository @Inject constructor(
             preferences[IMAGE_PREPROCESSING_ENABLED_KEY] = enabled
         }
     }
+
+    // 获取光谱最小波长，默认 400.0f
+    val spectrumMinWavelengthFlow: Flow<Float> = appSettingsDataStore.data.map { preferences ->
+        preferences[SPECTRUM_MIN_WAVELENGTH_KEY] ?: DEFAULT_SPECTRUM_MIN_WAVELENGTH
+    }
+
+    suspend fun setSpectrumMinWavelength(value: Float) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[SPECTRUM_MIN_WAVELENGTH_KEY] = value
+        }
+    }
+
+    // 获取光谱最大波长，默认 800.0f
+    val spectrumMaxWavelengthFlow: Flow<Float> = appSettingsDataStore.data.map { preferences ->
+        preferences[SPECTRUM_MAX_WAVELENGTH_KEY] ?: DEFAULT_SPECTRUM_MAX_WAVELENGTH
+    }
+
+    suspend fun setSpectrumMaxWavelength(value: Float) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[SPECTRUM_MAX_WAVELENGTH_KEY] = value
+        }
+    }
+
+    // 获取光谱平滑等级，默认 3
+    val spectrumSmoothingFlow: Flow<Int> = appSettingsDataStore.data.map { preferences ->
+        preferences[SPECTRUM_SMOOTHING_KEY] ?: DEFAULT_SPECTRUM_SMOOTHING
+    }
+
+    suspend fun setSpectrumSmoothing(level: Int) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[SPECTRUM_SMOOTHING_KEY] = level
+        }
+    }
+
+    // 获取光谱灵敏度，默认 Medium
+    val spectrumSensitivityFlow: Flow<String> = appSettingsDataStore.data.map { preferences ->
+        preferences[SPECTRUM_SENSITIVITY_KEY] ?: DEFAULT_SPECTRUM_SENSITIVITY
+    }
+
+    suspend fun setSpectrumSensitivity(value: String) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[SPECTRUM_SENSITIVITY_KEY] = value
+        }
+    }
+
+    // 获取光谱通道默认数量，默认1
+    val spectrumDefaultTrackCountFlow: Flow<Int> = appSettingsDataStore.data.map { preferences ->
+        preferences[SPECTRUM_DEFAULT_TRACK_COUNT_KEY] ?: DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT
+    }
+
+    suspend fun setSpectrumDefaultTrackCount(value: Int) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[SPECTRUM_DEFAULT_TRACK_COUNT_KEY] = value
+        }
+    }
+
+    // 获取光谱通道最大数量，默认10
+    val spectrumMaxTrackCountFlow: Flow<Int> = appSettingsDataStore.data.map { preferences ->
+        preferences[SPECTRUM_MAX_TRACK_COUNT_KEY] ?: DEFAULT_SPECTRUM_MAX_TRACK_COUNT
+    }
+
+    suspend fun setSpectrumMaxTrackCount(value: Int) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[SPECTRUM_MAX_TRACK_COUNT_KEY] = value
+        }
+    }
     
     companion object {
         // 默认浓度单位集合
@@ -177,5 +250,12 @@ class SettingsRepository @Inject constructor(
         val DEFAULT_ROWS = 12
         // 默认列数
         val DEFAULT_COLUMNS = 8
+        // 光谱默认配置
+        const val DEFAULT_SPECTRUM_MIN_WAVELENGTH = 400.0f
+        const val DEFAULT_SPECTRUM_MAX_WAVELENGTH = 800.0f
+        const val DEFAULT_SPECTRUM_SMOOTHING = 3
+        const val DEFAULT_SPECTRUM_SENSITIVITY = "Medium"
+        const val DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT = 1
+        const val DEFAULT_SPECTRUM_MAX_TRACK_COUNT = 10
     }
-} 
+}

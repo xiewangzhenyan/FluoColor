@@ -12,9 +12,9 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Biotech
 import androidx.compose.material.icons.filled.DesignServices
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -88,6 +88,14 @@ fun SettingsScreen(
                 description = stringResource(R.string.detection_settings_desc),
                 icon = Icons.Default.DesignServices,
                 onClick = { navController.navigate(Screen.DetectionSettings.route) }
+            )
+
+            // 光谱检测设置
+            SettingsNavigationItem(
+                title = stringResource(R.string.pref_spectrum_settings),
+                description = stringResource(R.string.pref_spectrum_settings_desc),
+                icon = Icons.Default.GraphicEq,
+                onClick = { navController.navigate(Screen.SpectrumSettings.route) }
             )
 
             // 分析物管理

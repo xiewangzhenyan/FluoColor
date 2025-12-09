@@ -1,5 +1,6 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.repository.SettingsRepository
@@ -7,8 +8,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -16,6 +19,38 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
+    private val _uiState = MutableStateFlow(SettingsUiState())
+    val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+    init {
+        // 收集光谱设置并更新UI状态
+        viewModelScope.launch {
+            val spectrumBase = combine(
+                settingsRepository.spectrumMinWavelengthFlow,
+                settingsRepository.spectrumMaxWavelengthFlow,
+                settingsRepository.spectrumSmoothingFlow,
+                settingsRepository.spectrumSensitivityFlow
+            ) { min, max, smoothing, sensitivity ->
+                SettingsUiState(
+                    spectrumMinWavelength = min,
+                    spectrumMaxWavelength = max,
+                    spectrumSmoothing = smoothing,
+                    spectrumSensitivity = sensitivity
+                )
+            }
+
+            combine(
+                spectrumBase,
+                settingsRepository.spectrumDefaultTrackCountFlow,
+                settingsRepository.spectrumMaxTrackCountFlow
+            ) { base, defaultTracks, maxTracks ->
+                base.copy(
+                    spectrumDefaultTrackCount = defaultTracks,
+                    spectrumMaxTrackCount = maxTracks
+                )
+            }.collect { state -> _uiState.value = state }
+        }
+    }
 
     // 当前语言设置
     val currentLanguage: StateFlow<String> = settingsRepository.languageFlow
@@ -229,4 +264,77 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.setImagePreprocessingEnabled(enabled)
         }
     }
-} 
+
+    /**
+     * 更新波长范围，需保证 max > min，否则不保存。
+     */
+    fun updateWavelengthRange(min: Float, max: Float) {
+        if (max <= min) {
+            Log.w(TAG, "Invalid wavelength range: min=$min, max=$max")
+            return
+        }
+        viewModelScope.launch {
+            settingsRepository.setSpectrumMinWavelength(min)
+            settingsRepository.setSpectrumMaxWavelength(max)
+        }
+    }
+
+    /**
+     * 更新曲线平滑等级
+     */
+    fun updateSmoothing(level: Int) {
+        viewModelScope.launch {
+            settingsRepository.setSpectrumSmoothing(level)
+        }
+    }
+
+    /**
+     * 更新自动寻峰灵敏度
+     */
+    fun updateSensitivity(level: String) {
+        viewModelScope.launch {
+            settingsRepository.setSpectrumSensitivity(level)
+        }
+    }
+
+    /**
+     * 恢复光谱默认配置
+     */
+    fun resetSpectrumDefaults() {
+        viewModelScope.launch {
+            settingsRepository.setSpectrumMinWavelength(SettingsRepository.DEFAULT_SPECTRUM_MIN_WAVELENGTH)
+            settingsRepository.setSpectrumMaxWavelength(SettingsRepository.DEFAULT_SPECTRUM_MAX_WAVELENGTH)
+            settingsRepository.setSpectrumSmoothing(SettingsRepository.DEFAULT_SPECTRUM_SMOOTHING)
+            settingsRepository.setSpectrumSensitivity(SettingsRepository.DEFAULT_SPECTRUM_SENSITIVITY)
+            settingsRepository.setSpectrumDefaultTrackCount(SettingsRepository.DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT)
+            settingsRepository.setSpectrumMaxTrackCount(SettingsRepository.DEFAULT_SPECTRUM_MAX_TRACK_COUNT)
+        }
+    }
+
+    /**
+     * 更新通道配置（默认/最大），需校验 default <= max 且 max > 0
+     */
+    fun updateTrackCountConfig(defaultTracks: Int, maxTracks: Int) {
+        if (maxTracks <= 0 || defaultTracks > maxTracks || defaultTracks <= 0) {
+            Log.w(TAG, "Invalid track config: default=$defaultTracks, max=$maxTracks")
+            return
+        }
+        viewModelScope.launch {
+            settingsRepository.setSpectrumDefaultTrackCount(defaultTracks)
+            settingsRepository.setSpectrumMaxTrackCount(maxTracks)
+        }
+    }
+
+    companion object {
+        private const val TAG = "SettingsViewModel"
+    }
+}
+
+data class SettingsUiState(
+    val spectrumMinWavelength: Float = SettingsRepository.DEFAULT_SPECTRUM_MIN_WAVELENGTH,
+    val spectrumMaxWavelength: Float = SettingsRepository.DEFAULT_SPECTRUM_MAX_WAVELENGTH,
+    val spectrumSmoothing: Int = SettingsRepository.DEFAULT_SPECTRUM_SMOOTHING,
+    val spectrumSensitivity: String = SettingsRepository.DEFAULT_SPECTRUM_SENSITIVITY,
+    val spectrumDefaultTrackCount: Int = SettingsRepository.DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT,
+    val spectrumMaxTrackCount: Int = SettingsRepository.DEFAULT_SPECTRUM_MAX_TRACK_COUNT
+)

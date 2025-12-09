@@ -21,6 +21,8 @@ import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
 import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepositoryImpl
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepositoryImpl
+import com.muc.fluocolorquant.data.repository.SpectrumRepository
+import com.muc.fluocolorquant.data.repository.SpectrumRepositoryImpl
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -81,6 +83,15 @@ abstract class RepositoryModule {
     abstract fun provideExperimentTemplateRepository(
         experimentTemplateRepositoryImpl: ExperimentTemplateRepositoryImpl
     ): ExperimentTemplateRepository
+
+    /**
+     * 提供光谱仓库实现
+     */
+    @Binds
+    @Singleton
+    abstract fun provideSpectrumRepository(
+        spectrumRepositoryImpl: SpectrumRepositoryImpl
+    ): SpectrumRepository
     
     companion object {
         @Provides

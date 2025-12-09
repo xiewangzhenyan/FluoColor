@@ -6,10 +6,12 @@ import com.muc.fluocolorquant.data.SessionManager
 import com.muc.fluocolorquant.data.model.User
 import com.muc.fluocolorquant.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -43,10 +45,10 @@ class UserViewModel @Inject constructor(
     fun login(username: String, password: String) {
         viewModelScope.launch {
             _loginState.value = LoginState.Loading
-            
+
             try {
                 val result = userRepository.loginUser(username, password)
-                
+
                 if (result.isSuccess) {
                     result.getOrNull()?.let { user ->
                         sessionManager.saveSession(user)
@@ -65,10 +67,10 @@ class UserViewModel @Inject constructor(
     fun register(username: String, password: String, email: String? = null) {
         viewModelScope.launch {
             _loginState.value = LoginState.Loading
-            
+
             try {
                 val result = userRepository.registerUser(username, password, email)
-                
+
                 if (result.isSuccess) {
                     result.getOrNull()?.let { user ->
                         sessionManager.saveSession(user)
@@ -84,11 +86,16 @@ class UserViewModel @Inject constructor(
         }
     }
 
-    fun logout() {
+    // [MODIFIED] 修改 logout 函数，增加 onLogoutComplete 回调
+    fun logout(onLogoutComplete: () -> Unit) {
         viewModelScope.launch {
             sessionManager.clearSession()
             _currentUser.value = null
             _loginState.value = LoginState.Idle
+            // 切换到主线程执行UI导航操作
+            withContext(Dispatchers.Main) {
+                onLogoutComplete()
+            }
         }
     }
 
@@ -150,7 +157,7 @@ class UserViewModel @Inject constructor(
     ): Boolean {
         return try {
             val user = userRepository.getUserById(userId)
-            
+
             // 验证旧密码是否正确
             if (user != null && user.password == oldPassword) {
                 // 更新密码
@@ -173,4 +180,4 @@ class UserViewModel @Inject constructor(
         object Success : LoginState()
         data class Error(val message: String) : LoginState()
     }
-} 
+}

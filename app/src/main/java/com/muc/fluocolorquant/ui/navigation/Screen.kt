@@ -8,7 +8,9 @@ sealed class Screen(open val route: String) {
     object Login : Screen("login")
     object Register : Screen("register")
     object Home : Screen("home")
-    object NewProject : Screen("new_project")
+    object NewProject : Screen("new_project") {
+        fun createRoute(): String = route
+    }
     object ImageCapture : Screen("image_capture")
     object ImageCrop : Screen("image_crop") {
         fun createRoute(imageUri: String? = null): String {
@@ -56,6 +58,7 @@ sealed class Screen(open val route: String) {
     object Profile : Screen("profile")
     object AppSettings : Screen("app_settings")
     object DetectionSettings : Screen("detection_settings")
+    object SpectrumSettings : Screen("spectrum_settings")
     object AnalyteManagement : Screen("analyte_management")
     object ReagentLibrary : Screen("reagent_library")
     object CurveModelLibrary : Screen("curve_model_library")

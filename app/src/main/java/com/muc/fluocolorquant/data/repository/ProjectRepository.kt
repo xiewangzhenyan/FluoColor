@@ -37,4 +37,14 @@ interface ProjectRepository {
      * @param projectId 项目ID
      */
     suspend fun deleteProject(projectId: String)
+
+    /**
+     * 更新光谱配置（光源、光谱列数、列-分析物映射）
+     */
+    suspend fun updateSpectrumConfig(
+        projectId: String,
+        lightSource: String?,
+        spectrumColumnCount: Int,
+        spectrumColumnMappingJson: String?
+    )
 } 

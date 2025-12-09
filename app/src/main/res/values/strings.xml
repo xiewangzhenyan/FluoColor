@@ -21,7 +21,7 @@
     <string name="about_tab">About</string>
     <string name="detection_mode_selection">Detection Mode Selection</string>
     <string name="new_detection_project">New Detection Project</string>
-    <string name="create_new_project">Create a new fluorescence or colorimetric detection project</string>
+    <string name="create_new_project">Create a new fluorescence, colorimetric, or spectrum detection project</string>
     <string name="new_project">New Project</string>
     <string name="main_functions">Main Functions</string>
     <string name="colorimetric_detection">Colorimetric Detection</string>
@@ -83,6 +83,28 @@
     <string name="language_changed">Language changed successfully</string>
     <string name="settings_update_success">Settings updated successfully</string>
     <string name="app_settings">App Settings</string>
+    <string name="pref_spectrum_settings">Spectrum Detection Settings</string>
+    <string name="pref_spectrum_settings_desc">Configure wavelength range, smoothing algorithm, and detection sensitivity</string>
+    <string name="spectrum_config_title">Spectrum Parameter Configuration</string>
+    <string name="label_wavelength_range">Wavelength Range (nm)</string>
+    <string name="label_min_wavelength">Minimum Wavelength</string>
+    <string name="label_max_wavelength">Maximum Wavelength</string>
+    <string name="label_smoothing_level">Curve Smoothing Level: %d</string>
+    <string name="label_sensitivity">Auto Peak Detection Sensitivity</string>
+    <string name="sensitivity_low">Low (filter noise)</string>
+    <string name="sensitivity_medium">Medium (standard)</string>
+    <string name="sensitivity_high">High (detect weak peaks)</string>
+    <string name="btn_reset_defaults">Restore Default Settings</string>
+    <string name="error_invalid_wavelength">Maximum wavelength must be greater than minimum wavelength</string>
+    <string name="label_track_config">Channel Count Configuration</string>
+    <string name="label_default_tracks">Default Channel Count</string>
+    <string name="label_max_tracks">Maximum Channel Limit</string>
+    <string name="spectrum_detection_title">Spectrum Detection</string>
+    <string name="spectrum_detection_desc">Supports spectrum acquisition, calibration, and peak analysis</string>
+    <string name="spectrum_min_wavelength_label">Spectrum Min Wavelength (nm)</string>
+    <string name="spectrum_max_wavelength_label">Spectrum Max Wavelength (nm)</string>
+    <string name="spectrum_smoothing_label">Spectrum Smoothing Level</string>
+    <string name="spectrum_sensitivity_label">Spectrum Sensitivity</string>
 
     <!-- Login Screen -->
     <string name="app_description_short">Intelligent colorimetric and fluorescence detection platform</string>

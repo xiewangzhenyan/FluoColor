@@ -46,19 +46,19 @@ class ProjectViewModel @Inject constructor(
     // 当前选中的项目
     private val _selectedProject = MutableStateFlow<Project?>(null)
     val selectedProject: StateFlow<Project?> = _selectedProject.asStateFlow()
-    
+
     // 分析方法：AUTO (浓度预测模型) 或 MANUAL (标准曲线拟合)
     private val _analysisMethod = MutableStateFlow("DL_MODEL")
     val analysisMethod: StateFlow<String> = _analysisMethod.asStateFlow()
-    
+
     // 所有可用的分析物
     private val _availableAnalytes = MutableStateFlow<List<Analyte>>(emptyList())
     val availableAnalytes: StateFlow<List<Analyte>> = _availableAnalytes.asStateFlow()
-    
+
     // 选中的分析物配置列表 - 核心状态，UI将直接观察和修改这个列表
     private val _selectedAnalyteConfigs = MutableStateFlow<List<AnalyteConfig>>(emptyList())
     val selectedAnalyteConfigs: StateFlow<List<AnalyteConfig>> = _selectedAnalyteConfigs.asStateFlow()
-    
+
     // 用于控制模板选择对话框显示的状态
     private val _showTemplateSelectionDialog = MutableStateFlow(false)
     val showTemplateSelectionDialog: StateFlow<Boolean> = _showTemplateSelectionDialog.asStateFlow()
@@ -80,7 +80,7 @@ class ProjectViewModel @Inject constructor(
             }
         }
     }
-    
+
     // 加载所有分析物
     private fun loadAnalytes() {
         viewModelScope.launch {
@@ -94,19 +94,19 @@ class ProjectViewModel @Inject constructor(
             }
         }
     }
-    
+
     // 设置分析方法
     fun setAnalysisMethod(method: String) {
         _analysisMethod.value = method
     }
-    
+
     // 当用户在多选对话框中确定分析物列表后调用
     fun onAnalyteSelectionChanged(selectedAnalytes: List<Analyte>) {
         // 转换为AnalyteConfig对象列表
         val configs = selectedAnalytes.map { analyte ->
             // 查找是否已存在该分析物的配置
             val existingConfig = _selectedAnalyteConfigs.value.find { it.analyte.id == analyte.id }
-            
+
             // 如果存在，保留其现有配置；否则创建新配置
             existingConfig ?: AnalyteConfig(
                 analyte = analyte,
@@ -114,15 +114,15 @@ class ProjectViewModel @Inject constructor(
                 concentrationUnit = "ng/ml" // 默认单位
             )
         }
-        
+
         _selectedAnalyteConfigs.value = configs
     }
-    
+
     // 更新特定分析物的配置
     fun updateAnalyteConfig(analyteId: String, newConcentration: String, newUnit: String) {
         val currentConfigs = _selectedAnalyteConfigs.value.toMutableList()
         val index = currentConfigs.indexOfFirst { it.analyte.id == analyteId }
-        
+
         if (index != -1) {
             val config = currentConfigs[index]
             currentConfigs[index] = config.copy(
@@ -132,7 +132,7 @@ class ProjectViewModel @Inject constructor(
             _selectedAnalyteConfigs.value = currentConfigs
         }
     }
-    
+
     // 删除特定分析物的配置
     fun removeAnalyteConfig(analyteId: String) {
         val currentConfigs = _selectedAnalyteConfigs.value.toMutableList()
@@ -154,9 +154,9 @@ class ProjectViewModel @Inject constructor(
             // 从设置中获取默认行列值
             val defaultRows = settingsRepository.defaultRowsFlow.first()
             val defaultColumns = settingsRepository.defaultColumnsFlow.first()
-            
+
             val projectId = UUID.randomUUID().toString()
-            
+
             // 创建Project对象，不再包含maxConcentration和concentrationUnit字段
             val project = Project(
                 id = projectId,
@@ -171,10 +171,10 @@ class ProjectViewModel @Inject constructor(
                 lastRunTimestamp = null, // 新项目还没有运行记录
                 analysisMethod = analysisMethod.name,
             )
-            
+
             // 保存项目到数据库
             projectRepository.createProject(project)
-            
+
             // 为每个选中的分析物创建关联
             _selectedAnalyteConfigs.value.forEach { config ->
                 val analyteJoin = ProjectAnalyteJoin(
@@ -185,11 +185,11 @@ class ProjectViewModel @Inject constructor(
                     concentrationUnit = config.concentrationUnit,
                     fkTemplateId = null // 这将在后续步骤中设置（如果是曲线拟合模式）
                 )
-                
+
                 // 插入关联记录
                 projectAnalyteJoinRepository.addProjectAnalyteJoin(analyteJoin)
             }
-            
+
             // 检查是否是单孔(1x1)项目
             if (project.rows == 1 && project.columns == 1) {
                 // 触发模板选择对话框状态（如果是CURVE_FIT模式）
@@ -198,28 +198,28 @@ class ProjectViewModel @Inject constructor(
                 }
                 // 注意：对于DL_MODEL模式的单孔处理逻辑将在UI层实现
             }
-            
+
             // 刷新项目列表
             loadProjects()
-            
+
             // 返回项目ID
             projectId
         } catch (e: Exception) {
             null
         }
     }
-    
+
     // 用于关闭模板选择对话框
     fun dismissTemplateSelectionDialog() {
         _showTemplateSelectionDialog.value = false
     }
-    
+
     // 当用户在模板选择对话框中选择模板后调用
     suspend fun assignTemplateToProject(projectId: String, analyteId: String, templateId: String): Boolean {
         return try {
             // 获取当前关联
             val project = projectRepository.getProjectById(projectId) ?: return false
-            
+
             // 更新关联记录，设置模板ID
             val analyteJoin = ProjectAnalyteJoin(
                 projectId = projectId,
@@ -228,13 +228,13 @@ class ProjectViewModel @Inject constructor(
                 concentrationUnit = null,
                 fkTemplateId = templateId
             )
-            
+
             // 更新关联
             projectAnalyteJoinRepository.addProjectAnalyteJoin(analyteJoin)
-            
+
             // 关闭对话框
             dismissTemplateSelectionDialog()
-            
+
             true
         } catch (e: Exception) {
             false
@@ -257,13 +257,13 @@ class ProjectViewModel @Inject constructor(
     suspend fun deleteProject(projectId: String): Boolean {
         return try {
             projectRepository.deleteProject(projectId)
-            
+
             // 刷新项目列表
             loadProjects()
-            
+
             true
         } catch (e: Exception) {
             false
         }
     }
-} 
+}

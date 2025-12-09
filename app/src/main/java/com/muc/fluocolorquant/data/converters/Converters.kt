@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.PixelType
+import com.muc.fluocolorquant.data.enums.SpectrumCalibrationType
 import java.util.Date
 
 /**
@@ -50,6 +51,58 @@ class Converters {
         return gson.fromJson(json, type)
     }
 
+    // List<Float> 转换器（用于光谱曲线数据）
+    @TypeConverter
+    fun fromFloatList(list: List<Float>?): String? {
+        return list?.let { gson.toJson(it) }
+    }
+
+    @TypeConverter
+    fun toFloatList(json: String?): List<Float>? {
+        if (json.isNullOrEmpty()) return null
+        val type = object : TypeToken<List<Float>>() {}.type
+        return gson.fromJson(json, type)
+    }
+
+    // Map<Int, Long> 转换器（用于光谱列 -> 分析物映射）
+    @TypeConverter
+    fun fromIntLongMap(map: Map<Int, Long>?): String? {
+        return map?.let { gson.toJson(it) }
+    }
+
+    @TypeConverter
+    fun toIntLongMap(json: String?): Map<Int, Long>? {
+        if (json.isNullOrEmpty()) return null
+        val type = object : TypeToken<Map<Int, Long>>() {}.type
+        return gson.fromJson(json, type)
+    }
+
+    // List<Double> 转换器（用于拟合系数等）
+    @TypeConverter
+    fun fromDoubleList(list: List<Double>?): String? {
+        return list?.let { gson.toJson(it) }
+    }
+
+    @TypeConverter
+    fun toDoubleList(json: String?): List<Double>? {
+        if (json.isNullOrEmpty()) return null
+        val type = object : TypeToken<List<Double>>() {}.type
+        return gson.fromJson(json, type)
+    }
+
+    // DoubleArray 转换器（兼容数组存储拟合系数）
+    @TypeConverter
+    fun fromDoubleArray(array: DoubleArray?): String? {
+        return array?.let { gson.toJson(it.toList()) }
+    }
+
+    @TypeConverter
+    fun toDoubleArray(json: String?): DoubleArray? {
+        if (json.isNullOrEmpty()) return null
+        val type = object : TypeToken<List<Double>>() {}.type
+        return gson.fromJson<List<Double>>(json, type).toDoubleArray()
+    }
+
     // FittingFunction 转换器
     @TypeConverter
     fun fromFittingFunction(function: FittingFunction?): String? {
@@ -71,4 +124,15 @@ class Converters {
     fun toPixelType(identifier: String?): PixelType? {
         return identifier?.let { PixelType.fromIdentifier(it) }
     }
-} 
+
+    // SpectrumCalibrationType converter
+    @TypeConverter
+    fun fromSpectrumCalibrationType(type: SpectrumCalibrationType?): String? {
+        return type?.code
+    }
+
+    @TypeConverter
+    fun toSpectrumCalibrationType(code: String?): SpectrumCalibrationType? {
+        return SpectrumCalibrationType.fromCode(code)
+    }
+}

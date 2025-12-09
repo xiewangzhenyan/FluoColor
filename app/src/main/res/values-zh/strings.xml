@@ -21,7 +21,7 @@
     <string name="about_tab">关于</string>
     <string name="detection_mode_selection">检测模式选择</string>
     <string name="new_detection_project">新建检测项目</string>
-    <string name="create_new_project">创建新的荧光或比色检测项目</string>
+    <string name="create_new_project">创建新的荧光、比色或光谱检测项目</string>
     <string name="new_project">新建项目</string>
     <string name="main_functions">主要功能</string>
     <string name="colorimetric_detection">比色检测</string>
@@ -83,6 +83,28 @@
     <string name="language_changed">语言已成功更改</string>
     <string name="settings_update_success">设置已成功更新</string>
     <string name="app_settings">应用设置</string>
+    <string name="pref_spectrum_settings">光谱检测设置</string>
+    <string name="pref_spectrum_settings_desc">配置波长范围、平滑算法及检测灵敏度</string>
+    <string name="spectrum_config_title">光谱参数配置</string>
+    <string name="label_wavelength_range">波长范围 (nm)</string>
+    <string name="label_min_wavelength">最小波长</string>
+    <string name="label_max_wavelength">最大波长</string>
+    <string name="label_smoothing_level">曲线平滑等级: %d</string>
+    <string name="label_sensitivity">自动寻峰灵敏度</string>
+    <string name="sensitivity_low">低 (过滤噪点)</string>
+    <string name="sensitivity_medium">中 (标准)</string>
+    <string name="sensitivity_high">高 (检测微弱峰)</string>
+    <string name="btn_reset_defaults">恢复默认设置</string>
+    <string name="error_invalid_wavelength">最大波长必须大于最小波长</string>
+    <string name="label_track_config">通道数量配置</string>
+    <string name="label_default_tracks">默认通道数</string>
+    <string name="label_max_tracks">最大通道数限制</string>
+    <string name="spectrum_detection_title">光谱检测</string>
+    <string name="spectrum_detection_desc">支持光谱图采集、标定与峰值分析</string>
+    <string name="spectrum_min_wavelength_label">光谱最小波长 (nm)</string>
+    <string name="spectrum_max_wavelength_label">光谱最大波长 (nm)</string>
+    <string name="spectrum_smoothing_label">光谱平滑等级</string>
+    <string name="spectrum_sensitivity_label">光谱灵敏度</string>
     
     <!-- Login Screen -->
     <string name="app_description_short">智能比色与荧光检测分析平台</string>
