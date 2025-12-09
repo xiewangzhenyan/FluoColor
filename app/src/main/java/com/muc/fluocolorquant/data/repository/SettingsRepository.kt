@@ -46,6 +46,7 @@ class SettingsRepository @Inject constructor(
     private val SPECTRUM_SENSITIVITY_KEY = stringPreferencesKey("spectrum_sensitivity")
     private val SPECTRUM_DEFAULT_TRACK_COUNT_KEY = intPreferencesKey("spectrum_default_track_count")
     private val SPECTRUM_MAX_TRACK_COUNT_KEY = intPreferencesKey("spectrum_max_track_count")
+    private val SPECTRUM_DEFAULT_LIGHT_SOURCE_KEY = stringPreferencesKey("spectrum_default_light_source")
 
     // 获取当前语言设置，默认为系统语言
     val languageFlow: Flow<String> = languageDataStore.data.map { preferences ->
@@ -111,6 +112,11 @@ class SettingsRepository @Inject constructor(
     // 获取所有可用浓度单位
     val concentrationUnitsFlow: Flow<Set<String>> = appSettingsDataStore.data.map { preferences ->
         preferences[CONCENTRATION_UNITS_KEY] ?: DEFAULT_CONCENTRATION_UNITS
+    }
+
+    // 光谱默认光源类型，存储为枚举 name，默认白光LED
+    val spectrumDefaultLightSourceFlow: Flow<String> = appSettingsDataStore.data.map { preferences ->
+        preferences[SPECTRUM_DEFAULT_LIGHT_SOURCE_KEY] ?: DEFAULT_SPECTRUM_DEFAULT_LIGHT_SOURCE
     }
     
     // 添加浓度单位
@@ -242,6 +248,12 @@ class SettingsRepository @Inject constructor(
             preferences[SPECTRUM_MAX_TRACK_COUNT_KEY] = value
         }
     }
+
+    suspend fun setSpectrumDefaultLightSource(lightSourceName: String) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[SPECTRUM_DEFAULT_LIGHT_SOURCE_KEY] = lightSourceName
+        }
+    }
     
     companion object {
         // 默认浓度单位集合
@@ -257,5 +269,6 @@ class SettingsRepository @Inject constructor(
         const val DEFAULT_SPECTRUM_SENSITIVITY = "Medium"
         const val DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT = 1
         const val DEFAULT_SPECTRUM_MAX_TRACK_COUNT = 10
+        const val DEFAULT_SPECTRUM_DEFAULT_LIGHT_SOURCE = "LED_WHITE"
     }
 }

@@ -47,6 +47,7 @@ import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
 import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
 import com.muc.fluocolorquant.ui.navigation.Screen
+import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import kotlinx.coroutines.launch
 import android.Manifest
 import android.content.pm.PackageManager
@@ -65,7 +66,7 @@ import com.muc.fluocolorquant.ui.viewmodels.AnalyteConfig
 
 // 检测模式枚举
 enum class DetectionMode {
-    FLUORESCENCE, COLORIMETRIC
+    FLUORESCENCE, COLORIMETRIC, SPECTRUM
 }
 
 // 分析方法枚举
@@ -273,8 +274,20 @@ fun NewProjectScreen(
     // 获取已选中的分析物配置
     val selectedAnalyteConfigs by projectViewModel.selectedAnalyteConfigs.collectAsState()
 
+    // 光谱相关状态
+    val spectrumTrackCount by projectViewModel.spectrumTrackCount.collectAsState()
+    val spectrumMaxTrackCount by projectViewModel.spectrumMaxTrackCount.collectAsState()
+    val spectrumLightSource by projectViewModel.spectrumLightSource.collectAsState()
+    val spectrumMapping by projectViewModel.spectrumColumnMapping.collectAsState()
+    val availableLightSources = projectViewModel.availableLightSources
+
+    var showSpectrumAnalyteDialog by remember { mutableStateOf(false) }
+    var pendingTrackIndex by remember { mutableStateOf<Int?>(null) }
+
     // 显示分析物选择对话框
     var showAnalyteSelectionDialog by remember { mutableStateOf(false) }
+
+    val isSpectrum = detectionMode == DetectionMode.SPECTRUM
 
     Scaffold(
         topBar = {
@@ -348,11 +361,17 @@ fun NewProjectScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { detectionMode = DetectionMode.FLUORESCENCE }
+                        .clickable {
+                            detectionMode = DetectionMode.FLUORESCENCE
+                            projectViewModel.updateDetectionMode(DetectionMode.FLUORESCENCE)
+                        }
                 ) {
                     RadioButton(
                         selected = detectionMode == DetectionMode.FLUORESCENCE,
-                        onClick = { detectionMode = DetectionMode.FLUORESCENCE },
+                        onClick = {
+                            detectionMode = DetectionMode.FLUORESCENCE
+                            projectViewModel.updateDetectionMode(DetectionMode.FLUORESCENCE)
+                        },
                         colors = RadioButtonDefaults.colors(
                             selectedColor = Color(0xFF5D6B98)
                         )
@@ -368,11 +387,17 @@ fun NewProjectScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { detectionMode = DetectionMode.COLORIMETRIC }
+                        .clickable {
+                            detectionMode = DetectionMode.COLORIMETRIC
+                            projectViewModel.updateDetectionMode(DetectionMode.COLORIMETRIC)
+                        }
                 ) {
                     RadioButton(
                         selected = detectionMode == DetectionMode.COLORIMETRIC,
-                        onClick = { detectionMode = DetectionMode.COLORIMETRIC },
+                        onClick = {
+                            detectionMode = DetectionMode.COLORIMETRIC
+                            projectViewModel.updateDetectionMode(DetectionMode.COLORIMETRIC)
+                        },
                         colors = RadioButtonDefaults.colors(
                             selectedColor = Color(0xFF5D6B98)
                         )
@@ -382,179 +407,241 @@ fun NewProjectScreen(
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
+
+                // 光谱检测
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            detectionMode = DetectionMode.SPECTRUM
+                            projectViewModel.updateDetectionMode(DetectionMode.SPECTRUM)
+                        }
+                ) {
+                    RadioButton(
+                        selected = detectionMode == DetectionMode.SPECTRUM,
+                        onClick = {
+                            detectionMode = DetectionMode.SPECTRUM
+                            projectViewModel.updateDetectionMode(DetectionMode.SPECTRUM)
+                        },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = Color(0xFF5D6B98)
+                        )
+                    )
+                    Text(
+                        text = stringResource(R.string.spectrum_detection_title),
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 分析方法下拉菜单
-            Text(
-                text = stringResource(R.string.analysis_method),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF333333)
-            )
-
-            ExposedDropdownMenuBox(
-                expanded = isAnalysisMethodMenuExpanded,
-                onExpandedChange = { isAnalysisMethodMenuExpanded = !isAnalysisMethodMenuExpanded },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp)
-            ) {
-                OutlinedTextField(
-                    value = when (analysisMethod) {
-                        AnalysisMethod.DL_MODEL -> stringResource(R.string.dl_model_option)
-                        AnalysisMethod.CURVE_FIT -> stringResource(R.string.curve_fit_option)
-                    },
-                    onValueChange = { /* No action needed for readOnly field */ },
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isAnalysisMethodMenuExpanded) },
-                    modifier = Modifier
-                        .menuAnchor() // Important for ExposedDropdownMenuBox
-                        .fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF5D6B98),
-                        unfocusedBorderColor = Color(0xFFDDDDDD),
-                        focusedTrailingIconColor = Color(0xFF5D6B98),
-                        unfocusedTrailingIconColor = Color(0xFF5D6B98),
-                        disabledTextColor = LocalContentColor.current,
-                        disabledBorderColor = Color(0xFFDDDDDD),
-                        disabledTrailingIconColor = Color(0xFF5D6B98)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
+            if (detectionMode == DetectionMode.SPECTRUM) {
+                SpectrumConfigSection(
+                    availableLightSources = availableLightSources,
+                    spectrumLightSource = spectrumLightSource,
+                    onLightSourceChange = { projectViewModel.updateSpectrumLightSource(it) },
+                    spectrumTrackCount = spectrumTrackCount,
+                    spectrumMaxTrackCount = spectrumMaxTrackCount,
+                    onIncrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount + 1) },
+                    onDecrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount - 1) },
+                    spectrumMapping = spectrumMapping,
+                    onSelectAnalyte = { track ->
+                        pendingTrackIndex = track
+                        showSpectrumAnalyteDialog = true
+                    }
                 )
-
-                ExposedDropdownMenu(
-                    expanded = isAnalysisMethodMenuExpanded,
-                    onDismissRequest = { isAnalysisMethodMenuExpanded = false },
-                    modifier = Modifier.fillMaxWidth() // 使下拉菜单宽度与输入框匹配
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.dl_model_option)) },
-                        onClick = {
-                            analysisMethod = AnalysisMethod.DL_MODEL
-                            isAnalysisMethodMenuExpanded = false
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome, // 更新为更合适的图标
-                                contentDescription = null,
-                                tint = Color(0xFF5D6B98)
-                            )
-                        }
-                    )
-
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.curve_fit_option)) },
-                        onClick = {
-                            analysisMethod = AnalysisMethod.CURVE_FIT
-                            isAnalysisMethodMenuExpanded = false
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.AutoGraph, // 更新为更合适的图标
-                                contentDescription = null,
-                                tint = Color(0xFF5D6B98)
-                            )
-                        }
-                    )
-                }
-            }
-
-            // 分析物配置部分 - 移动到分析方法下方，并始终显示（无论选择哪种分析方法）
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 分析物选择和配置部分
-            Text(
-                text = stringResource(R.string.analyte_configuration),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF333333)
-            )
-
-            if (selectedAnalyteConfigs.isEmpty()) {
-                // 无分析物时显示提示和添加按钮
-                Column(
+            } else {
+            if (!isSpectrum) {
+                // 分析方法下拉菜单
+                Text(
+                    text = stringResource(R.string.analysis_method),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(bottom = 8.dp),
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF333333)
+                )
+
+                ExposedDropdownMenuBox(
+                    expanded = isAnalysisMethodMenuExpanded,
+                    onExpandedChange = { isAnalysisMethodMenuExpanded = !isAnalysisMethodMenuExpanded },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.no_analytes_selected),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF666666)
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Button(
-                        onClick = { showAnalyteSelectionDialog = true },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF5D6B98)
+                    OutlinedTextField(
+                        value = when (analysisMethod) {
+                            AnalysisMethod.DL_MODEL -> stringResource(R.string.dl_model_option)
+                            AnalysisMethod.CURVE_FIT -> stringResource(R.string.curve_fit_option)
+                        },
+                        onValueChange = { /* No action needed for readOnly field */ },
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isAnalysisMethodMenuExpanded) },
+                        modifier = Modifier
+                            .menuAnchor() // Important for ExposedDropdownMenuBox
+                            .fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF5D6B98),
+                            unfocusedBorderColor = Color(0xFFDDDDDD),
+                            focusedTrailingIconColor = Color(0xFF5D6B98),
+                            unfocusedTrailingIconColor = Color(0xFF5D6B98),
+                            disabledTextColor = LocalContentColor.current,
+                            disabledBorderColor = Color(0xFFDDDDDD),
+                            disabledTrailingIconColor = Color(0xFF5D6B98)
                         ),
                         shape = RoundedCornerShape(8.dp)
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = isAnalysisMethodMenuExpanded,
+                        onDismissRequest = { isAnalysisMethodMenuExpanded = false },
+                        modifier = Modifier.fillMaxWidth() // 使下拉菜单宽度与输入框匹配
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.dl_model_option)) },
+                            onClick = {
+                                analysisMethod = AnalysisMethod.DL_MODEL
+                                isAnalysisMethodMenuExpanded = false
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome, // 更新为更合适的图标
+                                    contentDescription = null,
+                                    tint = Color(0xFF5D6B98)
+                                )
+                            }
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(R.string.add_analytes))
+
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.curve_fit_option)) },
+                            onClick = {
+                                analysisMethod = AnalysisMethod.CURVE_FIT
+                                isAnalysisMethodMenuExpanded = false
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.AutoGraph, // 更新为更合适的图标
+                                    contentDescription = null,
+                                    tint = Color(0xFF5D6B98)
+                                )
+                            }
+                        )
                     }
                 }
             } else {
-                // 显示已选择的分析物配置列表
-                Column(
+                SpectrumConfigSection(
+                    availableLightSources = availableLightSources,
+                    spectrumLightSource = spectrumLightSource,
+                    onLightSourceChange = { projectViewModel.updateSpectrumLightSource(it) },
+                    spectrumTrackCount = spectrumTrackCount,
+                    spectrumMaxTrackCount = spectrumMaxTrackCount,
+                    onIncrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount + 1) },
+                    onDecrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount - 1) },
+                    spectrumMapping = spectrumMapping,
+                    onSelectAnalyte = { track ->
+                        pendingTrackIndex = track
+                        showSpectrumAnalyteDialog = true
+                    }
+                )
+            }
+            }
+
+            if (detectionMode != DetectionMode.SPECTRUM) {
+                // 分析物配置部分 - 仅标准模式显示
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 分析物选择和配置部分
+                Text(
+                    text = stringResource(R.string.analyte_configuration),
                     modifier = Modifier
                         .fillMaxWidth()
-                ) {
-                    // 分析物列表
+                        .padding(bottom = 8.dp),
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF333333)
+                )
+
+                if (selectedAnalyteConfigs.isEmpty()) {
+                    // 无分析物时显示提示和添加按钮
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 300.dp)
-                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        selectedAnalyteConfigs.forEach { analyteConfig ->
-                            AnalyteConfigItem(
-                                analyteConfig = analyteConfig,
-                                availableUnits = availableConcentrationUnits.toList(),
-                                onConfigChanged = { analyteId, newConcentration, newUnit ->
-                                    projectViewModel.updateAnalyteConfig(
-                                        analyteId = analyteId,
-                                        newConcentration = newConcentration,
-                                        newUnit = newUnit
-                                    )
-                                },
-                                onDelete = { analyteId ->
-                                    projectViewModel.removeAnalyteConfig(analyteId)
-                                }
+                        Text(
+                            text = stringResource(R.string.no_analytes_selected),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF666666)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Button(
+                            onClick = { showAnalyteSelectionDialog = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF5D6B98)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null
                             )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(stringResource(R.string.add_analytes))
                         }
                     }
-
-                    // 添加分析物按钮
-                    Button(
-                        onClick = { showAnalyteSelectionDialog = true },
+                } else {
+                    // 显示已选择的分析物配置列表
+                    Column(
                         modifier = Modifier
-                            .align(Alignment.End)
-                            .padding(top = 8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF5D6B98)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
+                            .fillMaxWidth()
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(R.string.add_analytes))
+                        // 分析物列表
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 300.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            selectedAnalyteConfigs.forEach { analyteConfig ->
+                                AnalyteConfigItem(
+                                    analyteConfig = analyteConfig,
+                                    availableUnits = availableConcentrationUnits.toList(),
+                                    onConfigChanged = { analyteId, newConcentration, newUnit ->
+                                        projectViewModel.updateAnalyteConfig(
+                                            analyteId = analyteId,
+                                            newConcentration = newConcentration,
+                                            newUnit = newUnit
+                                        )
+                                    },
+                                    onDelete = { analyteId ->
+                                        projectViewModel.removeAnalyteConfig(analyteId)
+                                    }
+                                )
+                            }
+                        }
+
+                        // 添加分析物按钮
+                        Button(
+                            onClick = { showAnalyteSelectionDialog = true },
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .padding(top = 8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF5D6B98)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(stringResource(R.string.add_analytes))
+                        }
                     }
                 }
             }
@@ -706,147 +793,149 @@ fun NewProjectScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            if (!isSpectrum) {
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // 孔阵行列设置 - 移到项目图片之后
-            Text(
-                text = stringResource(R.string.row_column_settings),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF333333)
-            )
+                // 孔阵行列设置 - 移到项目图片之后
+                Text(
+                    text = stringResource(R.string.row_column_settings),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF333333)
+                )
 
-            // 行列输入框放在同一行
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // 行数输入框
-                Column(
-                    modifier = Modifier.weight(1f)
+                // 行列输入框放在同一行
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.rows),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF666666),
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
+                    // 行数输入框
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.rows),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF666666),
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
 
-                    // 使用与SettingsScreen相同的逻辑
-                    var rowsText by remember(rows) { mutableStateOf(rows.toString()) }
-                    var rowInputError by remember { mutableStateOf(false) }
+                        // 使用与SettingsScreen相同的逻辑
+                        var rowsText by remember(rows) { mutableStateOf(rows.toString()) }
+                        var rowInputError by remember { mutableStateOf(false) }
 
-                    OutlinedTextField(
-                        value = rowsText,
-                        onValueChange = { value ->
-                            // 仅接受数字输入
-                            if (value.isEmpty()) {
-                                rowsText = value
-                                rowInputError = false
-                            } else if (value.matches(Regex("^[0-9]+$"))) {
-                                val numValue = value.toInt()
-                                // 检查行*列是否小于等于96
-                                if (numValue > 0 && numValue * columns <= 96) {
+                        OutlinedTextField(
+                            value = rowsText,
+                            onValueChange = { value ->
+                                // 仅接受数字输入
+                                if (value.isEmpty()) {
                                     rowsText = value
-                                    rows = numValue
                                     rowInputError = false
+                                } else if (value.matches(Regex("^[0-9]+$"))) {
+                                    val numValue = value.toInt()
+                                    // 检查行*列是否小于等于96
+                                    if (numValue > 0 && numValue * columns <= 96) {
+                                        rowsText = value
+                                        rows = numValue
+                                        rowInputError = false
+                                    } else {
+                                        rowInputError = true
+                                        toastManager.showToast(context.getString(R.string.plate_size_limit_exceeded), ToastType.WARNING)
+                                    }
                                 } else {
+                                    // 非数字输入，不更新值，显示错误
                                     rowInputError = true
-                                    toastManager.showToast(context.getString(R.string.plate_size_limit_exceeded), ToastType.WARNING)
+                                    toastManager.showToast(context.getString(R.string.input_number_only), ToastType.ERROR)
                                 }
-                            } else {
-                                // 非数字输入，不更新值，显示错误
-                                rowInputError = true
-                                toastManager.showToast(context.getString(R.string.input_number_only), ToastType.ERROR)
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Number
-                        ),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.GridView,
-                                contentDescription = null,
-                                tint = Color(0xFF5D6B98)
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = TextFieldDefaults.outlinedTextFieldColors(
-                            focusedBorderColor = if (rowInputError) Color.Red else Color(0xFF5D6B98),
-                            unfocusedBorderColor = if (rowInputError) Color.Red else Color(0xFFDDDDDD),
-                            errorBorderColor = Color.Red,
-                            errorTrailingIconColor = Color.Red
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        singleLine = true,
-                        isError = rowInputError
-                    )
-                }
+                            },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number
+                            ),
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.GridView,
+                                    contentDescription = null,
+                                    tint = Color(0xFF5D6B98)
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = TextFieldDefaults.outlinedTextFieldColors(
+                                focusedBorderColor = if (rowInputError) Color.Red else Color(0xFF5D6B98),
+                                unfocusedBorderColor = if (rowInputError) Color.Red else Color(0xFFDDDDDD),
+                                errorBorderColor = Color.Red,
+                                errorTrailingIconColor = Color.Red
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            singleLine = true,
+                            isError = rowInputError
+                        )
+                    }
 
-                // 列数输入框
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = stringResource(R.string.columns),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF666666),
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
+                    // 列数输入框
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.columns),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF666666),
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
 
-                    // 使用与SettingsScreen相同的逻辑
-                    var columnsText by remember(columns) { mutableStateOf(columns.toString()) }
-                    var columnInputError by remember { mutableStateOf(false) }
+                        // 使用与SettingsScreen相同的逻辑
+                        var columnsText by remember(columns) { mutableStateOf(columns.toString()) }
+                        var columnInputError by remember { mutableStateOf(false) }
 
-                    OutlinedTextField(
-                        value = columnsText,
-                        onValueChange = { value ->
-                            // 仅接受数字输入
-                            if (value.isEmpty()) {
-                                columnsText = value
-                                columnInputError = false
-                            } else if (value.matches(Regex("^[0-9]+$"))) {
-                                val numValue = value.toInt()
-                                // 检查行*列是否小于等于96
-                                if (numValue > 0 && rows * numValue <= 96) {
+                        OutlinedTextField(
+                            value = columnsText,
+                            onValueChange = { value ->
+                                // 仅接受数字输入
+                                if (value.isEmpty()) {
                                     columnsText = value
-                                    columns = numValue
                                     columnInputError = false
+                                } else if (value.matches(Regex("^[0-9]+$"))) {
+                                    val numValue = value.toInt()
+                                    // 检查行*列是否小于等于96
+                                    if (numValue > 0 && rows * numValue <= 96) {
+                                        columnsText = value
+                                        columns = numValue
+                                        columnInputError = false
+                                    } else {
+                                        columnInputError = true
+                                        toastManager.showToast(context.getString(R.string.plate_size_limit_exceeded), ToastType.WARNING)
+                                    }
                                 } else {
+                                    // 非数字输入，不更新值，显示错误
                                     columnInputError = true
-                                    toastManager.showToast(context.getString(R.string.plate_size_limit_exceeded), ToastType.WARNING)
+                                    toastManager.showToast(context.getString(R.string.input_number_only), ToastType.ERROR)
                                 }
-                            } else {
-                                // 非数字输入，不更新值，显示错误
-                                columnInputError = true
-                                toastManager.showToast(context.getString(R.string.input_number_only), ToastType.ERROR)
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Number
-                        ),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.GridView,
-                                contentDescription = null,
-                                tint = Color(0xFF5D6B98)
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = TextFieldDefaults.outlinedTextFieldColors(
-                            focusedBorderColor = if (columnInputError) Color.Red else Color(0xFF5D6B98),
-                            unfocusedBorderColor = if (columnInputError) Color.Red else Color(0xFFDDDDDD),
-                            errorBorderColor = Color.Red,
-                            errorTrailingIconColor = Color.Red
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        singleLine = true,
-                        isError = columnInputError
-                    )
+                            },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number
+                            ),
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.GridView,
+                                    contentDescription = null,
+                                    tint = Color(0xFF5D6B98)
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = TextFieldDefaults.outlinedTextFieldColors(
+                                focusedBorderColor = if (columnInputError) Color.Red else Color(0xFF5D6B98),
+                                unfocusedBorderColor = if (columnInputError) Color.Red else Color(0xFFDDDDDD),
+                                errorBorderColor = Color.Red,
+                                errorTrailingIconColor = Color.Red
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            singleLine = true,
+                            isError = columnInputError
+                        )
+                    }
                 }
             }
 
@@ -855,32 +944,45 @@ fun NewProjectScreen(
             // 提交按钮
             Button(
                 onClick = {
-                    // 创建项目前检查行列是否已输入
                     if (projectName.isBlank()) {
                         toastManager.showToast(enterProjectNameMessage, ToastType.WARNING)
                         return@Button
                     }
-
                     if (projectImageUri == null) {
                         toastManager.showToast(selectImageMessage, ToastType.WARNING)
                         return@Button
                     }
 
-                    // 检查是否选择了至少一个分析物（无论选择哪种分析方法）
-                    if (selectedAnalyteConfigs.isEmpty()) {
-                        toastManager.showToast(context.getString(R.string.configure_at_least_one_analyte), ToastType.WARNING)
-                        return@Button
-                    }
-
-                    // 检查行列是否已输入
-                    if (rows <= 0 || columns <= 0) {
-                        toastManager.showToast(context.getString(R.string.input_rows_columns), ToastType.WARNING)
-                        return@Button
+                    if (isSpectrum) {
+                        // 光谱模式：每个通道需绑定分析物
+                        val missing = (1..spectrumTrackCount).any { spectrumMapping[it] == null }
+                        if (missing) {
+                            toastManager.showToast(
+                                context.getString(R.string.spectrum_mapping_incomplete),
+                                ToastType.WARNING
+                            )
+                            return@Button
+                        }
+                    } else {
+                        // 标准模式：至少一个分析物，行列有效
+                        if (selectedAnalyteConfigs.isEmpty()) {
+                            toastManager.showToast(
+                                context.getString(R.string.configure_at_least_one_analyte),
+                                ToastType.WARNING
+                            )
+                            return@Button
+                        }
+                        if (rows <= 0 || columns <= 0) {
+                            toastManager.showToast(
+                                context.getString(R.string.input_rows_columns),
+                                ToastType.WARNING
+                            )
+                            return@Button
+                        }
                     }
 
                     isSubmitting = true
 
-                    // 创建项目 - 使用当前用户ID
                     scope.launch {
                         try {
                             val newProjectId = projectViewModel.createProject(
@@ -888,7 +990,7 @@ fun NewProjectScreen(
                                 detectionMode = detectionMode,
                                 analysisMethod = analysisMethod,
                                 imageUri = projectImageUri.toString(),
-                                userId = currentUser?.id.toString(), // 使用当前用户ID
+                                userId = currentUser?.id.toString(),
                                 rows = rows,
                                 columns = columns
                             )
@@ -896,21 +998,20 @@ fun NewProjectScreen(
                             if (newProjectId != null) {
                                 toastManager.showToast(projectCreationSuccessMessage, ToastType.SUCCESS)
 
-                                // 根据是否启用图像矫正和分析方法决定导航
-                                if (enableImageCorrection) {
-                                    // 导航到图像矫正页面 - 使用 createRoute 方法
+                                if (isSpectrum) {
+                                    navController.navigate(Screen.Home.route) {
+                                        popUpTo(Screen.NewProject.route) { inclusive = true }
+                                    }
+                                } else if (enableImageCorrection) {
                                     navController.navigate(
                                         Screen.ImageCorrection.createRoute(Uri.encode(projectImageUri.toString()), newProjectId)
                                     ) {
                                         popUpTo(Screen.NewProject.route) { inclusive = true }
                                     }
                                 } else {
-                                    // 无论选择哪种分析方法，都先导航到孔阵检测页面
-                                    // 这确保了标准曲线拟合也能正确检测孔位并进行像素提取
                                     navController.navigate(
                                         Screen.WellDetection.createRoute(Uri.encode(projectImageUri.toString()), newProjectId)
                                     ) {
-                                        // 可选: 设置导航选项，例如弹出当前页面
                                         popUpTo(Screen.NewProject.route) { inclusive = true }
                                     }
                                 }
@@ -919,7 +1020,10 @@ fun NewProjectScreen(
                                 isSubmitting = false
                             }
                         } catch (e: Exception) {
-                            toastManager.showToast(context.getString(R.string.project_creation_error, e.message ?: ""), ToastType.ERROR)
+                            toastManager.showToast(
+                                context.getString(R.string.project_creation_error, e.message ?: ""),
+                                ToastType.ERROR
+                            )
                             isSubmitting = false
                         }
                     }
@@ -1068,6 +1172,27 @@ fun NewProjectScreen(
                 },
                 onDismiss = {
                     showAnalyteSelectionDialog = false
+                }
+            )
+        }
+
+        // 光谱模式的单通道绑定选择
+        if (showSpectrumAnalyteDialog) {
+            AnalyteSelectionDialog(
+                availableAnalytes = availableAnalytes,
+                selectedAnalytes = emptyList(),
+                onConfirm = { analytes ->
+                    val track = pendingTrackIndex
+                    val selected = analytes.firstOrNull()
+                    if (track != null && selected != null) {
+                        projectViewModel.bindAnalyteToTrack(track, selected)
+                    }
+                    showSpectrumAnalyteDialog = false
+                    pendingTrackIndex = null
+                },
+                onDismiss = {
+                    showSpectrumAnalyteDialog = false
+                    pendingTrackIndex = null
                 }
             )
         }

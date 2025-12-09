@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.ProjectAnalyteJoin
+import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
 import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.ui.screens.project.DetectionMode
 import com.muc.fluocolorquant.ui.screens.project.AnalysisMethod
+import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +57,17 @@ class ProjectViewModel @Inject constructor(
     private val _availableAnalytes = MutableStateFlow<List<Analyte>>(emptyList())
     val availableAnalytes: StateFlow<List<Analyte>> = _availableAnalytes.asStateFlow()
 
+    // 光谱相关状态
+    val availableLightSources: List<SpectrumLightSource> = SpectrumLightSource.values().toList()
+    private val _spectrumLightSource = MutableStateFlow(SpectrumLightSource.LED_WHITE)
+    val spectrumLightSource: StateFlow<SpectrumLightSource> = _spectrumLightSource.asStateFlow()
+    private val _spectrumTrackCount = MutableStateFlow(SettingsRepository.DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT)
+    val spectrumTrackCount: StateFlow<Int> = _spectrumTrackCount.asStateFlow()
+    private val _spectrumMaxTrackCount = MutableStateFlow(SettingsRepository.DEFAULT_SPECTRUM_MAX_TRACK_COUNT)
+    val spectrumMaxTrackCount: StateFlow<Int> = _spectrumMaxTrackCount.asStateFlow()
+    private val _spectrumColumnMapping = MutableStateFlow<Map<Int, Analyte>>(emptyMap())
+    val spectrumColumnMapping: StateFlow<Map<Int, Analyte>> = _spectrumColumnMapping.asStateFlow()
+
     // 选中的分析物配置列表 - 核心状态，UI将直接观察和修改这个列表
     private val _selectedAnalyteConfigs = MutableStateFlow<List<AnalyteConfig>>(emptyList())
     val selectedAnalyteConfigs: StateFlow<List<AnalyteConfig>> = _selectedAnalyteConfigs.asStateFlow()
@@ -67,6 +80,7 @@ class ProjectViewModel @Inject constructor(
         // 初始化时加载所有项目和分析物
         loadProjects()
         loadAnalytes()
+        loadSpectrumDefaults()
     }
 
     // 加载所有项目
@@ -95,9 +109,56 @@ class ProjectViewModel @Inject constructor(
         }
     }
 
+    private fun loadSpectrumDefaults() {
+        viewModelScope.launch {
+            try {
+                val defaultTracks = settingsRepository.spectrumDefaultTrackCountFlow.first()
+                val maxTracks = settingsRepository.spectrumMaxTrackCountFlow.first()
+                val lightSourceName = settingsRepository.spectrumDefaultLightSourceFlow.first()
+                _spectrumTrackCount.value = defaultTracks
+                _spectrumMaxTrackCount.value = maxTracks
+                _spectrumLightSource.value = runCatching { SpectrumLightSource.valueOf(lightSourceName) }
+                    .getOrDefault(SpectrumLightSource.LED_WHITE)
+            } catch (_: Exception) {
+                _spectrumTrackCount.value = SettingsRepository.DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT
+                _spectrumMaxTrackCount.value = SettingsRepository.DEFAULT_SPECTRUM_MAX_TRACK_COUNT
+                _spectrumLightSource.value = SpectrumLightSource.LED_WHITE
+            }
+        }
+    }
+
     // 设置分析方法
     fun setAnalysisMethod(method: String) {
         _analysisMethod.value = method
+    }
+
+    fun updateDetectionMode(mode: DetectionMode) {
+        if (mode != DetectionMode.SPECTRUM) {
+            // 非光谱模式时重置光谱映射，避免串数据
+            _spectrumColumnMapping.value = emptyMap()
+        } else {
+            // 进入光谱模式时确保通道数在合法范围
+            val clamped = _spectrumTrackCount.value.coerceIn(1, _spectrumMaxTrackCount.value)
+            _spectrumTrackCount.value = clamped
+        }
+    }
+
+    fun updateSpectrumTrackCount(count: Int) {
+        val clamped = count.coerceIn(1, _spectrumMaxTrackCount.value)
+        _spectrumTrackCount.value = clamped
+        // 移除超出范围的绑定
+        val filtered = _spectrumColumnMapping.value.filterKeys { it <= clamped }
+        _spectrumColumnMapping.value = filtered
+    }
+
+    fun bindAnalyteToTrack(trackIndex: Int, analyte: Analyte) {
+        val newMap = _spectrumColumnMapping.value.toMutableMap()
+        newMap[trackIndex] = analyte
+        _spectrumColumnMapping.value = newMap
+    }
+
+    fun updateSpectrumLightSource(lightSource: SpectrumLightSource) {
+        _spectrumLightSource.value = lightSource
     }
 
     // 当用户在多选对话框中确定分析物列表后调用
@@ -157,6 +218,17 @@ class ProjectViewModel @Inject constructor(
 
             val projectId = UUID.randomUUID().toString()
 
+            val isSpectrum = detectionMode == DetectionMode.SPECTRUM
+            val spectrumTrackCount = _spectrumTrackCount.value.coerceAtLeast(1)
+
+            if (isSpectrum) {
+                if (imageUri.isBlank()) return null
+                // 确保每个通道都已绑定分析物
+                for (index in 1..spectrumTrackCount) {
+                    if (_spectrumColumnMapping.value[index] == null) return null
+                }
+            }
+
             // 创建Project对象，不再包含maxConcentration和concentrationUnit字段
             val project = Project(
                 id = projectId,
@@ -164,30 +236,36 @@ class ProjectViewModel @Inject constructor(
                 detectionMode = detectionMode.name,
                 recognitionType = "AUTO", // 保留兼容性，后续可移除
                 imageUri = imageUri,
-                rows = rows ?: defaultRows, // 使用传入的行数或默认值
-                columns = columns ?: defaultColumns, // 使用传入的列数或默认值
+                rows = if (isSpectrum) 1 else rows ?: defaultRows, // 光谱模式固定单通道区域
+                columns = if (isSpectrum) 1 else columns ?: defaultColumns,
                 createTime = Date(),
                 userId = userId ?: "guest",
                 lastRunTimestamp = null, // 新项目还没有运行记录
                 analysisMethod = analysisMethod.name,
+                lightSource = if (isSpectrum) _spectrumLightSource.value.name else null,
+                spectrumColumnCount = if (isSpectrum) spectrumTrackCount else 1,
+                spectrumColumnMappingJson = if (isSpectrum) {
+                    Gson().toJson(_spectrumColumnMapping.value.mapValues { it.value.id })
+                } else null
             )
 
             // 保存项目到数据库
             projectRepository.createProject(project)
 
-            // 为每个选中的分析物创建关联
-            _selectedAnalyteConfigs.value.forEach { config ->
-                val analyteJoin = ProjectAnalyteJoin(
-                    projectId = projectId,
-                    analyteId = config.analyte.id,
-                    // 无论选择哪种分析方法，都保存maxConcentration和concentrationUnit值
-                    maxConcentration = config.maxConcentration.toDoubleOrNull(),
-                    concentrationUnit = config.concentrationUnit,
-                    fkTemplateId = null // 这将在后续步骤中设置（如果是曲线拟合模式）
-                )
+            if (!isSpectrum) {
+                // 为每个选中的分析物创建关联（标准模式）
+                _selectedAnalyteConfigs.value.forEach { config ->
+                    val analyteJoin = ProjectAnalyteJoin(
+                        projectId = projectId,
+                        analyteId = config.analyte.id,
+                        maxConcentration = config.maxConcentration.toDoubleOrNull(),
+                        concentrationUnit = config.concentrationUnit,
+                        fkTemplateId = null // 这将在后续步骤中设置（如果是曲线拟合模式）
+                    )
 
-                // 插入关联记录
-                projectAnalyteJoinRepository.addProjectAnalyteJoin(analyteJoin)
+                    // 插入关联记录
+                    projectAnalyteJoinRepository.addProjectAnalyteJoin(analyteJoin)
+                }
             }
 
             // 检查是否是单孔(1x1)项目

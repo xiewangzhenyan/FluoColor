@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
@@ -447,6 +448,12 @@ fun HomePageContent(
                         icon = Icons.Filled.Science,
                         title = stringResource(R.string.fluorescence_detection),
                         description = stringResource(R.string.fluorescence_description)
+                    )
+
+                    FunctionItemWithIcon(
+                        icon = Icons.Filled.GraphicEq,
+                        title = stringResource(R.string.spectrum_detection_title),
+                        description = stringResource(R.string.spectrum_detection_desc)
                     )
 
                     FunctionItemWithIcon(

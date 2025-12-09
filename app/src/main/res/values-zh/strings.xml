@@ -105,6 +105,16 @@
     <string name="spectrum_max_wavelength_label">光谱最大波长 (nm)</string>
     <string name="spectrum_smoothing_label">光谱平滑等级</string>
     <string name="spectrum_sensitivity_label">光谱灵敏度</string>
+    <string name="spectrum_light_mercury">汞灯</string>
+    <string name="spectrum_light_halogen">卤素灯</string>
+    <string name="spectrum_light_led_white">白光LED</string>
+    <string name="spectrum_light_sunlight">太阳光</string>
+    <string name="spectrum_light_custom">自定义</string>
+    <string name="spectrum_light_source_label">光源选择</string>
+    <string name="spectrum_channel_count_label">通道数量</string>
+    <string name="spectrum_analyte_binding">分析物通道绑定</string>
+    <string name="spectrum_select_analyte">选择分析物</string>
+    <string name="spectrum_mapping_incomplete">请为所有通道绑定分析物</string>
     
     <!-- Login Screen -->
     <string name="app_description_short">智能比色与荧光检测分析平台</string>

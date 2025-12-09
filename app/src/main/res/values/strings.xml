@@ -105,6 +105,16 @@
     <string name="spectrum_max_wavelength_label">Spectrum Max Wavelength (nm)</string>
     <string name="spectrum_smoothing_label">Spectrum Smoothing Level</string>
     <string name="spectrum_sensitivity_label">Spectrum Sensitivity</string>
+    <string name="spectrum_light_mercury">Mercury Lamp</string>
+    <string name="spectrum_light_halogen">Halogen Lamp</string>
+    <string name="spectrum_light_led_white">White LED</string>
+    <string name="spectrum_light_sunlight">Sunlight</string>
+    <string name="spectrum_light_custom">Custom</string>
+    <string name="spectrum_light_source_label">Light Source</string>
+    <string name="spectrum_channel_count_label">Channel Count</string>
+    <string name="spectrum_analyte_binding">Analyte Channel Binding</string>
+    <string name="spectrum_select_analyte">Select analyte</string>
+    <string name="spectrum_mapping_incomplete">Please bind analytes for all channels</string>
 
     <!-- Login Screen -->
     <string name="app_description_short">Intelligent colorimetric and fluorescence detection platform</string>
