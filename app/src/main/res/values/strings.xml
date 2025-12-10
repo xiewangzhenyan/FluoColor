@@ -112,9 +112,14 @@
     <string name="spectrum_light_custom">Custom</string>
     <string name="spectrum_light_source_label">Light Source</string>
     <string name="spectrum_channel_count_label">Channel Count</string>
+    <string name="channel_count_with_limit">%1$d / %2$d available channels</string>
+    <string name="channel_config_title">Channel Configuration</string>
+    <string name="spectrum_channel_label">Channel %1$d</string>
     <string name="spectrum_analyte_binding">Analyte Channel Binding</string>
     <string name="spectrum_select_analyte">Select analyte</string>
     <string name="spectrum_mapping_incomplete">Please bind analytes for all channels</string>
+    <string name="channel_bound_label">Bound</string>
+    <string name="spectrum_unbound_analyte">Unbound analyte</string>
 
     <!-- Login Screen -->
     <string name="app_description_short">Intelligent colorimetric and fluorescence detection platform</string>

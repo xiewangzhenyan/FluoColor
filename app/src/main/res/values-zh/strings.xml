@@ -112,9 +112,14 @@
     <string name="spectrum_light_custom">自定义</string>
     <string name="spectrum_light_source_label">光源选择</string>
     <string name="spectrum_channel_count_label">通道数量</string>
+    <string name="channel_count_with_limit">%1$d / %2$d 个可用通道</string>
+    <string name="channel_config_title">通道配置</string>
+    <string name="spectrum_channel_label">通道 %1$d</string>
     <string name="spectrum_analyte_binding">分析物通道绑定</string>
     <string name="spectrum_select_analyte">选择分析物</string>
     <string name="spectrum_mapping_incomplete">请为所有通道绑定分析物</string>
+    <string name="channel_bound_label">已绑定</string>
+    <string name="spectrum_unbound_analyte">未绑定分析物</string>
     
     <!-- Login Screen -->
     <string name="app_description_short">智能比色与荧光检测分析平台</string>

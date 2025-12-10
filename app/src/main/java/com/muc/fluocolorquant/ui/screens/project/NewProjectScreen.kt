@@ -4,10 +4,8 @@ package com.muc.fluocolorquant.ui.screens.project
 
 import android.content.Context
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,12 +15,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material3.*
-import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -59,10 +57,10 @@ import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.PermissionStatus
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.heightIn
 import com.muc.fluocolorquant.ui.viewmodels.AnalyteConfig
+import com.muc.fluocolorquant.data.model.Analyte
+import androidx.compose.ui.text.style.TextOverflow
 
 // 检测模式枚举
 enum class DetectionMode {
@@ -350,202 +348,116 @@ fun NewProjectScreen(
                 color = Color(0xFF333333)
             )
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 荧光检测
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable {
-                            detectionMode = DetectionMode.FLUORESCENCE
-                            projectViewModel.updateDetectionMode(DetectionMode.FLUORESCENCE)
-                        }
-                ) {
-                    RadioButton(
-                        selected = detectionMode == DetectionMode.FLUORESCENCE,
-                        onClick = {
-                            detectionMode = DetectionMode.FLUORESCENCE
-                            projectViewModel.updateDetectionMode(DetectionMode.FLUORESCENCE)
-                        },
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = Color(0xFF5D6B98)
-                        )
-                    )
-                    Text(
-                        text = stringResource(R.string.fluorescence_mode),
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
+            DetectionModeSegmentedControl(
+                selectedMode = detectionMode,
+                onSelect = { mode ->
+                    detectionMode = mode
+                    projectViewModel.updateDetectionMode(mode)
                 }
+            )
 
-                // 比色检测
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable {
-                            detectionMode = DetectionMode.COLORIMETRIC
-                            projectViewModel.updateDetectionMode(DetectionMode.COLORIMETRIC)
-                        }
-                ) {
-                    RadioButton(
-                        selected = detectionMode == DetectionMode.COLORIMETRIC,
-                        onClick = {
-                            detectionMode = DetectionMode.COLORIMETRIC
-                            projectViewModel.updateDetectionMode(DetectionMode.COLORIMETRIC)
-                        },
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = Color(0xFF5D6B98)
-                        )
-                    )
-                    Text(
-                        text = stringResource(R.string.colorimetric_mode),
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // 光谱检测
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable {
-                            detectionMode = DetectionMode.SPECTRUM
-                            projectViewModel.updateDetectionMode(DetectionMode.SPECTRUM)
-                        }
-                ) {
-                    RadioButton(
-                        selected = detectionMode == DetectionMode.SPECTRUM,
-                        onClick = {
-                            detectionMode = DetectionMode.SPECTRUM
-                            projectViewModel.updateDetectionMode(DetectionMode.SPECTRUM)
-                        },
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = Color(0xFF5D6B98)
-                        )
-                    )
-                    Text(
-                        text = stringResource(R.string.spectrum_detection_title),
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (detectionMode == DetectionMode.SPECTRUM) {
-                SpectrumConfigSection(
-                    availableLightSources = availableLightSources,
-                    spectrumLightSource = spectrumLightSource,
-                    onLightSourceChange = { projectViewModel.updateSpectrumLightSource(it) },
-                    spectrumTrackCount = spectrumTrackCount,
-                    spectrumMaxTrackCount = spectrumMaxTrackCount,
-                    onIncrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount + 1) },
-                    onDecrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount - 1) },
-                    spectrumMapping = spectrumMapping,
-                    onSelectAnalyte = { track ->
-                        pendingTrackIndex = track
-                        showSpectrumAnalyteDialog = true
-                    }
-                )
-            } else {
-            if (!isSpectrum) {
-                // 分析方法下拉菜单
-                Text(
-                    text = stringResource(R.string.analysis_method),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF333333)
-                )
-
-                ExposedDropdownMenuBox(
-                    expanded = isAnalysisMethodMenuExpanded,
-                    onExpandedChange = { isAnalysisMethodMenuExpanded = !isAnalysisMethodMenuExpanded },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp)
-                ) {
-                    OutlinedTextField(
-                        value = when (analysisMethod) {
-                            AnalysisMethod.DL_MODEL -> stringResource(R.string.dl_model_option)
-                            AnalysisMethod.CURVE_FIT -> stringResource(R.string.curve_fit_option)
-                        },
-                        onValueChange = { /* No action needed for readOnly field */ },
-                        readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isAnalysisMethodMenuExpanded) },
-                        modifier = Modifier
-                            .menuAnchor() // Important for ExposedDropdownMenuBox
-                            .fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF5D6B98),
-                            unfocusedBorderColor = Color(0xFFDDDDDD),
-                            focusedTrailingIconColor = Color(0xFF5D6B98),
-                            unfocusedTrailingIconColor = Color(0xFF5D6B98),
-                            disabledTextColor = LocalContentColor.current,
-                            disabledBorderColor = Color(0xFFDDDDDD),
-                            disabledTrailingIconColor = Color(0xFF5D6B98)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = isAnalysisMethodMenuExpanded,
-                        onDismissRequest = { isAnalysisMethodMenuExpanded = false },
-                        modifier = Modifier.fillMaxWidth() // 使下拉菜单宽度与输入框匹配
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.dl_model_option)) },
-                            onClick = {
-                                analysisMethod = AnalysisMethod.DL_MODEL
-                                isAnalysisMethodMenuExpanded = false
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome, // 更新为更合适的图标
-                                    contentDescription = null,
-                                    tint = Color(0xFF5D6B98)
-                                )
-                            }
+            Crossfade(targetState = isSpectrum) { spectrum ->
+                if (spectrum) {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        SpectrumLightSourceDropdown(
+                            availableLightSources = availableLightSources,
+                            selectedLightSource = spectrumLightSource,
+                            onSelectLightSource = { projectViewModel.updateSpectrumLightSource(it) }
                         )
 
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.curve_fit_option)) },
-                            onClick = {
-                                analysisMethod = AnalysisMethod.CURVE_FIT
-                                isAnalysisMethodMenuExpanded = false
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.AutoGraph, // 更新为更合适的图标
-                                    contentDescription = null,
-                                    tint = Color(0xFF5D6B98)
-                                )
+                        // Combined Channel Configuration Card
+                        SpectrumChannelConfigCard(
+                            spectrumTrackCount = spectrumTrackCount,
+                            spectrumMaxTrackCount = spectrumMaxTrackCount,
+                            spectrumMapping = spectrumMapping,
+                            onIncrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount + 1) },
+                            onDecrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount - 1) },
+                            onSelectAnalyte = { track ->
+                                pendingTrackIndex = track
+                                showSpectrumAnalyteDialog = true
                             }
                         )
                     }
-                }
-            } else {
-                SpectrumConfigSection(
-                    availableLightSources = availableLightSources,
-                    spectrumLightSource = spectrumLightSource,
-                    onLightSourceChange = { projectViewModel.updateSpectrumLightSource(it) },
-                    spectrumTrackCount = spectrumTrackCount,
-                    spectrumMaxTrackCount = spectrumMaxTrackCount,
-                    onIncrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount + 1) },
-                    onDecrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount - 1) },
-                    spectrumMapping = spectrumMapping,
-                    onSelectAnalyte = { track ->
-                        pendingTrackIndex = track
-                        showSpectrumAnalyteDialog = true
+                } else {
+                    Column {
+                        // 分析方法下拉菜单
+                        Text(
+                            text = stringResource(R.string.analysis_method),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF333333)
+                        )
+
+                        ExposedDropdownMenuBox(
+                            expanded = isAnalysisMethodMenuExpanded,
+                            onExpandedChange = { isAnalysisMethodMenuExpanded = !isAnalysisMethodMenuExpanded },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            OutlinedTextField(
+                                value = when (analysisMethod) {
+                                    AnalysisMethod.DL_MODEL -> stringResource(R.string.dl_model_option)
+                                    AnalysisMethod.CURVE_FIT -> stringResource(R.string.curve_fit_option)
+                                },
+                                onValueChange = { /* No action needed for readOnly field */ },
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isAnalysisMethodMenuExpanded) },
+                                modifier = Modifier
+                                    .menuAnchor() // Important for ExposedDropdownMenuBox
+                                    .fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color(0xFF5D6B98),
+                                    unfocusedBorderColor = Color(0xFFDDDDDD),
+                                    focusedTrailingIconColor = Color(0xFF5D6B98),
+                                    unfocusedTrailingIconColor = Color(0xFF5D6B98),
+                                    disabledTextColor = LocalContentColor.current,
+                                    disabledBorderColor = Color(0xFFDDDDDD),
+                                    disabledTrailingIconColor = Color(0xFF5D6B98)
+                                ),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+
+                            ExposedDropdownMenu(
+                                expanded = isAnalysisMethodMenuExpanded,
+                                onDismissRequest = { isAnalysisMethodMenuExpanded = false },
+                                modifier = Modifier.fillMaxWidth() // 使下拉菜单宽度与输入框匹配
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.dl_model_option)) },
+                                    onClick = {
+                                        analysisMethod = AnalysisMethod.DL_MODEL
+                                        isAnalysisMethodMenuExpanded = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome, // 更新为更合适的图标
+                                            contentDescription = null,
+                                            tint = Color(0xFF5D6B98)
+                                        )
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.curve_fit_option)) },
+                                    onClick = {
+                                        analysisMethod = AnalysisMethod.CURVE_FIT
+                                        isAnalysisMethodMenuExpanded = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoGraph, // 更新为更合适的图标
+                                            contentDescription = null,
+                                            tint = Color(0xFF5D6B98)
+                                        )
+                                    }
+                                )
+                            }
+                        }
                     }
-                )
-            }
+                }
             }
 
             if (detectionMode != DetectionMode.SPECTRUM) {
@@ -1195,6 +1107,458 @@ fun NewProjectScreen(
                     pendingTrackIndex = null
                 }
             )
+        }
+    }
+}
+
+@Composable
+fun SpectrumLightSourceDropdown(
+    availableLightSources: List<SpectrumLightSource>,
+    selectedLightSource: SpectrumLightSource,
+    onSelectLightSource: (SpectrumLightSource) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .border(1.dp, Color(0xFFE3E5ED), RoundedCornerShape(12.dp))
+            .padding(16.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.spectrum_light_source_label),
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF2D3142)
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            OutlinedTextField(
+                value = stringResource(selectedLightSource.displayNameRes),
+                onValueChange = {},
+                readOnly = true,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Lightbulb,
+                        contentDescription = null,
+                        tint = Color(0xFF5D6B98)
+                    )
+                },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF5D6B98),
+                    unfocusedBorderColor = Color(0xFFDDDDDD)
+                ),
+                shape = RoundedCornerShape(10.dp)
+            )
+
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                availableLightSources.forEach { lightSource ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(lightSource.displayNameRes)) },
+                        onClick = {
+                            onSelectLightSource(lightSource)
+                            expanded = false
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Lightbulb,
+                                contentDescription = null,
+                                tint = Color(0xFF5D6B98)
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SpectrumTrackCountControl(
+    spectrumTrackCount: Int,
+    spectrumMaxTrackCount: Int,
+    onIncrementTrack: () -> Unit,
+    onDecrementTrack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .border(1.dp, Color(0xFFE3E5ED), RoundedCornerShape(12.dp))
+            .padding(16.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.spectrum_channel_count_label),
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF2D3142)
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFFF6F7FB))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            IconButton(
+                onClick = onDecrementTrack,
+                enabled = spectrumTrackCount > 1
+            ) {
+                Icon(
+                    imageVector = Icons.Default.RemoveCircle,
+                    contentDescription = null,
+                    tint = if (spectrumTrackCount > 1) Color(0xFF5D6B98) else Color(0xFFB0B3C0)
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.channel_count_with_limit, spectrumTrackCount, spectrumMaxTrackCount),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color(0xFF2D3142)
+                )
+            }
+
+            IconButton(
+                onClick = onIncrementTrack,
+                enabled = spectrumTrackCount < spectrumMaxTrackCount
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AddCircle,
+                    contentDescription = null,
+                    tint = if (spectrumTrackCount < spectrumMaxTrackCount) Color(0xFF5D6B98) else Color(0xFFB0B3C0)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SpectrumAnalyteBindingList(
+    spectrumTrackCount: Int,
+    spectrumMapping: Map<Int, Analyte>,
+    onSelectAnalyte: (Int) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .border(1.dp, Color(0xFFE3E5ED), RoundedCornerShape(12.dp))
+            .padding(16.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.spectrum_analyte_binding),
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF2D3142)
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            (1..spectrumTrackCount).forEach { track ->
+                val analyte = spectrumMapping[track]
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFF6F7FB))
+                        .border(
+                            1.dp,
+                            if (analyte != null) Color(0xFF5D6B98) else Color(0xFFE3E5ED),
+                            RoundedCornerShape(10.dp)
+                        )
+                        .clickable { onSelectAnalyte(track) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.spectrum_channel_label, track),
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF2D3142)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = analyte?.name ?: stringResource(R.string.spectrum_select_analyte),
+                            color = if (analyte != null) Color(0xFF5D6B98) else Color(0xFF6B7280),
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = Color(0xFF5D6B98)
+                    )
+                }
+            }
+        }
+    }
+}
+@Composable
+fun SpectrumChannelConfigCard(
+    spectrumTrackCount: Int,
+    spectrumMaxTrackCount: Int,
+    spectrumMapping: Map<Int, Analyte>,
+    onIncrementTrack: () -> Unit,
+    onDecrementTrack: () -> Unit,
+    onSelectAnalyte: (Int) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .border(1.dp, Color(0xFFE3E5ED), RoundedCornerShape(12.dp))
+            .padding(16.dp)
+    ) {
+        // Card Title
+        Text(
+            text = stringResource(R.string.channel_config_title),
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
+            color = Color(0xFF2D3142)
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Sub-card 1: Channel Count
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFFF6F7FB))
+                .padding(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.spectrum_channel_count_label),
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                color = Color(0xFF6B7280)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                IconButton(
+                    onClick = onDecrementTrack,
+                    enabled = spectrumTrackCount > 1,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.RemoveCircle,
+                        contentDescription = null,
+                        tint = if (spectrumTrackCount > 1) Color(0xFF5D6B98) else Color(0xFFB0B3C0)
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "$spectrumTrackCount",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Color(0xFF2D3142)
+                    )
+                    Text(
+                        text = "/$spectrumMaxTrackCount",
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 16.sp,
+                        color = Color(0xFF6B7280)
+                    )
+                }
+
+                IconButton(
+                    onClick = onIncrementTrack,
+                    enabled = spectrumTrackCount < spectrumMaxTrackCount,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddCircle,
+                        contentDescription = null,
+                        tint = if (spectrumTrackCount < spectrumMaxTrackCount) Color(0xFF5D6B98) else Color(0xFFB0B3C0)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Sub-card 2: Channel Binding List
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFFF6F7FB))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            (1..spectrumTrackCount).forEach { track ->
+                val analyte = spectrumMapping[track]
+                val isBound = analyte != null
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White)
+                        .border(
+                            1.dp,
+                            if (isBound) Color(0xFF5D6B98) else Color(0xFFE3E5ED),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .clickable { onSelectAnalyte(track) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.spectrum_channel_label, track),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = Color(0xFF2D3142)
+                            )
+                            // 已绑定标签
+                            if (isBound) {
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFF10B981).copy(alpha = 0.12f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color(0xFF10B981),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.channel_bound_label),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFF10B981)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (isBound) analyte!!.name else stringResource(R.string.spectrum_unbound_analyte),
+                            color = if (isBound) Color(0xFF5D6B98) else Color(0xFF9CA3AF),
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    // 右侧图标：已绑定显示箭头，未绑定显示添加图标
+                    Icon(
+                        imageVector = if (isBound) Icons.Default.ChevronRight else Icons.Default.AddCircleOutline,
+                        contentDescription = null,
+                        tint = if (isBound) Color(0xFF5D6B98) else Color(0xFF9CA3AF),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DetectionModeSegmentedControl(
+    selectedMode: DetectionMode,
+    onSelect: (DetectionMode) -> Unit
+) {
+    val items = listOf(
+        DetectionMode.FLUORESCENCE to R.string.fluorescence_mode,
+        DetectionMode.COLORIMETRIC to R.string.colorimetric_mode,
+        DetectionMode.SPECTRUM to R.string.spectrum_detection_title
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White),
+        horizontalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        items.forEachIndexed { index, (mode, labelRes) ->
+            val selected = mode == selectedMode
+            val background by animateColorAsState(
+                targetValue = if (selected) Color(0xFF5D6B98).copy(alpha = 0.12f) else Color.Transparent,
+                label = "mode-bg"
+            )
+            val textColor by animateColorAsState(
+                targetValue = if (selected) Color(0xFF5D6B98) else Color(0xFF9CA3AF),
+                label = "mode-text"
+            )
+            val borderColor by animateColorAsState(
+                targetValue = if (selected) Color(0xFF5D6B98) else Color(0xFFDDDDDD),
+                label = "mode-border"
+            )
+
+            val shape = when (index) {
+                0 -> RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)
+                items.lastIndex -> RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)
+                else -> RoundedCornerShape(0.dp)
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(shape)
+                    .background(background)
+                    .border(
+                        width = 1.dp,
+                        color = borderColor,
+                        shape = shape
+                    )
+                    .clickable { onSelect(mode) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(labelRes),
+                    color = textColor,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    fontSize = 14.sp
+                )
+            }
         }
     }
 }
