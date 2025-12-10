@@ -157,6 +157,44 @@ class ProjectViewModel @Inject constructor(
         _spectrumColumnMapping.value = newMap
     }
 
+    /**
+     * 批量绑定分析物到连续的通道
+     * @param startTrackIndex 起始通道索引(从1开始)
+     * @param analytes 要绑定的分析物列表
+     */
+    fun bindAnalytesToConsecutiveTracks(startTrackIndex: Int, analytes: List<Analyte>) {
+        val maxLimit = _spectrumMaxTrackCount.value
+        val currentTrackCount = _spectrumTrackCount.value
+        val newMap = _spectrumColumnMapping.value.toMutableMap()
+        
+        var maxUsedTrack = currentTrackCount // 记录实际使用的最大通道号
+        
+        analytes.forEachIndexed { index, analyte ->
+            val targetTrackIndex = startTrackIndex + index
+            
+            // 边界检查: 如果超过最大限制,停止处理
+            if (targetTrackIndex > maxLimit) {
+                return@forEachIndexed // 跳出循环
+            }
+            
+            // 绑定分析物到目标通道
+            newMap[targetTrackIndex] = analyte
+            
+            // 更新实际使用的最大通道号
+            if (targetTrackIndex > maxUsedTrack) {
+                maxUsedTrack = targetTrackIndex
+            }
+        }
+        
+        // 更新映射
+        _spectrumColumnMapping.value = newMap
+        
+        // 自动扩容: 如果填充的通道超过当前数量,自动更新通道数
+        if (maxUsedTrack > currentTrackCount) {
+            _spectrumTrackCount.value = maxUsedTrack
+        }
+    }
+
     fun updateSpectrumLightSource(lightSource: SpectrumLightSource) {
         _spectrumLightSource.value = lightSource
     }

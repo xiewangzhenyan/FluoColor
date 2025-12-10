@@ -1110,9 +1110,9 @@ fun NewProjectScreen(
                 selectedAnalytes = emptyList(),
                 onConfirm = { analytes ->
                     val track = pendingTrackIndex
-                    val selected = analytes.firstOrNull()
-                    if (track != null && selected != null) {
-                        projectViewModel.bindAnalyteToTrack(track, selected)
+                    if (track != null && analytes.isNotEmpty()) {
+                        // 批量绑定: 从当前通道开始,依次向下填充
+                        projectViewModel.bindAnalytesToConsecutiveTracks(track, analytes)
                     }
                     showSpectrumAnalyteDialog = false
                     pendingTrackIndex = null
