@@ -74,6 +74,15 @@ sealed class Screen(open val route: String) {
     // 曲线模型输入相关路由
     object ManualCurveInput : Screen("manual_curve_input")
     object ManualDataInput : Screen("manual_data_input")
+    
+    // 光谱标定页面路由
+    object SpectrumCalibration : Screen("spectrum_calibration/{projectId}/{imagePath}") {
+        fun createRoute(projectId: String, imageUri: String): String {
+            // 对 imageUri 进行编码，防止路径中的 '/' 导致导航错误
+            val encodedPath = android.net.Uri.encode(imageUri)
+            return "spectrum_calibration/$projectId/$encodedPath"
+        }
+    }
 
     // 带参数的路由
     class DetailRoute(val id: String) : Screen("detail/$id")

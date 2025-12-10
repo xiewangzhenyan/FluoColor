@@ -205,54 +205,83 @@ class ProjectViewModel @Inject constructor(
     suspend fun createProject(
         name: String,
         detectionMode: DetectionMode,
-        analysisMethod: AnalysisMethod,
+        analysisMethod: AnalysisMethod? = null,
         imageUri: String,
         userId: String? = null,
         rows: Int? = null,
         columns: Int? = null
     ): String? {
         return try {
-            // 从设置中获取默认行列值
-            val defaultRows = settingsRepository.defaultRowsFlow.first()
-            val defaultColumns = settingsRepository.defaultColumnsFlow.first()
-
             val projectId = UUID.randomUUID().toString()
-
             val isSpectrum = detectionMode == DetectionMode.SPECTRUM
-            val spectrumTrackCount = _spectrumTrackCount.value.coerceAtLeast(1)
 
             if (isSpectrum) {
+                // 分支 A: 光谱模式 (SPECTRUM)
                 if (imageUri.isBlank()) return null
+                
                 // 确保每个通道都已绑定分析物
+                val spectrumTrackCount = _spectrumTrackCount.value.coerceAtLeast(1)
                 for (index in 1..spectrumTrackCount) {
                     if (_spectrumColumnMapping.value[index] == null) return null
                 }
-            }
 
-            // 创建Project对象，不再包含maxConcentration和concentrationUnit字段
-            val project = Project(
-                id = projectId,
-                name = name,
-                detectionMode = detectionMode.name,
-                recognitionType = "AUTO", // 保留兼容性，后续可移除
-                imageUri = imageUri,
-                rows = if (isSpectrum) 1 else rows ?: defaultRows, // 光谱模式固定单通道区域
-                columns = if (isSpectrum) 1 else columns ?: defaultColumns,
-                createTime = Date(),
-                userId = userId ?: "guest",
-                lastRunTimestamp = null, // 新项目还没有运行记录
-                analysisMethod = analysisMethod.name,
-                lightSource = if (isSpectrum) _spectrumLightSource.value.name else null,
-                spectrumColumnCount = if (isSpectrum) spectrumTrackCount else 1,
-                spectrumColumnMappingJson = if (isSpectrum) {
-                    Gson().toJson(_spectrumColumnMapping.value.mapValues { it.value.id })
-                } else null
-            )
+                // 数据准备：转换为只包含 ID 的 Map 并序列化为 JSON
+                val mappingJson = Gson().toJson(_spectrumColumnMapping.value.mapValues { it.value.id })
 
-            // 保存项目到数据库
-            projectRepository.createProject(project)
+                // 创建 Project 对象（光谱模式）
+                val project = Project(
+                    id = projectId,
+                    name = name,
+                    detectionMode = detectionMode.name,
+                    recognitionType = "AUTO",
+                    imageUri = imageUri,
+                    rows = 1,  // 光谱模式固定值
+                    columns = 1,  // 光谱模式固定值
+                    createTime = Date(),
+                    userId = userId ?: "guest",
+                    lastRunTimestamp = null,
+                    analysisMethod = "LSPR_SPECTRUM",  // 光谱模式固定值
+                    lightSource = _spectrumLightSource.value.name,
+                    spectrumColumnCount = spectrumTrackCount,
+                    spectrumColumnMappingJson = mappingJson
+                )
 
-            if (!isSpectrum) {
+                // 保存项目到数据库
+                projectRepository.createProject(project)
+                
+                // 注意：光谱模式不保存 ProjectAnalyteJoin
+
+            } else {
+                // 分支 B: 标准模式 (FLUORESCENCE / COLORIMETRIC)
+                
+                // 处理默认值
+                val defaultRows = settingsRepository.defaultRowsFlow.first()
+                val defaultColumns = settingsRepository.defaultColumnsFlow.first()
+                val finalRows = rows ?: defaultRows
+                val finalColumns = columns ?: defaultColumns
+                val finalAnalysisMethod = analysisMethod ?: AnalysisMethod.DL_MODEL
+
+                // 创建 Project 对象（标准模式）
+                val project = Project(
+                    id = projectId,
+                    name = name,
+                    detectionMode = detectionMode.name,
+                    recognitionType = "AUTO",
+                    imageUri = imageUri,
+                    rows = finalRows,
+                    columns = finalColumns,
+                    createTime = Date(),
+                    userId = userId ?: "guest",
+                    lastRunTimestamp = null,
+                    analysisMethod = finalAnalysisMethod.name,
+                    lightSource = null,
+                    spectrumColumnCount = 1,
+                    spectrumColumnMappingJson = null
+                )
+
+                // 保存项目到数据库
+                projectRepository.createProject(project)
+
                 // 为每个选中的分析物创建关联（标准模式）
                 _selectedAnalyteConfigs.value.forEach { config ->
                     val analyteJoin = ProjectAnalyteJoin(
@@ -260,21 +289,17 @@ class ProjectViewModel @Inject constructor(
                         analyteId = config.analyte.id,
                         maxConcentration = config.maxConcentration.toDoubleOrNull(),
                         concentrationUnit = config.concentrationUnit,
-                        fkTemplateId = null // 这将在后续步骤中设置（如果是曲线拟合模式）
+                        fkTemplateId = null
                     )
-
-                    // 插入关联记录
                     projectAnalyteJoinRepository.addProjectAnalyteJoin(analyteJoin)
                 }
-            }
 
-            // 检查是否是单孔(1x1)项目
-            if (project.rows == 1 && project.columns == 1) {
-                // 触发模板选择对话框状态（如果是CURVE_FIT模式）
-                if (project.analysisMethod == "CURVE_FIT") {
-                    _showTemplateSelectionDialog.value = true
+                // 检查是否是单孔(1x1)项目
+                if (project.rows == 1 && project.columns == 1) {
+                    if (project.analysisMethod == "CURVE_FIT") {
+                        _showTemplateSelectionDialog.value = true
+                    }
                 }
-                // 注意：对于DL_MODEL模式的单孔处理逻辑将在UI层实现
             }
 
             // 刷新项目列表

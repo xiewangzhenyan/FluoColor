@@ -897,21 +897,36 @@ fun NewProjectScreen(
 
                     scope.launch {
                         try {
-                            val newProjectId = projectViewModel.createProject(
-                                name = projectName,
-                                detectionMode = detectionMode,
-                                analysisMethod = analysisMethod,
-                                imageUri = projectImageUri.toString(),
-                                userId = currentUser?.id.toString(),
-                                rows = rows,
-                                columns = columns
-                            )
+                            val newProjectId = if (isSpectrum) {
+                                // 光谱模式：不传递 analysisMethod, rows, columns
+                                projectViewModel.createProject(
+                                    name = projectName,
+                                    detectionMode = detectionMode,
+                                    imageUri = projectImageUri.toString(),
+                                    userId = currentUser?.id.toString()
+                                )
+                            } else {
+                                // 标准模式：传递所有参数
+                                projectViewModel.createProject(
+                                    name = projectName,
+                                    detectionMode = detectionMode,
+                                    analysisMethod = analysisMethod,
+                                    imageUri = projectImageUri.toString(),
+                                    userId = currentUser?.id.toString(),
+                                    rows = rows,
+                                    columns = columns
+                                )
+                            }
 
                             if (newProjectId != null) {
                                 toastManager.showToast(projectCreationSuccessMessage, ToastType.SUCCESS)
 
                                 if (isSpectrum) {
-                                    navController.navigate(Screen.Home.route) {
+                                    // 光谱模式：跳转到标定页面
+                                    navController.navigate(
+                                        Screen.SpectrumCalibration.createRoute(newProjectId, projectImageUri.toString())
+                                    ) {
+                                        // 成功进入标定页后，弹出新建页，防止按返回键回到表单
                                         popUpTo(Screen.NewProject.route) { inclusive = true }
                                     }
                                 } else if (enableImageCorrection) {
