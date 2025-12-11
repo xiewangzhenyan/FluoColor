@@ -138,8 +138,9 @@ fun SpectrumCalibrationScreen(
                     TextButton(
                         onClick = {
                             val pid = projectId ?: return@TextButton
-                            viewModel.completeCalibration(pid) {
-                                navController.navigate(Screen.Result.createRoute(pid)) {
+                            viewModel.completeCalibration(pid) { projectId ->
+                                // 导航到光谱结果页面
+                                navController.navigate(Screen.SpectrumResult.createRoute(projectId)) {
                                     popUpTo(Screen.SpectrumCalibration.route) { inclusive = true }
                                 }
                             }

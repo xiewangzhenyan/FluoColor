@@ -27,6 +27,10 @@ class SpectrumRepositoryImpl @Inject constructor(
     override fun getResultsByProject(projectId: String): Flow<List<SpectrumResult>> {
         return spectrumDao.getResultsByProject(projectId)
     }
+    
+    override suspend fun getResultById(resultId: Long): SpectrumResult? {
+        return spectrumDao.getResultById(resultId)
+    }
 
     override suspend fun deleteResult(resultId: Long) {
         spectrumDao.deleteResult(resultId)

@@ -83,6 +83,11 @@ sealed class Screen(open val route: String) {
             return "spectrum_calibration/$projectId/$encodedPath"
         }
     }
+    
+    // 光谱结果展示页面路由
+    object SpectrumResult : Screen("spectrum_result/{projectId}") {
+        fun createRoute(projectId: String): String = "spectrum_result/$projectId"
+    }
 
     // 带参数的路由
     class DetailRoute(val id: String) : Screen("detail/$id")

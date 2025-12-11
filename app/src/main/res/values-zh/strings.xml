@@ -100,6 +100,7 @@
     <string name="label_default_tracks">默认通道数</string>
     <string name="label_max_tracks">最大通道数限制</string>
     <string name="spectrum_detection_title">光谱检测</string>
+    <string name="spectrum_detection">光谱</string>
     <string name="spectrum_detection_desc">支持光谱图采集、标定与峰值分析</string>
     <string name="spectrum_min_wavelength_label">光谱最小波长 (nm)</string>
     <string name="spectrum_max_wavelength_label">光谱最大波长 (nm)</string>
@@ -147,6 +148,20 @@
     <string name="reference_wavelength_label">波长 (nm)</string>
     <string name="channel_bound_label">已绑定</string>
     <string name="spectrum_unbound_analyte">未绑定分析物</string>
+    <string name="spectrum_result_title">光谱分析结果</string>
+    <string name="spectrum_no_data">暂无光谱数据</string>
+    <string name="spectrum_channel_format">通道 %1$d / %2$d</string>
+    <string name="spectrum_analyte_label">分析物</string>
+    <string name="spectrum_curve_title">光谱曲线</string>
+    <string name="spectrum_peak_result_title">寻峰结果</string>
+    <string name="spectrum_peak_wavelength">峰值波长</string>
+    <string name="spectrum_peak_intensity">峰值强度</string>
+    <string name="spectrum_data_points">数据点数</string>
+    <string name="spectrum_wavelength_range">波长范围</string>
+    <string name="spectrum_min_wavelength">最小波长</string>
+    <string name="spectrum_max_wavelength">最大波长</string>
+    <string name="spectrum_unbound">未绑定</string>
+    <string name="lspr_spectrum_analysis">LSPR光谱分析</string>
     
     <!-- Login Screen -->
     <string name="app_description_short">智能比色与荧光检测分析平台</string>

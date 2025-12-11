@@ -163,7 +163,7 @@ fun HistoryScreen(
     val noRunFoundMessage = stringResource(R.string.no_run_found_for_project)
     val errorLoadingMessage = stringResource(R.string.error_loading_project_data)
 
-    // 处理项目点击的函数，明确指定类型为 (Project) -> Unit
+    // 处理项目点击的函数,明确指定类型为 (Project) -> Unit
     val handleProjectClick: (Project) -> Unit = { project ->
         if (isSelectionMode) {
             if (project.id in selectedProjects) {
@@ -172,26 +172,32 @@ fun HistoryScreen(
                 selectedProjects.add(project.id)
             }
         } else {
-            // 导航到结果页面
-            // 先获取项目对应的最新运行ID
-            coroutineScope.launch {
-                try {
-                    val runId = viewModel.getLatestRunIdForProject(project.id)
-                    if (runId != null) {
-                        navController.navigate(Screen.Result.createRoute(runId))
-                    } else {
-                        // 如果没有run，显示提示信息
+            // 判断是否为光谱项目
+            if (project.detectionMode == "SPECTRUM") {
+                // 光谱项目直接跳转到光谱结果页面
+                navController.navigate(Screen.SpectrumResult.createRoute(project.id))
+            } else {
+                // 常规项目(荧光/比色)导航到结果页面
+                // 先获取项目对应的最新运行ID
+                coroutineScope.launch {
+                    try {
+                        val runId = viewModel.getLatestRunIdForProject(project.id)
+                        if (runId != null) {
+                            navController.navigate(Screen.Result.createRoute(runId))
+                        } else {
+                            // 如果没有run,显示提示信息
+                            toastManager.showToast(
+                                noRunFoundMessage,
+                                ToastType.WARNING
+                            )
+                        }
+                    } catch (e: Exception) {
                         toastManager.showToast(
-                            noRunFoundMessage,
-                            ToastType.WARNING
+                            errorLoadingMessage,
+                            ToastType.ERROR
                         )
+                        android.util.Log.e("HistoryScreen", "获取运行ID失败", e)
                     }
-                } catch (e: Exception) {
-                    toastManager.showToast(
-                        errorLoadingMessage,
-                        ToastType.ERROR
-                    )
-                    android.util.Log.e("HistoryScreen", "获取运行ID失败", e)
                 }
             }
         }
@@ -690,6 +696,7 @@ fun ProjectItem(
                 val detectionModeText = when (project.detectionMode) {
                     "FLUORESCENCE" -> stringResource(R.string.fluorescence_detection)
                     "COLORIMETRIC" -> stringResource(R.string.colorimetric_detection)
+                    "SPECTRUM" -> stringResource(R.string.spectrum_detection_title)
                     else -> project.detectionMode
                 }
 
@@ -719,6 +726,7 @@ fun ProjectItem(
                 val analysisMethodText = when (project.analysisMethod) {
                     "DL_MODEL" -> stringResource(R.string.deep_learning_analysis)
                     "CURVE_FIT" -> stringResource(R.string.curve_fitting_analysis)
+                    "LSPR_SPECTRUM" -> stringResource(R.string.lspr_spectrum_analysis)
                     else -> project.analysisMethod
                 }
 
@@ -846,7 +854,7 @@ fun FilterDialog(
                         title = stringResource(R.string.detection_mode),
                         icon = Icons.Default.Science
                     ) {
-                        val detectionModes = setOf("FLUORESCENCE", "COLORIMETRIC")
+                        val detectionModes = setOf("FLUORESCENCE", "COLORIMETRIC", "SPECTRUM")
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -863,7 +871,9 @@ fun FilterDialog(
                                         Text(
                                             when (mode) {
                                                 "FLUORESCENCE" -> stringResource(R.string.history_fluorescence_label)
-                                                else -> stringResource(R.string.history_colorimetric_label)
+                                                "COLORIMETRIC" -> stringResource(R.string.history_colorimetric_label)
+                                                "SPECTRUM" -> stringResource(R.string.spectrum_detection)
+                                                else -> mode
                                             }
                                         )
                                     }

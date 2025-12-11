@@ -33,6 +33,7 @@ import com.muc.fluocolorquant.ui.screens.settings.ManualDataInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ExperimentTemplateManagementScreen
 import com.muc.fluocolorquant.ui.screens.settings.CreateExperimentTemplateScreen
 import com.muc.fluocolorquant.ui.screens.spectrum.SpectrumCalibrationScreen
+import com.muc.fluocolorquant.ui.screens.spectrum.SpectrumResultScreen
 import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
 // import com.muc.fluocolorquant.utils.animatedComposable
 
@@ -302,6 +303,22 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
                 navController = navController,
                 projectId = projectId,
                 imageUri = imagePath
+            )
+        }
+        
+        // 光谱结果展示页面
+        composable(
+            route = Screen.SpectrumResult.route,
+            arguments = listOf(
+                navArgument("projectId") {
+                    type = NavType.StringType
+                }
+            )
+        ) { backStackEntry ->
+            val projectId = backStackEntry.arguments?.getString("projectId") ?: ""
+            SpectrumResultScreen(
+                navController = navController,
+                projectId = projectId
             )
         }
 

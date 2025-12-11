@@ -51,6 +51,9 @@ interface SpectrumDao {
 
     @Query("DELETE FROM spectrum_results WHERE projectId = :projectId")
     suspend fun deleteResultsByProject(projectId: String)
+    
+    @Query("SELECT * FROM spectrum_results WHERE resultId = :resultId LIMIT 1")
+    suspend fun getResultById(resultId: Long): SpectrumResult?
 
     @Query("DELETE FROM spectrum_results WHERE resultId = :resultId")
     suspend fun deleteResult(resultId: Long)

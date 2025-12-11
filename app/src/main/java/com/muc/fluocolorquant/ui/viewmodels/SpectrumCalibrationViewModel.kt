@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.muc.fluocolorquant.data.enums.SpectrumCalibrationType
 import com.muc.fluocolorquant.data.model.SpectrumCalibration
+import com.muc.fluocolorquant.data.model.SpectrumResult
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.SpectrumRepository
 import com.muc.fluocolorquant.utils.math.SpectrumCVUtils
@@ -146,16 +147,30 @@ class SpectrumCalibrationViewModel @Inject constructor(
 
     private fun recalcManualCoefficients(trackIndex: Int) {
         viewModelScope.launch(Dispatchers.Default) {
-            val points = _uiState.value.manualPoints[trackIndex] ?: return@launch
-            if (points.size < 2) {
-                // 如果标定点少于2个,清除该通道的系数
-                val coeffMap = _uiState.value.coefficients.toMutableMap()
-                coeffMap.remove(trackIndex)
-                _uiState.update { it.copy(coefficients = coeffMap) }
-                return@launch
-            }
-            val coeffs = fitQuadratic(points.map { it.point.y.toDouble() to it.wavelength.toDouble() })
-            _uiState.update { it.copy(coefficients = it.coefficients + (trackIndex to coeffs)) }
+            calculateCoefficientsForTrack(trackIndex)
+        }
+    }
+
+    private fun calculateCoefficientsForTrack(channelIndex: Int) {
+        val points = _uiState.value.manualPoints[channelIndex] ?: emptyList()
+        if (points.size < 2) {
+            // 如果标定点少于2个,清除该通道的系数并显示错误
+            val coeffMap = _uiState.value.coefficients.toMutableMap()
+            coeffMap.remove(channelIndex)
+            _uiState.update { it.copy(coefficients = coeffMap, errorMessage = "通道 ${channelIndex + 1} 至少需要 2 个标定点") }
+            return
+        }
+        val data = points.map { mark ->
+            mark.point.y.toDouble() to mark.wavelength.toDouble()
+        }
+        // 优先使用线性拟合以避免边缘异常
+        val coef = if (points.size <= 3) {
+            fitLinear(data)
+        } else {
+            fitQuadratic(data)
+        }
+        _uiState.update {
+            it.copy(coefficients = it.coefficients + (channelIndex to coef), errorMessage = null)
         }
     }
 
@@ -289,7 +304,8 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     val data = sortedPeaks.zip(ref).map { (y, wavelength) ->
                         y.toDouble() to wavelength.toDouble()
                     }
-                    coeffMap[index] = fitQuadratic(data)
+                    // 优先使用线性拟合
+                    coeffMap[index] = if (ref.size <= 3) fitLinear(data) else fitQuadratic(data)
                 }
                 _uiState.update { it.copy(coefficients = coeffMap) }
             }.onFailure { e ->
@@ -299,13 +315,20 @@ class SpectrumCalibrationViewModel @Inject constructor(
         }
     }
 
-    fun completeCalibration(projectId: String, onSuccess: () -> Unit) {
+    fun completeCalibration(projectId: String, onSuccess: (String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val state = _uiState.value
             val coeffs = state.coefficients
             val rects = state.trackRects
+            val bitmap = state.originalBitmap
+            
             if (coeffs.size < rects.size) {
                 _uiState.updateError("请先完成所有通道的标定")
+                return@launch
+            }
+            
+            if (bitmap == null) {
+                _uiState.updateError("原始图像丢失")
                 return@launch
             }
 
@@ -316,6 +339,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     else -> SpectrumCalibrationType.MANUAL_POINT
                 }
 
+                // 保存标定参数
                 rects.forEachIndexed { index, rect ->
                     val coef = coeffs[index] ?: return@forEachIndexed
                     val calibration = SpectrumCalibration(
@@ -328,7 +352,70 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     )
                     spectrumRepository.insertCalibration(calibration)
                 }
-                withContext(Dispatchers.Main) { onSuccess() }
+                
+                // 获取项目配置以获取分析物映射
+                val project = projectRepository.getProjectById(projectId)
+                val analyteMapping = project?.let {
+                    runCatching {
+                        val mappingJson = it.spectrumColumnMappingJson
+                        if (!mappingJson.isNullOrBlank()) {
+                            gson.fromJson(mappingJson, Map::class.java) as? Map<String, String>
+                        } else null
+                    }.getOrNull()
+                } ?: emptyMap()
+                
+                // 为所有通道提取光谱数据并保存结果
+                rects.forEachIndexed { index, rect ->
+                    val coef = coeffs[index] ?: return@forEachIndexed
+                    
+                    // 1. 提取强度曲线
+                    val rawIntensities = SpectrumCVUtils.extractIntensityProfile(bitmap, rect)
+                    
+                    // 2. 归一化到 0.0 - 1.0
+                    val maxIntensity = rawIntensities.maxOrNull() ?: 1f
+                    val minIntensity = rawIntensities.minOrNull() ?: 0f
+                    val intensityRange = (maxIntensity - minIntensity).coerceAtLeast(1f)
+                    val normalizedIntensities = rawIntensities.map { 
+                        ((it - minIntensity) / intensityRange).toDouble()
+                    }
+                    
+                    // 3. 波长映射
+                    val a = coef[0]
+                    val b = coef[1]
+                    val c = coef[2]
+                    val wavelengths = rawIntensities.indices.map { y ->
+                        val yD = y.toDouble()
+                        a * yD * yD + b * yD + c
+                    }
+                    
+                    // 4. 寻峰
+                    var peakIndex = 0
+                    var peakIntensity = 0.0
+                    normalizedIntensities.forEachIndexed { idx, intensity ->
+                        if (intensity > peakIntensity) {
+                            peakIntensity = intensity
+                            peakIndex = idx
+                        }
+                    }
+                    val peakWavelength = wavelengths.getOrNull(peakIndex)?.toFloat()
+                    
+                    // 5. 获取当前通道的分析物 ID
+                    val analyteId = analyteMapping[(index + 1).toString()]
+                    
+                    // 6. 保存 SpectrumResult
+                    val result = SpectrumResult(
+                        projectId = projectId,
+                        columnIndex = index,
+                        analyteId = analyteId,
+                        imagePath = "",
+                        wavelengths = gson.toJson(wavelengths),
+                        intensities = gson.toJson(normalizedIntensities),
+                        peakWavelength = peakWavelength
+                    )
+                    spectrumRepository.insertResult(result)
+                }
+                
+                withContext(Dispatchers.Main) { onSuccess(projectId) }
             }.onFailure { e ->
                 _uiState.updateError(e.message ?: "保存标定结果失败")
             }
@@ -344,8 +431,39 @@ class SpectrumCalibrationViewModel @Inject constructor(
         }.getOrNull()
     }
 
-    private fun fitQuadratic(points: List<Pair<Double, Double>>): DoubleArray {
+    /**
+     * 线性拟合: wavelength = a*y + b
+     * 返回格式: [a, b, 0.0] 以保持与二次方程格式一致
+     */
+    private fun fitLinear(points: List<Pair<Double, Double>>): DoubleArray {
         if (points.size < 2) return doubleArrayOf(0.0, 1.0, 0.0)
+        
+        val n = points.size
+        var sumX = 0.0
+        var sumY = 0.0
+        var sumXY = 0.0
+        var sumXX = 0.0
+        
+        points.forEach { (x, y) ->
+            sumX += x
+            sumY += y
+            sumXY += x * y
+            sumXX += x * x
+        }
+        
+        val denominator = n * sumXX - sumX * sumX
+        if (denominator == 0.0) {
+            return doubleArrayOf(0.0, sumY / n, 0.0)
+        }
+        
+        val a = (n * sumXY - sumX * sumY) / denominator
+        val b = (sumY - a * sumX) / n
+        
+        return doubleArrayOf(0.0, a, b) // [0, a, b] 表示 wavelength = a*y + b
+    }
+    
+    private fun fitQuadratic(points: List<Pair<Double, Double>>): DoubleArray {
+        if (points.size < 3) return fitLinear(points)
         val fitter = PolynomialCurveFitter.create(2)
         val obs = points.map { (x, y) -> WeightedObservedPoint(1.0, x, y) }
         val coef = fitter.fit(obs) // [c, b, a]

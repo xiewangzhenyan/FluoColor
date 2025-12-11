@@ -15,6 +15,8 @@ interface SpectrumRepository {
     suspend fun insertResult(result: SpectrumResult): Long
 
     fun getResultsByProject(projectId: String): Flow<List<SpectrumResult>>
+    
+    suspend fun getResultById(resultId: Long): SpectrumResult?
 
     suspend fun deleteResult(resultId: Long)
 }
