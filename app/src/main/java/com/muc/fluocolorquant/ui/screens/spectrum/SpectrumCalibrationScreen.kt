@@ -24,6 +24,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Warning
@@ -135,21 +138,24 @@ fun SpectrumCalibrationScreen(
                     }
                 },
                 actions = {
-                    TextButton(
-                        onClick = {
-                            val pid = projectId ?: return@TextButton
-                            viewModel.completeCalibration(pid) { projectId ->
-                                // 导航到光谱结果页面
-                                navController.navigate(Screen.SpectrumResult.createRoute(projectId)) {
-                                    popUpTo(Screen.SpectrumCalibration.route) { inclusive = true }
+                    // 只在手动标定模式下显示完成按钮
+                    if (state.calibrationMode == CalibrationMode.MANUAL) {
+                        TextButton(
+                            onClick = {
+                                val pid = projectId ?: return@TextButton
+                                viewModel.completeCalibration(pid) { projectId ->
+                                    // 导航到光谱结果页面
+                                    navController.navigate(Screen.SpectrumResult.createRoute(projectId)) {
+                                        popUpTo(Screen.SpectrumCalibration.route) { inclusive = true }
+                                    }
                                 }
-                            }
-                        },
-                        enabled = state.coefficients.size == state.trackRects.size && state.trackRects.isNotEmpty()
-                    ) {
-                        Icon(Icons.Default.Check, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(R.string.finish_calibration))
+                            },
+                            enabled = state.coefficients.size == state.trackRects.size && state.trackRects.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(stringResource(R.string.finish_calibration))
+                        }
                     }
                 }
             )
@@ -161,7 +167,15 @@ fun SpectrumCalibrationScreen(
                     state = state,
                     onUpload = { bitmap -> viewModel.onCalibrationImageLoaded(bitmap) },
                     onReferenceChanged = { viewModel.setReferenceWavelengths(it) },
-                    onStartFitting = { viewModel.performAutoCalibration() }
+                    onStartFitting = { viewModel.performAutoCalibration() },
+                    onShowResult = {
+                        val pid = projectId ?: return@AutoCalibrationSection
+                        viewModel.completeCalibration(pid) { resultProjectId ->
+                            navController.navigate(Screen.SpectrumResult.createRoute(resultProjectId)) {
+                                popUpTo(Screen.SpectrumCalibration.route) { inclusive = true }
+                            }
+                        }
+                    }
                 )
 
                 CalibrationMode.MANUAL -> ManualCalibrationSection(
@@ -254,7 +268,8 @@ private fun AutoCalibrationSection(
     state: com.muc.fluocolorquant.ui.viewmodels.SpectrumCalibrationUiState,
     onUpload: (Bitmap) -> Unit,
     onReferenceChanged: (List<Float>) -> Unit,
-    onStartFitting: () -> Unit
+    onStartFitting: () -> Unit,
+    onShowResult: () -> Unit
 ) {
     val context = LocalContext.current
     val toastManager = LocalToastManager.current
@@ -277,97 +292,203 @@ private fun AutoCalibrationSection(
         }
     }
 
-    // 文本输入状态（UI 层面，成功解析后同步给 ViewModel）
-    val wavelengthInputs = remember { mutableStateListOf("435.8", "546.1", "578.0") }
+    // 波长输入列表 - 初始为空
+    val wavelengthInputs = remember { mutableStateListOf("", "") }
 
-    LaunchedEffect(wavelengthInputs) {
+    // 同步有效输入到 ViewModel
+    LaunchedEffect(wavelengthInputs.toList()) {
         val parsed = wavelengthInputs.mapNotNull { it.toFloatOrNull() }
-        if (parsed.isNotEmpty()) onReferenceChanged(parsed)
+        onReferenceChanged(parsed)
     }
+
+    // 判断是否已完成拟合
+    val isFittingCompleted = state.coefficients.size == state.trackRects.size && state.trackRects.isNotEmpty()
+    
+    // 判断是否可以开始拟合
+    val validWavelengthCount = wavelengthInputs.count { it.toFloatOrNull() != null }
+    val canStartFitting = state.calibrationImageBitmap != null && validWavelengthCount >= 2
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.calibration_image_section), fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = stringResource(R.string.calibration_image_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        // ========== 标定图区域 ==========
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CameraAlt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(onClick = { calibrationPicker.launch("image/*") }) {
-                        Icon(Icons.Default.CloudUpload, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.upload_calibration_image))
-                    }
-                    if (state.calibrationImageBitmap != null) {
-                        Text(
-                            stringResource(R.string.calibration_image_ready),
-                            color = Color(0xFF2D6A4F),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                Text(
+                    text = stringResource(R.string.calibration_image_section),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Text(
+                text = stringResource(R.string.calibration_image_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 30.dp)
+            )
+            
+            Button(
+                onClick = { calibrationPicker.launch("image/*") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (state.calibrationImageBitmap != null) 
+                        Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
+                )
+            ) {
+                if (state.calibrationImageBitmap != null) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.calibration_image_ready))
+                } else {
+                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.upload_calibration_image))
                 }
             }
         }
 
-        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.reference_wavelengths_title), fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = stringResource(R.string.reference_wavelengths_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        // 分隔线
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant)
+        )
+
+        // ========== 参考波长区域 ==========
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Tune,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
                 )
+                Text(
+                    text = stringResource(R.string.reference_wavelengths_title),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Text(
+                text = stringResource(R.string.reference_wavelengths_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 30.dp)
+            )
 
-                wavelengthInputs.forEachIndexed { index, value ->
-                    OutlinedTextField(
-                        value = value,
-                        onValueChange = { newValue ->
-                            wavelengthInputs[index] = newValue
-                            val parsed = wavelengthInputs.mapNotNull { it.toFloatOrNull() }
-                            onReferenceChanged(parsed)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.reference_wavelength_item, index + 1)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Number
-                        )
-                    )
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { wavelengthInputs.add("") }) {
-                        Text(stringResource(R.string.add_wavelength))
-                    }
-                    if (wavelengthInputs.size > 1) {
-                        OutlinedButton(onClick = { wavelengthInputs.removeLast() }) {
-                            Text(stringResource(R.string.remove_wavelength))
+            // 波长输入列表 - 垂直布局
+            wavelengthInputs.forEachIndexed { index, value ->
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { newValue ->
+                        // 只允许输入数字和小数点
+                        val filtered = newValue.filter { it.isDigit() || it == '.' }
+                        val dotCount = filtered.count { it == '.' }
+                        if (dotCount <= 1) {
+                            wavelengthInputs[index] = filtered
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.reference_wavelength_item, index + 1)) },
+                    placeholder = { Text("nm") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    shape = RoundedCornerShape(8.dp),
+                    trailingIcon = {
+                        // 显示删除按钮（至少保留2个输入框）
+                        if (wavelengthInputs.size > 2) {
+                            IconButton(onClick = { wavelengthInputs.removeAt(index) }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = stringResource(R.string.remove_wavelength),
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
-                }
+                )
+            }
+
+            // 添加波长按钮
+            OutlinedButton(
+                onClick = { wavelengthInputs.add("") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("+ ${stringResource(R.string.add_wavelength)}")
+            }
+
+            // 输入状态提示
+            if (validWavelengthCount < 2) {
+                Text(
+                    text = stringResource(R.string.wavelength_input_hint, 2 - validWavelengthCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFE65100)
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.weight(1f))
 
+        // ========== 主操作按钮 ==========
         Button(
-            onClick = onStartFitting,
+            onClick = {
+                if (isFittingCompleted) {
+                    onShowResult()
+                } else {
+                    onStartFitting()
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
-            enabled = !state.isAutoFitting
+            enabled = !state.isAutoFitting && (canStartFitting || isFittingCompleted),
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isFittingCompleted) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         ) {
             if (state.isAutoFitting) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp
+                )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(stringResource(R.string.fitting_in_progress))
+            } else if (isFittingCompleted) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.show_spectrum_result))
             } else {
                 Text(stringResource(R.string.start_fitting))
             }

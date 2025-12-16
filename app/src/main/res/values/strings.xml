@@ -123,6 +123,7 @@
     <string name="select_calibration_mode">Select calibration mode</string>
     <string name="calibration_mode_hint">Choose how you want to calibrate the spectrum.</string>
     <string name="auto_calibration_option">Auto Calibration</string>
+    <string name="auto_calibration_subtitle">Automatically detect peaks from calibration image</string>
     <string name="manual_calibration_option">Manual Calibration</string>
     <string name="finish_calibration">Finish</string>
     <string name="calibration_image_section">Calibration Image</string>
@@ -137,6 +138,8 @@
     <string name="remove_wavelength">Remove</string>
     <string name="start_fitting">Start fitting</string>
     <string name="fitting_in_progress">Fitting...</string>
+    <string name="show_spectrum_result">Show Result</string>
+    <string name="wavelength_input_hint">Please enter at least %1$d more wavelength(s)</string>
     <string name="calibration_image_mismatch_title">Calibration image size mismatch</string>
     <string name="calibration_image_mismatch_desc">The calibration image does not match the original size. Please re-upload or switch to manual calibration.</string>
     <string name="switch_to_manual">Switch to Manual</string>
@@ -162,6 +165,18 @@
     <string name="spectrum_max_wavelength">Max Wavelength</string>
     <string name="spectrum_unbound">Unbound</string>
     <string name="lspr_spectrum_analysis">LSPR Spectrum Analysis</string>
+
+    <!-- Spectrum Export -->
+    <string name="spectrum_export_title">Export Spectrum Data</string>
+    <string name="spectrum_export_csv_title">Raw Data (CSV)</string>
+    <string name="spectrum_export_csv_desc">Export wavelength-intensity data for analysis</string>
+    <string name="spectrum_export_png_title">Spectrum Charts (PNG)</string>
+    <string name="spectrum_export_png_desc">Export spectrum curve images</string>
+    <string name="spectrum_export_pdf_title">Full Report (PDF)</string>
+    <string name="spectrum_export_pdf_desc">Professional report with all channels</string>
+    <string name="spectrum_export_csv_success">CSV file saved to Downloads</string>
+    <string name="spectrum_export_png_success">Spectrum images saved to Downloads</string>
+    <string name="spectrum_export_pdf_success">PDF report saved to Downloads</string>
 
     <!-- Login Screen -->
     <string name="app_description_short">Intelligent colorimetric and fluorescence detection platform</string>
@@ -979,5 +994,32 @@
     <string name="pdf_appendix_title">Appendix: Raw Data</string>
     <string name="pdf_generated_on">Report generated on: %1$s</string>
     <string name="pdf_page_number">Page %1$d of %2$d</string>
+
+    <!-- Spectrum Export Strings -->
+    <string name="spectrum_chart_title_format">Channel %1$d - %2$s Spectrum</string>
+    <string name="spectrum_axis_wavelength">Wavelength (nm)</string>
+    <string name="spectrum_axis_intensity">Normalized Intensity</string>
+    <string name="spectrum_peak_info_format">Peak: %1$.1f nm, Intensity: %2$.3f</string>
+    <string name="spectrum_pdf_cover_title">Spectrum Analysis Report</string>
+    <string name="spectrum_pdf_project_label">Project: %1$s</string>
+    <string name="spectrum_pdf_mode_label">Detection Mode: SPECTRUM</string>
+    <string name="spectrum_pdf_channels_label">Channels: %1$d</string>
+    <string name="spectrum_pdf_date_label">Date: %1$s</string>
+    <string name="spectrum_pdf_page_format">Page %1$d / %2$d</string>
+    <string name="spectrum_pdf_summary_title">Results Summary</string>
+    <string name="spectrum_table_header_channel">Channel</string>
+    <string name="spectrum_table_header_analyte">Analyte</string>
+    <string name="spectrum_table_header_peak_wavelength">Peak λ(nm)</string>
+    <string name="spectrum_table_header_peak_intensity">Peak Intensity</string>
+    <string name="spectrum_table_header_data_points">Data Points</string>
+    <string name="spectrum_pdf_channel_title_format">Channel %1$d - %2$s</string>
+    
+    <!-- PNG Export Mode Selection -->
+    <string name="spectrum_png_export_mode_title">Select Export Mode</string>
+    <string name="spectrum_png_single_channel_title">Single Channel Spectrum</string>
+    <string name="spectrum_png_single_channel_desc">Generate separate image for each channel</string>
+    <string name="spectrum_png_merged_title">Merged Spectrum</string>
+    <string name="spectrum_png_merged_desc">Combine all curves in one image</string>
+    <string name="spectrum_merged_chart_title">All Channels - Merged Spectrum</string>
 
 </resources>

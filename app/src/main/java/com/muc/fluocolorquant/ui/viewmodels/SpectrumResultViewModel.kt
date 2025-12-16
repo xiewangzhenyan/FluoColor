@@ -4,7 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.data.model.SpectrumChannelExportModel
+import com.muc.fluocolorquant.data.model.SpectrumExportData
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
+import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.data.repository.SpectrumRepository
 import com.muc.fluocolorquant.ui.components.charts.ChartData
@@ -48,13 +52,20 @@ data class SpectrumResultUiState(
 class SpectrumResultViewModel @Inject constructor(
     private val spectrumRepository: SpectrumRepository,
     private val analyteRepository: AnalyteRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val projectRepository: ProjectRepository
 ) : ViewModel() {
     
     private val _uiState = MutableStateFlow(SpectrumResultUiState())
     val uiState: StateFlow<SpectrumResultUiState> = _uiState.asStateFlow()
     
     private val gson = Gson()
+    
+    // 存储项目信息和原始数据用于导出
+    private var currentProject: Project? = null
+    private val rawChannelData = mutableMapOf<Int, Pair<List<Double>, List<Double>>>()
+    private val analyteIdMap = mutableMapOf<Int, String?>()
+    private val channelImagePathMap = mutableMapOf<Int, String>()  // 存储每个通道的裁切图片路径
     
     /**
      * 加载项目的所有通道光谱结果
@@ -73,6 +84,12 @@ class SpectrumResultViewModel @Inject constructor(
                 // 获取项目的所有光谱结果
                 val results = spectrumRepository.getResultsByProject(projectId).first()
                 
+                // 获取并存储项目信息
+                currentProject = projectRepository.getProjectById(projectId)
+                rawChannelData.clear()
+                analyteIdMap.clear()
+                channelImagePathMap.clear()  // 清除裁切图片路径映射
+                
                 // 转换为 UI 模型
                 val channelModels = results.sortedBy { it.columnIndex }.map { result ->
                     // 获取分析物名称
@@ -86,6 +103,14 @@ class SpectrumResultViewModel @Inject constructor(
                     
                     val rawWavelengths: List<Double> = gson.fromJson(result.wavelengths, wavelengthsType)
                     val rawIntensities: List<Double> = gson.fromJson(result.intensities, intensitiesType)
+                    
+                    // 存储原始数据用于导出
+                    rawChannelData[result.columnIndex] = Pair(rawWavelengths, rawIntensities)
+                    analyteIdMap[result.columnIndex] = result.analyteId
+                    // 存储裁切图片路径
+                    if (result.imagePath.isNotBlank()) {
+                        channelImagePathMap[result.columnIndex] = result.imagePath
+                    }
                     
                     // 1. 数据裁剪 - 只保留在波长范围内的数据点
                     val filteredData = rawWavelengths.zip(rawIntensities)
@@ -252,6 +277,44 @@ class SpectrumResultViewModel @Inject constructor(
             curvePoints = curvePoints,
             scatterPoints = peakPoint,
             showGrid = true
+        )
+    }
+    
+    /**
+     * 获取用于导出的光谱数据
+     * @return 导出数据,如果项目信息不存在则返回null
+     */
+    fun getExportData(): SpectrumExportData? {
+        val project = currentProject ?: return null
+        val uiResults = _uiState.value.results
+        
+        if (uiResults.isEmpty()) return null
+        
+        val exportChannels = uiResults.map { uiModel ->
+            val channelIndex = uiModel.channelIndex - 1 // 转回0-based
+            val rawData = rawChannelData[channelIndex] ?: Pair(emptyList(), emptyList())
+            // 从映射中获取裁切后的通道图片路径
+            val croppedPath = channelImagePathMap[channelIndex]
+            
+            SpectrumChannelExportModel(
+                channelIndex = uiModel.channelIndex,
+                analyteName = uiModel.analyteName,
+                analyteId = analyteIdMap[channelIndex],
+                peakWavelength = uiModel.peakWavelength,
+                peakIntensity = uiModel.peakIntensity,
+                dataPointCount = uiModel.dataPointCount,
+                minWavelength = uiModel.minWavelength,
+                maxWavelength = uiModel.maxWavelength,
+                wavelengths = rawData.first,
+                intensities = rawData.second,
+                chartData = uiModel.chartData,
+                croppedImagePath = croppedPath  // 使用从数据库读取的裁切图片路径
+            )
+        }
+        
+        return SpectrumExportData(
+            project = project,
+            channels = exportChannels
         )
     }
 }

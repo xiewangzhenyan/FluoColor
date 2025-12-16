@@ -26,6 +26,8 @@ import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.AnalyteResultDetails
 import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.data.model.SpectrumExportData
+import com.muc.fluocolorquant.data.model.SpectrumChannelExportModel
 import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
@@ -172,6 +174,70 @@ class ExportViewModel @Inject constructor(
         _exportState.value = ExportState.Idle
     }
 
+    // ==================== 光谱导出功能 ====================
+
+    /**
+     * 开始导出光谱CSV数据
+     */
+    fun startSpectrumCsvExport(spectrumData: SpectrumExportData) {
+        _exportState.value = ExportState.InProgress
+        viewModelScope.launch {
+            try {
+                val filePath = exportSpectrumToCsv(spectrumData)
+                _exportState.value = ExportState.Success(
+                    message = context.getString(R.string.spectrum_export_csv_success),
+                    filePath = filePath
+                )
+            } catch (e: Exception) {
+                Log.e("ExportViewModel", "Spectrum CSV export failed", e)
+                _exportState.value = ExportState.Error(
+                    context.getString(R.string.export_error, e.localizedMessage ?: "Unknown error")
+                )
+            }
+        }
+    }
+
+    /**
+     * 开始导出光谱PNG图表
+     */
+    fun startSpectrumPngExport(spectrumData: SpectrumExportData, isMerged: Boolean = false) {
+        _exportState.value = ExportState.InProgress
+        viewModelScope.launch {
+            try {
+                exportSpectrumChartsToPng(spectrumData, isMerged)
+                _exportState.value = ExportState.Success(
+                    message = context.getString(R.string.spectrum_export_png_success)
+                )
+            } catch (e: Exception) {
+                Log.e("ExportViewModel", "Spectrum PNG export failed", e)
+                _exportState.value = ExportState.Error(
+                    context.getString(R.string.export_error, e.localizedMessage ?: "Unknown error")
+                )
+            }
+        }
+    }
+
+    /**
+     * 开始导出光谱PDF报告
+     */
+    fun startSpectrumPdfExport(spectrumData: SpectrumExportData) {
+        _exportState.value = ExportState.InProgress
+        viewModelScope.launch {
+            try {
+                val filePath = exportSpectrumPdfReport(spectrumData)
+                _exportState.value = ExportState.Success(
+                    message = context.getString(R.string.spectrum_export_pdf_success),
+                    filePath = filePath
+                )
+            } catch (e: Exception) {
+                Log.e("ExportViewModel", "Spectrum PDF export failed", e)
+                _exportState.value = ExportState.Error(
+                    context.getString(R.string.export_error, e.localizedMessage ?: "Unknown error")
+                )
+            }
+        }
+    }
+
     /**
      * 导出数据为CSV文件
      * @return 保存的文件路径
@@ -233,6 +299,56 @@ class ExportViewModel @Inject constructor(
             return@withContext file.absolutePath
         } catch (e: IOException) {
             Log.e("ExportViewModel", "Failed to save CSV file", e)
+            throw e
+        }
+    }
+
+    /**
+     * 导出光谱数据为CSV文件(长表格式)
+     * @return 保存的文件路径
+     */
+    private suspend fun exportSpectrumToCsv(data: SpectrumExportData): String = withContext(Dispatchers.IO) {
+        try {
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val fileName = "FluoColor_Spectrum_${data.project.name.replace(" ", "_")}_$timestamp.csv"
+
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(downloadDir, fileName)
+
+            FileOutputStream(file).use { fos ->
+                // 写入头部注释
+                fos.write("# Project: ${data.project.name}\n".toByteArray())
+                fos.write("# Export Time: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n".toByteArray())
+                fos.write("\n".toByteArray())
+
+                // 写入列头
+                val headerLine = "Channel,Analyte,PeakWavelength(nm),PeakIntensity,Wavelength(nm),NormalizedIntensity\n"
+                fos.write(headerLine.toByteArray())
+
+                // 写入数据(长表格式:每行一个数据点)
+                for (channel in data.channels) {
+                    val channelIndex = channel.channelIndex
+                    val analyteName = channel.analyteName
+                    val peakWavelength = channel.peakWavelength?.let { String.format(Locale.US, "%.2f", it) } ?: "-"
+                    val peakIntensity = channel.peakIntensity?.let { String.format(Locale.US, "%.4f", it) } ?: "-"
+
+                    // 遍历该通道的所有波长-强度数据点
+                    channel.wavelengths.forEachIndexed { index, wavelength ->
+                        val intensity = channel.intensities.getOrNull(index) ?: 0.0
+                        val dataLine = "$channelIndex,$analyteName,$peakWavelength,$peakIntensity," +
+                                "${String.format(Locale.US, "%.2f", wavelength)}," +
+                                "${String.format(Locale.US, "%.4f", intensity)}\n"
+                        fos.write(dataLine.toByteArray())
+                    }
+                }
+            }
+
+            val fileUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+            context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, fileUri))
+
+            return@withContext file.absolutePath
+        } catch (e: IOException) {
+            Log.e("ExportViewModel", "Failed to save spectrum CSV file", e)
             throw e
         }
     }
@@ -300,6 +416,342 @@ class ExportViewModel @Inject constructor(
         } catch (e: Exception) {
             Log.e("ExportViewModel", "Failed to export charts", e)
             throw e
+        }
+    }
+
+    /**
+     * 导出光谱图表为PNG文件
+     * @param isMerged 是否合并所有曲线到一张图
+     * @return 保存的文件数量
+     */
+    private suspend fun exportSpectrumChartsToPng(data: SpectrumExportData, isMerged: Boolean = false): Int = withContext(Dispatchers.IO) {
+        var successCount = 0
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+
+        try {
+            if (isMerged) {
+                // 合并模式：生成一张包含所有通道曲线的图片
+                val fileName = "${data.project.name.replace(" ", "_")}_AllChannels_Spectrum_$timestamp.png"
+                val bitmap = generateMergedSpectrumBitmap(data.channels)
+                if (bitmap != null) {
+                    if (saveBitmapToFile(bitmap, "png", fileName)) {
+                        successCount++
+                    }
+                }
+            } else {
+                // 单通道模式：为每个通道生成单独的图片
+                for (channel in data.channels) {
+                    val channelIndex = channel.channelIndex
+                    val analyteName = channel.analyteName.replace(" ", "_")
+                    val fileName = "${data.project.name.replace(" ", "_")}_Channel${channelIndex}_${analyteName}_Spectrum_$timestamp.png"
+
+                    val bitmap = generateSpectrumCurveBitmap(channel)
+                    if (bitmap != null) {
+                        if (saveBitmapToFile(bitmap, "png", fileName)) {
+                            successCount++
+                        }
+                    }
+                }
+            }
+
+            return@withContext successCount
+        } catch (e: Exception) {
+            Log.e("ExportViewModel", "Failed to export spectrum charts", e)
+            throw e
+        }
+    }
+
+    /**
+     * 生成光谱曲线图位图
+     */
+    private fun generateSpectrumCurveBitmap(channel: SpectrumChannelExportModel): Bitmap? {
+        val chartData = channel.chartData
+        if (chartData.curvePoints.isEmpty()) return null
+
+        try {
+            val bitmap = Bitmap.createBitmap(1200, 900, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(android.graphics.Color.WHITE)
+
+            // 标题
+            val titlePaint = TextPaint().apply {
+                color = android.graphics.Color.BLACK
+                textSize = 40f
+                textAlign = Paint.Align.CENTER
+                isAntiAlias = true
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            canvas.drawText(context.getString(R.string.spectrum_chart_title_format, channel.channelIndex, channel.analyteName), 600f, 70f, titlePaint)
+
+            // 图表区域 - 增加左边距和底边距以容纳标签
+            val left = 150f   // 增加左边距
+            val top = 120f
+            val right = 1100f
+            val bottom = 720f  // 减小底部以留出更多空间
+            val graphWidth = right - left
+            val graphHeight = bottom - top
+
+            // 找到X和Y的范围
+            val xMin = chartData.curvePoints.minOf { it.first }
+            val xMax = chartData.curvePoints.maxOf { it.first }
+            val yMin = chartData.curvePoints.minOf { it.second }
+            val yMax = chartData.curvePoints.maxOf { it.second }
+
+            // 绘制坐标轴
+            val axisPaint = Paint().apply {
+                color = android.graphics.Color.BLACK
+                strokeWidth = 3f
+                isAntiAlias = true
+            }
+            canvas.drawLine(left, bottom, right, bottom, axisPaint) // X轴
+            canvas.drawLine(left, top, left, bottom, axisPaint)    // Y轴
+
+            // 轴标签 - 增加间距
+            val labelPaint = TextPaint().apply {
+                color = android.graphics.Color.BLACK
+                textSize = 24f
+                isAntiAlias = true
+            }
+            labelPaint.textAlign = Paint.Align.CENTER
+            // X轴标签 - 增加偏移
+            canvas.drawText(context.getString(R.string.spectrum_axis_wavelength), left + graphWidth / 2, bottom + 80f, labelPaint)
+
+            // Y轴标签 - 增加偏移
+            canvas.save()
+            canvas.rotate(-90f)
+            canvas.drawText(context.getString(R.string.spectrum_axis_intensity), -(top + graphHeight / 2), left - 100f, labelPaint)
+            canvas.restore()
+
+            // 绘制X轴刻度
+            val xTickCount = 5
+            val tickLabelPaint = TextPaint().apply {
+                color = android.graphics.Color.BLACK
+                textSize = 20f
+                isAntiAlias = true
+                textAlign = Paint.Align.CENTER
+            }
+            for (i in 0..xTickCount) {
+                val xValue = xMin + (xMax - xMin) * i / xTickCount
+                val xPos = left + (graphWidth * (xValue - xMin) / (xMax - xMin)).toFloat()
+                canvas.drawLine(xPos, bottom, xPos, bottom + 10, axisPaint)
+                canvas.drawText(String.format("%.0f", xValue), xPos, bottom + 35f, tickLabelPaint)
+            }
+
+            // 绘制Y轴刻度
+            val yTickCount = 5
+            tickLabelPaint.textAlign = Paint.Align.RIGHT
+            for (i in 0..yTickCount) {
+                val yValue = yMin + (yMax - yMin) * i / yTickCount
+                val yPos = top + graphHeight - (graphHeight * (yValue - yMin) / (yMax - yMin)).toFloat()
+                canvas.drawLine(left - 10, yPos, left, yPos, axisPaint)
+                canvas.drawText(String.format("%.2f", yValue), left - 15f, yPos + 6, tickLabelPaint)
+            }
+
+            // 绘制光谱曲线
+            val linePaint = Paint().apply {
+                color = android.graphics.Color.BLUE
+                strokeWidth = 3f
+                style = Paint.Style.STROKE
+                isAntiAlias = true
+            }
+            val path = android.graphics.Path()
+            chartData.curvePoints.forEachIndexed { index, point ->
+                val x = left + ((point.first - xMin) / (xMax - xMin) * graphWidth).toFloat()
+                val y = top + graphHeight - ((point.second - yMin) / (yMax - yMin) * graphHeight).toFloat()
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            canvas.drawPath(path, linePaint)
+
+            // 绘制散点（峰值点）
+            if (chartData.scatterPoints?.isNotEmpty() == true) {
+                val scatterPaint = Paint().apply {
+                    color = android.graphics.Color.RED
+                    style = Paint.Style.FILL
+                }
+                chartData.scatterPoints.forEach { point ->
+                    val x = left + ((point.x - xMin) / (xMax - xMin) * graphWidth).toFloat()
+                    val y = top + graphHeight - ((point.y - yMin) / (yMax - yMin) * graphHeight).toFloat()
+                    canvas.drawCircle(x, y, 8f, scatterPaint)
+                    // 绘制峰值标签
+                    val peakLabelPaint = TextPaint().apply {
+                        color = android.graphics.Color.RED
+                        textSize = 20f
+                        isAntiAlias = true
+                        textAlign = Paint.Align.CENTER
+                    }
+                    canvas.drawText(String.format("%.1f nm", point.x), x, y - 15, peakLabelPaint)
+                }
+            }
+
+            return bitmap
+        } catch (e: Exception) {
+            Log.e("ExportViewModel", "Failed to generate spectrum curve bitmap", e)
+            return null
+        }
+    }
+
+    /**
+     * 生成合并光谱图位图（所有通道在一张图上）
+     */
+    private fun generateMergedSpectrumBitmap(channels: List<SpectrumChannelExportModel>): Bitmap? {
+        if (channels.isEmpty()) return null
+        
+        try {
+            val bitmap = Bitmap.createBitmap(1400, 1000, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(android.graphics.Color.WHITE)
+            
+            // 标题
+            val titlePaint = TextPaint().apply {
+                color = android.graphics.Color.BLACK
+                textSize = 40f
+                textAlign = Paint.Align.CENTER
+                isAntiAlias = true
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            canvas.drawText(context.getString(R.string.spectrum_merged_chart_title), 700f, 60f, titlePaint)
+            
+            // 图表区域 - 增加边距以容纳刻度和标签
+            val left = 160f
+            val top = 120f
+            val right = 1200f
+            val bottom = 820f
+            val graphWidth = right - left
+            val graphHeight = bottom - top
+            
+            // 找到所有通道的统一范围
+            val allXValues = channels.flatMap { it.chartData.curvePoints.map { pt -> pt.first } }
+            val allYValues = channels.flatMap { it.chartData.curvePoints.map { pt -> pt.second } }
+            val xMin = allXValues.minOrNull() ?: 0.0
+            val xMax = allXValues.maxOrNull() ?: 1.0
+            val yMin = allYValues.minOrNull() ?: 0.0
+            val yMax = allYValues.maxOrNull() ?: 1.0
+            
+            // 绘制坐标轴
+            val axisPaint = Paint().apply { 
+                color = android.graphics.Color.BLACK
+                strokeWidth = 3f
+                isAntiAlias = true
+            }
+            canvas.drawLine(left, bottom, right, bottom, axisPaint) // X轴
+            canvas.drawLine(left, top, left, bottom, axisPaint)    // Y轴
+            
+            // 轴标签 - 增加间距
+            val labelPaint = TextPaint().apply { 
+                color = android.graphics.Color.BLACK
+                textSize = 24f
+                isAntiAlias = true
+            }
+            labelPaint.textAlign = Paint.Align.CENTER
+            canvas.drawText(context.getString(R.string.spectrum_axis_wavelength), left + graphWidth / 2, bottom + 80f, labelPaint)
+            
+            canvas.save()
+            canvas.rotate(-90f)
+            canvas.drawText(context.getString(R.string.spectrum_axis_intensity), -(top + graphHeight / 2), left - 110f, labelPaint)
+            canvas.restore()
+            
+            // 绘制X轴刻度
+            val xTickCount = 6
+            val tickLabelPaint = TextPaint().apply {
+                color = android.graphics.Color.BLACK
+                textSize = 18f
+                isAntiAlias = true
+                textAlign = Paint.Align.CENTER
+            }
+            for (i in 0..xTickCount) {
+                val xValue = xMin + (xMax - xMin) * i / xTickCount
+                val xPos = left + (graphWidth * (xValue - xMin) / (xMax - xMin)).toFloat()
+                canvas.drawLine(xPos, bottom, xPos, bottom + 10, axisPaint)
+                canvas.drawText(String.format("%.0f", xValue), xPos, bottom + 35f, tickLabelPaint)
+            }
+            
+            // 绘制Y轴刻度
+            val yTickCount = 5
+            tickLabelPaint.textAlign = Paint.Align.RIGHT
+            for (i in 0..yTickCount) {
+                val yValue = yMin + (yMax - yMin) * i / yTickCount
+                val yPos = top + graphHeight - (graphHeight * (yValue - yMin) / (yMax - yMin)).toFloat()
+                canvas.drawLine(left - 10, yPos, left, yPos, axisPaint)
+                canvas.drawText(String.format("%.2f", yValue), left - 15f, yPos + 6, tickLabelPaint)
+            }
+            
+            // 为每个通道定义不同的颜色 - 15种颜色
+            val colors = listOf(
+                android.graphics.Color.rgb(59, 130, 246),   // 蓝色
+                android.graphics.Color.rgb(16, 185, 129),   // 绿色
+                android.graphics.Color.rgb(239, 68, 68),    // 红色
+                android.graphics.Color.rgb(245, 158, 11),   // 橙色
+                android.graphics.Color.rgb(168, 85, 247),   // 紫色
+                android.graphics.Color.rgb(236, 72, 153),   // 粉色
+                android.graphics.Color.rgb(14, 165, 233),   // 天蓝色
+                android.graphics.Color.rgb(34, 197, 94),    // 翠绿色
+                android.graphics.Color.rgb(251, 146, 60),   // 深橙色
+                android.graphics.Color.rgb(139, 92, 246),   // 深紫色
+                android.graphics.Color.rgb(244, 114, 182),  // 玫瑰色
+                android.graphics.Color.rgb(20, 184, 166),   // 青色
+                android.graphics.Color.rgb(251, 191, 36),   // 黄色
+                android.graphics.Color.rgb(248, 113, 113),  // 浅红色
+                android.graphics.Color.rgb(129, 140, 248)   // 靛蓝色
+            )
+            
+            // 绘制所有光谱曲线
+            channels.forEachIndexed { index, channel ->
+                val chartData = channel.chartData
+                if (chartData.curvePoints.size > 1) {
+                    val color = colors[index % colors.size]
+                    val linePaint = Paint().apply {
+                        this.color = color
+                        strokeWidth = 3f
+                        style = Paint.Style.STROKE
+                        isAntiAlias = true
+                    }
+                    
+                    val path = android.graphics.Path()
+                    chartData.curvePoints.forEachIndexed { ptIndex, point ->
+                        val x = left + ((point.first - xMin) / (xMax - xMin) * graphWidth).toFloat()
+                        val y = top + graphHeight - ((point.second - yMin) / (yMax - yMin) * graphHeight).toFloat()
+                        if (ptIndex == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    canvas.drawPath(path, linePaint)
+                    
+                    // 绘制峰值点
+                    if (chartData.scatterPoints?.isNotEmpty() == true) {
+                        val peakPaint = Paint().apply {
+                            this.color = color
+                            style = Paint.Style.FILL
+                        }
+                        chartData.scatterPoints.forEach { point ->
+                            val x = left + ((point.x - xMin) / (xMax - xMin) * graphWidth).toFloat()
+                            val y = top + graphHeight - ((point.y - yMin) / (yMax - yMin) * graphHeight).toFloat()
+                            canvas.drawCircle(x, y, 8f, peakPaint)
+                        }
+                    }
+                }
+            }
+            
+            // 绘制图例
+            val legendX = right - 150f
+            var legendY = top + 20f
+            val legendPaint = TextPaint().apply {
+                color = android.graphics.Color.BLACK
+                textSize = 18f
+                isAntiAlias = true
+            }
+            
+            channels.forEachIndexed { index, channel ->
+                val color = colors[index % colors.size]
+                // 绘制颜色块
+                val colorPaint = Paint().apply { this.color = color }
+                canvas.drawRect(legendX - 30f, legendY - 10f, legendX - 10f, legendY + 10f, colorPaint)
+                // 绘制文字
+                canvas.drawText("Ch${channel.channelIndex}: ${channel.analyteName}", legendX, legendY + 5f, legendPaint)
+                legendY += 30f
+            }
+            
+            return bitmap
+        } catch (e: Exception) {
+            Log.e("ExportViewModel", "Failed to generate merged spectrum bitmap", e)
+            return null
         }
     }
 
@@ -2127,6 +2579,275 @@ class ExportViewModel @Inject constructor(
         canvas.drawLine(currentX, startY, currentX, currentY, borderPaint)
 
         return currentY + 10f
+    }
+    // ==================== 光谱导出辅助方法 ====================
+    
+    /**
+     * 导出光谱PDF报告
+     */
+    private suspend fun exportSpectrumPdfReport(data: SpectrumExportData): String = withContext(Dispatchers.IO) {
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val fileName = "FluoColor_Spectrum_Report_${data.project.name.replace(" ", "_")}_$timestamp.pdf"
+        val reportFile = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), fileName)
+        val document = PdfDocument()
+        try {
+            var pageCount = 1
+            // 1. 封面页
+            val coverPage = document.startPage(PdfDocument.PageInfo.Builder(PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT, pageCount).create())
+            createSpectrumCoverPage(coverPage.canvas, data, pageCount, data.channels.size + 2)
+            document.finishPage(coverPage)
+            pageCount++
+            // 2. 总览页
+            val summaryPage = document.startPage(PdfDocument.PageInfo.Builder(PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT, pageCount).create())
+            createSpectrumSummaryPage(summaryPage.canvas, data, pageCount, data.channels.size + 2)
+            document.finishPage(summaryPage)
+            pageCount++
+            // 3. 每个通道一页
+            for (channel in data.channels) {
+                val channelPage = document.startPage(PdfDocument.PageInfo.Builder(PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT, pageCount).create())
+                createSpectrumChannelPage(channelPage.canvas, channel, data.project.name, pageCount, data.channels.size + 2)
+                document.finishPage(channelPage)
+                pageCount++
+            }
+            // 保存PDF
+            FileOutputStream(reportFile).use { out: FileOutputStream ->
+                document.writeTo(out)
+            }
+        } catch (e: Exception) {
+            Log.e("ExportViewModel", "导出光谱PDF失败", e)
+            throw e
+        } finally {
+            document.close()
+        }
+        val fileUri = Uri.fromFile(reportFile)
+        context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, fileUri))
+        return@withContext reportFile.absolutePath
+    }
+    /**
+     * 创建光谱PDF封面页 - 使用统一的页眉页脚风格
+     */
+    private fun createSpectrumCoverPage(canvas: Canvas, data: SpectrumExportData, currentPage: Int, totalPages: Int) {
+        // 绘制页眉页脚
+        drawPageHeaderFooter(canvas, data.project.name, "Cover", currentPage, totalPages)
+        
+        val paint = TextPaint().apply {
+            color = android.graphics.Color.BLACK
+            isAntiAlias = true
+        }
+        
+        // 主标题
+        paint.textSize = 36f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText(context.getString(R.string.spectrum_pdf_cover_title), PDF_PAGE_WIDTH / 2f, 280f, paint)
+        
+        // 副标题
+        paint.textSize = 18f
+        paint.typeface = Typeface.DEFAULT
+        paint.color = android.graphics.Color.GRAY
+        canvas.drawText("Spectrum Analysis Report", PDF_PAGE_WIDTH / 2f, 320f, paint)
+        
+        // 项目信息卡片
+        val cardLeft = PDF_MARGIN + 50f
+        val cardTop = 400f
+        val cardRight = PDF_PAGE_WIDTH - PDF_MARGIN - 50f
+        val cardBottom = 600f
+        
+        // 卡片背景
+        val cardPaint = Paint().apply {
+            color = android.graphics.Color.parseColor("#F5F5F5")
+            style = Paint.Style.FILL
+        }
+        canvas.drawRoundRect(cardLeft, cardTop, cardRight, cardBottom, 10f, 10f, cardPaint)
+        
+        // 项目信息内容
+        paint.color = android.graphics.Color.BLACK
+        paint.textSize = 18f
+        paint.textAlign = Paint.Align.LEFT
+        var y = cardTop + 50f
+        val lineHeight = 45f
+        
+        canvas.drawText(context.getString(R.string.spectrum_pdf_project_label, data.project.name), cardLeft + 30f, y, paint)
+        y += lineHeight
+        canvas.drawText(context.getString(R.string.spectrum_pdf_mode_label), cardLeft + 30f, y, paint)
+        y += lineHeight
+        canvas.drawText(context.getString(R.string.spectrum_pdf_channels_label, data.channels.size), cardLeft + 30f, y, paint)
+        y += lineHeight
+        canvas.drawText(context.getString(R.string.spectrum_pdf_date_label, SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())), cardLeft + 30f, y, paint)
+    }
+    /**
+     * 创建光谱总览页 - 使用统一的页眉页脚风格
+     */
+    private fun createSpectrumSummaryPage(canvas: Canvas, data: SpectrumExportData, currentPage: Int, totalPages: Int) {
+        // 绘制页眉页脚
+        drawPageHeaderFooter(canvas, data.project.name, context.getString(R.string.spectrum_pdf_summary_title), currentPage, totalPages)
+        
+        val paint = TextPaint().apply {
+            color = android.graphics.Color.BLACK
+            isAntiAlias = true
+        }
+        
+        // 章节标题
+        paint.textSize = 22f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText(context.getString(R.string.spectrum_pdf_summary_title), PDF_MARGIN, PDF_CONTENT_START_Y + 30f, paint)
+        
+        // 表格
+        val headers = listOf(
+            context.getString(R.string.spectrum_table_header_channel),
+            context.getString(R.string.spectrum_table_header_analyte),
+            context.getString(R.string.spectrum_table_header_peak_wavelength),
+            context.getString(R.string.spectrum_table_header_peak_intensity),
+            context.getString(R.string.spectrum_table_header_data_points)
+        )
+        val tableData = data.channels.map { channel ->
+            listOf(
+                channel.channelIndex.toString(),
+                channel.analyteName,
+                channel.peakWavelength?.let { String.format("%.1f", it) } ?: "-",
+                channel.peakIntensity?.let { String.format("%.3f", it) } ?: "-",
+                channel.dataPointCount.toString()
+            )
+        }
+        
+        var y = PDF_CONTENT_START_Y + 70f
+        val cellHeight = 35f
+        val columnWidths = listOf(70f, 130f, 100f, 110f, 90f)  // 调整列宽
+        val tableWidth = columnWidths.sum()
+        val tableLeft = (PDF_PAGE_WIDTH - tableWidth) / 2  // 表格居中
+        
+        // 表头背景
+        val headerBgPaint = Paint().apply {
+            color = android.graphics.Color.parseColor("#E8F5E9")
+            style = Paint.Style.FILL
+        }
+        canvas.drawRect(tableLeft, y, tableLeft + tableWidth, y + cellHeight, headerBgPaint)
+        
+        // 表头文字
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.textSize = 12f
+        var x = tableLeft
+        headers.forEachIndexed { i, header ->
+            canvas.drawText(header, x + 8f, y + 24f, paint)
+            x += columnWidths[i]
+        }
+        y += cellHeight
+        
+        // 数据行
+        paint.typeface = Typeface.DEFAULT
+        paint.textSize = 11f
+        tableData.forEachIndexed { rowIdx, row ->
+            // 交替行背景
+            if (rowIdx % 2 == 1) {
+                val rowBgPaint = Paint().apply {
+                    color = android.graphics.Color.parseColor("#FAFAFA")
+                    style = Paint.Style.FILL
+                }
+                canvas.drawRect(tableLeft, y, tableLeft + tableWidth, y + cellHeight, rowBgPaint)
+            }
+            
+            x = tableLeft
+            row.forEachIndexed { i, cell ->
+                canvas.drawText(cell, x + 8f, y + 24f, paint)
+                x += columnWidths[i]
+            }
+            y += cellHeight
+        }
+        
+        // 表格边框
+        val borderPaint = Paint().apply {
+            color = android.graphics.Color.parseColor("#BDBDBD")
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+        canvas.drawRect(tableLeft, PDF_CONTENT_START_Y + 70f, tableLeft + tableWidth, y, borderPaint)
+    }
+    /**
+     * 创建单个通道详细页 - 使用统一的页眉页脚风格
+     */
+    private fun createSpectrumChannelPage(canvas: Canvas, channel: SpectrumChannelExportModel, projectName: String, currentPage: Int, totalPages: Int) {
+        // 绘制页眉页脚
+        drawPageHeaderFooter(canvas, projectName, context.getString(R.string.spectrum_pdf_channel_title_format, channel.channelIndex, channel.analyteName), currentPage, totalPages)
+        
+        val paint = TextPaint().apply {
+            color = android.graphics.Color.BLACK
+            isAntiAlias = true
+        }
+        
+        var currentY = PDF_CONTENT_START_Y + 30f
+        
+        // 章节标题 - 居中显示
+        paint.textSize = 18f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText(context.getString(R.string.spectrum_pdf_channel_title_format, channel.channelIndex, channel.analyteName), PDF_PAGE_WIDTH / 2f, currentY, paint)
+        paint.textAlign = Paint.Align.LEFT
+        currentY += 35f
+        
+        // 如果有原始图片，先显示原始图片
+        if (!channel.croppedImagePath.isNullOrEmpty()) {
+            try {
+                val originalBitmap = BitmapFactory.decodeFile(channel.croppedImagePath)
+                if (originalBitmap != null) {
+                    // 添加小标题 - 居中
+                    paint.textSize = 14f
+                    paint.typeface = Typeface.DEFAULT
+                    paint.textAlign = Paint.Align.CENTER
+                    canvas.drawText("原始光谱图像", PDF_PAGE_WIDTH / 2f, currentY, paint)
+                    paint.textAlign = Paint.Align.LEFT
+                    currentY += 25f
+                    
+                    // 缩放并绘制原始图片 - 居中
+                    val scale = (PDF_CONTENT_WIDTH - 100f) / originalBitmap.width
+                    val scaledHeight = originalBitmap.height * scale
+                    val maxHeight = 200f  // 限制原始图片高度
+                    val actualScale = if (scaledHeight > maxHeight) maxHeight / originalBitmap.height else scale
+                    val actualHeight = originalBitmap.height * actualScale
+                    val scaledWidth = (originalBitmap.width * actualScale).toFloat()
+                    
+                    // 计算居中位置
+                    val imageLeft = (PDF_PAGE_WIDTH - scaledWidth) / 2
+                    val destRect = RectF(
+                        imageLeft, currentY,
+                        imageLeft + scaledWidth, currentY + actualHeight
+                    )
+                    canvas.drawBitmap(originalBitmap, null, destRect, null)
+                    currentY += actualHeight + 30f
+                    originalBitmap.recycle()
+                }
+            } catch (e: Exception) {
+                Log.e("ExportViewModel", "加载原始图片失败: ${channel.croppedImagePath}", e)
+            }
+        }
+        
+        // 添加光谱图标题 - 居中
+        paint.textSize = 14f
+        paint.typeface = Typeface.DEFAULT
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText("光谱曲线分析", PDF_PAGE_WIDTH / 2f, currentY, paint)
+        paint.textAlign = Paint.Align.LEFT
+        currentY += 25f
+        
+        // 生成并绘制光谱曲线图 - 居中
+        val bitmap = generateSpectrumCurveBitmap(channel)
+        if (bitmap != null) {
+            val maxChartHeight = PDF_PAGE_HEIGHT - currentY - 100f  // 留出页脚空间
+            val scale = minOf(
+                (PDF_CONTENT_WIDTH - 40f) / bitmap.width,
+                maxChartHeight / bitmap.height
+            )
+            val scaledHeight = bitmap.height * scale
+            val scaledWidth = bitmap.width * scale
+            
+            // 计算居中位置
+            val chartLeft = (PDF_PAGE_WIDTH - scaledWidth) / 2
+            val destRect = RectF(
+                chartLeft, currentY,
+                chartLeft + scaledWidth, currentY + scaledHeight
+            )
+            canvas.drawBitmap(bitmap, null, destRect, null)
+            bitmap.recycle()
+        }
     }
 
 }

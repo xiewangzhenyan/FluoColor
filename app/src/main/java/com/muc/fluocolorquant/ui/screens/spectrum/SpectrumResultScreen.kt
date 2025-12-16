@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,9 +34,15 @@ import androidx.navigation.NavHostController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.components.charts.ChartData
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
+import com.muc.fluocolorquant.ui.viewmodels.ExportViewModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumChannelUiModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumResultViewModel
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.runtime.*
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 
 /**
  * 光谱分析结果展示页面
@@ -45,10 +52,13 @@ import com.muc.fluocolorquant.ui.viewmodels.SpectrumResultViewModel
 fun SpectrumResultScreen(
     navController: NavHostController,
     projectId: String,
-    viewModel: SpectrumResultViewModel = hiltViewModel()
+    viewModel: SpectrumResultViewModel = hiltViewModel(),
+    exportViewModel: ExportViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val exportState by exportViewModel.exportState.collectAsState()
     val toastManager = LocalToastManager.current
+    var showExportSheet by remember { mutableStateOf(false) }
     
     // 加载数据
     LaunchedEffect(projectId) {
@@ -61,6 +71,22 @@ fun SpectrumResultScreen(
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
             toastManager.showToast(it, ToastType.ERROR)
+        }
+    }
+    
+    // 处理导出状态
+    LaunchedEffect(exportState) {
+        val state = exportState
+        when (state) {
+            is ExportViewModel.ExportState.Success -> {
+                toastManager.showToast(state.message, ToastType.SUCCESS)
+                exportViewModel.resetExportState()
+            }
+            is ExportViewModel.ExportState.Error -> {
+                toastManager.showToast(state.message, ToastType.ERROR)
+                exportViewModel.resetExportState()
+            }
+            else -> {}
         }
     }
     
@@ -78,10 +104,23 @@ fun SpectrumResultScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
+                actions = {
+                    if (state.results.isNotEmpty()) {
+                        IconButton(onClick = { showExportSheet = true }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.export),
+                                contentDescription = "Export",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFF5D6B98),
                     titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
                 )
             )
         }
@@ -167,6 +206,28 @@ fun SpectrumResultScreen(
                 }
             }
         }
+    }
+    
+    // 导出弹窗
+    if (showExportSheet) {
+        SpectrumExportBottomSheet(
+            onDismiss = { showExportSheet = false },
+            onCsvExport = {
+                viewModel.getExportData()?.let { data ->
+                    exportViewModel.startSpectrumCsvExport(data)
+                } ?: toastManager.showToast("导出数据准备失败", ToastType.ERROR)
+            },
+            onPngExport = { isMerged ->
+                viewModel.getExportData()?.let { data ->
+                    exportViewModel.startSpectrumPngExport(data, isMerged)
+                } ?: toastManager.showToast("导出数据准备失败", ToastType.ERROR)
+            },
+            onPdfExport = {
+                viewModel.getExportData()?.let { data ->
+                    exportViewModel.startSpectrumPdfExport(data)
+                } ?: toastManager.showToast("导出数据准备失败", ToastType.ERROR)
+            }
+        )
     }
 }
 
@@ -266,7 +327,7 @@ private fun AnalyteTitleCard(
  */
 @Composable
 private fun SpectrumCurveCard(
-    chartData: com.muc.fluocolorquant.ui.components.charts.ChartData,
+    chartData: ChartData,
     modifier: Modifier = Modifier
 ) {
     Card(

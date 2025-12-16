@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.PointF
 import android.graphics.Rect
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -104,13 +105,22 @@ class SpectrumCalibrationViewModel @Inject constructor(
         _uiState.update { it.copy(showModeDialog = false) }
     }
 
+    /**
+     * 加载标定图片 - 允许任意尺寸的图片
+     * 不再要求标定图与原始图尺寸一致，通过通道检测实现自动对齐
+     */
     fun onCalibrationImageLoaded(bitmap: Bitmap) {
         val original = _uiState.value.originalBitmap ?: return
-        if (original.width == bitmap.width && original.height == bitmap.height) {
-            _uiState.update { it.copy(calibrationImageBitmap = bitmap, showDimensionMismatchDialog = false, errorMessage = null) }
-        } else {
-            _uiState.update { it.copy(showDimensionMismatchDialog = true, calibrationImageBitmap = null) }
+        // 移除尺寸限制，接受任意尺寸的标定图
+        // 对齐计算将在 performAutoCalibration 中完成
+        _uiState.update { 
+            it.copy(
+                calibrationImageBitmap = bitmap, 
+                showDimensionMismatchDialog = false, 
+                errorMessage = null
+            ) 
         }
+        Log.d("SpectrumCalibration", "标定图已加载: ${bitmap.width}x${bitmap.height} (原始图: ${original.width}x${original.height})")
     }
 
     fun dismissDimensionMismatchDialog() {
@@ -279,6 +289,16 @@ class SpectrumCalibrationViewModel @Inject constructor(
         _uiState.update { it.copy(infoMessage = null) }
     }
 
+    /**
+     * 执行自动标定 - 支持不同尺寸图片的对齐
+     * 
+     * 流程:
+     * 1. 对原始图和标定图分别检测通道
+     * 2. 计算对齐偏移量
+     * 3. 在标定图上寻峰
+     * 4. 将峰值坐标转换到原始图坐标系
+     * 5. 使用转换后的坐标进行拟合
+     */
     fun performAutoCalibration() {
         val calibrationBitmap = _uiState.value.calibrationImageBitmap
         val original = _uiState.value.originalBitmap
@@ -295,20 +315,94 @@ class SpectrumCalibrationViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.Default) {
             _uiState.update { it.copy(isAutoFitting = true, errorMessage = null) }
             runCatching {
-                val rects = _uiState.value.trackRects
+                val originalRects = _uiState.value.trackRects
+                val expectedTracks = originalRects.size
+                
+                // 1. 检测标定图中的通道
+                val calibrationRects = try {
+                    SpectrumCVUtils.detectSpectrumTracks(calibrationBitmap, expectedTracks)
+                } catch (e: Exception) {
+                    Log.e("SpectrumCalibration", "标定图通道检测失败: ${e.message}")
+                    emptyList()
+                }
+                
+                // 2. 计算对齐参数
+                val alignment = if (calibrationRects.size == expectedTracks) {
+                    SpectrumCVUtils.calculateAlignmentOffset(
+                        originalTracks = originalRects,
+                        calibrationTracks = calibrationRects,
+                        originalWidth = original.width,
+                        originalHeight = original.height,
+                        calibrationWidth = calibrationBitmap.width,
+                        calibrationHeight = calibrationBitmap.height
+                    )
+                } else {
+                    null
+                }
+                
+                // 如果对齐失败，使用保底策略（居中对齐）
+                val finalAlignment = alignment ?: run {
+                    Log.w("SpectrumCalibration", "使用保底对齐策略")
+                    SpectrumCVUtils.calculateFallbackAlignment(
+                        originalWidth = original.width,
+                        originalHeight = original.height,
+                        calibrationWidth = calibrationBitmap.width,
+                        calibrationHeight = calibrationBitmap.height
+                    )
+                }
+                
+                Log.d("SpectrumCalibration", "对齐参数: scale=${finalAlignment.scale}, deltaY=${finalAlignment.deltaY}")
+                
+                // 3. 确定用于寻峰的通道矩形
+                // 如果标定图尺寸与原始图相同，使用原始通道；否则使用检测到的标定图通道
+                val peakSearchRects = if (calibrationRects.size == expectedTracks) {
+                    calibrationRects
+                } else if (calibrationBitmap.width == original.width && calibrationBitmap.height == original.height) {
+                    originalRects
+                } else {
+                    // 保底：在标定图上创建对应的通道区域（基于偏移量）
+                    originalRects.map { rect ->
+                        val offsetLeft = ((rect.left + finalAlignment.deltaX) / finalAlignment.scale).toInt().coerceIn(0, calibrationBitmap.width - 1)
+                        val offsetRight = ((rect.right + finalAlignment.deltaX) / finalAlignment.scale).toInt().coerceIn(1, calibrationBitmap.width)
+                        Rect(offsetLeft, 0, offsetRight, calibrationBitmap.height)
+                    }
+                }
+                
                 val coeffMap = mutableMapOf<Int, DoubleArray>()
-                rects.forEachIndexed { index, rect ->
-                    val peaks = SpectrumCVUtils.findPeaksInTrack(calibrationBitmap, rect, ref.size)
-                    if (peaks.size < ref.size) error("通道 ${index + 1} 波峰数量不足")
-                    val sortedPeaks = peaks.sortedDescending() // bottom-to-top
+                
+                // 4. 对每个通道进行标定
+                originalRects.forEachIndexed { index, origRect ->
+                    val searchRect = peakSearchRects.getOrElse(index) { origRect }
+                    
+                    // 在标定图上寻峰
+                    val peaksInCalib = SpectrumCVUtils.findPeaksInTrack(calibrationBitmap, searchRect, ref.size)
+                    if (peaksInCalib.size < ref.size) {
+                        error("通道 ${index + 1} 波峰数量不足 (检测到 ${peaksInCalib.size}/${ref.size})")
+                    }
+                    
+                    // 5. 将标定图坐标转换为原始图坐标
+                    // 转换公式: Y_orig = Y_calib * scale - deltaY
+                    val peaksInOrig = peaksInCalib.map { yCalib ->
+                        (yCalib * finalAlignment.scale - finalAlignment.deltaY).toInt()
+                    }
+                    
+                    Log.d("SpectrumCalibration", "通道 ${index + 1} 峰值坐标转换: $peaksInCalib -> $peaksInOrig")
+                    
+                    // 按Y坐标排序（从大到小，即底部到顶部）
+                    val sortedPeaks = peaksInOrig.sortedDescending()
+                    
+                    // 6. 拟合波长-像素关系
                     val data = sortedPeaks.zip(ref).map { (y, wavelength) ->
                         y.toDouble() to wavelength.toDouble()
                     }
+                    
                     // 优先使用线性拟合
                     coeffMap[index] = if (ref.size <= 3) fitLinear(data) else fitQuadratic(data)
                 }
+                
                 _uiState.update { it.copy(coefficients = coeffMap) }
             }.onFailure { e ->
+                Log.e("SpectrumCalibration", "自动标定失败", e)
                 _uiState.updateError(e.message ?: "自动标定失败")
             }
             _uiState.update { it.copy(isAutoFitting = false) }
@@ -368,10 +462,36 @@ class SpectrumCalibrationViewModel @Inject constructor(
                 rects.forEachIndexed { index, rect ->
                     val coef = coeffs[index] ?: return@forEachIndexed
                     
-                    // 1. 提取强度曲线
+                    // 1. 裁切通道图片并保存
+                    val croppedImagePath = try {
+                        // 确保rect在图片范围内
+                        val safeLeft = rect.left.toInt().coerceIn(0, bitmap.width - 1)
+                        val safeTop = rect.top.toInt().coerceIn(0, bitmap.height - 1)
+                        val safeWidth = rect.width().toInt().coerceIn(1, bitmap.width - safeLeft)
+                        val safeHeight = rect.height().toInt().coerceIn(1, bitmap.height - safeTop)
+                        
+                        // 裁切图片
+                        val croppedBitmap = Bitmap.createBitmap(bitmap, safeLeft, safeTop, safeWidth, safeHeight)
+                        
+                        // 保存到应用私有目录
+                        val fileName = "${projectId}_channel_${index}_${System.currentTimeMillis()}.png"
+                        val file = java.io.File(context.filesDir, "spectrum_channels/$fileName")
+                        file.parentFile?.mkdirs()
+                        java.io.FileOutputStream(file).use { out ->
+                            croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        }
+                        croppedBitmap.recycle()
+                        
+                        file.absolutePath
+                    } catch (e: Exception) {
+                        Log.e("SpectrumCalibration", "裁切通道图片失败: ${e.message}")
+                        ""
+                    }
+                    
+                    // 2. 提取强度曲线
                     val rawIntensities = SpectrumCVUtils.extractIntensityProfile(bitmap, rect)
                     
-                    // 2. 归一化到 0.0 - 1.0
+                    // 3. 归一化到 0.0 - 1.0
                     val maxIntensity = rawIntensities.maxOrNull() ?: 1f
                     val minIntensity = rawIntensities.minOrNull() ?: 0f
                     val intensityRange = (maxIntensity - minIntensity).coerceAtLeast(1f)
@@ -379,7 +499,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
                         ((it - minIntensity) / intensityRange).toDouble()
                     }
                     
-                    // 3. 波长映射
+                    // 4. 波长映射
                     val a = coef[0]
                     val b = coef[1]
                     val c = coef[2]
@@ -388,7 +508,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
                         a * yD * yD + b * yD + c
                     }
                     
-                    // 4. 寻峰
+                    // 5. 寻峰
                     var peakIndex = 0
                     var peakIntensity = 0.0
                     normalizedIntensities.forEachIndexed { idx, intensity ->
@@ -399,15 +519,15 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     }
                     val peakWavelength = wavelengths.getOrNull(peakIndex)?.toFloat()
                     
-                    // 5. 获取当前通道的分析物 ID
+                    // 6. 获取当前通道的分析物 ID
                     val analyteId = analyteMapping[(index + 1).toString()]
                     
-                    // 6. 保存 SpectrumResult
+                    // 7. 保存 SpectrumResult (包含裁切后的图片路径)
                     val result = SpectrumResult(
                         projectId = projectId,
                         columnIndex = index,
                         analyteId = analyteId,
-                        imagePath = "",
+                        imagePath = croppedImagePath,  // 使用裁切后的图片路径
                         wavelengths = gson.toJson(wavelengths),
                         intensities = gson.toJson(normalizedIntensities),
                         peakWavelength = peakWavelength

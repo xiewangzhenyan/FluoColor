@@ -13,10 +13,101 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
+ * 对齐计算结果：包含缩放比例和坐标偏移量
+ * 用于将标定图坐标转换到原始图坐标系
+ * 转换公式: Coord_orig = Coord_calib * scale - delta
+ */
+data class AlignmentResult(
+    val scale: Double,      // 缩放比例 (original / calibration)
+    val deltaX: Double,     // X轴偏移量
+    val deltaY: Double      // Y轴偏移量
+)
+
+/**
  * 光谱处理工具（依赖 OpenCV）。使用前请确保 OpenCVLoader.initDebug() 已调用。
  */
 object SpectrumCVUtils {
     private const val TAG = "SpectrumCVUtils"
+    
+    /**
+     * 计算标定图与原始图之间的对齐偏移量
+     * 
+     * @param originalTracks 原始图的通道矩形列表
+     * @param calibrationTracks 标定图的通道矩形列表
+     * @param originalWidth 原始图宽度
+     * @param originalHeight 原始图高度
+     * @param calibrationWidth 标定图宽度
+     * @param calibrationHeight 标定图高度
+     * @return 对齐结果，如果无法对齐则返回null
+     */
+    fun calculateAlignmentOffset(
+        originalTracks: List<Rect>,
+        calibrationTracks: List<Rect>,
+        originalWidth: Int,
+        originalHeight: Int,
+        calibrationWidth: Int,
+        calibrationHeight: Int
+    ): AlignmentResult? {
+        // 1. 数量校验
+        if (originalTracks.isEmpty() || calibrationTracks.isEmpty()) {
+            Log.w(TAG, "通道列表为空,无法计算对齐")
+            return null
+        }
+        
+        if (originalTracks.size != calibrationTracks.size) {
+            Log.w(TAG, "通道数量不一致: 原始图=${originalTracks.size}, 标定图=${calibrationTracks.size}")
+            return null
+        }
+        
+        // 2. 计算几何中心
+        val origCenterX = originalTracks.map { it.centerX() }.average()
+        val origCenterY = originalTracks.map { it.centerY() }.average()
+        val calibCenterX = calibrationTracks.map { it.centerX() }.average()
+        val calibCenterY = calibrationTracks.map { it.centerY() }.average()
+        
+        // 3. 计算缩放比例 (基于通道群的总宽度)
+        val origMinX = originalTracks.minOf { it.left }
+        val origMaxX = originalTracks.maxOf { it.right }
+        val origWidth = (origMaxX - origMinX).toDouble().coerceAtLeast(1.0)
+        
+        val calibMinX = calibrationTracks.minOf { it.left }
+        val calibMaxX = calibrationTracks.maxOf { it.right }
+        val calibWidth = (calibMaxX - calibMinX).toDouble().coerceAtLeast(1.0)
+        
+        val scale = origWidth / calibWidth
+        Log.d(TAG, "通道群宽度: 原始=$origWidth, 标定=$calibWidth, 缩放比例=$scale")
+        
+        // 4. 计算偏移量
+        // 转换公式: Coord_orig = Coord_calib * scale - delta
+        // 即: delta = Coord_calib * scale - Coord_orig
+        val deltaX = calibCenterX * scale - origCenterX
+        val deltaY = calibCenterY * scale - origCenterY
+        
+        Log.d(TAG, "对齐参数: scale=$scale, deltaX=$deltaX, deltaY=$deltaY")
+        Log.d(TAG, "几何中心: orig=($origCenterX, $origCenterY), calib=($calibCenterX, $calibCenterY)")
+        
+        return AlignmentResult(scale, deltaX, deltaY)
+    }
+    
+    /**
+     * 保底对齐策略：假设用户是居中裁切的
+     * 当通道检测失败时使用
+     */
+    fun calculateFallbackAlignment(
+        originalWidth: Int,
+        originalHeight: Int,
+        calibrationWidth: Int,
+        calibrationHeight: Int
+    ): AlignmentResult {
+        // 假设缩放比例为1（未缩放）
+        val scale = 1.0
+        // 居中对齐偏移量
+        val deltaX = (calibrationWidth - originalWidth) / 2.0
+        val deltaY = (calibrationHeight - originalHeight) / 2.0
+        
+        Log.d(TAG, "使用保底对齐策略: deltaX=$deltaX, deltaY=$deltaY")
+        return AlignmentResult(scale, deltaX, deltaY)
+    }
 
     /**
      * 垂直光谱条带自动定位 (缩放优化 + CLAHE 增强 + 极端垂直膨胀)。
@@ -38,7 +129,7 @@ object SpectrumCVUtils {
         return try {
             // 1. 加载 Bitmap -> Mat
             Utils.bitmapToMat(bitmap, src)
-            
+
             // 2. 缩放优化: 将图像高度缩小到 800px 左右,避免 ANR
             val targetHeight = 800.0
             val scale = if (src.rows() > targetHeight) {
@@ -46,7 +137,7 @@ object SpectrumCVUtils {
             } else {
                 1.0 // 原图小于 800px 则不缩放
             }
-            
+
             if (scale < 1.0) {
                 val newWidth = (src.cols() * scale).toInt()
                 val newHeight = (src.rows() * scale).toInt()
@@ -100,9 +191,9 @@ object SpectrumCVUtils {
             val candidateRects = contours.mapNotNull { contour ->
                 val area = Imgproc.contourArea(contour)
                 if (area < minArea) return@mapNotNull null
-                
+
                 val rect = Imgproc.boundingRect(contour)
-                
+
                 // 保留高度大于宽度的矩形(垂直条带特征)
                 if (rect.height > rect.width) {
                     rect
@@ -129,17 +220,17 @@ object SpectrumCVUtils {
                 // 还原 X 坐标到原始图像尺寸
                 val originalLeft = ((rect.x - xPadding) / scale).toInt().coerceAtLeast(0)
                 val originalRight = ((rect.x + rect.width + xPadding) / scale).toInt().coerceAtMost(bitmap.width)
-                
+
                 // 强制全高度: top=0, bottom=原始图片高度
                 Rect(originalLeft, 0, originalRight, bitmap.height)
             }
-            
+
             // 11. 保底策略
             if (result.size < expectedTracks) {
                 Log.w(TAG, "检测到的通道数不足 (${result.size}/$expectedTracks),启用保底策略:均分图片宽度")
                 return createFallbackTracks(bitmap.width, bitmap.height, expectedTracks)
             }
-            
+
             Log.d(TAG, "成功检测到 ${result.size} 个光谱通道 (覆盖完整高度, 坐标已还原)")
             result
         } catch (e: Exception) {
@@ -225,6 +316,8 @@ object SpectrumCVUtils {
     /**
      * 在指定列 ROI 中寻找最显著的若干个波峰（用于自动标定）。
      * 返回的 Y 坐标以像素为单位（相对于原图），数量不超过 expectedPeaksCount。
+     * 
+     * 优化：支持检测分离的激光点（如标定图中的红、绿、紫色激光点）
      */
     fun findPeaksInTrack(
         bitmap: Bitmap,
@@ -237,8 +330,14 @@ object SpectrumCVUtils {
         if (profile.isEmpty()) return emptyList()
 
         val maxVal = profile.maxOrNull() ?: 0f
-        val threshold = maxVal * 0.35f // 过滤低噪声
+        val avgVal = profile.average().toFloat()
+        
+        // 使用更低的阈值：max(最大值的15%, 平均值的1.5倍) 来适应分离的激光点
+        val threshold = maxOf(maxVal * 0.15f, avgVal * 1.5f)
+        
+        Log.d(TAG, "峰值检测 - maxVal=$maxVal, avgVal=$avgVal, threshold=$threshold")
 
+        // 第一遍：找出所有局部极大值点
         val candidates = mutableListOf<Pair<Int, Float>>() // y to intensity
         for (y in 1 until profile.lastIndex) {
             val v = profile[y]
@@ -249,14 +348,38 @@ object SpectrumCVUtils {
                 candidates += y to v
             }
         }
+        
+        Log.d(TAG, "初步检测到 ${candidates.size} 个候选峰值点")
 
-        // 取强度最高的 expectedPeaksCount 个点，并按 Y 排序（便于后续与波长匹配）
-        val picked = candidates
+        // 合并邻近的峰值点（距离小于图像高度的5%视为同一个峰）
+        val minPeakDistance = (profile.size * 0.05).toInt().coerceAtLeast(10)
+        val mergedPeaks = mutableListOf<Pair<Int, Float>>()
+        
+        candidates.sortedBy { it.first }.forEach { candidate ->
+            val nearbyPeak = mergedPeaks.find { 
+                kotlin.math.abs(it.first - candidate.first) < minPeakDistance 
+            }
+            if (nearbyPeak != null) {
+                // 如果找到邻近峰，保留强度更高的那个
+                if (candidate.second > nearbyPeak.second) {
+                    mergedPeaks.remove(nearbyPeak)
+                    mergedPeaks.add(candidate)
+                }
+            } else {
+                mergedPeaks.add(candidate)
+            }
+        }
+        
+        Log.d(TAG, "合并后剩余 ${mergedPeaks.size} 个峰值区域")
+
+        // 取强度最高的 expectedPeaksCount 个点，并按 Y 排序
+        val picked = mergedPeaks
             .sortedByDescending { it.second }
             .take(expectedPeaksCount)
             .sortedBy { it.first }
             .map { rect.top + it.first }
 
+        Log.d(TAG, "最终选取 ${picked.size} 个峰值点: $picked")
         return picked
     }
 
@@ -266,7 +389,7 @@ object SpectrumCVUtils {
      */
     private fun createFallbackTracks(width: Int, height: Int, count: Int): List<Rect> {
         if (count <= 0) return emptyList()
-        
+
         val trackWidth = width / count
         return List(count) { index ->
             val left = index * trackWidth

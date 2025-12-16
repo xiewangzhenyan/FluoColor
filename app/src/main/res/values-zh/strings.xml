@@ -123,6 +123,7 @@
     <string name="select_calibration_mode">选择标定模式</string>
     <string name="calibration_mode_hint">请选择标定方式。</string>
     <string name="auto_calibration_option">自动标定</string>
+    <string name="auto_calibration_subtitle">自动检测标定图中的峰值位置</string>
     <string name="manual_calibration_option">手动标定</string>
     <string name="finish_calibration">完成</string>
     <string name="calibration_image_section">标定图</string>
@@ -137,6 +138,8 @@
     <string name="remove_wavelength">删除</string>
     <string name="start_fitting">开始拟合</string>
     <string name="fitting_in_progress">拟合中...</string>
+    <string name="show_spectrum_result">显示结果</string>
+    <string name="wavelength_input_hint">请输入至少 %1$d 个波长</string>
     <string name="calibration_image_mismatch_title">标定图尺寸与原图不符</string>
     <string name="calibration_image_mismatch_desc">标定图尺寸与原图不一致，请重新上传或切换到手动标定。</string>
     <string name="switch_to_manual">切换到手动标定</string>
@@ -162,6 +165,18 @@
     <string name="spectrum_max_wavelength">最大波长</string>
     <string name="spectrum_unbound">未绑定</string>
     <string name="lspr_spectrum_analysis">LSPR光谱分析</string>
+
+    <!-- Spectrum Export -->
+    <string name="spectrum_export_title">导出光谱数据</string>
+    <string name="spectrum_export_csv_title">原始数据 (CSV)</string>
+    <string name="spectrum_export_csv_desc">导出波长-强度数据用于二次分析</string>
+    <string name="spectrum_export_png_title">光谱图像 (PNG)</string>
+    <string name="spectrum_export_png_desc">导出各通道光谱曲线图</string>
+    <string name="spectrum_export_pdf_title">完整报告 (PDF)</string>
+    <string name="spectrum_export_pdf_desc">包含所有通道数据的专业报告</string>
+    <string name="spectrum_export_csv_success">CSV文件已保存到下载目录</string>
+    <string name="spectrum_export_png_success">光谱图像已保存到下载目录</string>
+    <string name="spectrum_export_pdf_success">PDF报告已保存到下载目录</string>
     
     <!-- Login Screen -->
     <string name="app_description_short">智能比色与荧光检测分析平台</string>
@@ -979,5 +994,32 @@
     <string name="pdf_appendix_title">附录: 原始数据</string>
     <string name="pdf_generated_on">报告生成于: %1$s</string>
     <string name="pdf_page_number">第%1$d页 共%2$d页</string>
+
+    <!-- 光谱导出字符串 -->
+    <string name="spectrum_chart_title_format">通道 %1$d - %2$s 光谱</string>
+    <string name="spectrum_axis_wavelength">波长 (nm)</string>
+    <string name="spectrum_axis_intensity">归一化强度</string>
+    <string name="spectrum_peak_info_format">峰值: %1$.1f nm, 强度: %2$.3f</string>
+    <string name="spectrum_pdf_cover_title">光谱分析报告</string>
+    <string name="spectrum_pdf_project_label">项目: %1$s</string>
+    <string name="spectrum_pdf_mode_label">检测模式: 光谱</string>
+    <string name="spectrum_pdf_channels_label">通道数: %1$d</string>
+    <string name="spectrum_pdf_date_label">日期: %1$s</string>
+    <string name="spectrum_pdf_page_format">第 %1$d 页 / 共 %2$d 页</string>
+    <string name="spectrum_pdf_summary_title">结果摘要</string>
+    <string name="spectrum_table_header_channel">通道</string>
+    <string name="spectrum_table_header_analyte">分析物</string>
+    <string name="spectrum_table_header_peak_wavelength">峰值波长λ(nm)</string>
+    <string name="spectrum_table_header_peak_intensity">峰值强度</string>
+    <string name="spectrum_table_header_data_points">数据点数</string>
+    <string name="spectrum_pdf_channel_title_format">通道%1$d - %2$s</string>
+    
+    <!-- PNG导出模式选择 -->
+    <string name="spectrum_png_export_mode_title">选择导出模式</string>
+    <string name="spectrum_png_single_channel_title">单通道光谱图</string>
+    <string name="spectrum_png_single_channel_desc">为每个通道生成单独的图片</string>
+    <string name="spectrum_png_merged_title">合并光谱图</string>
+    <string name="spectrum_png_merged_desc">将所有曲线合并在一张图中</string>
+    <string name="spectrum_merged_chart_title">全部通道-合并光谱</string>
 
 </resources> 
