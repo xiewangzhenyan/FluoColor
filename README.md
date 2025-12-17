@@ -22,6 +22,10 @@ FluoColorQuant 是一款专业的比色-荧光-光谱高通量传感检测软件
   - HorizontalPager 支持左右滑动查看多通道结果
   - 每页显示:分析物名称、光谱曲线、峰值信息、波长范围
   - 圆点指示器和通道页码显示
+- **结果导出功能**:
+  - CSV导出:支持导出单通道或全部通道的光谱原始数据(波长、强度)
+  - PNG导出:导出各通道光谱曲线图像,包含峰值标注
+  - PDF报告:生成包含项目信息、光谱图表和峰值分析的专业PDF报告
 - **历史记录集成**:光谱项目自动导航到专用结果页面
 - **完整国际化**:所有界面文本支持中英文切换
 
@@ -55,35 +59,54 @@ java
     └── muc
         └── fluocolorquant
             ├── data
+            │   ├── converters
+            │   │   └── Converters.kt
             │   ├── dao
             │   │   ├── AnalyteDao.kt
             │   │   ├── CurveModelDao.kt
             │   │   ├── DetectionRunDao.kt
-            │   │   ├── PlateLayoutDao.kt
+            │   │   ├── ExperimentTemplateDao.kt
+            │   │   ├── ProjectAnalyteJoinDao.kt
             │   │   ├── ProjectDao.kt
             │   │   ├── ReagentDao.kt
+            │   │   ├── SpectrumDao.kt
             │   │   ├── UserDao.kt
             │   │   └── WellResultDao.kt
             │   ├── enums
-            │   │   ├── FittingFunction.kt
-            │   │   └── PixelTypes.kt
+            │   │   ├── FittingFunctions.kt
+            │   │   ├── PixelTypes.kt
+            │   │   ├── SpectrumCalibrationType.kt
+            │   │   ├── SpectrumLightSource.kt
+            │   │   └── WellRoleType.kt
             │   ├── model
             │   │   ├── Analyte.kt
+            │   │   ├── AnalyteResultDetails.kt
+            │   │   ├── AnalyteWellLayout.kt
             │   │   ├── CurveModel.kt
             │   │   ├── DetectionRun.kt
-            │   │   ├── PlateLayout.kt
+            │   │   ├── ExperimentTemplate.kt
             │   │   ├── Project.kt
+            │   │   ├── ProjectAnalyteJoin.kt
             │   │   ├── Reagent.kt
+            │   │   ├── SpectrumCalibration.kt
+            │   │   ├── SpectrumExportData.kt
+            │   │   ├── SpectrumResult.kt
             │   │   ├── User.kt
             │   │   └── WellResult.kt
             │   ├── repository
             │   │   ├── AnalyteRepository.kt
             │   │   ├── CurveModelRepository.kt
-            │   │   ├── PlateLayoutRepository.kt
+            │   │   ├── CurveModelRepositoryImpl.kt
+            │   │   ├── DetectionRunRepository.kt
+            │   │   ├── ExperimentTemplateRepository.kt
+            │   │   ├── ExperimentTemplateRepositoryImpl.kt
+            │   │   ├── ProjectAnalyteJoinRepository.kt
             │   │   ├── ProjectRepository.kt
             │   │   ├── ProjectRepositoryImpl.kt
             │   │   ├── ReagentRepository.kt
             │   │   ├── SettingsRepository.kt
+            │   │   ├── SpectrumRepository.kt
+            │   │   ├── SpectrumRepositoryImpl.kt
             │   │   ├── UserRepository.kt
             │   │   └── WellResultRepository.kt
             │   ├── AppDatabase.kt
@@ -96,11 +119,18 @@ java
             │   │   ├── AnimatedButtons.kt
             │   │   ├── Buttons.kt
             │   │   ├── CustomToast.kt
+            │   │   ├── FlowRow.kt
+            │   │   ├── InteractivePlateGrid.kt
+            │   │   ├── LatexView.kt
+            │   │   ├── ManualFittingDialog.kt
             │   │   ├── PrimaryButton.kt
             │   │   ├── TextFields.kt
-            │   │   └── charts
-            │   │       ├── ChartData.kt
-            │   │       └── CurveChart.kt
+            │   │   ├── WellLayoutComponents.kt
+            │   │   ├── charts
+            │   │   │   ├── ChartData.kt
+            │   │   │   └── CurveChart.kt
+            │   │   └── tables
+            │   │       └── MetricsTable.kt
             │   ├── navigation
             │   │   ├── AppNavigation.kt
             │   │   └── Screen.kt
@@ -109,6 +139,7 @@ java
             │   │   │   ├── LoginScreen.kt
             │   │   │   └── RegisterScreen.kt
             │   │   ├── curvefitting
+            │   │   │   ├── CurveFittingResultScreen.kt
             │   │   │   └── CurveFittingScreen.kt
             │   │   ├── detection
             │   │   │   └── WellDetectionScreen.kt
@@ -123,21 +154,33 @@ java
             │   │   ├── profile
             │   │   │   └── ProfileScreen.kt
             │   │   ├── project
+            │   │   │   ├── AnalyteConfigItem.kt
+            │   │   │   ├── AnalyteSelectionDialog.kt
             │   │   │   └── NewProjectScreen.kt
             │   │   ├── result
+            │   │   │   ├── AnalysisPlanCard.kt
             │   │   │   ├── ExportComponents.kt
-            │   │   │   └── ResultScreen.kt
+            │   │   │   ├── ModifiedCards.kt
+            │   │   │   ├── NewResultScreen.kt
+            │   │   │   ├── ProjectInfoCard.kt
+            │   │   │   ├── ResultsDisplaySection.kt
+            │   │   │   └── ValidationCard.kt
             │   │   ├── settings
             │   │   │   ├── AnalyteManagementScreen.kt
             │   │   │   ├── AppSettingsScreen.kt
+            │   │   │   ├── CreateExperimentTemplateScreen.kt
             │   │   │   ├── CurveModelManagementScreen.kt
             │   │   │   ├── DetectionSettingsScreen.kt
-            │   │   │   ├── LibraryManagementScreen.kt
+            │   │   │   ├── ExperimentTemplateManagementScreen.kt
+            │   │   │   ├── ManualCurveInputScreen.kt
+            │   │   │   ├── ManualDataInputScreen.kt
             │   │   │   ├── ReagentLibraryScreen.kt
             │   │   │   ├── SettingsNavigationItem.kt
-            │   │   │   └── SettingsScreen.kt
+            │   │   │   ├── SettingsScreen.kt
+            │   │   │   └── SpectrumSettingsScreen.kt
             │   │   ├── spectrum
             │   │   │   ├── SpectrumCalibrationScreen.kt
+            │   │   │   ├── SpectrumExportBottomSheet.kt
             │   │   │   └── SpectrumResultScreen.kt
             │   │   └── splash
             │   │       └── SplashScreen.kt
@@ -148,8 +191,10 @@ java
             │   └── viewmodels
             │       ├── AnalyteViewModel.kt
             │       ├── ConcentrationViewModel.kt
+            │       ├── CurveFittingViewModel.kt
             │       ├── CurveModelViewModel.kt
             │       ├── DetectionViewModel.kt
+            │       ├── ExperimentTemplateViewModel.kt
             │       ├── ExportViewModel.kt
             │       ├── HistoryViewModel.kt
             │       ├── ImageCorrectionViewModel.kt
@@ -159,16 +204,19 @@ java
             │       ├── SettingsViewModel.kt
             │       ├── SpectrumCalibrationViewModel.kt
             │       ├── SpectrumResultViewModel.kt
-            │       └── UserViewModel.kt
+            │       ├── UserViewModel.kt
+            │       └── WellLayoutViewModel.kt
             ├── utils
             │   ├── math
             │   │   ├── FittingEngine.kt
             │   │   ├── FittingResult.kt
             │   │   ├── MetricsCalculator.kt
-            │   │   └── SpectrumCVUtils.kt
+            │   │   ├── SpectrumCVUtils.kt
+            │   │   └── WellMappingUtils.kt
             │   ├── AnimationUtils.kt
             │   ├── HeatmapColorUtil.kt
-            │   └── LocaleHelper.kt
+            │   ├── LocaleHelper.kt
+            │   └── PixelExtractionUtils.kt
             ├── FluoColorApp.kt
             └── MainActivity.kt
 ```
@@ -332,6 +380,7 @@ java
 - **分页结果浏览**: HorizontalPager支持左右滑动查看多通道结果,直观对比
 - **实时数据探索**: 点击光谱图可查看精确的波长和强度数值
 - **峰值自动标注**: 根据灵敏度自动识别并标注主要峰值
+- **多格式结果导出**: 支持CSV(原始数据)、PNG(图表)和PDF(完整报告)三种格式导出
 
 ## 未来计划
 - **云端集成**: 实现云端存储和分析功能,支持跨设备数据共享
@@ -341,5 +390,4 @@ java
 - **自动报告生成**: 进一步优化PDF报告生成功能,支持更多自定义选项
 - **3D可视化**: 实现检测结果的三维可视化展示
 - **移动端优化**: 进一步优化移动端体验,提高应用流畅度和响应速度
-- **光谱数据导出**: 支持导出光谱数据为标准格式(CSV/JSON)
 - **多光谱对比**: 支持多通道光谱曲线叠加对比分析
