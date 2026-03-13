@@ -955,6 +955,7 @@
     <string name="chart_difference">差值</string>
     <string name="chart_predicted">预测值</string>
     <string name="chart_actual">实际值</string>
+    <string name="chart_tooltip_pair_format">%1$s：%2$s\n%3$s：%4$s</string>
 
     <!-- Validation Report -->
     <string name="generating_validation_report">正在生成验证报告...</string>
@@ -1000,6 +1001,7 @@
     <string name="spectrum_axis_wavelength">波长 (nm)</string>
     <string name="spectrum_axis_intensity">归一化强度</string>
     <string name="spectrum_peak_info_format">峰值: %1$.1f nm, 强度: %2$.3f</string>
+    <string name="spectrum_chart_tooltip_format">波长：%1$.1f nm\n强度：%2$.4f</string>
     <string name="spectrum_pdf_cover_title">光谱分析报告</string>
     <string name="spectrum_pdf_project_label">项目: %1$s</string>
     <string name="spectrum_pdf_mode_label">检测模式: 光谱</string>

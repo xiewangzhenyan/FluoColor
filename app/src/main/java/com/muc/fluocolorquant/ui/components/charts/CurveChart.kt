@@ -724,19 +724,33 @@ fun CurveChart(
                     
                     // 检查值是否有效
                     if (!xValue.isNaN() && !xValue.isInfinite() && !yValue.isNaN() && !yValue.isInfinite()) {
-                        // 根据图表类型，提供不同的标签和格式
-                        val (xLabel, yLabel) = when (data.chartType) {
-                            "BLAND_ALTMAN" -> Pair(
-                                stringResource(id = R.string.chart_mean), 
-                                stringResource(id = R.string.chart_difference)
+                        val tooltipText = if (isSpectrumChart(data.chartType)) {
+                            stringResource(
+                                id = R.string.spectrum_chart_tooltip_format,
+                                xValue,
+                                yValue
                             )
-                            "REGRESSION" -> Pair(
-                                stringResource(id = R.string.chart_predicted), 
-                                stringResource(id = R.string.chart_actual)
-                            )
-                            else -> Pair(
-                                stringResource(id = R.string.chart_concentration), 
-                                stringResource(id = R.string.chart_pixel_value)
+                        } else {
+                            val (xLabel, yLabel) = when (data.chartType) {
+                                "BLAND_ALTMAN" -> Pair(
+                                    stringResource(id = R.string.chart_mean),
+                                    stringResource(id = R.string.chart_difference)
+                                )
+                                "REGRESSION" -> Pair(
+                                    stringResource(id = R.string.chart_predicted),
+                                    stringResource(id = R.string.chart_actual)
+                                )
+                                else -> Pair(
+                                    xAxisLabelText,
+                                    yAxisLabelText
+                                )
+                            }
+                            stringResource(
+                                id = R.string.chart_tooltip_pair_format,
+                                xLabel,
+                                formatTooltipValue(xValue),
+                                yLabel,
+                                formatTooltipValue(yValue)
                             )
                         }
                         
@@ -750,8 +764,7 @@ fun CurveChart(
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
                             Text(
-                                text = "$xLabel: ${String.format("%.4f", xValue)}\n" +
-                                       "$yLabel: ${String.format("%.4f", yValue)}",
+                                text = tooltipText,
                                 modifier = Modifier.padding(8.dp),
                                 style = TextStyle(fontSize = 12.sp)
                             )
@@ -761,6 +774,22 @@ fun CurveChart(
             }
         }
     }
+}
+
+/**
+ * 统一格式化曲线提示框中的数值，避免不同模式下出现过长小数。
+ */
+private fun formatTooltipValue(value: Double, scale: Int = 4): String {
+    return BigDecimal.valueOf(value)
+        .setScale(scale, RoundingMode.HALF_UP)
+        .toPlainString()
+}
+
+/**
+ * 光谱图使用独立的提示文案，避免继续复用浓度/像素值标签。
+ */
+private fun isSpectrumChart(chartType: String): Boolean {
+    return chartType == "SPECTRUM" || chartType == "SPECTRUM_COMPARE"
 }
 
 /**

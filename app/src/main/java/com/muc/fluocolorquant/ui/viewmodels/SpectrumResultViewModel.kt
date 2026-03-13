@@ -389,7 +389,8 @@ class SpectrumResultViewModel @Inject constructor(
                     yRange = Pair(-0.05, 1.05),
                     curvePoints = emptyList(),
                     scatterPoints = emptyList(),
-                    showGrid = true
+                    showGrid = true,
+                    chartType = "SPECTRUM"
                 ),
                 peaks = emptyList(),
                 dataPointCount = 0,
@@ -547,6 +548,7 @@ class SpectrumResultViewModel @Inject constructor(
             scatterPoints = peakPoints,
             pointColor = Color(0xFFFF6B6B),
             showGrid = true,
+            chartType = "SPECTRUM",
             verticalMarkers = markers
         )
     }

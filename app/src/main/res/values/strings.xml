@@ -958,6 +958,7 @@
     <string name="chart_difference">Difference</string>
     <string name="chart_predicted">Predicted</string>
     <string name="chart_actual">Actual</string>
+    <string name="chart_tooltip_pair_format">%1$s: %2$s\n%3$s: %4$s</string>
 
     <!-- Export Dialog -->
     <string name="select_analytes_to_export">Select Analytes to Export</string>
@@ -1000,6 +1001,7 @@
     <string name="spectrum_axis_wavelength">Wavelength (nm)</string>
     <string name="spectrum_axis_intensity">Normalized Intensity</string>
     <string name="spectrum_peak_info_format">Peak: %1$.1f nm, Intensity: %2$.3f</string>
+    <string name="spectrum_chart_tooltip_format">Wavelength: %1$.1f nm\nIntensity: %2$.4f</string>
     <string name="spectrum_pdf_cover_title">Spectrum Analysis Report</string>
     <string name="spectrum_pdf_project_label">Project: %1$s</string>
     <string name="spectrum_pdf_mode_label">Detection Mode: SPECTRUM</string>
