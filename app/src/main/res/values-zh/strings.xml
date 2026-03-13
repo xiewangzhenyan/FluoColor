@@ -1022,4 +1022,53 @@
     <string name="spectrum_png_merged_desc">将所有曲线合并在一张图中</string>
     <string name="spectrum_merged_chart_title">全部通道-合并光谱</string>
 
+    <!-- 光谱标定优化 -->
+    <string name="undo">撤销</string>
+    <string name="undo_calibration_point">撤销上一步标定操作</string>
+    <string name="auto_calibration_retry_title">自动标定失败</string>
+    <string name="auto_calibration_retry_message">峰值检测可能因图像对比度过低或灵敏度设置不当而失败。\n\n建议：\n• 尝试在设置中调整光谱灵敏度\n• 确保标定图具有清晰的光谱线\n• 切换到手动标定模式</string>
+    <string name="switch_to_manual_calibration">切换手动</string>
+    <string name="retry_auto_calibration">重试</string>
+    <string name="load_saved_wavelengths">已加载上次使用的波长</string>
+    <string name="drag_hint_magnifier">拖动标定线调整位置，放大镜辅助精准对齐。</string>
+    <string name="calibration_points_count">%1$d 个标定点</string>
+    <string name="confirm_delete_calibration_point_title">删除标定点</string>
+    <string name="confirm_delete_calibration_point_message">确定要删除此标定点吗？</string>
+    <string name="previous">上一个</string>
+    <string name="next">下一个</string>
+    <string name="spectrum_calibration_progress_title">标定进度</string>
+    <string name="spectrum_calibration_progress_summary">已完成 %1$d / %2$d</string>
+    <string name="spectrum_calibration_opencv_failed">OpenCV 初始化失败，请检查依赖配置。</string>
+    <string name="spectrum_calibration_image_load_failed">光谱图像加载失败</string>
+    <string name="spectrum_calibration_load_failed">光谱标定数据加载失败</string>
+    <string name="spectrum_calibration_channel_points_required">通道 %1$d 至少需要 2 个标定点</string>
+    <string name="spectrum_calibration_track_zero_points_required">通道 1 至少需要 2 个标定点后才能一键应用</string>
+    <string name="spectrum_calibration_track_zero_missing">通道 1 的信息缺失</string>
+    <string name="spectrum_calibration_apply_all_success">已将通道 1 的标定应用到全部通道</string>
+    <string name="spectrum_calibration_upload_required">请先上传标定图</string>
+    <string name="spectrum_calibration_reference_required">请先输入参考波长</string>
+    <string name="spectrum_calibration_peak_insufficient">通道 %1$d 的波峰数量不足（已检测到 %2$d / %3$d）</string>
+    <string name="spectrum_calibration_auto_failed">自动标定失败</string>
+    <string name="spectrum_calibration_complete_all_required">请先完成所有通道的标定</string>
+    <string name="spectrum_calibration_original_missing">原始图像丢失</string>
+    <string name="spectrum_calibration_save_failed">保存标定结果失败</string>
+    <string name="spectrum_result_load_failed">加载光谱结果失败</string>
+    <string name="spectrum_export_prepare_failed">导出数据准备失败</string>
+    <string name="spectrum_quick_settings_title">快速调参</string>
+    <string name="spectrum_compare_toggle">叠加对比</string>
+    <string name="spectrum_compare_title">多通道叠加对比</string>
+    <string name="spectrum_compare_line_label">通道 %1$d</string>
+    <string name="spectrum_compare_line_legend">通道 %1$d · %2$s</string>
+    <string name="spectrum_no_data_desc">当前项目还没有可展示的光谱结果，请返回标定页面生成结果。</string>
+    <string name="spectrum_return_calibration">返回标定</string>
+    <string name="spectrum_thumbnail_desc">通道 %1$d 缩略图</string>
+    <string name="spectrum_range_arrow">→</string>
+    <string name="spectrum_export_progress_title">正在导出光谱数据</string>
+    <string name="spectrum_export_progress_desc">正在生成文件，PDF 和合并 PNG 导出耗时可能较长。</string>
+    <string name="spectrum_secondary_peaks_title">其他峰值</string>
+    <string name="spectrum_peak_rank_label">峰 %1$d</string>
+    <string name="spectrum_edit_binding">编辑分析物绑定</string>
+    <string name="spectrum_rebind_title">重新绑定分析物</string>
+    <string name="spectrum_clear_binding">清除绑定</string>
+
 </resources> 

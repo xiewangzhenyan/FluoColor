@@ -3,7 +3,19 @@ package com.muc.fluocolorquant.ui.screens.spectrum
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -12,37 +24,68 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import coil.compose.AsyncImage
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.components.charts.ChartData
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
+import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.ExportViewModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumChannelUiModel
+import com.muc.fluocolorquant.ui.viewmodels.SpectrumPeakUiModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumResultViewModel
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.runtime.*
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
+import kotlinx.coroutines.launch
+import java.util.Locale
 
 /**
  * 光谱分析结果展示页面
@@ -58,46 +101,50 @@ fun SpectrumResultScreen(
     val state by viewModel.uiState.collectAsState()
     val exportState by exportViewModel.exportState.collectAsState()
     val toastManager = LocalToastManager.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val exportPrepareFailed = stringResource(R.string.spectrum_export_prepare_failed)
+    var showQuickSettings by remember { mutableStateOf(true) }
+    var showComparison by remember { mutableStateOf(false) }
+    var editingChannel by remember { mutableStateOf<SpectrumChannelUiModel?>(null) }
+    var pendingSmoothing by remember(state.smoothingLevel) { mutableStateOf(state.smoothingLevel.toFloat()) }
     var showExportSheet by remember { mutableStateOf(false) }
-    
-    // 加载数据
+
     LaunchedEffect(projectId) {
         if (projectId.isNotBlank()) {
             viewModel.loadProjectResults(projectId)
         }
     }
-    
-    // 显示错误信息
+
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
-            toastManager.showToast(it, ToastType.ERROR)
+            toastManager.showToast(it.asString(context), ToastType.ERROR)
+            viewModel.clearErrorMessage()
         }
     }
-    
-    // 处理导出状态
+
     LaunchedEffect(exportState) {
-        val state = exportState
-        when (state) {
+        when (val currentExportState = exportState) {
             is ExportViewModel.ExportState.Success -> {
-                toastManager.showToast(state.message, ToastType.SUCCESS)
+                toastManager.showToast(currentExportState.message, ToastType.SUCCESS)
                 exportViewModel.resetExportState()
             }
             is ExportViewModel.ExportState.Error -> {
-                toastManager.showToast(state.message, ToastType.ERROR)
+                toastManager.showToast(currentExportState.message, ToastType.ERROR)
                 exportViewModel.resetExportState()
             }
             else -> {}
         }
     }
-    
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { 
+            CenterAlignedTopAppBar(
+                title = {
                     Text(
                         text = stringResource(R.string.spectrum_result_title),
                         fontWeight = FontWeight.Bold
-                    ) 
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
@@ -106,17 +153,23 @@ fun SpectrumResultScreen(
                 },
                 actions = {
                     if (state.results.isNotEmpty()) {
+                        IconButton(onClick = { showQuickSettings = !showQuickSettings }) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = stringResource(R.string.spectrum_quick_settings_title)
+                            )
+                        }
                         IconButton(onClick = { showExportSheet = true }) {
                             Icon(
                                 painter = painterResource(id = R.drawable.export),
-                                contentDescription = "Export",
+                                contentDescription = stringResource(R.string.spectrum_export_title),
                                 tint = Color.White,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color(0xFF5D6B98),
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White,
@@ -125,199 +178,435 @@ fun SpectrumResultScreen(
             )
         }
     ) { paddingValues ->
-        if (state.isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = Color(0xFF5D6B98))
+        when {
+            state.isLoading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = Color(0xFF5D6B98))
+                }
             }
-        } else if (state.results.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = stringResource(R.string.spectrum_no_data),
-                    color = Color.Gray,
-                    fontSize = 16.sp
+
+            state.results.isEmpty() -> {
+                SpectrumEmptyState(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues),
+                    onReturnCalibration = {
+                        val imageUri = state.projectImageUri
+                        if (!imageUri.isNullOrBlank()) {
+                            navController.navigate(Screen.SpectrumCalibration.createRoute(projectId, imageUri))
+                        } else {
+                            navController.navigateUp()
+                        }
+                    }
                 )
             }
-        } else {
-            // 使用 HorizontalPager 分页展示
-            val pagerState = rememberPagerState(pageCount = { state.results.size })
-            
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .background(Color(0xFFF5F7FA))
-            ) {
-                // 页面指示器
-                Row(
+
+            else -> {
+                val pagerState = rememberPagerState(pageCount = { state.results.size })
+
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                        .background(Color(0xFFF5F7FA))
                 ) {
-                    Text(
-                        text = stringResource(
-                            R.string.spectrum_channel_format,
-                            pagerState.currentPage + 1,
-                            state.results.size
-                        ),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2D3142)
-                    )
-                    
-                    // 圆点指示器
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        repeat(state.results.size) { index ->
-                            Box(
-                                modifier = Modifier
-                                    .size(if (index == pagerState.currentPage) 10.dp else 8.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (index == pagerState.currentPage) 
-                                            Color(0xFF5D6B98) 
-                                        else 
-                                            Color(0xFFCCCCCC)
+                    if (showQuickSettings) {
+                        QuickAdjustCard(
+                            pendingSmoothing = pendingSmoothing,
+                            sensitivity = state.sensitivity,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            onSmoothingChange = { pendingSmoothing = it },
+                            onSmoothingChangeFinished = {
+                                viewModel.updateSmoothing(pendingSmoothing.toInt())
+                            },
+                            onSensitivityChange = viewModel::updateSensitivity
+                        )
+                    }
+
+                    if (state.comparisonChartData != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            FilterChip(
+                                selected = showComparison,
+                                onClick = { showComparison = !showComparison },
+                                label = { Text(stringResource(R.string.spectrum_compare_toggle)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Layers,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
                                     )
+                                }
                             )
                         }
                     }
-                }
-                
-                // Pager 内容
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
-                    val channelData = state.results[page]
-                    ChannelResultPage(channelData = channelData)
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.spectrum_channel_format,
+                                pagerState.currentPage + 1,
+                                state.results.size
+                            ),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2D3142)
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            repeat(state.results.size) { index ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(if (index == pagerState.currentPage) 12.dp else 9.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (index == pagerState.currentPage) Color(0xFF5D6B98)
+                                            else Color(0xFFD1D5DB)
+                                        )
+                                        .clickable {
+                                            scope.launch { pagerState.animateScrollToPage(index) }
+                                        }
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.weight(1f)
+                    ) { page ->
+                        ChannelResultPage(
+                            channelData = state.results[page],
+                            showComparison = showComparison,
+                            comparisonChartData = state.comparisonChartData,
+                            allChannels = state.results,
+                            modifier = Modifier.fillMaxSize(),
+                            onEditAnalyte = { editingChannel = state.results[page] }
+                        )
+                    }
                 }
             }
         }
     }
-    
-    // 导出弹窗
+
     if (showExportSheet) {
         SpectrumExportBottomSheet(
             onDismiss = { showExportSheet = false },
             onCsvExport = {
                 viewModel.getExportData()?.let { data ->
                     exportViewModel.startSpectrumCsvExport(data)
-                } ?: toastManager.showToast("导出数据准备失败", ToastType.ERROR)
+                } ?: toastManager.showToast(exportPrepareFailed, ToastType.ERROR)
             },
             onPngExport = { isMerged ->
                 viewModel.getExportData()?.let { data ->
                     exportViewModel.startSpectrumPngExport(data, isMerged)
-                } ?: toastManager.showToast("导出数据准备失败", ToastType.ERROR)
+                } ?: toastManager.showToast(exportPrepareFailed, ToastType.ERROR)
             },
             onPdfExport = {
                 viewModel.getExportData()?.let { data ->
                     exportViewModel.startSpectrumPdfExport(data)
-                } ?: toastManager.showToast("导出数据准备失败", ToastType.ERROR)
+                } ?: toastManager.showToast(exportPrepareFailed, ToastType.ERROR)
+            }
+        )
+    }
+
+    if (exportState is ExportViewModel.ExportState.InProgress) {
+        ExportProgressDialog()
+    }
+
+    editingChannel?.let { channel ->
+        AnalyteBindingDialog(
+            availableAnalytes = state.availableAnalytes,
+            currentAnalyteId = channel.analyteId,
+            onDismiss = { editingChannel = null },
+            onConfirm = { analyteId ->
+                viewModel.updateChannelAnalyte(channel.resultId, channel.channelIndex, analyteId)
+                editingChannel = null
             }
         )
     }
 }
 
 /**
- * 单个通道的结果页面
+ * 快速调参卡片。
+ */
+@Composable
+private fun QuickAdjustCard(
+    pendingSmoothing: Float,
+    sensitivity: String,
+    modifier: Modifier = Modifier,
+    onSmoothingChange: (Float) -> Unit,
+    onSmoothingChangeFinished: () -> Unit,
+    onSensitivityChange: (String) -> Unit
+) {
+    OutlinedCard(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Tune,
+                    contentDescription = null,
+                    tint = Color(0xFF5D6B98)
+                )
+                Text(
+                    text = stringResource(R.string.spectrum_quick_settings_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.label_smoothing_level, pendingSmoothing.toInt()),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF6B7280)
+            )
+            Slider(
+                value = pendingSmoothing,
+                onValueChange = onSmoothingChange,
+                valueRange = 0f..10f,
+                steps = 9,
+                onValueChangeFinished = onSmoothingChangeFinished
+            )
+
+            Text(
+                text = stringResource(R.string.label_sensitivity),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF6B7280)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SensitivityFilterChip(
+                    label = stringResource(R.string.sensitivity_low),
+                    selected = sensitivity.equals("Low", ignoreCase = true),
+                    onClick = { onSensitivityChange("Low") }
+                )
+                SensitivityFilterChip(
+                    label = stringResource(R.string.sensitivity_medium),
+                    selected = sensitivity.equals("Medium", ignoreCase = true),
+                    onClick = { onSensitivityChange("Medium") }
+                )
+                SensitivityFilterChip(
+                    label = stringResource(R.string.sensitivity_high),
+                    selected = sensitivity.equals("High", ignoreCase = true),
+                    onClick = { onSensitivityChange("High") }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 空状态页面。
+ */
+@Composable
+private fun SpectrumEmptyState(
+    modifier: Modifier = Modifier,
+    onReturnCalibration: () -> Unit
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(24.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(88.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEEF2FF)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Science,
+                    contentDescription = null,
+                    tint = Color(0xFF5D6B98),
+                    modifier = Modifier.size(42.dp)
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.spectrum_no_data),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = stringResource(R.string.spectrum_no_data_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF6B7280),
+                textAlign = TextAlign.Center
+            )
+
+            Button(onClick = onReturnCalibration) {
+                Text(stringResource(R.string.spectrum_return_calibration))
+            }
+        }
+    }
+}
+
+/**
+ * 单个通道的结果页面。
  */
 @Composable
 private fun ChannelResultPage(
-    channelData: SpectrumChannelUiModel
+    channelData: SpectrumChannelUiModel,
+    showComparison: Boolean,
+    comparisonChartData: ChartData?,
+    allChannels: List<SpectrumChannelUiModel>,
+    modifier: Modifier = Modifier,
+    onEditAnalyte: () -> Unit
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = modifier
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 分析物标题卡片
+        if (showComparison) {
+            SpectrumComparisonCard(
+                chartData = comparisonChartData,
+                channels = allChannels,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
         AnalyteTitleCard(
             analyteName = channelData.analyteName,
             channelIndex = channelData.channelIndex,
+            croppedImagePath = channelData.croppedImagePath,
+            onEditClick = onEditAnalyte,
             modifier = Modifier.fillMaxWidth()
         )
-        
-        // 光谱曲线卡片
+
         SpectrumCurveCard(
             chartData = channelData.chartData,
             modifier = Modifier.fillMaxWidth()
         )
-        
-        // 峰值信息卡片
+
         PeakInfoCard(
-            peakWavelength = channelData.peakWavelength,
-            peakIntensity = channelData.peakIntensity,
+            peaks = channelData.peaks,
             dataPointCount = channelData.dataPointCount,
             modifier = Modifier.fillMaxWidth()
         )
-        
-        // 数据范围卡片
+
         DataRangeCard(
             minWavelength = channelData.minWavelength,
             maxWavelength = channelData.maxWavelength,
             modifier = Modifier.fillMaxWidth()
         )
-        
+
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
 /**
- * 分析物标题卡片
+ * 分析物标题卡片。
  */
 @Composable
 private fun AnalyteTitleCard(
     analyteName: String,
     channelIndex: Int,
+    croppedImagePath: String?,
+    onEditClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val unboundText = stringResource(R.string.spectrum_unbound)
+
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(20.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = stringResource(R.string.spectrum_analyte_label),
-                fontSize = 14.sp,
-                color = Color(0xFF6B7280),
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            val unboundText = stringResource(R.string.spectrum_unbound)
-            Text(
-                text = analyteName,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (analyteName == unboundText) Color(0xFF9CA3AF) else Color(0xFF5D6B98)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = stringResource(R.string.spectrum_channel_label, channelIndex),
-                fontSize = 12.sp,
-                color = Color(0xFF9CA3AF)
-            )
+            Box(
+                modifier = Modifier
+                    .size(92.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFFF3F4F6)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!croppedImagePath.isNullOrBlank()) {
+                    AsyncImage(
+                        model = croppedImagePath,
+                        contentDescription = stringResource(R.string.spectrum_thumbnail_desc, channelIndex),
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Image,
+                        contentDescription = null,
+                        tint = Color(0xFF9CA3AF),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.spectrum_analyte_label),
+                    fontSize = 14.sp,
+                    color = Color(0xFF6B7280),
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = analyteName,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (analyteName == unboundText) Color(0xFF9CA3AF) else Color(0xFF5D6B98)
+                )
+                Text(
+                    text = stringResource(R.string.spectrum_channel_label, channelIndex),
+                    fontSize = 12.sp,
+                    color = Color(0xFF9CA3AF)
+                )
+            }
+
+            IconButton(onClick = onEditClick) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = stringResource(R.string.spectrum_edit_binding),
+                    tint = Color(0xFF5D6B98)
+                )
+            }
         }
     }
 }
@@ -372,22 +661,23 @@ private fun SpectrumCurveCard(
                 data = chartData,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .height(300.dp)
             )
         }
     }
 }
 
 /**
- * 峰值信息卡片
+ * 峰值信息卡片。
  */
 @Composable
 private fun PeakInfoCard(
-    peakWavelength: Float?,
-    peakIntensity: Double?,
+    peaks: List<SpectrumPeakUiModel>,
     dataPointCount: Int,
     modifier: Modifier = Modifier
 ) {
+    val primaryPeak = peaks.firstOrNull()
+
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
@@ -432,14 +722,14 @@ private fun PeakInfoCard(
             ) {
                 InfoItem(
                     label = stringResource(R.string.spectrum_peak_wavelength),
-                    value = peakWavelength?.let { String.format("%.1f nm", it) } ?: "--",
+                    value = primaryPeak?.let { String.format(Locale.US, "%.1f nm", it.wavelength) } ?: "--",
                     modifier = Modifier.weight(1f),
                     highlightColor = Color(0xFFFF6B6B)
                 )
                 
                 InfoItem(
                     label = stringResource(R.string.spectrum_peak_intensity),
-                    value = peakIntensity?.let { String.format("%.3f", it) } ?: "--",
+                    value = primaryPeak?.let { String.format(Locale.US, "%.3f", it.intensity) } ?: "--",
                     modifier = Modifier.weight(1f),
                     highlightColor = Color(0xFF5D6B98)
                 )
@@ -450,6 +740,46 @@ private fun PeakInfoCard(
                     modifier = Modifier.weight(1f),
                     highlightColor = Color(0xFF10B981)
                 )
+            }
+
+            if (peaks.size > 1) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.spectrum_secondary_peaks_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF2D3142)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    peaks.drop(1).forEach { peak ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFFF8FAFC))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.spectrum_peak_rank_label, peak.rank),
+                                color = Color(0xFF5D6B98),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = String.format(Locale.US, "%.1f nm", peak.wavelength),
+                                color = Color(0xFF475569)
+                            )
+                            Text(
+                                text = String.format(Locale.US, "%.3f", peak.intensity),
+                                color = Color(0xFFEF4444),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -514,7 +844,7 @@ private fun DataRangeCard(
                 }
                 
                 Text(
-                    text = "→",
+                    text = stringResource(R.string.spectrum_range_arrow),
                     fontSize = 24.sp,
                     color = Color(0xFF9CA3AF)
                 )
@@ -535,6 +865,228 @@ private fun DataRangeCard(
             }
         }
     }
+}
+
+/**
+ * 多通道叠加对比卡片。
+ */
+@Composable
+private fun SpectrumComparisonCard(
+    chartData: ChartData?,
+    channels: List<SpectrumChannelUiModel>,
+    modifier: Modifier = Modifier
+) {
+    if (chartData == null || channels.isEmpty()) return
+
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.spectrum_compare_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            CurveChart(
+                data = chartData,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(260.dp),
+                interactive = false
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                channels.withIndex().toList().chunked(2).forEach { rowChannels ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        rowChannels.forEach { indexedChannel ->
+                            val lineColor = if (indexedChannel.index == 0) {
+                                chartData.curveColor
+                            } else {
+                                chartData.overlayLines.getOrNull(indexedChannel.index - 1)?.color ?: Color(0xFF9CA3AF)
+                            }
+
+                            ComparisonLegendItem(
+                                lineColor = lineColor,
+                                channel = indexedChannel.value,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        if (rowChannels.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComparisonLegendItem(
+    lineColor: Color,
+    channel: SpectrumChannelUiModel,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.padding(start = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(lineColor)
+        )
+        Text(
+            text = stringResource(
+                R.string.spectrum_compare_line_legend,
+                channel.channelIndex,
+                channel.analyteName
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF475569),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/**
+ * 导出进度对话框。
+ */
+@Composable
+private fun ExportProgressDialog() {
+    AlertDialog(
+        onDismissRequest = {},
+        confirmButton = {},
+        title = { Text(stringResource(R.string.spectrum_export_progress_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = stringResource(R.string.spectrum_export_progress_desc),
+                    color = Color(0xFF6B7280)
+                )
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+        }
+    )
+}
+
+/**
+ * 分析物重绑对话框。
+ */
+@Composable
+private fun AnalyteBindingDialog(
+    availableAnalytes: List<Analyte>,
+    currentAnalyteId: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (String?) -> Unit
+) {
+    var selectedAnalyteId by remember(currentAnalyteId) { mutableStateOf(currentAnalyteId) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.spectrum_rebind_title)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedAnalyteId = null }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(stringResource(R.string.spectrum_clear_binding))
+                        if (selectedAnalyteId == null) {
+                            Text(
+                                text = stringResource(R.string.confirm),
+                                color = Color(0xFF5D6B98),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                availableAnalytes.forEach { analyte ->
+                    OutlinedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedAnalyteId = analyte.id }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(analyte.name)
+                            if (selectedAnalyteId == analyte.id) {
+                                Text(
+                                    text = stringResource(R.string.confirm),
+                                    color = Color(0xFF5D6B98),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selectedAnalyteId) }) {
+                Text(stringResource(R.string.confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+/**
+ * 灵敏度筛选项。
+ */
+@Composable
+private fun SensitivityFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) }
+    )
 }
 
 /**

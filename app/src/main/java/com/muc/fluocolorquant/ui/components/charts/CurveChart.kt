@@ -61,7 +61,8 @@ import androidx.compose.ui.res.stringResource
 @Composable
 fun CurveChart(
     data: ChartData,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    interactive: Boolean = true
 ) {
     val textMeasurer = rememberTextMeasurer()
     var selectedPointIndex by remember { mutableStateOf<Int?>(null) }
@@ -110,6 +111,7 @@ fun CurveChart(
                     .height(250.dp)
                     .background(data.backgroundColor)
                     .pointerInput(Unit) {
+                        if (!interactive) return@pointerInput
                         detectTapGestures { offset ->
                             // 点击事件处理，查找最近的数据点或曲线点
                             findNearestPointToPosition(data, offset, size.toSize())?.let { (index, pointOffset) ->
@@ -132,6 +134,7 @@ fun CurveChart(
                         }
                     }
                     .pointerInput(Unit) {
+                        if (!interactive) return@pointerInput
                         detectDragGestures(
                             onDragStart = { offset ->
                                 isDragging = true
@@ -495,6 +498,78 @@ fun CurveChart(
                         path = path,
                         color = data.curveColor,
                         style = Stroke(width = 2f)
+                    )
+                }
+
+                // 绘制附加曲线（如多通道叠加对比）
+                data.overlayLines.forEach { line ->
+                    if (line.points.isEmpty()) return@forEach
+
+                    val overlayPath = Path()
+                    var isFirstPoint = true
+
+                    line.points.forEach { point ->
+                        val x = point.first
+                        val y = point.second
+                        if (x < xMin || x > xMax || y < yMin || y > yMax) {
+                            return@forEach
+                        }
+
+                        val xRatio = if (xDiff != 0.0) (x - xMin) / xDiff else 0.0
+                        val yRatio = if (yDiff != 0.0) (y - yMin) / yDiff else 0.0
+                        val pointX = graphStartX + (xRatio * graphWidth).toFloat()
+                        val pointY = graphEndY - (yRatio * graphHeight).toFloat()
+
+                        if (isFirstPoint) {
+                            overlayPath.moveTo(pointX, pointY)
+                            isFirstPoint = false
+                        } else {
+                            overlayPath.lineTo(pointX, pointY)
+                        }
+                    }
+
+                    drawPath(
+                        path = overlayPath,
+                        color = line.color,
+                        style = Stroke(
+                            width = line.strokeWidth,
+                            pathEffect = if (line.dashed) {
+                                PathEffect.dashPathEffect(floatArrayOf(10f, 8f), 0f)
+                            } else {
+                                null
+                            }
+                        )
+                    )
+                }
+
+                // 绘制竖向标记线（如峰值位置）
+                data.verticalMarkers.forEach { marker ->
+                    if (marker.x < xMin || marker.x > xMax) return@forEach
+
+                    val xRatio = if (xDiff != 0.0) (marker.x - xMin) / xDiff else 0.0
+                    val markerX = graphStartX + (xRatio * graphWidth).toFloat()
+                    val labelStyle = TextStyle(
+                        color = marker.color,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    val labelLayout = textMeasurer.measure(marker.label, labelStyle)
+                    val labelX = (markerX - labelLayout.size.width / 2f)
+                        .coerceIn(graphStartX, graphEndX - labelLayout.size.width)
+
+                    drawLine(
+                        color = marker.color.copy(alpha = 0.8f),
+                        start = Offset(markerX, graphStartY + 8f),
+                        end = Offset(markerX, graphEndY),
+                        strokeWidth = 1.5f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f), 0f)
+                    )
+
+                    drawText(
+                        textMeasurer = textMeasurer,
+                        text = marker.label,
+                        style = labelStyle,
+                        topLeft = Offset(labelX, graphStartY - 18f)
                     )
                 }
 

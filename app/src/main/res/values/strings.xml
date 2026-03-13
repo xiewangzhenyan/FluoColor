@@ -1022,4 +1022,53 @@
     <string name="spectrum_png_merged_desc">Combine all curves in one image</string>
     <string name="spectrum_merged_chart_title">All Channels - Merged Spectrum</string>
 
+    <!-- Spectrum Calibration Optimization -->
+    <string name="undo">Undo</string>
+    <string name="undo_calibration_point">Undo last calibration change</string>
+    <string name="auto_calibration_retry_title">Auto Calibration Failed</string>
+    <string name="auto_calibration_retry_message">Peak detection may have failed due to low image contrast or incorrect sensitivity settings.\n\nSuggestions:\n• Try adjusting the spectrum sensitivity in Settings\n• Ensure the calibration image has clear spectral lines\n• Switch to Manual Calibration mode</string>
+    <string name="switch_to_manual_calibration">Switch to Manual</string>
+    <string name="retry_auto_calibration">Retry</string>
+    <string name="load_saved_wavelengths">Last used wavelengths loaded</string>
+    <string name="drag_hint_magnifier">Drag to adjust position. A magnifier will appear for precision alignment.</string>
+    <string name="calibration_points_count">%1$d calibration point(s)</string>
+    <string name="confirm_delete_calibration_point_title">Delete Calibration Point</string>
+    <string name="confirm_delete_calibration_point_message">Are you sure you want to delete this calibration point?</string>
+    <string name="previous">Previous</string>
+    <string name="next">Next</string>
+    <string name="spectrum_calibration_progress_title">Calibration Progress</string>
+    <string name="spectrum_calibration_progress_summary">%1$d / %2$d completed</string>
+    <string name="spectrum_calibration_opencv_failed">OpenCV initialization failed. Please verify dependencies.</string>
+    <string name="spectrum_calibration_image_load_failed">Failed to load spectrum image</string>
+    <string name="spectrum_calibration_load_failed">Failed to load spectrum calibration data</string>
+    <string name="spectrum_calibration_channel_points_required">Channel %1$d requires at least 2 calibration points</string>
+    <string name="spectrum_calibration_track_zero_points_required">Channel 1 requires at least 2 calibration points before applying to all channels</string>
+    <string name="spectrum_calibration_track_zero_missing">Channel 1 information is missing</string>
+    <string name="spectrum_calibration_apply_all_success">Applied channel 1 calibration to all channels</string>
+    <string name="spectrum_calibration_upload_required">Please upload a calibration image first</string>
+    <string name="spectrum_calibration_reference_required">Please enter reference wavelengths first</string>
+    <string name="spectrum_calibration_peak_insufficient">Channel %1$d does not have enough peaks (%2$d/%3$d detected)</string>
+    <string name="spectrum_calibration_auto_failed">Auto calibration failed</string>
+    <string name="spectrum_calibration_complete_all_required">Please complete calibration for all channels first</string>
+    <string name="spectrum_calibration_original_missing">Original image is missing</string>
+    <string name="spectrum_calibration_save_failed">Failed to save calibration result</string>
+    <string name="spectrum_result_load_failed">Failed to load spectrum result</string>
+    <string name="spectrum_export_prepare_failed">Failed to prepare export data</string>
+    <string name="spectrum_quick_settings_title">Quick Adjustments</string>
+    <string name="spectrum_compare_toggle">Overlay Compare</string>
+    <string name="spectrum_compare_title">Multi-channel Overlay</string>
+    <string name="spectrum_compare_line_label">Channel %1$d</string>
+    <string name="spectrum_compare_line_legend">Channel %1$d · %2$s</string>
+    <string name="spectrum_no_data_desc">No processed spectrum data is available for this project yet. Return to calibration to generate results.</string>
+    <string name="spectrum_return_calibration">Back to Calibration</string>
+    <string name="spectrum_thumbnail_desc">Channel %1$d thumbnail</string>
+    <string name="spectrum_range_arrow">→</string>
+    <string name="spectrum_export_progress_title">Exporting Spectrum Data</string>
+    <string name="spectrum_export_progress_desc">Generating files. PDF and merged PNG exports may take longer.</string>
+    <string name="spectrum_secondary_peaks_title">Additional Peaks</string>
+    <string name="spectrum_peak_rank_label">P%1$d</string>
+    <string name="spectrum_edit_binding">Edit analyte binding</string>
+    <string name="spectrum_rebind_title">Rebind Analyte</string>
+    <string name="spectrum_clear_binding">Clear binding</string>
+
 </resources>

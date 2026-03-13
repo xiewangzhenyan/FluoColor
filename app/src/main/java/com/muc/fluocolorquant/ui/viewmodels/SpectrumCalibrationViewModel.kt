@@ -1,6 +1,5 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
-import android.content.ContentResolver
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -10,12 +9,15 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.muc.fluocolorquant.R
 import com.google.gson.Gson
 import com.muc.fluocolorquant.data.enums.SpectrumCalibrationType
 import com.muc.fluocolorquant.data.model.SpectrumCalibration
 import com.muc.fluocolorquant.data.model.SpectrumResult
 import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.data.repository.SpectrumRepository
+import com.muc.fluocolorquant.utils.UiText
 import com.muc.fluocolorquant.utils.math.SpectrumCVUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -23,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.apache.commons.math3.fitting.PolynomialCurveFitter
@@ -50,23 +53,42 @@ data class SpectrumCalibrationUiState(
     val coefficients: Map<Int, DoubleArray> = emptyMap(),
     val isLoading: Boolean = false,
     val isAutoFitting: Boolean = false,
-    val errorMessage: String? = null,
-    val infoMessage: String? = null, // 用于传递操作成功的提示信息
+    val errorMessage: UiText? = null,
+    val infoMessage: UiText? = null, // 用于传递操作成功的提示信息
     val showModeDialog: Boolean = false,
-    val showDimensionMismatchDialog: Boolean = false
+    val showDimensionMismatchDialog: Boolean = false,
+    val showRetryDialog: Boolean = false, // 自动标定失败时显示重试建议对话框
+    val canUndo: Boolean = false // 是否可以撤销
+)
+
+/**
+ * 撤销操作的历史快照数据
+ */
+private data class CalibrationSnapshot(
+    val manualPoints: Map<Int, List<ManualMark>>,
+    val coefficients: Map<Int, DoubleArray>
 )
 
 @HiltViewModel
 class SpectrumCalibrationViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val spectrumRepository: SpectrumRepository,
-    private val projectRepository: ProjectRepository
+    private val projectRepository: ProjectRepository,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SpectrumCalibrationUiState())
     val uiState: StateFlow<SpectrumCalibrationUiState> = _uiState.asStateFlow()
 
     private val gson = Gson()
+
+    /** 撤销栈：保存标定点和系数的历史快照，最多保存 20 步 */
+    private val undoStack = ArrayDeque<CalibrationSnapshot>()
+    private val maxUndoSteps = 20
+
+    private fun text(resId: Int, vararg args: Any): UiText {
+        return UiText.StringResource(resId, args.toList())
+    }
 
     fun loadOriginal(projectId: String, imageUri: String) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -75,10 +97,10 @@ class SpectrumCalibrationViewModel @Inject constructor(
 
                 // Ensure OpenCV native libs are loaded before any Mat usage
                 if (!OpenCVLoader.initDebug()) {
-                    error("OpenCV 初始化失败，请确认依赖已正确引入")
+                    error(context.getString(R.string.spectrum_calibration_opencv_failed))
                 }
 
-                val bitmap = decodeBitmap(imageUri) ?: error("无法加载光谱图像")
+                val bitmap = decodeBitmap(imageUri) ?: error(context.getString(R.string.spectrum_calibration_image_load_failed))
                 val project = projectRepository.getProjectById(projectId)
                 val expectedTracks = project?.spectrumColumnCount ?: 1
                 val trackRects = SpectrumCVUtils.detectSpectrumTracks(bitmap, expectedTracks)
@@ -91,7 +113,11 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     )
                 }
             }.onFailure { e ->
-                _uiState.updateError(e.message ?: "加载光谱图失败")
+                _uiState.updateError(
+                    UiText.DynamicString(
+                        e.message ?: context.getString(R.string.spectrum_calibration_load_failed)
+                    )
+                )
             }
             _uiState.updateLoading(false)
         }
@@ -141,11 +167,29 @@ class SpectrumCalibrationViewModel @Inject constructor(
         _uiState.update { it.copy(referenceWavelengths = values) }
     }
 
+    /**
+     * 切换到指定通道，切换前校验当前通道的标定点数量
+     */
     fun updateCurrentTrack(index: Int) {
-        _uiState.update { it.copy(currentTrackIndex = index.coerceIn(0, (it.trackRects.size - 1).coerceAtLeast(0))) }
+        val state = _uiState.value
+        val currentIndex = state.currentTrackIndex
+        val currentPoints = state.manualPoints[currentIndex]?.size ?: 0
+
+        // 如果是向前/向后切换（非初始化），检查当前通道标定点是否足够
+        if (index != currentIndex && currentPoints in 1..1) {
+            _uiState.update {
+                it.copy(errorMessage = text(R.string.spectrum_calibration_channel_points_required, currentIndex + 1))
+            }
+            return // 阻止切换
+        }
+
+        _uiState.update {
+            it.copy(currentTrackIndex = index.coerceIn(0, (it.trackRects.size - 1).coerceAtLeast(0)))
+        }
     }
 
     fun addManualPoint(trackIndex: Int, point: PointF, wavelength: Float) {
+        pushUndoSnapshot() // 推入撤销快照
         val updated = _uiState.value.manualPoints.toMutableMap()
         val points = updated[trackIndex]?.toMutableList() ?: mutableListOf()
         points.add(ManualMark(point = point, wavelength = wavelength))
@@ -164,10 +208,10 @@ class SpectrumCalibrationViewModel @Inject constructor(
     private fun calculateCoefficientsForTrack(channelIndex: Int) {
         val points = _uiState.value.manualPoints[channelIndex] ?: emptyList()
         if (points.size < 2) {
-            // 如果标定点少于2个,清除该通道的系数并显示错误
+            // 标定点不足2个时，静默清除该通道的系数（不弹错误提示）
             val coeffMap = _uiState.value.coefficients.toMutableMap()
             coeffMap.remove(channelIndex)
-            _uiState.update { it.copy(coefficients = coeffMap, errorMessage = "通道 ${channelIndex + 1} 至少需要 2 个标定点") }
+            _uiState.update { it.copy(coefficients = coeffMap) }
             return
         }
         val data = points.map { mark ->
@@ -188,6 +232,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
      * 更新手动标定点的 Y 坐标(用于拖动操作)
      */
     fun updateManualPointY(trackIndex: Int, pointId: String, newY: Float) {
+        pushUndoSnapshot() // 推入撤销快照
         val updated = _uiState.value.manualPoints.toMutableMap()
         val points = updated[trackIndex]?.toMutableList() ?: return
         val index = points.indexOfFirst { it.id == pointId }
@@ -205,6 +250,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
      * 删除指定的手动标定点
      */
     fun deleteManualPoint(trackIndex: Int, pointId: String) {
+        pushUndoSnapshot() // 推入撤销快照
         val updated = _uiState.value.manualPoints.toMutableMap()
         val points = updated[trackIndex]?.toMutableList() ?: return
         points.removeAll { it.id == pointId }
@@ -222,12 +268,14 @@ class SpectrumCalibrationViewModel @Inject constructor(
             
             // 检查通道 0 是否有足够的标定点
             if (basePoints == null || basePoints.size < 2) {
-                _uiState.update { it.copy(errorMessage = "通道 1 标定点不足,至少需要 2 个点") }
+                _uiState.update {
+                    it.copy(errorMessage = text(R.string.spectrum_calibration_track_zero_points_required))
+                }
                 return@launch
             }
             
             if (baseRect == null) {
-                _uiState.update { it.copy(errorMessage = "通道 1 信息缺失") }
+                _uiState.update { it.copy(errorMessage = text(R.string.spectrum_calibration_track_zero_missing)) }
                 return@launch
             }
             
@@ -276,7 +324,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
                 it.copy(
                     manualPoints = newManualPoints,
                     coefficients = coeffMap,
-                    infoMessage = "已成功应用到所有通道"
+                    infoMessage = text(R.string.spectrum_calibration_apply_all_success)
                 ) 
             }
         }
@@ -287,6 +335,59 @@ class SpectrumCalibrationViewModel @Inject constructor(
      */
     fun clearInfoMessage() {
         _uiState.update { it.copy(infoMessage = null) }
+    }
+
+    /** 关闭重试建议对话框 */
+    fun dismissRetryDialog() {
+        _uiState.update { it.copy(showRetryDialog = false) }
+    }
+
+    // ==================== 撤销机制 ====================
+
+    /** 将当前标定点和系数状态推入撤销栈 */
+    private fun pushUndoSnapshot() {
+        val state = _uiState.value
+        undoStack.addLast(
+            CalibrationSnapshot(
+                manualPoints = state.manualPoints.toMap(),
+                coefficients = state.coefficients.toMap()
+            )
+        )
+        if (undoStack.size > maxUndoSteps) undoStack.removeFirst()
+        _uiState.update { it.copy(canUndo = true) }
+    }
+
+    /** 执行撤销操作，恢复到上一个快照 */
+    fun undo() {
+        val snapshot = undoStack.removeLastOrNull() ?: return
+        _uiState.update {
+            it.copy(
+                manualPoints = snapshot.manualPoints,
+                coefficients = snapshot.coefficients,
+                canUndo = undoStack.isNotEmpty()
+            )
+        }
+    }
+
+    // ==================== 波长记忆 ====================
+
+    /** 从 DataStore 加载上次保存的参考波长列表 */
+    fun loadLastReferenceWavelengths(onLoaded: (List<String>) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = settingsRepository.spectrumLastReferenceWavelengthsFlow.first()
+            if (saved.isNotBlank()) {
+                val list = saved.split(",").map { it.trim() }
+                withContext(Dispatchers.Main) { onLoaded(list) }
+            }
+        }
+    }
+
+    /** 将参考波长列表保存到 DataStore */
+    private fun saveReferenceWavelengths(wavelengths: List<Float>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val csv = wavelengths.joinToString(",")
+            settingsRepository.setSpectrumLastReferenceWavelengths(csv)
+        }
     }
 
     /**
@@ -304,11 +405,11 @@ class SpectrumCalibrationViewModel @Inject constructor(
         val original = _uiState.value.originalBitmap
         val ref = _uiState.value.referenceWavelengths
         if (calibrationBitmap == null || original == null) {
-            _uiState.updateError("请先上传标定图")
+            _uiState.updateError(text(R.string.spectrum_calibration_upload_required))
             return
         }
         if (ref.isEmpty()) {
-            _uiState.updateError("请先输入参考波长")
+            _uiState.updateError(text(R.string.spectrum_calibration_reference_required))
             return
         }
 
@@ -377,7 +478,14 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     // 在标定图上寻峰
                     val peaksInCalib = SpectrumCVUtils.findPeaksInTrack(calibrationBitmap, searchRect, ref.size)
                     if (peaksInCalib.size < ref.size) {
-                        error("通道 ${index + 1} 波峰数量不足 (检测到 ${peaksInCalib.size}/${ref.size})")
+                        error(
+                            context.getString(
+                                R.string.spectrum_calibration_peak_insufficient,
+                                index + 1,
+                                peaksInCalib.size,
+                                ref.size
+                            )
+                        )
                     }
                     
                     // 5. 将标定图坐标转换为原始图坐标
@@ -403,7 +511,16 @@ class SpectrumCalibrationViewModel @Inject constructor(
                 _uiState.update { it.copy(coefficients = coeffMap) }
             }.onFailure { e ->
                 Log.e("SpectrumCalibration", "自动标定失败", e)
-                _uiState.updateError(e.message ?: "自动标定失败")
+                // 触发重试建议对话框，提供用户友好的操作指引
+                _uiState.update {
+                    it.copy(
+                        errorMessage = UiText.DynamicString(
+                            e.message ?: context.getString(R.string.spectrum_calibration_auto_failed)
+                        ),
+                        showRetryDialog = true,
+                        isAutoFitting = false
+                    )
+                }
             }
             _uiState.update { it.copy(isAutoFitting = false) }
         }
@@ -417,12 +534,12 @@ class SpectrumCalibrationViewModel @Inject constructor(
             val bitmap = state.originalBitmap
             
             if (coeffs.size < rects.size) {
-                _uiState.updateError("请先完成所有通道的标定")
+                _uiState.updateError(text(R.string.spectrum_calibration_complete_all_required))
                 return@launch
             }
             
             if (bitmap == null) {
-                _uiState.updateError("原始图像丢失")
+                _uiState.updateError(text(R.string.spectrum_calibration_original_missing))
                 return@launch
             }
 
@@ -534,10 +651,20 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     )
                     spectrumRepository.insertResult(result)
                 }
-                
+
+                // 标定成功后保存参考波长到 DataStore
+                val refWavelengths = state.referenceWavelengths
+                if (refWavelengths.isNotEmpty()) {
+                    saveReferenceWavelengths(refWavelengths)
+                }
+
                 withContext(Dispatchers.Main) { onSuccess(projectId) }
             }.onFailure { e ->
-                _uiState.updateError(e.message ?: "保存标定结果失败")
+                _uiState.updateError(
+                    UiText.DynamicString(
+                        e.message ?: context.getString(R.string.spectrum_calibration_save_failed)
+                    )
+                )
             }
         }
     }
@@ -598,7 +725,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
         this.value = this.value.copy(isLoading = loading)
     }
 
-    private fun MutableStateFlow<SpectrumCalibrationUiState>.updateError(message: String) {
+    private fun MutableStateFlow<SpectrumCalibrationUiState>.updateError(message: UiText) {
         this.value = this.value.copy(errorMessage = message, isLoading = false, isAutoFitting = false)
     }
 }

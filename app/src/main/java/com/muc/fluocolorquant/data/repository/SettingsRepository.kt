@@ -47,6 +47,7 @@ class SettingsRepository @Inject constructor(
     private val SPECTRUM_DEFAULT_TRACK_COUNT_KEY = intPreferencesKey("spectrum_default_track_count")
     private val SPECTRUM_MAX_TRACK_COUNT_KEY = intPreferencesKey("spectrum_max_track_count")
     private val SPECTRUM_DEFAULT_LIGHT_SOURCE_KEY = stringPreferencesKey("spectrum_default_light_source")
+    private val SPECTRUM_LAST_REFERENCE_WAVELENGTHS_KEY = stringPreferencesKey("spectrum_last_reference_wavelengths")
 
     // 获取当前语言设置，默认为系统语言
     val languageFlow: Flow<String> = languageDataStore.data.map { preferences ->
@@ -252,6 +253,18 @@ class SettingsRepository @Inject constructor(
     suspend fun setSpectrumDefaultLightSource(lightSourceName: String) {
         appSettingsDataStore.edit { preferences ->
             preferences[SPECTRUM_DEFAULT_LIGHT_SOURCE_KEY] = lightSourceName
+        }
+    }
+
+    // 获取上次使用的参考波长列表（JSON 格式存储），默认为空
+    val spectrumLastReferenceWavelengthsFlow: Flow<String> = appSettingsDataStore.data.map { preferences ->
+        preferences[SPECTRUM_LAST_REFERENCE_WAVELENGTHS_KEY] ?: ""
+    }
+
+    // 保存参考波长列表（以逗号分隔的字符串）
+    suspend fun setSpectrumLastReferenceWavelengths(wavelengths: String) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[SPECTRUM_LAST_REFERENCE_WAVELENGTHS_KEY] = wavelengths
         }
     }
     

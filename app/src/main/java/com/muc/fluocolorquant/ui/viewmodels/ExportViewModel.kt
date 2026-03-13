@@ -2681,18 +2681,17 @@ class ExportViewModel @Inject constructor(
     private fun createSpectrumSummaryPage(canvas: Canvas, data: SpectrumExportData, currentPage: Int, totalPages: Int) {
         // 绘制页眉页脚
         drawPageHeaderFooter(canvas, data.project.name, context.getString(R.string.spectrum_pdf_summary_title), currentPage, totalPages)
-        
+
         val paint = TextPaint().apply {
             color = android.graphics.Color.BLACK
             isAntiAlias = true
         }
-        
+
         // 章节标题
         paint.textSize = 22f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         canvas.drawText(context.getString(R.string.spectrum_pdf_summary_title), PDF_MARGIN, PDF_CONTENT_START_Y + 30f, paint)
-        
-        // 表格
+
         val headers = listOf(
             context.getString(R.string.spectrum_table_header_channel),
             context.getString(R.string.spectrum_table_header_analyte),
@@ -2709,58 +2708,87 @@ class ExportViewModel @Inject constructor(
                 channel.dataPointCount.toString()
             )
         }
-        
-        var y = PDF_CONTENT_START_Y + 70f
-        val cellHeight = 35f
-        val columnWidths = listOf(70f, 130f, 100f, 110f, 90f)  // 调整列宽
+
+        val cellHeight = 30f
+        val columnWidths = listOf(70f, 130f, 100f, 110f, 90f)
         val tableWidth = columnWidths.sum()
-        val tableLeft = (PDF_PAGE_WIDTH - tableWidth) / 2  // 表格居中
-        
+        val tableLeft = (PDF_PAGE_WIDTH - tableWidth) / 2f
+        var currentY = PDF_CONTENT_START_Y + 55f
+        val tableSpacing = 24f
+        val tableHeight = cellHeight * (tableData.size + 1)
+
+        // 在摘要页顶部补充一张汇总光谱图，便于先整体查看多通道谱线走势。
+        generateMergedSpectrumBitmap(data.channels)?.let { mergedBitmap ->
+            try {
+                val availableChartHeight = PDF_CONTENT_START_Y + PDF_CONTENT_HEIGHT - currentY - tableSpacing - tableHeight - 12f
+                if (availableChartHeight > 120f) {
+                    val chartScale = min(
+                        (PDF_CONTENT_WIDTH - 20f) / mergedBitmap.width.toFloat(),
+                        min(availableChartHeight, 230f) / mergedBitmap.height.toFloat()
+                    )
+                    val scaledWidth = mergedBitmap.width * chartScale
+                    val scaledHeight = mergedBitmap.height * chartScale
+                    val chartLeft = (PDF_PAGE_WIDTH - scaledWidth) / 2f
+                    val destRect = RectF(
+                        chartLeft,
+                        currentY,
+                        chartLeft + scaledWidth,
+                        currentY + scaledHeight
+                    )
+                    canvas.drawBitmap(mergedBitmap, null, destRect, null)
+                    currentY += scaledHeight + tableSpacing
+                }
+            } finally {
+                mergedBitmap.recycle()
+            }
+        }
+
+        val tableTop = currentY
+
         // 表头背景
         val headerBgPaint = Paint().apply {
             color = android.graphics.Color.parseColor("#E8F5E9")
             style = Paint.Style.FILL
         }
-        canvas.drawRect(tableLeft, y, tableLeft + tableWidth, y + cellHeight, headerBgPaint)
-        
+        canvas.drawRect(tableLeft, currentY, tableLeft + tableWidth, currentY + cellHeight, headerBgPaint)
+
         // 表头文字
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.textSize = 12f
+        paint.textSize = 11f
         var x = tableLeft
-        headers.forEachIndexed { i, header ->
-            canvas.drawText(header, x + 8f, y + 24f, paint)
-            x += columnWidths[i]
+        headers.forEachIndexed { index, header ->
+            canvas.drawText(header, x + 8f, currentY + 20f, paint)
+            x += columnWidths[index]
         }
-        y += cellHeight
-        
+        currentY += cellHeight
+
         // 数据行
         paint.typeface = Typeface.DEFAULT
-        paint.textSize = 11f
-        tableData.forEachIndexed { rowIdx, row ->
-            // 交替行背景
-            if (rowIdx % 2 == 1) {
+        paint.textSize = 10f
+        tableData.forEachIndexed { rowIndex, row ->
+            if (rowIndex % 2 == 1) {
                 val rowBgPaint = Paint().apply {
                     color = android.graphics.Color.parseColor("#FAFAFA")
                     style = Paint.Style.FILL
                 }
-                canvas.drawRect(tableLeft, y, tableLeft + tableWidth, y + cellHeight, rowBgPaint)
+                canvas.drawRect(tableLeft, currentY, tableLeft + tableWidth, currentY + cellHeight, rowBgPaint)
             }
-            
+
             x = tableLeft
-            row.forEachIndexed { i, cell ->
-                canvas.drawText(cell, x + 8f, y + 24f, paint)
-                x += columnWidths[i]
+            row.forEachIndexed { index, cell ->
+                canvas.drawText(cell, x + 8f, currentY + 20f, paint)
+                x += columnWidths[index]
             }
-            y += cellHeight
+            currentY += cellHeight
         }
-        
+
         // 表格边框
         val borderPaint = Paint().apply {
             color = android.graphics.Color.parseColor("#BDBDBD")
             style = Paint.Style.STROKE
             strokeWidth = 1f
         }
-        canvas.drawRect(tableLeft, PDF_CONTENT_START_Y + 70f, tableLeft + tableWidth, y, borderPaint)
+        canvas.drawRect(tableLeft, tableTop, tableLeft + tableWidth, currentY, borderPaint)
     }
     /**
      * 创建单个通道详细页 - 使用统一的页眉页脚风格

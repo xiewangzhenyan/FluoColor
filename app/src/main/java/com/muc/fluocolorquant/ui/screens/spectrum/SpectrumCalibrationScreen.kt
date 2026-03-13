@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -29,14 +30,17 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -44,7 +48,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -117,20 +120,20 @@ fun SpectrumCalibrationScreen(
     }
 
     LaunchedEffect(state.errorMessage) {
-        state.errorMessage?.let { toastManager.showToast(it, ToastType.ERROR) }
+        state.errorMessage?.let { toastManager.showToast(it.asString(context), ToastType.ERROR) }
     }
 
     // 监听成功提示信息
     LaunchedEffect(state.infoMessage) {
         state.infoMessage?.let {
-            toastManager.showToast(it, ToastType.SUCCESS)
+            toastManager.showToast(it.asString(context), ToastType.SUCCESS)
             viewModel.clearInfoMessage()
         }
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text(stringResource(R.string.spectrum_calibration_title)) },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
@@ -138,13 +141,25 @@ fun SpectrumCalibrationScreen(
                     }
                 },
                 actions = {
-                    // 只在手动标定模式下显示完成按钮
+                    // 手动标定模式下显示撤销和完成按钮
                     if (state.calibrationMode == CalibrationMode.MANUAL) {
+                        // 撤销按钮
+                        IconButton(
+                            onClick = { viewModel.undo() },
+                            enabled = state.canUndo
+                        ) {
+                            Icon(
+                                Icons.Default.Undo,
+                                contentDescription = stringResource(R.string.undo_calibration_point),
+                                tint = if (state.canUndo) MaterialTheme.colorScheme.primary
+                                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                        }
+                        // 完成按钮
                         TextButton(
                             onClick = {
                                 val pid = projectId ?: return@TextButton
                                 viewModel.completeCalibration(pid) { projectId ->
-                                    // 导航到光谱结果页面
                                     navController.navigate(Screen.SpectrumResult.createRoute(projectId)) {
                                         popUpTo(Screen.SpectrumCalibration.route) { inclusive = true }
                                     }
@@ -168,6 +183,7 @@ fun SpectrumCalibrationScreen(
                     onUpload = { bitmap -> viewModel.onCalibrationImageLoaded(bitmap) },
                     onReferenceChanged = { viewModel.setReferenceWavelengths(it) },
                     onStartFitting = { viewModel.performAutoCalibration() },
+                    onLoadSavedWavelengths = { callback -> viewModel.loadLastReferenceWavelengths(callback) },
                     onShowResult = {
                         val pid = projectId ?: return@AutoCalibrationSection
                         viewModel.completeCalibration(pid) { resultProjectId ->
@@ -261,6 +277,32 @@ fun SpectrumCalibrationScreen(
             }
         )
     }
+
+    // 自动标定失败重试建议对话框
+    if (state.showRetryDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissRetryDialog() },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFE68A00)) },
+            title = { Text(stringResource(R.string.auto_calibration_retry_title)) },
+            text = { Text(stringResource(R.string.auto_calibration_retry_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.dismissRetryDialog()
+                    viewModel.switchToManualMode()
+                }) {
+                    Text(stringResource(R.string.switch_to_manual_calibration))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.dismissRetryDialog()
+                    viewModel.performAutoCalibration()
+                }) {
+                    Text(stringResource(R.string.retry_auto_calibration))
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -269,6 +311,7 @@ private fun AutoCalibrationSection(
     onUpload: (Bitmap) -> Unit,
     onReferenceChanged: (List<Float>) -> Unit,
     onStartFitting: () -> Unit,
+    onLoadSavedWavelengths: ((List<String>) -> Unit) -> Unit,
     onShowResult: () -> Unit
 ) {
     val context = LocalContext.current
@@ -307,6 +350,18 @@ private fun AutoCalibrationSection(
     // 判断是否可以开始拟合
     val validWavelengthCount = wavelengthInputs.count { it.toFloatOrNull() != null }
     val canStartFitting = state.calibrationImageBitmap != null && validWavelengthCount >= 2
+
+    // 自动加载上次保存的参考波长
+    val loadSavedMsg = stringResource(R.string.load_saved_wavelengths)
+    LaunchedEffect(Unit) {
+        onLoadSavedWavelengths { savedList ->
+            if (wavelengthInputs.all { input -> input.isBlank() } && savedList.isNotEmpty()) {
+                wavelengthInputs.clear()
+                savedList.forEach { item -> wavelengthInputs.add(item) }
+                toastManager.showToast(loadSavedMsg, ToastType.INFO)
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -511,6 +566,7 @@ private fun ManualCalibrationSection(
     var pan by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(IntSize(0, 0)) }
     var pendingPoint by remember { mutableStateOf<PointF?>(null) }
+    var pendingDeletePointId by remember { mutableStateOf<String?>(null) } // 待确认删除的标定点 ID
     var wavelengthInput by remember { mutableStateOf("") }
     
     // 拖动状态
@@ -539,6 +595,12 @@ private fun ManualCalibrationSection(
     }
     
     val currentTrackRect = state.trackRects.getOrNull(state.currentTrackIndex)
+    val completedTracks = state.trackRects.indices.count { index -> state.coefficients.containsKey(index) }
+    val calibrationProgress = if (state.trackRects.isNotEmpty()) {
+        completedTracks.toFloat() / state.trackRects.size
+    } else {
+        0f
+    }
 
     Column(
         modifier = Modifier
@@ -618,7 +680,7 @@ private fun ManualCalibrationSection(
                             }
                         },
                         onLongPress = { longPress ->
-                            // 长按删除标定点
+                            // 长按标定线弹出删除确认对话框（避免与拖动误触）
                             if (baseSizePx.first == 0f || baseSizePx.second == 0f) return@detectTapGestures
                             val scaleY = baseSizePx.second / bitmap.height.toFloat()
                             val marks = state.manualPoints[state.currentTrackIndex].orEmpty()
@@ -630,7 +692,7 @@ private fun ManualCalibrationSection(
                             }
                             
                             if (found != null) {
-                                onDeletePoint(state.currentTrackIndex, found.id)
+                                pendingDeletePointId = found.id
                             }
                         }
                     )
@@ -775,25 +837,92 @@ private fun ManualCalibrationSection(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.spectrum_calibration_progress_title),
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF2D3142)
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.spectrum_calibration_progress_summary,
+                            completedTracks,
+                            state.trackRects.size
+                        ),
+                        color = Color(0xFF5D6B98),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                LinearProgressIndicator(
+                    progress = calibrationProgress,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    state.trackRects.forEachIndexed { index, _ ->
+                        val isCompleted = state.coefficients.containsKey(index)
+                        val isCurrent = index == state.currentTrackIndex
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    when {
+                                        isCompleted -> Color(0xFF10B981)
+                                        else -> Color(0xFFE5E7EB)
+                                    }
+                                )
+                                .border(
+                                    width = if (isCurrent) 2.dp else 0.dp,
+                                    color = if (isCurrent) Color(0xFF5D6B98) else Color.Transparent,
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = (index + 1).toString(),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isCompleted) Color.White else Color(0xFF6B7280)
+                            )
+                        }
+                    }
+                }
+            }
+
             // 通道信息卡片
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color(0xFFE2E8F0))
+            )
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                Color(0xFF5D6B98).copy(alpha = 0.1f),
-                                Color(0xFF8B9DC3).copy(alpha = 0.05f)
-                            )
-                        )
-                    )
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 左侧通道标签
                 Row(
+                    modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -820,7 +949,10 @@ private fun ManualCalibrationSection(
                             color = Color(0xFF2D3142)
                         )
                         Text(
-                            text = "${state.manualPoints[state.currentTrackIndex]?.size ?: 0} 个标定点",
+                            text = stringResource(
+                                R.string.calibration_points_count,
+                                state.manualPoints[state.currentTrackIndex]?.size ?: 0
+                            ),
                             fontSize = 12.sp,
                             color = Color(0xFF6B7280)
                         )
@@ -843,7 +975,7 @@ private fun ManualCalibrationSection(
                     ) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
-                            contentDescription = "Prev",
+                            contentDescription = stringResource(R.string.previous),
                             tint = if (state.currentTrackIndex > 0) Color.White else Color(0xFF9CA3AF),
                             modifier = Modifier.size(24.dp)
                         )
@@ -863,7 +995,7 @@ private fun ManualCalibrationSection(
                     ) {
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
-                            contentDescription = "Next",
+                            contentDescription = stringResource(R.string.next),
                             tint = if (state.currentTrackIndex < state.trackRects.lastIndex) Color.White else Color(0xFF9CA3AF),
                             modifier = Modifier.size(24.dp)
                         )
@@ -928,7 +1060,7 @@ private fun ManualCalibrationSection(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = stringResource(R.string.tap_to_add_point),
+                        text = stringResource(R.string.drag_hint_magnifier),
                         style = MaterialTheme.typography.bodySmall,
                         fontSize = 12.sp,
                         color = Color(0xFF6B7280),
@@ -967,6 +1099,32 @@ private fun ManualCalibrationSection(
             },
             dismissButton = {
                 TextButton(onClick = { pendingPoint = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    // 删除标定点确认对话框
+    if (pendingDeletePointId != null) {
+        AlertDialog(
+            onDismissRequest = { pendingDeletePointId = null },
+            title = { Text(stringResource(R.string.confirm_delete_calibration_point_title)) },
+            text = { Text(stringResource(R.string.confirm_delete_calibration_point_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeletePointId?.let { pointId ->
+                            onDeletePoint(state.currentTrackIndex, pointId)
+                        }
+                        pendingDeletePointId = null
+                    }
+                ) {
+                    Text(stringResource(R.string.delete), color = Color.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeletePointId = null }) {
                     Text(stringResource(R.string.cancel))
                 }
             }

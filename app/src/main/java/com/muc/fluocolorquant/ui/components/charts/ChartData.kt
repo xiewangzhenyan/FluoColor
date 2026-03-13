@@ -51,5 +51,7 @@ data class ChartData(
     val gridColor: Color = Color(0xFFCCCCCC),
     val showGrid: Boolean = true,
     val chartType: String = "STANDARD_CURVE",
-    val additionalLines: Map<String, List<Pair<Double, Double>>> = emptyMap()
+    val additionalLines: Map<String, List<Pair<Double, Double>>> = emptyMap(),
+    val overlayLines: List<ChartLine> = emptyList(),
+    val verticalMarkers: List<ChartVerticalMarker> = emptyList()
 ) 

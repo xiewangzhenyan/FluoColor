@@ -253,43 +253,39 @@ object SpectrumCVUtils {
      * 竖直方向强度曲线提取：按行(Y轴)求平均。
      */
     fun extractIntensityProfile(bitmap: Bitmap, roi: Rect? = null): FloatArray {
-        val crop = if (roi != null) {
-            val safeLeft = max(0, roi.left)
-            val safeTop = max(0, roi.top)
-            val safeRight = max(safeLeft + 1, minOf(bitmap.width, roi.right))
-            val safeBottom = max(safeTop + 1, minOf(bitmap.height, roi.bottom))
-            Bitmap.createBitmap(bitmap, safeLeft, safeTop, safeRight - safeLeft, safeBottom - safeTop)
-        } else {
-            bitmap
+        val safeLeft = roi?.let { max(0, it.left) } ?: 0
+        val safeTop = roi?.let { max(0, it.top) } ?: 0
+        val safeRight = roi?.let { max(safeLeft + 1, minOf(bitmap.width, it.right)) } ?: bitmap.width
+        val safeBottom = roi?.let { max(safeTop + 1, minOf(bitmap.height, it.bottom)) } ?: bitmap.height
+
+        val width = safeRight - safeLeft
+        val height = safeBottom - safeTop
+        val rowPixels = IntArray(width)
+        val output = FloatArray(height)
+
+        // 逐行读取像素，避免额外创建裁切 Bitmap 导致大图场景内存峰值过高。
+        for (row in 0 until height) {
+            bitmap.getPixels(
+                rowPixels,
+                0,
+                width,
+                safeLeft,
+                safeTop + row,
+                width,
+                1
+            )
+
+            var sum = 0.0
+            rowPixels.forEach { pixel ->
+                val red = (pixel shr 16) and 0xFF
+                val green = (pixel shr 8) and 0xFF
+                val blue = pixel and 0xFF
+                sum += 0.299 * red + 0.587 * green + 0.114 * blue
+            }
+            output[row] = (sum / width).toFloat()
         }
 
-        val mat = Mat()
-        val gray = Mat()
-        return try {
-            Utils.bitmapToMat(crop, mat)
-            Imgproc.cvtColor(mat, gray, Imgproc.COLOR_RGBA2GRAY)
-
-            val width = gray.cols()
-            val height = gray.rows()
-            val output = FloatArray(height)
-
-            // 行方向投影：每行像素求平均（波长沿 Y 轴变化）
-            for (y in 0 until height) {
-                var sum = 0.0
-                for (x in 0 until width) {
-                    val intensity = gray.get(y, x)[0]
-                    sum += intensity
-                }
-                output[y] = (sum / width).toFloat()
-            }
-            output
-        } finally {
-            mat.release()
-            gray.release()
-            if (crop !== bitmap) {
-                crop.recycle()
-            }
-        }
+        return output
     }
 
     /**

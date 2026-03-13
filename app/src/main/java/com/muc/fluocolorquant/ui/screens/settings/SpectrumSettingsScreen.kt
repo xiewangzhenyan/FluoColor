@@ -261,50 +261,58 @@ fun SpectrumSettingsScreen(
             }
 
             // 平滑度
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.label_smoothing_level, smoothingValue.roundToInt()),
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Slider(
-                    value = smoothingValue,
-                    onValueChange = { smoothingValue = it },
-                    valueRange = 0f..10f,
-                    steps = 9,
-                    onValueChangeFinished = {
-                        viewModel.updateSmoothing(smoothingValue.roundToInt())
-                    }
-                )
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.label_smoothing_level, smoothingValue.roundToInt()),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Slider(
+                        value = smoothingValue,
+                        onValueChange = { smoothingValue = it },
+                        valueRange = 0f..10f,
+                        steps = 9,
+                        onValueChangeFinished = {
+                            viewModel.updateSmoothing(smoothingValue.roundToInt())
+                        }
+                    )
+                }
             }
 
             // 灵敏度
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.label_sensitivity),
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SensitivityChip(
-                        label = stringResource(R.string.sensitivity_low),
-                        selected = uiState.spectrumSensitivity.equals("Low", ignoreCase = true),
-                        onClick = { viewModel.updateSensitivity("Low") }
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.label_sensitivity),
+                        style = MaterialTheme.typography.titleMedium
                     )
-                    SensitivityChip(
-                        label = stringResource(R.string.sensitivity_medium),
-                        selected = uiState.spectrumSensitivity.equals("Medium", ignoreCase = true),
-                        onClick = { viewModel.updateSensitivity("Medium") }
-                    )
-                    SensitivityChip(
-                        label = stringResource(R.string.sensitivity_high),
-                        selected = uiState.spectrumSensitivity.equals("High", ignoreCase = true),
-                        onClick = { viewModel.updateSensitivity("High") }
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SensitivityChip(
+                            label = stringResource(R.string.sensitivity_low),
+                            selected = uiState.spectrumSensitivity.equals("Low", ignoreCase = true),
+                            onClick = { viewModel.updateSensitivity("Low") }
+                        )
+                        SensitivityChip(
+                            label = stringResource(R.string.sensitivity_medium),
+                            selected = uiState.spectrumSensitivity.equals("Medium", ignoreCase = true),
+                            onClick = { viewModel.updateSensitivity("Medium") }
+                        )
+                        SensitivityChip(
+                            label = stringResource(R.string.sensitivity_high),
+                            selected = uiState.spectrumSensitivity.equals("High", ignoreCase = true),
+                            onClick = { viewModel.updateSensitivity("High") }
+                        )
+                    }
                 }
             }
 
