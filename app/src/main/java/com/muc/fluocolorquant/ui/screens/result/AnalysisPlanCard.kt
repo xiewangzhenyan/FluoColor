@@ -41,6 +41,7 @@ fun AnalysisPlanCard(
     // 用于存储加载的试剂信息
     var antigen by remember { mutableStateOf<Reagent?>(null) }
     var antibody by remember { mutableStateOf<Reagent?>(null) }
+    val colorScheme = MaterialTheme.colorScheme
     
     // 加载试剂信息
     LaunchedEffect(analyteDetails.usedTemplate?.reagentAntigenId, analyteDetails.usedTemplate?.reagentAntibodyId) {
@@ -63,16 +64,17 @@ fun AnalysisPlanCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        shape = RoundedCornerShape(16.dp)
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        shape = RoundedCornerShape(20.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             // 卡片标题
             Text(
                 text = stringResource(R.string.analysis_plan_for, analyteDetails.analyte.name),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = colorScheme.onSurface
             )
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -87,7 +89,8 @@ fun AnalysisPlanCard(
                         else -> analyteDetails.analysisMethod
                     }
                 ),
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
+                color = colorScheme.onSurfaceVariant
             )
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -98,7 +101,8 @@ fun AnalysisPlanCard(
                     R.string.template_used_res,
                     analyteDetails.usedTemplate?.templateName ?: stringResource(R.string.no_template_used)
                 ),
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
+                color = colorScheme.onSurfaceVariant
             )
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -112,7 +116,8 @@ fun AnalysisPlanCard(
                     val manufacturer = antigen?.manufacturer ?: ""
                     Text(
                         text = stringResource(R.string.antigen_manufacturer_placeholder, antigenName),
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                 }
@@ -123,7 +128,8 @@ fun AnalysisPlanCard(
                     val manufacturer = antibody?.manufacturer ?: ""
                     Text(
                         text = stringResource(R.string.antibody_manufacturer_placeholder, antibodyName),
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                 }
@@ -137,7 +143,8 @@ fun AnalysisPlanCard(
                             template.reliableRangeMax.toString(),
                             template.concentrationUnit ?: analyteDetails.concentrationUnit
                         ),
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colorScheme.onSurfaceVariant
                     )
                 }
             }

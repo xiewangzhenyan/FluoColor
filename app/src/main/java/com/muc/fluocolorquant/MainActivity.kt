@@ -7,11 +7,14 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
@@ -60,10 +63,17 @@ class MainActivity : ComponentActivity() {
                 LocaleHelper.getSystemLanguage()
             }
         }
+        val initialThemeMode = runBlocking {
+            try {
+                settingsRepository.themeModeFlow.first()
+            } catch (e: Exception) {
+                SettingsRepository.DEFAULT_THEME_MODE
+            }
+        }
 
         // 强制更新当前Activity的配置
         LocaleHelper.updateActivityLocale(this, currentLanguage)
-        Log.d(TAG, "onCreate: Forcefully applied language: $currentLanguage")
+        Log.d(TAG, "onCreate: Forcefully applied language: $currentLanguage, theme: $initialThemeMode")
 
         WindowCompat.setDecorFitsSystemWindows(window, true)
         
@@ -85,7 +95,7 @@ class MainActivity : ComponentActivity() {
         // Activity 的上下文（因此默认情况下为 LocalContext.current）
         // 已由 FluoColorApp.attachBaseContext 和此 Activity 的 attachmentBaseContext 配置。
         // 可组合函数（如 stringResource()）将使用此上下文。
-            ActualAppContent()
+            ActualAppContent(initialThemeMode = initialThemeMode)
         }
     }
 
@@ -100,9 +110,16 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun ActualAppContent() {
+    private fun ActualAppContent(initialThemeMode: String) {
+        val themeMode by settingsRepository.themeModeFlow.collectAsState(initial = initialThemeMode)
+        val useDarkTheme = when (themeMode) {
+            SettingsRepository.THEME_MODE_LIGHT -> false
+            SettingsRepository.THEME_MODE_DARK -> true
+            else -> isSystemInDarkTheme()
+        }
+
         CompositionLocalProvider(LocalToastManager provides toastManager) {
-            FluoColorTheme {
+            FluoColorTheme(darkTheme = useDarkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

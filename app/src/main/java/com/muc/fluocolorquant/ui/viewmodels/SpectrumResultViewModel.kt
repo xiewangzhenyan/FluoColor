@@ -563,16 +563,16 @@ class SpectrumResultViewModel @Inject constructor(
         if (results.isEmpty()) return null
 
         val lineColors = listOf(
-            Color(0xFF2563EB),
-            Color(0xFFDC2626),
-            Color(0xFF059669),
-            Color(0xFF7C3AED),
+            Color(0xFF0EA5E9),
+            Color(0xFFEF4444),
+            Color(0xFF22C55E),
+            Color(0xFF8B5CF6),
             Color(0xFFF59E0B),
-            Color(0xFF0891B2),
-            Color(0xFFDB2777),
-            Color(0xFF65A30D),
-            Color(0xFFEA580C),
-            Color(0xFF4F46E5)
+            Color(0xFF14B8A6),
+            Color(0xFFEC4899),
+            Color(0xFF84CC16),
+            Color(0xFFF97316),
+            Color(0xFF6366F1)
         )
 
         val primary = results.first()

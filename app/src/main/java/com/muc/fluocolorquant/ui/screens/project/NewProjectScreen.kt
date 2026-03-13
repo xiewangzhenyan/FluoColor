@@ -286,6 +286,12 @@ fun NewProjectScreen(
     var showAnalyteSelectionDialog by remember { mutableStateOf(false) }
 
     val isSpectrum = detectionMode == DetectionMode.SPECTRUM
+    val colorScheme = MaterialTheme.colorScheme
+    val accentColor = colorScheme.primary
+    val borderColor = colorScheme.outline.copy(alpha = 0.35f)
+    val sectionTitleColor = colorScheme.onSurface
+    val secondaryTextColor = colorScheme.onSurfaceVariant
+    val subtleSurfaceColor = colorScheme.surfaceVariant.copy(alpha = 0.28f)
 
     Scaffold(
         topBar = {
@@ -300,10 +306,15 @@ fun NewProjectScreen(
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(Icons.Default.ArrowBack, stringResource(R.string.back))
                     }
-                }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = colorScheme.surface,
+                    titleContentColor = colorScheme.onSurface,
+                    navigationIconContentColor = colorScheme.onSurface
+                )
             )
         },
-        containerColor = Color(0xFFF5F5F5)
+        containerColor = colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -322,15 +333,15 @@ fun NewProjectScreen(
                     Icon(
                         imageVector = Icons.Default.Edit,
                         contentDescription = null,
-                        tint = Color(0xFF5D6B98)
+                        tint = accentColor
                     )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
                 colors = TextFieldDefaults.outlinedTextFieldColors(
-                    focusedBorderColor = Color(0xFF5D6B98),
-                    unfocusedBorderColor = Color(0xFFDDDDDD)
+                    focusedBorderColor = accentColor,
+                    unfocusedBorderColor = borderColor
                 ),
                 shape = RoundedCornerShape(8.dp),
                 singleLine = true
@@ -345,7 +356,7 @@ fun NewProjectScreen(
                     .fillMaxWidth()
                     .padding(bottom = 8.dp),
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFF333333)
+                color = sectionTitleColor
             )
 
             DetectionModeSegmentedControl(
@@ -389,7 +400,7 @@ fun NewProjectScreen(
                                 .fillMaxWidth()
                                 .padding(bottom = 8.dp),
                             fontWeight = FontWeight.Medium,
-                            color = Color(0xFF333333)
+                            color = sectionTitleColor
                         )
 
                         ExposedDropdownMenuBox(
@@ -409,13 +420,13 @@ fun NewProjectScreen(
                                     .menuAnchor() // Important for ExposedDropdownMenuBox
                                     .fillMaxWidth(),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFF5D6B98),
-                                    unfocusedBorderColor = Color(0xFFDDDDDD),
-                                    focusedTrailingIconColor = Color(0xFF5D6B98),
-                                    unfocusedTrailingIconColor = Color(0xFF5D6B98),
+                                    focusedBorderColor = accentColor,
+                                    unfocusedBorderColor = borderColor,
+                                    focusedTrailingIconColor = accentColor,
+                                    unfocusedTrailingIconColor = secondaryTextColor,
                                     disabledTextColor = LocalContentColor.current,
-                                    disabledBorderColor = Color(0xFFDDDDDD),
-                                    disabledTrailingIconColor = Color(0xFF5D6B98)
+                                    disabledBorderColor = borderColor,
+                                    disabledTrailingIconColor = secondaryTextColor
                                 ),
                                 shape = RoundedCornerShape(8.dp)
                             )
@@ -435,7 +446,7 @@ fun NewProjectScreen(
                                         Icon(
                                             imageVector = Icons.Default.AutoAwesome, // 更新为更合适的图标
                                             contentDescription = null,
-                                            tint = Color(0xFF5D6B98)
+                                            tint = accentColor
                                         )
                                     }
                                 )
@@ -450,7 +461,7 @@ fun NewProjectScreen(
                                         Icon(
                                             imageVector = Icons.Default.AutoGraph, // 更新为更合适的图标
                                             contentDescription = null,
-                                            tint = Color(0xFF5D6B98)
+                                            tint = accentColor
                                         )
                                     }
                                 )
@@ -471,7 +482,7 @@ fun NewProjectScreen(
                         .fillMaxWidth()
                         .padding(bottom = 8.dp),
                     fontWeight = FontWeight.Medium,
-                    color = Color(0xFF333333)
+                    color = sectionTitleColor
                 )
 
                 if (selectedAnalyteConfigs.isEmpty()) {
@@ -485,7 +496,7 @@ fun NewProjectScreen(
                         Text(
                             text = stringResource(R.string.no_analytes_selected),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF666666)
+                            color = secondaryTextColor
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -493,7 +504,7 @@ fun NewProjectScreen(
                         Button(
                             onClick = { showAnalyteSelectionDialog = true },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF5D6B98)
+                                containerColor = accentColor
                             ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -543,7 +554,7 @@ fun NewProjectScreen(
                                 .align(Alignment.End)
                                 .padding(top = 8.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF5D6B98)
+                                containerColor = accentColor
                             ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -636,7 +647,7 @@ fun NewProjectScreen(
                     .fillMaxWidth()
                     .padding(bottom = 8.dp),
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFF333333)
+                color = sectionTitleColor
             )
 
             Box(
@@ -644,10 +655,10 @@ fun NewProjectScreen(
                     .fillMaxWidth()
                     .height(240.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF0F0F0))
+                    .background(subtleSurfaceColor)
                     .border(
                         width = 1.dp,
-                        color = Color(0xFFDDDDDD),
+                        color = borderColor,
                         shape = RoundedCornerShape(12.dp)
                     )
                     .clickable { showImagePickerDialog = true },
@@ -690,7 +701,7 @@ fun NewProjectScreen(
                         Icon(
                             imageVector = Icons.Default.AddPhotoAlternate,
                             contentDescription = stringResource(R.string.project_image),
-                            tint = Color(0xFF5D6B98),
+                            tint = accentColor,
                             modifier = Modifier.size(48.dp)
                         )
 
@@ -698,7 +709,7 @@ fun NewProjectScreen(
 
                         Text(
                             text = stringResource(R.string.upload_project_image),
-                            color = Color(0xFF666666),
+                            color = secondaryTextColor,
                             fontSize = 14.sp
                         )
                     }
@@ -715,7 +726,7 @@ fun NewProjectScreen(
                         .fillMaxWidth()
                         .padding(bottom = 8.dp),
                     fontWeight = FontWeight.Medium,
-                    color = Color(0xFF333333)
+                    color = sectionTitleColor
                 )
 
                 // 行列输入框放在同一行
@@ -732,7 +743,7 @@ fun NewProjectScreen(
                         Text(
                             text = stringResource(R.string.rows),
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF666666),
+                            color = secondaryTextColor,
                             modifier = Modifier.padding(bottom = 4.dp)
                         )
 
@@ -771,13 +782,13 @@ fun NewProjectScreen(
                                 Icon(
                                     imageVector = Icons.Filled.GridView,
                                     contentDescription = null,
-                                    tint = Color(0xFF5D6B98)
+                                    tint = accentColor
                                 )
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = TextFieldDefaults.outlinedTextFieldColors(
-                                focusedBorderColor = if (rowInputError) Color.Red else Color(0xFF5D6B98),
-                                unfocusedBorderColor = if (rowInputError) Color.Red else Color(0xFFDDDDDD),
+                                focusedBorderColor = if (rowInputError) Color.Red else accentColor,
+                                unfocusedBorderColor = if (rowInputError) Color.Red else borderColor,
                                 errorBorderColor = Color.Red,
                                 errorTrailingIconColor = Color.Red
                             ),
@@ -794,7 +805,7 @@ fun NewProjectScreen(
                         Text(
                             text = stringResource(R.string.columns),
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF666666),
+                            color = secondaryTextColor,
                             modifier = Modifier.padding(bottom = 4.dp)
                         )
 
@@ -833,13 +844,13 @@ fun NewProjectScreen(
                                 Icon(
                                     imageVector = Icons.Filled.GridView,
                                     contentDescription = null,
-                                    tint = Color(0xFF5D6B98)
+                                    tint = accentColor
                                 )
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = TextFieldDefaults.outlinedTextFieldColors(
-                                focusedBorderColor = if (columnInputError) Color.Red else Color(0xFF5D6B98),
-                                unfocusedBorderColor = if (columnInputError) Color.Red else Color(0xFFDDDDDD),
+                                focusedBorderColor = if (columnInputError) Color.Red else accentColor,
+                                unfocusedBorderColor = if (columnInputError) Color.Red else borderColor,
                                 errorBorderColor = Color.Red,
                                 errorTrailingIconColor = Color.Red
                             ),
@@ -959,7 +970,7 @@ fun NewProjectScreen(
                     .fillMaxWidth()
                     .height(56.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF5D6B98)
+                    containerColor = accentColor
                 ),
                 shape = RoundedCornerShape(8.dp),
                 enabled = !isSubmitting
@@ -993,7 +1004,7 @@ fun NewProjectScreen(
                     )
                 },
                 shape = RoundedCornerShape(16.dp),
-                containerColor = Color.White,
+                containerColor = colorScheme.surface,
                 text = {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -1017,21 +1028,21 @@ fun NewProjectScreen(
                                     modifier = Modifier
                                         .size(60.dp)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFF5D6B98).copy(alpha = 0.1f)),
+                                        .background(accentColor.copy(alpha = 0.12f)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Photo,
                                         contentDescription = null,
                                         modifier = Modifier.size(30.dp),
-                                        tint = Color(0xFF5D6B98)
+                                        tint = accentColor
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = stringResource(R.string.select_from_gallery),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF5D6B98)
+                                    color = accentColor
                                 )
                             }
 
@@ -1050,21 +1061,21 @@ fun NewProjectScreen(
                                     modifier = Modifier
                                         .size(60.dp)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFF5D6B98).copy(alpha = 0.1f)),
+                                        .background(accentColor.copy(alpha = 0.12f)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.PhotoCamera,
                                         contentDescription = null,
                                         modifier = Modifier.size(30.dp),
-                                        tint = Color(0xFF5D6B98)
+                                        tint = accentColor
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = stringResource(R.string.take_photo),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF5D6B98)
+                                    color = accentColor
                                 )
                             }
                         }
@@ -1077,7 +1088,7 @@ fun NewProjectScreen(
                             .fillMaxWidth()
                             .height(48.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF5D6B98)
+                            containerColor = accentColor
                         ),
                         shape = RoundedCornerShape(24.dp)
                     ) {
@@ -1133,19 +1144,22 @@ fun SpectrumLightSourceDropdown(
     onSelectLightSource: (SpectrumLightSource) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val colorScheme = MaterialTheme.colorScheme
+    val accentColor = colorScheme.primary
+    val borderColor = colorScheme.outline.copy(alpha = 0.35f)
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
-            .border(1.dp, Color(0xFFE3E5ED), RoundedCornerShape(12.dp))
+            .background(colorScheme.surface)
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
             .padding(16.dp)
     ) {
         Text(
             text = stringResource(R.string.spectrum_light_source_label),
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF2D3142)
+            color = colorScheme.onSurface
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -1163,7 +1177,7 @@ fun SpectrumLightSourceDropdown(
                     Icon(
                         imageVector = Icons.Default.Lightbulb,
                         contentDescription = null,
-                        tint = Color(0xFF5D6B98)
+                        tint = accentColor
                     )
                 },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
@@ -1171,8 +1185,8 @@ fun SpectrumLightSourceDropdown(
                     .menuAnchor()
                     .fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0xFF5D6B98),
-                    unfocusedBorderColor = Color(0xFFDDDDDD)
+                    focusedBorderColor = accentColor,
+                    unfocusedBorderColor = borderColor
                 ),
                 shape = RoundedCornerShape(10.dp)
             )
@@ -1192,7 +1206,7 @@ fun SpectrumLightSourceDropdown(
                             Icon(
                                 imageVector = Icons.Default.Lightbulb,
                                 contentDescription = null,
-                                tint = Color(0xFF5D6B98)
+                                tint = accentColor
                             )
                         }
                     )
@@ -1209,18 +1223,24 @@ fun SpectrumTrackCountControl(
     onIncrementTrack: () -> Unit,
     onDecrementTrack: () -> Unit
 ) {
+    val colorScheme = MaterialTheme.colorScheme
+    val accentColor = colorScheme.primary
+    val borderColor = colorScheme.outline.copy(alpha = 0.35f)
+    val secondaryTextColor = colorScheme.onSurfaceVariant
+    val subtleSurfaceColor = colorScheme.surfaceVariant.copy(alpha = 0.28f)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
-            .border(1.dp, Color(0xFFE3E5ED), RoundedCornerShape(12.dp))
+            .background(colorScheme.surface)
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
             .padding(16.dp)
     ) {
         Text(
             text = stringResource(R.string.spectrum_channel_count_label),
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF2D3142)
+            color = colorScheme.onSurface
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -1229,7 +1249,7 @@ fun SpectrumTrackCountControl(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFF6F7FB))
+                .background(subtleSurfaceColor)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -1241,7 +1261,7 @@ fun SpectrumTrackCountControl(
                 Icon(
                     imageVector = Icons.Default.RemoveCircle,
                     contentDescription = null,
-                    tint = if (spectrumTrackCount > 1) Color(0xFF5D6B98) else Color(0xFFB0B3C0)
+                    tint = if (spectrumTrackCount > 1) accentColor else secondaryTextColor.copy(alpha = 0.6f)
                 )
             }
 
@@ -1253,7 +1273,7 @@ fun SpectrumTrackCountControl(
                     text = stringResource(R.string.channel_count_with_limit, spectrumTrackCount, spectrumMaxTrackCount),
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
-                    color = Color(0xFF2D3142)
+                    color = colorScheme.onSurface
                 )
             }
 
@@ -1264,7 +1284,7 @@ fun SpectrumTrackCountControl(
                 Icon(
                     imageVector = Icons.Default.AddCircle,
                     contentDescription = null,
-                    tint = if (spectrumTrackCount < spectrumMaxTrackCount) Color(0xFF5D6B98) else Color(0xFFB0B3C0)
+                    tint = if (spectrumTrackCount < spectrumMaxTrackCount) accentColor else secondaryTextColor.copy(alpha = 0.6f)
                 )
             }
         }
@@ -1277,18 +1297,24 @@ fun SpectrumAnalyteBindingList(
     spectrumMapping: Map<Int, Analyte>,
     onSelectAnalyte: (Int) -> Unit
 ) {
+    val colorScheme = MaterialTheme.colorScheme
+    val accentColor = colorScheme.primary
+    val borderColor = colorScheme.outline.copy(alpha = 0.35f)
+    val secondaryTextColor = colorScheme.onSurfaceVariant
+    val subtleSurfaceColor = colorScheme.surfaceVariant.copy(alpha = 0.28f)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
-            .border(1.dp, Color(0xFFE3E5ED), RoundedCornerShape(12.dp))
+            .background(colorScheme.surface)
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
             .padding(16.dp)
     ) {
         Text(
             text = stringResource(R.string.spectrum_analyte_binding),
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF2D3142)
+            color = colorScheme.onSurface
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -1300,10 +1326,10 @@ fun SpectrumAnalyteBindingList(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFFF6F7FB))
+                        .background(subtleSurfaceColor)
                         .border(
                             1.dp,
-                            if (analyte != null) Color(0xFF5D6B98) else Color(0xFFE3E5ED),
+                            if (analyte != null) accentColor else borderColor,
                             RoundedCornerShape(10.dp)
                         )
                         .clickable { onSelectAnalyte(track) }
@@ -1314,12 +1340,12 @@ fun SpectrumAnalyteBindingList(
                         Text(
                             text = stringResource(R.string.spectrum_channel_label, track),
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF2D3142)
+                            color = colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = analyte?.name ?: stringResource(R.string.spectrum_select_analyte),
-                            color = if (analyte != null) Color(0xFF5D6B98) else Color(0xFF6B7280),
+                            color = if (analyte != null) accentColor else secondaryTextColor,
                             fontSize = 14.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1329,7 +1355,7 @@ fun SpectrumAnalyteBindingList(
                     Icon(
                         imageVector = Icons.Default.ChevronRight,
                         contentDescription = null,
-                        tint = Color(0xFF5D6B98)
+                        tint = accentColor
                     )
                 }
             }
@@ -1345,12 +1371,18 @@ fun SpectrumChannelConfigCard(
     onDecrementTrack: () -> Unit,
     onSelectAnalyte: (Int) -> Unit
 ) {
+    val colorScheme = MaterialTheme.colorScheme
+    val accentColor = colorScheme.primary
+    val borderColor = colorScheme.outline.copy(alpha = 0.35f)
+    val secondaryTextColor = colorScheme.onSurfaceVariant
+    val subtleSurfaceColor = colorScheme.surfaceVariant.copy(alpha = 0.28f)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
-            .border(1.dp, Color(0xFFE3E5ED), RoundedCornerShape(12.dp))
+            .background(colorScheme.surface)
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
             .padding(16.dp)
     ) {
         // Card Title
@@ -1358,7 +1390,7 @@ fun SpectrumChannelConfigCard(
             text = stringResource(R.string.channel_config_title),
             fontWeight = FontWeight.SemiBold,
             fontSize = 16.sp,
-            color = Color(0xFF2D3142)
+            color = colorScheme.onSurface
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -1368,14 +1400,14 @@ fun SpectrumChannelConfigCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFF6F7FB))
+                .background(subtleSurfaceColor)
                 .padding(12.dp)
         ) {
             Text(
                 text = stringResource(R.string.spectrum_channel_count_label),
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
-                color = Color(0xFF6B7280)
+                color = secondaryTextColor
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -1393,7 +1425,7 @@ fun SpectrumChannelConfigCard(
                     Icon(
                         imageVector = Icons.Default.RemoveCircle,
                         contentDescription = null,
-                        tint = if (spectrumTrackCount > 1) Color(0xFF5D6B98) else Color(0xFFB0B3C0)
+                        tint = if (spectrumTrackCount > 1) accentColor else secondaryTextColor.copy(alpha = 0.6f)
                     )
                 }
 
@@ -1402,13 +1434,13 @@ fun SpectrumChannelConfigCard(
                         text = "$spectrumTrackCount",
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp,
-                        color = Color(0xFF2D3142)
+                        color = colorScheme.onSurface
                     )
                     Text(
                         text = "/$spectrumMaxTrackCount",
                         fontWeight = FontWeight.Normal,
                         fontSize = 16.sp,
-                        color = Color(0xFF6B7280)
+                        color = secondaryTextColor
                     )
                 }
 
@@ -1420,7 +1452,7 @@ fun SpectrumChannelConfigCard(
                     Icon(
                         imageVector = Icons.Default.AddCircle,
                         contentDescription = null,
-                        tint = if (spectrumTrackCount < spectrumMaxTrackCount) Color(0xFF5D6B98) else Color(0xFFB0B3C0)
+                        tint = if (spectrumTrackCount < spectrumMaxTrackCount) accentColor else secondaryTextColor.copy(alpha = 0.6f)
                     )
                 }
             }
@@ -1433,7 +1465,7 @@ fun SpectrumChannelConfigCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFF6F7FB))
+                .background(subtleSurfaceColor)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -1444,10 +1476,10 @@ fun SpectrumChannelConfigCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color.White)
+                        .background(colorScheme.surface)
                         .border(
                             1.dp,
-                            if (isBound) Color(0xFF5D6B98) else Color(0xFFE3E5ED),
+                            if (isBound) accentColor else borderColor,
                             RoundedCornerShape(8.dp)
                         )
                         .clickable { onSelectAnalyte(track) }
@@ -1463,7 +1495,7 @@ fun SpectrumChannelConfigCard(
                                 text = stringResource(R.string.spectrum_channel_label, track),
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp,
-                                color = Color(0xFF2D3142)
+                                color = colorScheme.onSurface
                             )
                             // 已绑定标签
                             if (isBound) {
@@ -1493,7 +1525,7 @@ fun SpectrumChannelConfigCard(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = if (isBound) analyte!!.name else stringResource(R.string.spectrum_unbound_analyte),
-                            color = if (isBound) Color(0xFF5D6B98) else Color(0xFF9CA3AF),
+                            color = if (isBound) accentColor else secondaryTextColor,
                             fontSize = 13.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1504,7 +1536,7 @@ fun SpectrumChannelConfigCard(
                     Icon(
                         imageVector = if (isBound) Icons.Default.ChevronRight else Icons.Default.AddCircleOutline,
                         contentDescription = null,
-                        tint = if (isBound) Color(0xFF5D6B98) else Color(0xFF9CA3AF),
+                        tint = if (isBound) accentColor else secondaryTextColor,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -1518,32 +1550,35 @@ fun DetectionModeSegmentedControl(
     selectedMode: DetectionMode,
     onSelect: (DetectionMode) -> Unit
 ) {
+    val colorScheme = MaterialTheme.colorScheme
+    val accentColor = colorScheme.primary
+    val borderColorBase = colorScheme.outline.copy(alpha = 0.35f)
     val items = listOf(
-        DetectionMode.FLUORESCENCE to R.string.fluorescence_mode,
-        DetectionMode.COLORIMETRIC to R.string.colorimetric_mode,
-        DetectionMode.SPECTRUM to R.string.spectrum_detection_title
+        DetectionMode.FLUORESCENCE to R.string.fluorescence_mode_short,
+        DetectionMode.COLORIMETRIC to R.string.colorimetric_mode_short,
+        DetectionMode.SPECTRUM to R.string.spectrum_mode_short
     )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(42.dp)
+            .height(48.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.White),
+            .background(colorScheme.surface),
         horizontalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         items.forEachIndexed { index, (mode, labelRes) ->
             val selected = mode == selectedMode
             val background by animateColorAsState(
-                targetValue = if (selected) Color(0xFF5D6B98).copy(alpha = 0.12f) else Color.Transparent,
+                targetValue = if (selected) accentColor.copy(alpha = 0.12f) else Color.Transparent,
                 label = "mode-bg"
             )
             val textColor by animateColorAsState(
-                targetValue = if (selected) Color(0xFF5D6B98) else Color(0xFF9CA3AF),
+                targetValue = if (selected) accentColor else colorScheme.onSurfaceVariant,
                 label = "mode-text"
             )
             val borderColor by animateColorAsState(
-                targetValue = if (selected) Color(0xFF5D6B98) else Color(0xFFDDDDDD),
+                targetValue = if (selected) accentColor else borderColorBase,
                 label = "mode-border"
             )
 
@@ -1571,7 +1606,11 @@ fun DetectionModeSegmentedControl(
                     text = stringResource(labelRes),
                     color = textColor,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    fontSize = 14.sp
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 6.dp)
                 )
             }
         }

@@ -3,6 +3,8 @@
 package com.muc.fluocolorquant.ui.screens.result
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -44,6 +47,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -117,18 +122,25 @@ fun NewResultScreen(
                         Icon(
                             painter = painterResource(id = R.drawable.export),
                             contentDescription = stringResource(R.string.export),
+                            tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.padding(8.dp)
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
+                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showExportPanel = true }) {
+            FloatingActionButton(
+                onClick = { showExportPanel = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(horizontal = 16.dp)
@@ -141,11 +153,13 @@ fun NewResultScreen(
                     Text(text = stringResource(R.string.export))
                 }
             }
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
                 .padding(top = paddingValues.calculateTopPadding())
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
@@ -187,7 +201,10 @@ fun NewResultScreen(
                             Spacer(modifier = Modifier.height(24.dp))
                             androidx.compose.material3.Button(
                                 onClick = { navController.navigate(Screen.Home.route) },
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
                             ) {
                                 Text(stringResource(R.string.return_to_home))
                             }
@@ -254,7 +271,10 @@ fun NewResultScreen(
                             androidx.compose.material3.Button(
                                 onClick = { navController.navigate(Screen.Home.route) },
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(16.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
                             ) {
                                 Text(stringResource(R.string.return_to_home))
                             }
@@ -327,25 +347,47 @@ fun AnalyteTabRow(
     onAnalyteSelected: (String) -> Unit
 ) {
     if (analytesList.isNotEmpty()) {
-        TabRow(
-            selectedTabIndex = analytesList.indexOfFirst { it.id == selectedAnalyteId }.takeIf { it >= 0 } ?: 0,
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        ) {
-            analytesList.forEach { analyte ->
-                Tab(
-                    selected = analyte.id == selectedAnalyteId,
-                    onClick = { onAnalyteSelected(analyte.id) },
-                    text = {
-                        Text(
-                            text = analyte.name,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (analyte.id == selectedAnalyteId) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    selectedContentColor = MaterialTheme.colorScheme.primary,
-                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
+                    shape = RoundedCornerShape(20.dp)
                 )
+                .padding(6.dp)
+        ) {
+            TabRow(
+                selectedTabIndex = analytesList.indexOfFirst { it.id == selectedAnalyteId }.takeIf { it >= 0 } ?: 0,
+                containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                divider = {},
+                indicator = {}
+            ) {
+                analytesList.forEach { analyte ->
+                    val selected = analyte.id == selectedAnalyteId
+                    Tab(
+                        selected = selected,
+                        onClick = { onAnalyteSelected(analyte.id) },
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                else Color.Transparent
+                            ),
+                        text = {
+                            Text(
+                                text = analyte.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        },
+                        selectedContentColor = MaterialTheme.colorScheme.primary,
+                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

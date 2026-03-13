@@ -387,7 +387,10 @@
     <string name="select_image">Please select or take an image</string>
     <string name="analyzing_image">Starting image analysis...</string>
     <string name="fluorescence_mode">Fluorescence Detection</string>
+    <string name="fluorescence_mode_short">Fluorescence</string>
     <string name="colorimetric_mode">Colorimetric Detection</string>
+    <string name="colorimetric_mode_short">Colorimetric</string>
+    <string name="spectrum_mode_short">Spectrum</string>
     <string name="analysis_method">Analysis Method</string>
     <string name="dl_model_option">Concentration Prediction Model</string>
     <string name="curve_fit_option">Standard Curve Fitting</string>
@@ -557,11 +560,18 @@
     <string name="default_plate_size">Default well plate size</string>
     
     <!-- Settings Navigation Descriptions -->
-    <string name="app_settings_desc">Manage language</string>
+    <string name="app_settings_desc">Manage language and theme</string>
     <string name="detection_settings_desc">Configure default detection parameters and image processing</string>
     <string name="library_management_desc">Manage analytes, reagents, curve models and experiment templates</string>
 
     <string name="language_settings_desc">Select the language displayed on the application interface</string>
+    <string name="theme_settings">Theme Settings</string>
+    <string name="theme_settings_desc">Choose how the application appearance follows light and dark themes</string>
+    <string name="select_theme_mode">Select Theme Mode</string>
+    <string name="theme_mode_system">Follow System</string>
+    <string name="theme_mode_light">Light</string>
+    <string name="theme_mode_dark">Dark</string>
+    <string name="theme_changed">Theme updated</string>
     <string name="default_unit">Default Unit</string>
 
     <!-- Analyte Management -->

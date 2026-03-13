@@ -91,6 +91,7 @@ fun ResultsDisplaySection(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
+    val colorScheme = MaterialTheme.colorScheme
 
     // 确定要显示的页面数量
     val pageCount = if (details.analysisMethod == "CURVE_FIT" && details.fittedCurveModel != null) 4 else 3
@@ -102,28 +103,57 @@ fun ResultsDisplaySection(
             .fillMaxWidth()
             .padding(vertical = 8.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        shape = RoundedCornerShape(20.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = stringResource(R.string.result_display),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.result_display),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = colorScheme.onSurface
+                )
+            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // 选项卡
             TabRow(
                 selectedTabIndex = pagerState.currentPage,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp)),
+                containerColor = colorScheme.surfaceVariant.copy(alpha = 0.24f),
+                contentColor = colorScheme.onSurfaceVariant,
+                divider = {},
+                indicator = {}
             ) {
                 // 浓度热力图页签
                 Tab(
                     selected = pagerState.currentPage == 0,
                     onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
+                    selectedContentColor = colorScheme.primary,
+                    unselectedContentColor = colorScheme.onSurfaceVariant,
                     text = { Text(stringResource(R.string.heatmap)) }
                 )
 
@@ -131,6 +161,8 @@ fun ResultsDisplaySection(
                 Tab(
                     selected = pagerState.currentPage == 1,
                     onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                    selectedContentColor = colorScheme.primary,
+                    unselectedContentColor = colorScheme.onSurfaceVariant,
                     text = { Text(stringResource(R.string.value_map)) }
                 )
 
@@ -138,6 +170,8 @@ fun ResultsDisplaySection(
                 Tab(
                     selected = pagerState.currentPage == 2,
                     onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
+                    selectedContentColor = colorScheme.primary,
+                    unselectedContentColor = colorScheme.onSurfaceVariant,
                     text = { 
                         Text(
                             text = stringResource(R.string.concentration_chart),
@@ -152,6 +186,8 @@ fun ResultsDisplaySection(
                     Tab(
                         selected = pagerState.currentPage == 3,
                         onClick = { scope.launch { pagerState.animateScrollToPage(3) } },
+                        selectedContentColor = colorScheme.primary,
+                        unselectedContentColor = colorScheme.onSurfaceVariant,
                         text = { 
                             Text(
                                 text = stringResource(R.string.standard_curve),

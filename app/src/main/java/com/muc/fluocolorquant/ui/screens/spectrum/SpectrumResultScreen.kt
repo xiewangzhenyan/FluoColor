@@ -103,6 +103,10 @@ fun SpectrumResultScreen(
     val toastManager = LocalToastManager.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val colorScheme = MaterialTheme.colorScheme
+    val accentColor = colorScheme.primary
+    val pageBackgroundColor = colorScheme.background
+    val secondaryTextColor = colorScheme.onSurfaceVariant
     val exportPrepareFailed = stringResource(R.string.spectrum_export_prepare_failed)
     var showQuickSettings by remember { mutableStateOf(true) }
     var showComparison by remember { mutableStateOf(false) }
@@ -163,17 +167,17 @@ fun SpectrumResultScreen(
                             Icon(
                                 painter = painterResource(id = R.drawable.export),
                                 contentDescription = stringResource(R.string.spectrum_export_title),
-                                tint = Color.White,
+                                tint = colorScheme.onPrimary,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color(0xFF5D6B98),
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                    actionIconContentColor = Color.White
+                    containerColor = accentColor,
+                    titleContentColor = colorScheme.onPrimary,
+                    navigationIconContentColor = colorScheme.onPrimary,
+                    actionIconContentColor = colorScheme.onPrimary
                 )
             )
         }
@@ -186,7 +190,7 @@ fun SpectrumResultScreen(
                         .padding(paddingValues),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = Color(0xFF5D6B98))
+                    CircularProgressIndicator(color = accentColor)
                 }
             }
 
@@ -213,7 +217,7 @@ fun SpectrumResultScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(paddingValues)
-                        .background(Color(0xFFF5F7FA))
+                        .background(pageBackgroundColor)
                 ) {
                     if (showQuickSettings) {
                         QuickAdjustCard(
@@ -252,6 +256,16 @@ fun SpectrumResultScreen(
                         }
                     }
 
+                    if (showComparison && state.comparisonChartData != null) {
+                        SpectrumComparisonCard(
+                            chartData = state.comparisonChartData,
+                            channels = state.results,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -267,7 +281,7 @@ fun SpectrumResultScreen(
                             ),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2D3142)
+                            color = colorScheme.onSurface
                         )
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -277,8 +291,8 @@ fun SpectrumResultScreen(
                                         .size(if (index == pagerState.currentPage) 12.dp else 9.dp)
                                         .clip(CircleShape)
                                         .background(
-                                            if (index == pagerState.currentPage) Color(0xFF5D6B98)
-                                            else Color(0xFFD1D5DB)
+                                            if (index == pagerState.currentPage) accentColor
+                                            else secondaryTextColor.copy(alpha = 0.28f)
                                         )
                                         .clickable {
                                             scope.launch { pagerState.animateScrollToPage(index) }
@@ -294,9 +308,6 @@ fun SpectrumResultScreen(
                     ) { page ->
                         ChannelResultPage(
                             channelData = state.results[page],
-                            showComparison = showComparison,
-                            comparisonChartData = state.comparisonChartData,
-                            allChannels = state.results,
                             modifier = Modifier.fillMaxSize(),
                             onEditAnalyte = { editingChannel = state.results[page] }
                         )
@@ -356,9 +367,12 @@ private fun QuickAdjustCard(
     onSmoothingChangeFinished: () -> Unit,
     onSensitivityChange: (String) -> Unit
 ) {
+    val colorScheme = MaterialTheme.colorScheme
+    val accentColor = colorScheme.primary
     OutlinedCard(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.outlinedCardColors(containerColor = colorScheme.surface)
     ) {
         Column(
             modifier = Modifier
@@ -373,7 +387,7 @@ private fun QuickAdjustCard(
                 Icon(
                     imageVector = Icons.Default.Tune,
                     contentDescription = null,
-                    tint = Color(0xFF5D6B98)
+                    tint = accentColor
                 )
                 Text(
                     text = stringResource(R.string.spectrum_quick_settings_title),
@@ -385,7 +399,7 @@ private fun QuickAdjustCard(
             Text(
                 text = stringResource(R.string.label_smoothing_level, pendingSmoothing.toInt()),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF6B7280)
+                color = colorScheme.onSurfaceVariant
             )
             Slider(
                 value = pendingSmoothing,
@@ -398,7 +412,7 @@ private fun QuickAdjustCard(
             Text(
                 text = stringResource(R.string.label_sensitivity),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF6B7280)
+                color = colorScheme.onSurfaceVariant
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SensitivityFilterChip(
@@ -429,6 +443,7 @@ private fun SpectrumEmptyState(
     modifier: Modifier = Modifier,
     onReturnCalibration: () -> Unit
 ) {
+    val colorScheme = MaterialTheme.colorScheme
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
@@ -442,13 +457,13 @@ private fun SpectrumEmptyState(
                 modifier = Modifier
                     .size(88.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFEEF2FF)),
+                    .background(colorScheme.primary.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Science,
                     contentDescription = null,
-                    tint = Color(0xFF5D6B98),
+                    tint = colorScheme.primary,
                     modifier = Modifier.size(42.dp)
                 )
             }
@@ -462,7 +477,7 @@ private fun SpectrumEmptyState(
             Text(
                 text = stringResource(R.string.spectrum_no_data_desc),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF6B7280),
+                color = colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
 
@@ -479,9 +494,6 @@ private fun SpectrumEmptyState(
 @Composable
 private fun ChannelResultPage(
     channelData: SpectrumChannelUiModel,
-    showComparison: Boolean,
-    comparisonChartData: ChartData?,
-    allChannels: List<SpectrumChannelUiModel>,
     modifier: Modifier = Modifier,
     onEditAnalyte: () -> Unit
 ) {
@@ -491,14 +503,6 @@ private fun ChannelResultPage(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        if (showComparison) {
-            SpectrumComparisonCard(
-                chartData = comparisonChartData,
-                channels = allChannels,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-
         AnalyteTitleCard(
             analyteName = channelData.analyteName,
             channelIndex = channelData.channelIndex,
@@ -540,11 +544,12 @@ private fun AnalyteTitleCard(
     modifier: Modifier = Modifier
 ) {
     val unboundText = stringResource(R.string.spectrum_unbound)
+    val colorScheme = MaterialTheme.colorScheme
 
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Row(
@@ -558,7 +563,7 @@ private fun AnalyteTitleCard(
                 modifier = Modifier
                     .size(92.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFFF3F4F6)),
+                    .background(colorScheme.surfaceVariant.copy(alpha = 0.32f)),
                 contentAlignment = Alignment.Center
             ) {
                 if (!croppedImagePath.isNullOrBlank()) {
@@ -571,7 +576,7 @@ private fun AnalyteTitleCard(
                     Icon(
                         imageVector = Icons.Default.Image,
                         contentDescription = null,
-                        tint = Color(0xFF9CA3AF),
+                        tint = colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(28.dp)
                     )
                 }
@@ -584,19 +589,19 @@ private fun AnalyteTitleCard(
                 Text(
                     text = stringResource(R.string.spectrum_analyte_label),
                     fontSize = 14.sp,
-                    color = Color(0xFF6B7280),
+                    color = colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
                     text = analyteName,
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (analyteName == unboundText) Color(0xFF9CA3AF) else Color(0xFF5D6B98)
+                    color = if (analyteName == unboundText) colorScheme.onSurfaceVariant else colorScheme.primary
                 )
                 Text(
                     text = stringResource(R.string.spectrum_channel_label, channelIndex),
                     fontSize = 12.sp,
-                    color = Color(0xFF9CA3AF)
+                    color = colorScheme.onSurfaceVariant
                 )
             }
 
@@ -604,7 +609,7 @@ private fun AnalyteTitleCard(
                 Icon(
                     imageVector = Icons.Default.Edit,
                     contentDescription = stringResource(R.string.spectrum_edit_binding),
-                    tint = Color(0xFF5D6B98)
+                    tint = colorScheme.primary
                 )
             }
         }
@@ -619,10 +624,11 @@ private fun SpectrumCurveCard(
     chartData: ChartData,
     modifier: Modifier = Modifier
 ) {
+    val colorScheme = MaterialTheme.colorScheme
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
@@ -639,7 +645,7 @@ private fun SpectrumCurveCard(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF5D6B98)),
+                        .background(colorScheme.primary),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -653,7 +659,7 @@ private fun SpectrumCurveCard(
                     text = stringResource(R.string.spectrum_curve_title),
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
-                    color = Color(0xFF2D3142)
+                    color = colorScheme.onSurface
                 )
             }
             
@@ -677,11 +683,12 @@ private fun PeakInfoCard(
     modifier: Modifier = Modifier
 ) {
     val primaryPeak = peaks.firstOrNull()
+    val colorScheme = MaterialTheme.colorScheme
 
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
@@ -712,7 +719,7 @@ private fun PeakInfoCard(
                     text = stringResource(R.string.spectrum_peak_result_title),
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
-                    color = Color(0xFF2D3142)
+                    color = colorScheme.onSurface
                 )
             }
             
@@ -731,7 +738,7 @@ private fun PeakInfoCard(
                     label = stringResource(R.string.spectrum_peak_intensity),
                     value = primaryPeak?.let { String.format(Locale.US, "%.3f", it.intensity) } ?: "--",
                     modifier = Modifier.weight(1f),
-                    highlightColor = Color(0xFF5D6B98)
+                    highlightColor = MaterialTheme.colorScheme.primary
                 )
                 
                 InfoItem(
@@ -748,7 +755,7 @@ private fun PeakInfoCard(
                     text = stringResource(R.string.spectrum_secondary_peaks_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF2D3142)
+                    color = colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -758,19 +765,19 @@ private fun PeakInfoCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFFF8FAFC))
+                                .background(colorScheme.surfaceVariant.copy(alpha = 0.22f))
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = stringResource(R.string.spectrum_peak_rank_label, peak.rank),
-                                color = Color(0xFF5D6B98),
+                                color = colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
                                 text = String.format(Locale.US, "%.1f nm", peak.wavelength),
-                                color = Color(0xFF475569)
+                                color = colorScheme.onSurfaceVariant
                             )
                             Text(
                                 text = String.format(Locale.US, "%.3f", peak.intensity),
@@ -794,10 +801,11 @@ private fun DataRangeCard(
     maxWavelength: Double,
     modifier: Modifier = Modifier
 ) {
+    val colorScheme = MaterialTheme.colorScheme
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
@@ -809,7 +817,7 @@ private fun DataRangeCard(
                 text = stringResource(R.string.spectrum_wavelength_range),
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
-                color = Color(0xFF2D3142),
+                color = colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
             
@@ -820,8 +828,8 @@ private fun DataRangeCard(
                     .background(
                         brush = Brush.horizontalGradient(
                             colors = listOf(
-                                Color(0xFF667eea).copy(alpha = 0.1f),
-                                Color(0xFF764ba2).copy(alpha = 0.1f)
+                                colorScheme.primary.copy(alpha = 0.12f),
+                                colorScheme.secondary.copy(alpha = 0.12f)
                             )
                         )
                     )
@@ -833,33 +841,33 @@ private fun DataRangeCard(
                     Text(
                         text = stringResource(R.string.spectrum_min_wavelength),
                         fontSize = 12.sp,
-                        color = Color(0xFF6B7280)
+                        color = colorScheme.onSurfaceVariant
                     )
                     Text(
                         text = String.format("%.1f nm", minWavelength),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF667eea)
+                        color = colorScheme.primary
                     )
                 }
                 
                 Text(
                     text = stringResource(R.string.spectrum_range_arrow),
                     fontSize = 24.sp,
-                    color = Color(0xFF9CA3AF)
+                    color = colorScheme.onSurfaceVariant
                 )
                 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = stringResource(R.string.spectrum_max_wavelength),
                         fontSize = 12.sp,
-                        color = Color(0xFF6B7280)
+                        color = colorScheme.onSurfaceVariant
                     )
                     Text(
                         text = String.format("%.1f nm", maxWavelength),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF764ba2)
+                        color = colorScheme.secondary
                     )
                 }
             }
@@ -877,11 +885,12 @@ private fun SpectrumComparisonCard(
     modifier: Modifier = Modifier
 ) {
     if (chartData == null || channels.isEmpty()) return
+    val colorScheme = MaterialTheme.colorScheme
 
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
@@ -893,7 +902,8 @@ private fun SpectrumComparisonCard(
             Text(
                 text = stringResource(R.string.spectrum_compare_title),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = colorScheme.onSurface
             )
 
             CurveChart(
@@ -907,7 +917,7 @@ private fun SpectrumComparisonCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 8.dp),
+                    .padding(start = 14.dp, end = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 channels.withIndex().toList().chunked(2).forEach { rowChannels ->
@@ -919,7 +929,8 @@ private fun SpectrumComparisonCard(
                             val lineColor = if (indexedChannel.index == 0) {
                                 chartData.curveColor
                             } else {
-                                chartData.overlayLines.getOrNull(indexedChannel.index - 1)?.color ?: Color(0xFF9CA3AF)
+                                chartData.overlayLines.getOrNull(indexedChannel.index - 1)?.color
+                                    ?: colorScheme.onSurfaceVariant
                             }
 
                             ComparisonLegendItem(
@@ -946,7 +957,7 @@ private fun ComparisonLegendItem(
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = modifier.padding(start = 4.dp),
+        modifier = modifier.padding(start = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -963,7 +974,7 @@ private fun ComparisonLegendItem(
                 channel.analyteName
             ),
             style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFF475569),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -983,7 +994,7 @@ private fun ExportProgressDialog() {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = stringResource(R.string.spectrum_export_progress_desc),
-                    color = Color(0xFF6B7280)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
@@ -1027,7 +1038,7 @@ private fun AnalyteBindingDialog(
                         if (selectedAnalyteId == null) {
                             Text(
                                 text = stringResource(R.string.confirm),
-                                color = Color(0xFF5D6B98),
+                                color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -1051,7 +1062,7 @@ private fun AnalyteBindingDialog(
                             if (selectedAnalyteId == analyte.id) {
                                 Text(
                                     text = stringResource(R.string.confirm),
-                                    color = Color(0xFF5D6B98),
+                                    color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
@@ -1099,6 +1110,7 @@ private fun InfoItem(
     modifier: Modifier = Modifier,
     highlightColor: Color = Color(0xFF5D6B98)
 ) {
+    val colorScheme = MaterialTheme.colorScheme
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
@@ -1110,7 +1122,7 @@ private fun InfoItem(
         Text(
             text = label,
             fontSize = 12.sp,
-            color = Color(0xFF6B7280)
+            color = colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(

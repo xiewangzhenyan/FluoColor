@@ -410,7 +410,10 @@
     <string name="analyzing_image">开始分析图像...</string>
     <string name="detection_mode">检测模式</string>
     <string name="fluorescence_mode">荧光检测</string>
+    <string name="fluorescence_mode_short">荧光检测</string>
     <string name="colorimetric_mode">比色检测</string>
+    <string name="colorimetric_mode_short">比色检测</string>
+    <string name="spectrum_mode_short">光谱检测</string>
     <string name="recognition_type">识别类型</string>
     <string name="auto_recognition_option">自动识别</string>
     <string name="manual_crop_option">手动裁剪</string>
@@ -588,11 +591,18 @@
     <string name="default_plate_size">默认孔板尺寸</string>
     
     <!-- Settings Navigation Descriptions -->
-    <string name="app_settings_desc">管理语言</string>
+    <string name="app_settings_desc">管理语言与主题</string>
     <string name="detection_settings_desc">配置默认检测参数和图像处理</string>
     <string name="library_management_desc">管理分析物、试剂、曲线模型和实验模板</string>
 
     <string name="language_settings_desc">选择应用界面显示的语言</string>
+    <string name="theme_settings">主题设置</string>
+    <string name="theme_settings_desc">选择应用界面在浅色、深色与跟随系统之间的显示方式</string>
+    <string name="select_theme_mode">选择主题模式</string>
+    <string name="theme_mode_system">跟随系统</string>
+    <string name="theme_mode_light">浅色</string>
+    <string name="theme_mode_dark">深色</string>
+    <string name="theme_changed">主题已更新</string>
     <string name="default_unit">默认单位</string>
 
     <!-- Analyte Management -->

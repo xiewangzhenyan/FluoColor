@@ -60,10 +60,25 @@ class SettingsViewModel @Inject constructor(
             initialValue = "en" // 默认英语
         )
 
+    // 当前主题模式
+    val currentThemeMode: StateFlow<String> = settingsRepository.themeModeFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = SettingsRepository.DEFAULT_THEME_MODE
+        )
+
     // 更新语言设置
     fun setLanguage(languageCode: String) {
         viewModelScope.launch {
             settingsRepository.setLanguage(languageCode)
+        }
+    }
+
+    // 更新主题模式
+    fun setThemeMode(themeMode: String) {
+        viewModelScope.launch {
+            settingsRepository.setThemeMode(themeMode)
         }
     }
 

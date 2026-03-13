@@ -38,6 +38,7 @@ class SettingsRepository @Inject constructor(
     private val CONCENTRATION_UNITS_KEY = stringSetPreferencesKey("concentration_units")
     private val DEFAULT_ROWS_KEY = intPreferencesKey("default_rows")
     private val DEFAULT_COLUMNS_KEY = intPreferencesKey("default_columns")
+    private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
     private val PIXEL_EXTRACTION_METHOD_KEY = stringPreferencesKey("pixel_extraction_method")
     private val IMAGE_PREPROCESSING_ENABLED_KEY = booleanPreferencesKey("image_preprocessing_enabled")
     private val SPECTRUM_MIN_WAVELENGTH_KEY = floatPreferencesKey("spectrum_min_wavelength")
@@ -145,6 +146,18 @@ class SettingsRepository @Inject constructor(
     suspend fun setDefaultRows(rows: Int) {
         appSettingsDataStore.edit { preferences ->
             preferences[DEFAULT_ROWS_KEY] = rows
+        }
+    }
+
+    // 获取主题模式，默认跟随系统
+    val themeModeFlow: Flow<String> = appSettingsDataStore.data.map { preferences ->
+        preferences[THEME_MODE_KEY] ?: DEFAULT_THEME_MODE
+    }
+
+    // 设置主题模式
+    suspend fun setThemeMode(mode: String) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[THEME_MODE_KEY] = mode
         }
     }
     
@@ -269,6 +282,10 @@ class SettingsRepository @Inject constructor(
     }
     
     companion object {
+        const val THEME_MODE_SYSTEM = "system"
+        const val THEME_MODE_LIGHT = "light"
+        const val THEME_MODE_DARK = "dark"
+        const val DEFAULT_THEME_MODE = THEME_MODE_SYSTEM
         // 默认浓度单位集合
         val DEFAULT_CONCENTRATION_UNITS = setOf("ng/ml", "μg/ml", "mg/ml", "g/ml", "mol/L", "mmol/L", "μmol/L", "nmol/L")
         // 默认行数

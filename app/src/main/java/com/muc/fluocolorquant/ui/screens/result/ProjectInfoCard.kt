@@ -1,5 +1,6 @@
 package com.muc.fluocolorquant.ui.screens.result
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,18 +36,23 @@ fun ProjectInfoCard(
     concentrationUnit: String,
     analytesList: List<Analyte> = emptyList()
 ) {
+    val colorScheme = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        shape = RoundedCornerShape(16.dp)
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        shape = RoundedCornerShape(20.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             // 项目名称
             Text(
                 text = project.name, 
                 style = MaterialTheme.typography.titleLarge, 
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = colorScheme.onSurface
             )
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -60,7 +66,8 @@ fun ProjectInfoCard(
                         "COLORIMETRIC" -> stringResource(R.string.colorimetric_detection_mode)
                         else -> project.detectionMode
                     }
-                )
+                ),
+                color = colorScheme.onSurfaceVariant
             )
             
             // 识别类型
@@ -72,7 +79,8 @@ fun ProjectInfoCard(
                         "CURVE_FIT" -> stringResource(R.string.curve_fitting_analysis)
                         else -> project.analysisMethod
                     }
-                )
+                ),
+                color = colorScheme.onSurfaceVariant
             )
             
             // 分析物列表
@@ -80,15 +88,22 @@ fun ProjectInfoCard(
                 val analyteNames = analytesList.joinToString(", ") { it.name }
                 Text(
                     text = stringResource(R.string.analytes_in_project, analyteNames),
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colorScheme.onSurfaceVariant
                 )
             }
             
             // 创建时间
-            Text(text = stringResource(R.string.creation_time, formatDate(project.createTime)))
+            Text(
+                text = stringResource(R.string.creation_time, formatDate(project.createTime)),
+                color = colorScheme.onSurfaceVariant
+            )
 
             // 浓度单位
-            Text(text = stringResource(R.string.concentration_unit_res, concentrationUnit))
+            Text(
+                text = stringResource(R.string.concentration_unit_res, concentrationUnit),
+                color = colorScheme.onSurfaceVariant
+            )
         }
     }
 } 
