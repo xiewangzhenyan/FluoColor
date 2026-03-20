@@ -11,7 +11,11 @@ sealed class Screen(open val route: String) {
     object NewProject : Screen("new_project") {
         fun createRoute(): String = route
     }
-    object ImageCapture : Screen("image_capture")
+    object ImageCapture : Screen("image_capture") {
+        fun createRoute(outputPath: String): String {
+            return "$route?outputPath=$outputPath"
+        }
+    }
     object ImageCrop : Screen("image_crop") {
         fun createRoute(imageUri: String? = null): String {
             return imageUri?.let { "$route?imageUri=$it" } ?: route

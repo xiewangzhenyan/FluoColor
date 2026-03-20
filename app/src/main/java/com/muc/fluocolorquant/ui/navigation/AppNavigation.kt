@@ -14,6 +14,7 @@ import com.muc.fluocolorquant.ui.screens.curvefitting.CurveFittingResultScreen
 import com.muc.fluocolorquant.ui.screens.curvefitting.CurveFittingScreen
 import com.muc.fluocolorquant.ui.screens.detection.WellDetectionScreen
 import com.muc.fluocolorquant.ui.screens.home.HomeScreen
+import com.muc.fluocolorquant.ui.screens.image.CameraCaptureScreen
 import com.muc.fluocolorquant.ui.screens.imagecrop.ImageCropScreen
 import com.muc.fluocolorquant.ui.screens.image.ImageCorrectionScreen
 import com.muc.fluocolorquant.ui.screens.profile.ProfileScreen
@@ -64,6 +65,23 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             route = Screen.NewProject.route
         ) {
             NewProjectScreen(navController = navController)
+        }
+
+        composable(
+            route = "${Screen.ImageCapture.route}?outputPath={outputPath}",
+            arguments = listOf(
+                navArgument("outputPath") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val outputPath = backStackEntry.arguments?.getString("outputPath")?.let(Uri::decode)
+            CameraCaptureScreen(
+                navController = navController,
+                outputPath = outputPath
+            )
         }
 
         // 图片裁剪页面

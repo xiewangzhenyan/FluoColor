@@ -191,82 +191,60 @@ fun NewProjectScreen(
     }
 
     // 相机启动器
-    val tempImageUri = remember { mutableStateOf<Uri?>(null) }
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success && tempImageUri.value != null) {
-            // 导航到裁剪页面
-            navController.navigate("${Screen.ImageCrop.route}?imageUri=${Uri.encode(tempImageUri.value.toString())}")
-        }
-    }
-
-    // 相机权限状态
+    var pendingCameraCapture by remember { mutableStateOf(false) }
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
 
-    // 创建临时文件和URI的函数
-    val createTempImageUri: () -> Uri? = {
+    val createTempImageFile: () -> java.io.File? = {
         try {
-            // 创建临时文件
             val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
             val imageFileName = "JPEG_${timeStamp}_"
             val storageDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
-            val tempFile = java.io.File.createTempFile(
+            java.io.File.createTempFile(
                 imageFileName,
                 ".jpg",
                 storageDir
             )
-
-            // 使用FileProvider获取内容URI
-            androidx.core.content.FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.provider",
-                tempFile
-            )
         } catch (e: Exception) {
-            android.util.Log.e("NewProjectScreen", "Error creating temp image uri", e)
+            android.util.Log.e("NewProjectScreen", "Error creating temp image file", e)
             toastManager.showToast(tempFileCreationErrorMessage, ToastType.ERROR)
             null
         }
     }
 
-    // 打开相机前检查权限的函数
+    val launchCameraCapture: () -> Unit = {
+        val tempFile = createTempImageFile()
+        tempFile?.let { file ->
+            navController.navigate(Screen.ImageCapture.createRoute(Uri.encode(file.absolutePath)))
+        } ?: toastManager.showToast(tempFileCreationErrorMessage, ToastType.ERROR)
+    }
+
     val checkCameraPermissionAndLaunch: () -> Unit = {
         when {
-            // 已有权限，直接启动相机
             cameraPermissionState.status.isGranted -> {
-                tempImageUri.value = createTempImageUri()
-                tempImageUri.value?.let { uri ->
-                    cameraLauncher.launch(uri)
-                } ?: toastManager.showToast(tempFileCreationErrorMessage, ToastType.ERROR)
+                launchCameraCapture()
             }
-            // 请求相机权限
             else -> {
+                pendingCameraCapture = true
                 cameraPermissionState.launchPermissionRequest()
             }
         }
     }
 
-    // 权限结果监听
     LaunchedEffect(cameraPermissionState.status) {
+        if (!pendingCameraCapture) return@LaunchedEffect
+
         when (cameraPermissionState.status) {
             is PermissionStatus.Granted -> {
-                // 如果是刚刚授予的权限，自动启动相机
-                tempImageUri.value = createTempImageUri()
-                tempImageUri.value?.let { uri ->
-                    cameraLauncher.launch(uri)
-                } ?: toastManager.showToast(tempFileCreationErrorMessage, ToastType.ERROR)
+                pendingCameraCapture = false
+                launchCameraCapture()
             }
             is PermissionStatus.Denied -> {
-                // 权限被拒绝，显示提示
-                if ((cameraPermissionState.status as PermissionStatus.Denied).shouldShowRationale) {
-                    toastManager.showToast(cameraPermissionRequiredMessage, ToastType.WARNING)
-                }
+                pendingCameraCapture = false
+                toastManager.showToast(cameraPermissionRequiredMessage, ToastType.WARNING)
             }
         }
     }
 
-    // 获取可用的分析物列表
     val availableAnalytes by projectViewModel.availableAnalytes.collectAsState()
 
     // 获取已选中的分析物配置

@@ -23,6 +23,8 @@ import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepositoryImpl
 import com.muc.fluocolorquant.data.repository.SpectrumRepository
 import com.muc.fluocolorquant.data.repository.SpectrumRepositoryImpl
+import com.muc.fluocolorquant.utils.camera.CameraEngine
+import com.muc.fluocolorquant.utils.camera.CameraXCameraEngine
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -92,6 +94,11 @@ abstract class RepositoryModule {
     abstract fun provideSpectrumRepository(
         spectrumRepositoryImpl: SpectrumRepositoryImpl
     ): SpectrumRepository
+
+    @Binds
+    abstract fun provideCameraEngine(
+        cameraXCameraEngine: CameraXCameraEngine
+    ): CameraEngine
     
     companion object {
         @Provides

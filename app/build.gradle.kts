@@ -101,6 +101,11 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.ucrop)
     implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.androidx.exifinterface)
 
     //使用com.github.quickbirdstudios:opencv-android依赖
     implementation("com.quickbirdstudios:opencv:4.5.3.0")
