@@ -13,11 +13,16 @@ import com.muc.fluocolorquant.R
 import com.google.gson.Gson
 import com.muc.fluocolorquant.data.enums.SpectrumCalibrationType
 import com.muc.fluocolorquant.data.model.SpectrumCalibration
+import com.muc.fluocolorquant.data.model.SpectrumCalibrationReferenceData
+import com.muc.fluocolorquant.data.model.SpectrumCalibrationReferencePoint
 import com.muc.fluocolorquant.data.model.SpectrumResult
+import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationDebug
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.data.repository.SpectrumRepository
 import com.muc.fluocolorquant.utils.UiText
+import com.muc.fluocolorquant.utils.math.SpectrumCalibrationMath
+import com.muc.fluocolorquant.utils.math.EffectiveHeightBounds
 import com.muc.fluocolorquant.utils.math.SpectrumCVUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -69,6 +74,19 @@ private data class CalibrationSnapshot(
     val coefficients: Map<Int, DoubleArray>
 )
 
+/**
+ * 自动标定过程中为每个通道保留的诊断数据。
+ */
+private data class AutoCalibrationChannelRuntime(
+    val previewRect: Rect,
+    val effectiveBounds: EffectiveHeightBounds,
+    val detectedPeakCount: Int,
+    val referencePeakCount: Int,
+    val fitRmse: Double,
+    val qualityScore: Int,
+    val usedFallbackAlignment: Boolean
+)
+
 @HiltViewModel
 class SpectrumCalibrationViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -85,6 +103,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
     /** 撤销栈：保存标定点和系数的历史快照，最多保存 20 步 */
     private val undoStack = ArrayDeque<CalibrationSnapshot>()
     private val maxUndoSteps = 20
+    private var autoCalibrationRuntime: Map<Int, AutoCalibrationChannelRuntime> = emptyMap()
 
     private fun text(resId: Int, vararg args: Any): UiText {
         return UiText.StringResource(resId, args.toList())
@@ -124,6 +143,9 @@ class SpectrumCalibrationViewModel @Inject constructor(
     }
 
     fun setCalibrationMode(mode: CalibrationMode) {
+        if (mode != CalibrationMode.AUTO) {
+            autoCalibrationRuntime = emptyMap()
+        }
         _uiState.update { it.copy(calibrationMode = mode, showModeDialog = false, errorMessage = null) }
     }
 
@@ -137,6 +159,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
      */
     fun onCalibrationImageLoaded(bitmap: Bitmap) {
         val original = _uiState.value.originalBitmap ?: return
+        autoCalibrationRuntime = emptyMap()
         // 移除尺寸限制，接受任意尺寸的标定图
         // 对齐计算将在 performAutoCalibration 中完成
         _uiState.update { 
@@ -154,6 +177,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
     }
 
     fun switchToManualMode() {
+        autoCalibrationRuntime = emptyMap()
         _uiState.update {
             it.copy(
                 calibrationMode = CalibrationMode.MANUAL,
@@ -414,6 +438,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
         }
 
         viewModelScope.launch(Dispatchers.Default) {
+            autoCalibrationRuntime = emptyMap()
             _uiState.update { it.copy(isAutoFitting = true, errorMessage = null) }
             runCatching {
                 val originalRects = _uiState.value.trackRects
@@ -470,13 +495,28 @@ class SpectrumCalibrationViewModel @Inject constructor(
                 }
                 
                 val coeffMap = mutableMapOf<Int, DoubleArray>()
+                val runtimeMap = mutableMapOf<Int, AutoCalibrationChannelRuntime>()
                 
                 // 4. 对每个通道进行标定
                 originalRects.forEachIndexed { index, origRect ->
                     val searchRect = peakSearchRects.getOrElse(index) { origRect }
+                    val effectiveBounds = SpectrumCVUtils.detectEffectiveHeightBounds(
+                        calibrationBitmap,
+                        searchRect
+                    )
+                    val effectiveRect = Rect(
+                        searchRect.left,
+                        effectiveBounds.top,
+                        searchRect.right,
+                        effectiveBounds.bottomExclusive
+                    )
                     
                     // 在标定图上寻峰
-                    val peaksInCalib = SpectrumCVUtils.findPeaksInTrack(calibrationBitmap, searchRect, ref.size)
+                    val peaksInCalib = SpectrumCVUtils.findPeaksInTrack(
+                        calibrationBitmap,
+                        effectiveRect,
+                        ref.size
+                    )
                     if (peaksInCalib.size < ref.size) {
                         error(
                             context.getString(
@@ -488,29 +528,53 @@ class SpectrumCalibrationViewModel @Inject constructor(
                         )
                     }
                     
-                    // 5. 将标定图坐标转换为原始图坐标
-                    // 转换公式: Y_orig = Y_calib * scale - deltaY
-                    val peaksInOrig = peaksInCalib.map { yCalib ->
-                        (yCalib * finalAlignment.scale - finalAlignment.deltaY).toInt()
-                    }
+                    // 5. 在标定图当前通道内，将峰位转换为 0.0 - 1.0 的归一化纵坐标。
+                    // 自动标定改为拟合“归一化 y -> 波长”，降低不同分辨率下的像素尺度误差。
+                    val normalizedPeaks = peaksInCalib
+                        .sortedDescending()
+                        .map { yCalib ->
+                            SpectrumCalibrationMath.normalizeAbsoluteY(
+                                y = yCalib.toDouble(),
+                                top = effectiveBounds.top,
+                                bottomExclusive = effectiveBounds.bottomExclusive
+                            )
+                        }
                     
-                    Log.d("SpectrumCalibration", "通道 ${index + 1} 峰值坐标转换: $peaksInCalib -> $peaksInOrig")
+                    Log.d("SpectrumCalibration", "通道 ${index + 1} 归一化峰位: $peaksInCalib -> $normalizedPeaks")
                     
-                    // 按Y坐标排序（从大到小，即底部到顶部）
-                    val sortedPeaks = peaksInOrig.sortedDescending()
-                    
-                    // 6. 拟合波长-像素关系
-                    val data = sortedPeaks.zip(ref).map { (y, wavelength) ->
-                        y.toDouble() to wavelength.toDouble()
+                    // 6. 拟合波长与归一化纵坐标的关系
+                    val data = normalizedPeaks.zip(ref).map { (normalizedY, wavelength) ->
+                        normalizedY to wavelength.toDouble()
                     }
                     
                     // 优先使用线性拟合
-                    coeffMap[index] = if (ref.size <= 3) fitLinear(data) else fitQuadratic(data)
+                    val coefficients = if (ref.size <= 3) fitLinear(data) else fitQuadratic(data)
+                    val fitRmse = SpectrumCalibrationMath.calculateFitRmse(data, coefficients)
+                    val usedFallbackAlignment = alignment == null || effectiveBounds.usedFallback
+                    val qualityScore = SpectrumCalibrationMath.calculateAutoCalibrationQualityScore(
+                        detectedPeakCount = peaksInCalib.size,
+                        referencePeakCount = ref.size,
+                        fitRmse = fitRmse,
+                        effectiveCoverage = effectiveBounds.coverage,
+                        usedFallbackAlignment = usedFallbackAlignment
+                    )
+                    coeffMap[index] = coefficients
+                    runtimeMap[index] = AutoCalibrationChannelRuntime(
+                        previewRect = buildPreviewRect(searchRect, effectiveBounds),
+                        effectiveBounds = effectiveBounds,
+                        detectedPeakCount = peaksInCalib.size,
+                        referencePeakCount = ref.size,
+                        fitRmse = fitRmse,
+                        qualityScore = qualityScore,
+                        usedFallbackAlignment = usedFallbackAlignment
+                    )
                 }
                 
+                autoCalibrationRuntime = runtimeMap
                 _uiState.update { it.copy(coefficients = coeffMap) }
             }.onFailure { e ->
                 Log.e("SpectrumCalibration", "自动标定失败", e)
+                autoCalibrationRuntime = emptyMap()
                 // 触发重试建议对话框，提供用户友好的操作指引
                 _uiState.update {
                     it.copy(
@@ -532,6 +596,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
             val coeffs = state.coefficients
             val rects = state.trackRects
             val bitmap = state.originalBitmap
+            val calibrationBitmap = state.calibrationImageBitmap
             
             if (coeffs.size < rects.size) {
                 _uiState.updateError(text(R.string.spectrum_calibration_complete_all_required))
@@ -553,13 +618,46 @@ class SpectrumCalibrationViewModel @Inject constructor(
                 // 保存标定参数
                 rects.forEachIndexed { index, rect ->
                     val coef = coeffs[index] ?: return@forEachIndexed
+                    val manualPoints = state.manualPoints[index].orEmpty().map { mark ->
+                        SpectrumCalibrationReferencePoint(
+                            x = mark.point.x,
+                            y = mark.point.y,
+                            wavelength = mark.wavelength
+                        )
+                    }
+                    val autoDebug = if (type == SpectrumCalibrationType.AUTO_IMAGE) {
+                        autoCalibrationRuntime[index]?.let { runtime ->
+                            SpectrumAutoCalibrationDebug(
+                                calibrationCropPath = calibrationBitmap?.let { source ->
+                                    saveBitmapCrop(
+                                        bitmap = source,
+                                        rect = runtime.previewRect,
+                                        relativeDir = "spectrum_calibrations",
+                                        fileName = "${projectId}_calibration_${index}_${System.currentTimeMillis()}.png"
+                                    )
+                                },
+                                detectedPeakCount = runtime.detectedPeakCount,
+                                referencePeakCount = runtime.referencePeakCount,
+                                fitRmse = runtime.fitRmse,
+                                effectiveCoverage = runtime.effectiveBounds.coverage,
+                                qualityScore = runtime.qualityScore,
+                                usedFallbackAlignment = runtime.usedFallbackAlignment
+                            )
+                        }
+                    } else {
+                        null
+                    }
+                    val referenceData = SpectrumCalibrationReferenceData(
+                        manualPoints = manualPoints,
+                        autoDebug = autoDebug
+                    )
                     val calibration = SpectrumCalibration(
                         projectId = projectId,
                         columnIndex = index,
                         roiRect = gson.toJson(rect),
                         calibrationType = type,
                         coefficients = gson.toJson(coef),
-                        referencePoints = gson.toJson(state.manualPoints[index])
+                        referencePoints = gson.toJson(referenceData)
                     )
                     spectrumRepository.insertCalibration(calibration)
                 }
@@ -607,6 +705,11 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     
                     // 2. 提取强度曲线
                     val rawIntensities = SpectrumCVUtils.extractIntensityProfile(bitmap, rect)
+                    val originalEffectiveBounds = if (type == SpectrumCalibrationType.AUTO_IMAGE) {
+                        SpectrumCVUtils.detectEffectiveHeightBounds(bitmap, rect)
+                    } else {
+                        null
+                    }
                     
                     // 3. 归一化到 0.0 - 1.0
                     val maxIntensity = rawIntensities.maxOrNull() ?: 1f
@@ -617,12 +720,21 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     }
                     
                     // 4. 波长映射
-                    val a = coef[0]
-                    val b = coef[1]
-                    val c = coef[2]
-                    val wavelengths = rawIntensities.indices.map { y ->
-                        val yD = y.toDouble()
-                        a * yD * yD + b * yD + c
+                    val wavelengths = rawIntensities.indices.map { rowIndex ->
+                        when (type) {
+                            SpectrumCalibrationType.AUTO_IMAGE -> {
+                                val normalizedY = SpectrumCalibrationMath.normalizeAbsoluteY(
+                                    y = rect.top + rowIndex.toDouble(),
+                                    top = originalEffectiveBounds?.top ?: rect.top,
+                                    bottomExclusive = originalEffectiveBounds?.bottomExclusive ?: rect.bottom
+                                )
+                                SpectrumCalibrationMath.evaluatePolynomial(coef, normalizedY)
+                            }
+                            SpectrumCalibrationType.MANUAL_POINT -> {
+                                val absoluteY = rect.top + rowIndex.toDouble()
+                                SpectrumCalibrationMath.evaluatePolynomial(coef, absoluteY)
+                            }
+                        }
                     }
                     
                     // 5. 寻峰
@@ -682,6 +794,49 @@ class SpectrumCalibrationViewModel @Inject constructor(
      * 线性拟合: wavelength = a*y + b
      * 返回格式: [a, b, 0.0] 以保持与二次方程格式一致
      */
+    /**
+     * 根据有效高度构建结果页展示用的标定裁切区域。
+     */
+    private fun buildPreviewRect(searchRect: Rect, effectiveBounds: EffectiveHeightBounds): Rect {
+        val padding = ((effectiveBounds.bottomExclusive - effectiveBounds.top) * 0.12f)
+            .toInt()
+            .coerceAtLeast(8)
+        return Rect(
+            searchRect.left,
+            (effectiveBounds.top - padding).coerceAtLeast(searchRect.top),
+            searchRect.right,
+            (effectiveBounds.bottomExclusive + padding).coerceAtMost(searchRect.bottom)
+        )
+    }
+
+    /**
+     * 保存指定区域的裁切图片，供结果页调试和对照展示使用。
+     */
+    private fun saveBitmapCrop(
+        bitmap: Bitmap,
+        rect: Rect,
+        relativeDir: String,
+        fileName: String
+    ): String? {
+        return runCatching {
+            val safeLeft = rect.left.coerceIn(0, bitmap.width - 1)
+            val safeTop = rect.top.coerceIn(0, bitmap.height - 1)
+            val safeWidth = rect.width().coerceIn(1, bitmap.width - safeLeft)
+            val safeHeight = rect.height().coerceIn(1, bitmap.height - safeTop)
+            val croppedBitmap = Bitmap.createBitmap(bitmap, safeLeft, safeTop, safeWidth, safeHeight)
+            val file = java.io.File(context.filesDir, "$relativeDir/$fileName")
+            file.parentFile?.mkdirs()
+            java.io.FileOutputStream(file).use { out ->
+                croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            croppedBitmap.recycle()
+            file.absolutePath
+        }.getOrElse { error ->
+            Log.e("SpectrumCalibration", "保存裁切图片失败: ${error.message}")
+            null
+        }
+    }
+
     private fun fitLinear(points: List<Pair<Double, Double>>): DoubleArray {
         if (points.size < 2) return doubleArrayOf(0.0, 1.0, 0.0)
         

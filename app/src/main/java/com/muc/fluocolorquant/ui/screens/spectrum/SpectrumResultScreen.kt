@@ -81,6 +81,7 @@ import com.muc.fluocolorquant.ui.components.charts.ChartData
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.ExportViewModel
+import com.muc.fluocolorquant.ui.viewmodels.SpectrumCalibrationComparisonUiModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumChannelUiModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumPeakUiModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumResultViewModel
@@ -511,6 +512,15 @@ private fun ChannelResultPage(
             modifier = Modifier.fillMaxWidth()
         )
 
+        channelData.calibrationComparison?.let { comparison ->
+            CalibrationComparisonCard(
+                comparison = comparison,
+                spectrumImagePath = channelData.croppedImagePath,
+                channelIndex = channelData.channelIndex,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
         SpectrumCurveCard(
             chartData = channelData.chartData,
             modifier = Modifier.fillMaxWidth()
@@ -611,6 +621,223 @@ private fun AnalyteTitleCard(
                     contentDescription = stringResource(R.string.spectrum_edit_binding),
                     tint = colorScheme.primary
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 标定图与光谱图的对照卡片。
+ */
+@Composable
+private fun CalibrationComparisonCard(
+    comparison: SpectrumCalibrationComparisonUiModel,
+    spectrumImagePath: String?,
+    channelIndex: Int,
+    modifier: Modifier = Modifier
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val qualityScore = comparison.qualityScore
+    val qualityLabel = when {
+        qualityScore == null -> stringResource(R.string.spectrum_calibration_quality_pending)
+        qualityScore >= 85 -> stringResource(R.string.spectrum_calibration_quality_excellent)
+        qualityScore >= 70 -> stringResource(R.string.spectrum_calibration_quality_usable)
+        else -> stringResource(R.string.spectrum_calibration_quality_review)
+    }
+
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colorScheme.secondary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Science,
+                        contentDescription = null,
+                        tint = colorScheme.onSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.spectrum_calibration_compare_title),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.spectrum_calibration_compare_subtitle, channelIndex),
+                        fontSize = 13.sp,
+                        color = colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = qualityScore?.toString() ?: "--",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp,
+                        color = colorScheme.secondary
+                    )
+                    Text(
+                        text = qualityLabel,
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ComparisonImagePanel(
+                    title = stringResource(R.string.spectrum_calibration_compare_reference),
+                    imagePath = comparison.calibrationImagePath,
+                    fallbackLabel = stringResource(R.string.spectrum_calibration_compare_missing),
+                    modifier = Modifier.weight(1f)
+                )
+                ComparisonImagePanel(
+                    title = stringResource(R.string.spectrum_calibration_compare_spectrum),
+                    imagePath = spectrumImagePath,
+                    fallbackLabel = stringResource(R.string.spectrum_calibration_compare_missing),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                InfoItem(
+                    label = stringResource(R.string.spectrum_calibration_quality_score),
+                    value = qualityScore?.let { stringResource(R.string.spectrum_calibration_quality_score_value, it) }
+                        ?: "--",
+                    modifier = Modifier.weight(1f),
+                    highlightColor = colorScheme.secondary
+                )
+                InfoItem(
+                    label = stringResource(R.string.spectrum_calibration_rmse),
+                    value = comparison.fitRmse?.let { String.format(Locale.US, "%.4f", it) } ?: "--",
+                    modifier = Modifier.weight(1f),
+                    highlightColor = Color(0xFFEF4444)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                InfoItem(
+                    label = stringResource(R.string.spectrum_calibration_effective_height),
+                    value = comparison.effectiveCoverage?.let {
+                        stringResource(
+                            R.string.spectrum_calibration_effective_height_value,
+                            (it * 100.0).toInt()
+                        )
+                    } ?: "--",
+                    modifier = Modifier.weight(1f),
+                    highlightColor = Color(0xFF10B981)
+                )
+                InfoItem(
+                    label = stringResource(R.string.spectrum_calibration_peak_match),
+                    value = stringResource(
+                        R.string.spectrum_calibration_peak_match_value,
+                        comparison.detectedPeakCount,
+                        comparison.referencePeakCount
+                    ),
+                    modifier = Modifier.weight(1f),
+                    highlightColor = colorScheme.primary
+                )
+            }
+
+            if (comparison.usedFallbackAlignment) {
+                Text(
+                    text = stringResource(R.string.spectrum_calibration_alignment_fallback),
+                    fontSize = 12.sp,
+                    color = colorScheme.error
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComparisonImagePanel(
+    title: String,
+    imagePath: String?,
+    fallbackLabel: String,
+    modifier: Modifier = Modifier
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    OutlinedCard(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.outlinedCardColors(containerColor = colorScheme.surfaceVariant.copy(alpha = 0.2f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                color = colorScheme.onSurface
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(116.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colorScheme.surface),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!imagePath.isNullOrBlank()) {
+                    AsyncImage(
+                        model = imagePath,
+                        contentDescription = title,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = null,
+                            tint = colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Text(
+                            text = fallbackLabel,
+                            fontSize = 12.sp,
+                            color = colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
             }
         }
     }

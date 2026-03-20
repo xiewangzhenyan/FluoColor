@@ -16,6 +16,10 @@ class SpectrumRepositoryImpl @Inject constructor(
         return spectrumDao.insertCalibration(calibration)
     }
 
+    override fun getCalibrationsByProject(projectId: String): Flow<List<SpectrumCalibration>> {
+        return spectrumDao.getCalibrationsByProject(projectId)
+    }
+
     override fun getCalibration(projectId: String, columnIndex: Int): Flow<SpectrumCalibration?> {
         return spectrumDao.getCalibration(projectId, columnIndex)
     }

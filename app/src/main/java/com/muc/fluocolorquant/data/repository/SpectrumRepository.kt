@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.Flow
 interface SpectrumRepository {
     suspend fun insertCalibration(calibration: SpectrumCalibration): Long
 
+    fun getCalibrationsByProject(projectId: String): Flow<List<SpectrumCalibration>>
+
     fun getCalibration(projectId: String, columnIndex: Int): Flow<SpectrumCalibration?>
 
     suspend fun insertResult(result: SpectrumResult): Long

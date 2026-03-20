@@ -26,6 +26,16 @@ data class AlignmentResult(
 /**
  * 光谱处理工具（依赖 OpenCV）。使用前请确保 OpenCVLoader.initDebug() 已调用。
  */
+/**
+ * 光谱带在当前通道中的有效高度范围。
+ */
+data class EffectiveHeightBounds(
+    val top: Int,
+    val bottomExclusive: Int,
+    val coverage: Double,
+    val usedFallback: Boolean = false
+)
+
 object SpectrumCVUtils {
     private const val TAG = "SpectrumCVUtils"
     
@@ -289,8 +299,203 @@ object SpectrumCVUtils {
     }
 
     /**
+     * 在 ROI 内仅使用指定的列范围提取纵向强度轮廓。
+     */
+    private fun extractIntensityProfileByColumns(
+        bitmap: Bitmap,
+        roi: Rect,
+        startColumnOffset: Int,
+        columnCount: Int
+    ): FloatArray {
+        val safeLeft = max(0, roi.left)
+        val safeTop = max(0, roi.top)
+        val safeRight = minOf(bitmap.width, roi.right)
+        val safeBottom = minOf(bitmap.height, roi.bottom)
+        val roiWidth = (safeRight - safeLeft).coerceAtLeast(1)
+        val roiHeight = (safeBottom - safeTop).coerceAtLeast(1)
+
+        val startX = (safeLeft + startColumnOffset).coerceIn(safeLeft, safeRight - 1)
+        val width = columnCount.coerceAtLeast(1).coerceAtMost(safeRight - startX)
+        val rowPixels = IntArray(width)
+        val output = FloatArray(roiHeight)
+
+        for (row in 0 until roiHeight) {
+            bitmap.getPixels(
+                rowPixels,
+                0,
+                width,
+                startX,
+                safeTop + row,
+                width,
+                1
+            )
+
+            var sum = 0.0
+            rowPixels.forEach { pixel ->
+                val red = (pixel shr 16) and 0xFF
+                val green = (pixel shr 8) and 0xFF
+                val blue = pixel and 0xFF
+                sum += 0.299 * red + 0.587 * green + 0.114 * blue
+            }
+            output[row] = (sum / width).toFloat()
+        }
+
+        return output
+    }
+
+    /**
+     * 从左往右寻找第一个明显发亮的列，并返回用于纵向寻峰的小窗口。
+     */
+    private fun findFirstBrightColumnWindow(bitmap: Bitmap, rect: Rect): Pair<Int, Int>? {
+        val safeLeft = max(0, rect.left)
+        val safeTop = max(0, rect.top)
+        val safeRight = minOf(bitmap.width, rect.right)
+        val safeBottom = minOf(bitmap.height, rect.bottom)
+        val width = (safeRight - safeLeft).coerceAtLeast(1)
+        val height = (safeBottom - safeTop).coerceAtLeast(1)
+        val columnPixels = IntArray(height)
+        val columnScores = FloatArray(width)
+
+        for (columnOffset in 0 until width) {
+            bitmap.getPixels(
+                columnPixels,
+                0,
+                1,
+                safeLeft + columnOffset,
+                safeTop,
+                1,
+                height
+            )
+
+            var sum = 0.0
+            columnPixels.forEach { pixel ->
+                val red = (pixel shr 16) and 0xFF
+                val green = (pixel shr 8) and 0xFF
+                val blue = pixel and 0xFF
+                sum += 0.299 * red + 0.587 * green + 0.114 * blue
+            }
+            columnScores[columnOffset] = (sum / height).toFloat()
+        }
+
+        val maxScore = columnScores.maxOrNull() ?: return null
+        val avgScore = columnScores.average().toFloat()
+        val threshold = maxOf(maxScore * 0.42f, avgScore * 1.2f)
+        val firstBright = columnScores.indexOfFirst { it >= threshold }
+        if (firstBright < 0) {
+            return null
+        }
+
+        val windowWidth = (width * 0.18f).toInt().coerceIn(3, 10)
+        val availableWidth = width - firstBright
+        return firstBright to windowWidth.coerceAtMost(availableWidth.coerceAtLeast(1))
+    }
+
+    /**
+     * 从纵向强度轮廓中提取局部峰值。
+     */
+    private fun detectPeaksFromProfile(
+        profile: FloatArray,
+        rectTop: Int,
+        expectedPeaksCount: Int
+    ): List<Int> {
+        if (profile.isEmpty() || expectedPeaksCount <= 0) return emptyList()
+
+        val maxVal = profile.maxOrNull() ?: 0f
+        val avgVal = profile.average().toFloat()
+        val threshold = maxOf(maxVal * 0.1f, avgVal * 1.2f)
+        val candidates = mutableListOf<Pair<Int, Float>>()
+
+        for (y in 1 until profile.lastIndex) {
+            val value = profile[y]
+            if (value < threshold) continue
+            if (value >= profile[y - 1] && value >= profile[y + 1]) {
+                candidates += y to value
+            }
+        }
+
+        val minPeakDistance = (profile.size * 0.045f).toInt().coerceAtLeast(8)
+        val mergedPeaks = mutableListOf<Pair<Int, Float>>()
+        candidates.sortedBy { it.first }.forEach { candidate ->
+            val nearbyPeak = mergedPeaks.find { kotlin.math.abs(it.first - candidate.first) < minPeakDistance }
+            if (nearbyPeak != null) {
+                if (candidate.second > nearbyPeak.second) {
+                    mergedPeaks.remove(nearbyPeak)
+                    mergedPeaks.add(candidate)
+                }
+            } else {
+                mergedPeaks.add(candidate)
+            }
+        }
+
+        return mergedPeaks
+            .sortedByDescending { it.second }
+            .take(expectedPeaksCount)
+            .sortedBy { it.first }
+            .map { rectTop + it.first }
+    }
+
+    /**
      * 垂直偏移标定：基于参考列系数和中心点 Y 偏移，计算新列系数。
      */
+    /**
+     * 基于纵向强度轮廓检测当前通道的有效高度范围。
+     * 当整条通道被拉满全图高度时，可借此缩小到真正有信号的区域。
+     */
+    fun detectEffectiveHeightBounds(bitmap: Bitmap, rect: Rect): EffectiveHeightBounds {
+        val profile = extractIntensityProfile(bitmap, rect)
+        if (profile.isEmpty()) {
+            return EffectiveHeightBounds(
+                top = rect.top,
+                bottomExclusive = rect.bottom,
+                coverage = 1.0,
+                usedFallback = true
+            )
+        }
+
+        val minValue = profile.minOrNull() ?: 0f
+        val maxValue = profile.maxOrNull() ?: minValue
+        val range = (maxValue - minValue).coerceAtLeast(1f)
+        val smoothed = FloatArray(profile.size) { index ->
+            val start = (index - 2).coerceAtLeast(0)
+            val end = (index + 2).coerceAtMost(profile.lastIndex)
+            var sum = 0f
+            for (sampleIndex in start..end) {
+                sum += profile[sampleIndex]
+            }
+            sum / (end - start + 1).toFloat()
+        }
+
+        val normalized = smoothed.map { ((it - minValue) / range).coerceIn(0f, 1f) }
+        // 放宽有效高度阈值，避免较暗的边缘峰被直接裁掉。
+        val threshold = maxOf(0.12f, normalized.average().toFloat() * 0.85f)
+        val activeRows = normalized.mapIndexedNotNull { index, value ->
+            if (value >= threshold) index else null
+        }
+
+        if (activeRows.isEmpty()) {
+            return EffectiveHeightBounds(
+                top = rect.top,
+                bottomExclusive = rect.bottom,
+                coverage = 1.0,
+                usedFallback = true
+            )
+        }
+
+        val topRow = activeRows.first()
+        val bottomRowExclusive = activeRows.last() + 1
+        val padding = ((bottomRowExclusive - topRow) * 0.12f).toInt().coerceAtLeast(10)
+        val finalTopRow = (topRow - padding).coerceAtLeast(0)
+        val finalBottomRow = (bottomRowExclusive + padding).coerceAtMost(profile.size)
+        val height = (finalBottomRow - finalTopRow).coerceAtLeast(1)
+
+        return EffectiveHeightBounds(
+            top = rect.top + finalTopRow,
+            bottomExclusive = rect.top + finalBottomRow,
+            coverage = height.toDouble() / profile.size.toDouble(),
+            usedFallback = false
+        )
+    }
+
     fun calculateOffsetCalibration(
         baseRect: Rect,
         targetRect: Rect,
@@ -321,6 +526,43 @@ object SpectrumCVUtils {
         expectedPeaksCount: Int
     ): List<Int> {
         if (expectedPeaksCount <= 0) return emptyList()
+
+        val brightWindow = findFirstBrightColumnWindow(bitmap, rect)
+        val peaksFromBrightColumns = brightWindow?.let { (startColumnOffset, columnCount) ->
+            val focusedProfile = extractIntensityProfileByColumns(
+                bitmap = bitmap,
+                roi = rect,
+                startColumnOffset = startColumnOffset,
+                columnCount = columnCount
+            )
+            detectPeaksFromProfile(focusedProfile, rect.top, expectedPeaksCount).also { peaks ->
+                Log.d(
+                    TAG,
+                    "亮列寻峰: startColumnOffset=$startColumnOffset, columnCount=$columnCount, peaks=$peaks"
+                )
+            }
+        } ?: emptyList()
+
+        if (peaksFromBrightColumns.size >= expectedPeaksCount) {
+            return peaksFromBrightColumns
+        }
+
+        val fullWidthProfile = extractIntensityProfile(bitmap, rect)
+        val peaksFromFullWidth = detectPeaksFromProfile(
+            profile = fullWidthProfile,
+            rectTop = rect.top,
+            expectedPeaksCount = expectedPeaksCount
+        )
+        Log.d(TAG, "全宽寻峰结果: $peaksFromFullWidth")
+
+        val selectedPeaks = when {
+            peaksFromFullWidth.size >= expectedPeaksCount -> peaksFromFullWidth
+            peaksFromBrightColumns.size >= peaksFromFullWidth.size -> peaksFromBrightColumns
+            else -> peaksFromFullWidth
+        }
+
+        Log.d(TAG, "最终选取 ${selectedPeaks.size} 个峰值点: $selectedPeaks")
+        return selectedPeaks
 
         val profile = extractIntensityProfile(bitmap, rect)
         if (profile.isEmpty()) return emptyList()

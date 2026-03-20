@@ -8,6 +8,9 @@ import com.muc.fluocolorquant.data.enums.SpectrumCalibrationType
 
 /**
  * Stores geometry and calibration parameters for each spectrum column.
+ *
+ * AUTO_IMAGE 模式下，coefficients 表示“归一化纵坐标 -> 波长”的拟合系数；
+ * MANUAL_POINT 模式下，coefficients 表示“原图绝对像素 y -> 波长”的拟合系数。
  */
 @Entity(
     tableName = "spectrum_calibrations",

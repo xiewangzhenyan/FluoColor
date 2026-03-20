@@ -9,6 +9,8 @@ import com.google.gson.reflect.TypeToken
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.data.model.SpectrumCalibration
+import com.muc.fluocolorquant.data.model.SpectrumCalibrationReferenceData
 import com.muc.fluocolorquant.data.model.SpectrumChannelExportModel
 import com.muc.fluocolorquant.data.model.SpectrumExportData
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
@@ -42,6 +44,19 @@ data class SpectrumPeakUiModel(
 )
 
 /**
+ * 自动标定对照信息，用于在结果页展示标定图与光谱图的关系。
+ */
+data class SpectrumCalibrationComparisonUiModel(
+    val calibrationImagePath: String?,
+    val qualityScore: Int?,
+    val fitRmse: Double?,
+    val effectiveCoverage: Double?,
+    val detectedPeakCount: Int,
+    val referencePeakCount: Int,
+    val usedFallbackAlignment: Boolean
+)
+
+/**
  * 单个通道的光谱数据模型。
  */
 data class SpectrumChannelUiModel(
@@ -54,7 +69,8 @@ data class SpectrumChannelUiModel(
     val dataPointCount: Int,
     val minWavelength: Double,
     val maxWavelength: Double,
-    val croppedImagePath: String?
+    val croppedImagePath: String?,
+    val calibrationComparison: SpectrumCalibrationComparisonUiModel? = null
 ) {
     val peakWavelength: Float?
         get() = peaks.firstOrNull()?.wavelength?.toFloat()
@@ -97,7 +113,8 @@ private data class CachedSpectrumChannelRaw(
     val analyteName: String,
     val rawWavelengths: List<Double>,
     val rawIntensities: List<Double>,
-    val imagePath: String
+    val imagePath: String,
+    val calibrationComparison: SpectrumCalibrationComparisonUiModel?
 )
 
 /**
@@ -305,6 +322,8 @@ class SpectrumResultViewModel @Inject constructor(
      */
     private suspend fun loadRawProjectData(projectId: String) {
         val results = spectrumRepository.getResultsByProject(projectId).first()
+        val calibrations = spectrumRepository.getCalibrationsByProject(projectId).first()
+            .associateBy { it.columnIndex }
         currentProject = projectRepository.getProjectById(projectId)
         cachedProjectId = projectId
         rawChannelData.clear()
@@ -336,7 +355,9 @@ class SpectrumResultViewModel @Inject constructor(
                 analyteName = analyteName,
                 rawWavelengths = rawWavelengths,
                 rawIntensities = rawIntensities,
-                imagePath = result.imagePath
+                imagePath = result.imagePath,
+                calibrationComparison = calibrations[result.columnIndex]
+                    ?.let(::parseCalibrationComparison)
             )
         }
         cachedProcessingConfig = null
@@ -396,7 +417,8 @@ class SpectrumResultViewModel @Inject constructor(
                 dataPointCount = 0,
                 minWavelength = config.minWavelength,
                 maxWavelength = config.maxWavelength,
-                croppedImagePath = channel.imagePath.ifBlank { null }
+                croppedImagePath = channel.imagePath.ifBlank { null },
+                calibrationComparison = channel.calibrationComparison
             )
         }
 
@@ -426,8 +448,40 @@ class SpectrumResultViewModel @Inject constructor(
             dataPointCount = wavelengths.size,
             minWavelength = wavelengths.minOrNull() ?: config.minWavelength,
             maxWavelength = wavelengths.maxOrNull() ?: config.maxWavelength,
-            croppedImagePath = channel.imagePath.ifBlank { null }
+            croppedImagePath = channel.imagePath.ifBlank { null },
+            calibrationComparison = channel.calibrationComparison
         )
+    }
+
+    /**
+     * 解析标定附加信息，兼容旧版本仅保存手动点位的 JSON 结构。
+     */
+    private fun parseCalibrationComparison(
+        calibration: SpectrumCalibration
+    ): SpectrumCalibrationComparisonUiModel? {
+        val referenceData = parseReferenceData(calibration.referencePoints)
+        val autoDebug = referenceData.autoDebug ?: return null
+        return SpectrumCalibrationComparisonUiModel(
+            calibrationImagePath = autoDebug.calibrationCropPath?.takeIf { it.isNotBlank() },
+            qualityScore = autoDebug.qualityScore,
+            fitRmse = autoDebug.fitRmse,
+            effectiveCoverage = autoDebug.effectiveCoverage,
+            detectedPeakCount = autoDebug.detectedPeakCount,
+            referencePeakCount = autoDebug.referencePeakCount,
+            usedFallbackAlignment = autoDebug.usedFallbackAlignment
+        )
+    }
+
+    private fun parseReferenceData(referencePoints: String?): SpectrumCalibrationReferenceData {
+        if (referencePoints.isNullOrBlank()) {
+            return SpectrumCalibrationReferenceData()
+        }
+
+        return runCatching {
+            gson.fromJson(referencePoints, SpectrumCalibrationReferenceData::class.java)
+        }.getOrNull()?.takeIf {
+            it.autoDebug != null || it.manualPoints.isNotEmpty()
+        } ?: SpectrumCalibrationReferenceData()
     }
 
     /**
