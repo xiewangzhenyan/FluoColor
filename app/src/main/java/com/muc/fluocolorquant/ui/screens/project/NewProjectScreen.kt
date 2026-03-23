@@ -214,7 +214,17 @@ fun NewProjectScreen(
     val launchCameraCapture: () -> Unit = {
         val tempFile = createTempImageFile()
         tempFile?.let { file ->
-            navController.navigate(Screen.ImageCapture.createRoute(Uri.encode(file.absolutePath)))
+            navController.navigate(
+                Screen.ImageCapture.createRoute(
+                    outputPath = Uri.encode(file.absolutePath),
+                    captureMode = detectionMode.name,
+                    expectedSpectrumTracks = if (detectionMode == DetectionMode.SPECTRUM) {
+                        projectViewModel.spectrumTrackCount.value.coerceAtLeast(1)
+                    } else {
+                        null
+                    }
+                )
+            )
         } ?: toastManager.showToast(tempFileCreationErrorMessage, ToastType.ERROR)
     }
 

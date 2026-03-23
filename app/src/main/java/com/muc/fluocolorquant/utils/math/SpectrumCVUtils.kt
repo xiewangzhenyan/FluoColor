@@ -4,13 +4,18 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.util.Log
 import org.opencv.android.Utils
+import org.opencv.core.Core
 import org.opencv.core.Mat
+import org.opencv.core.MatOfDouble
 import org.opencv.core.MatOfPoint
 import org.opencv.core.Rect as CvRect
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
+import kotlin.math.abs
+import kotlin.math.atan
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * 对齐计算结果：包含缩放比例和坐标偏移量
@@ -34,6 +39,23 @@ data class EffectiveHeightBounds(
     val bottomExclusive: Int,
     val coverage: Double,
     val usedFallback: Boolean = false
+)
+
+private data class RoiLuminanceStats(
+    val mean: Double,
+    val min: Int,
+    val max: Int,
+    val stdDev: Double,
+    val saturatedRatio: Double,
+    val darkRatio: Double
+)
+
+private data class RowColorProfiles(
+    val luminance: FloatArray,
+    val redEnhanced: FloatArray,
+    val greenEnhanced: FloatArray,
+    val blueEnhanced: FloatArray,
+    val purpleEnhanced: FloatArray
 )
 
 object SpectrumCVUtils {
@@ -311,7 +333,6 @@ object SpectrumCVUtils {
         val safeTop = max(0, roi.top)
         val safeRight = minOf(bitmap.width, roi.right)
         val safeBottom = minOf(bitmap.height, roi.bottom)
-        val roiWidth = (safeRight - safeLeft).coerceAtLeast(1)
         val roiHeight = (safeBottom - safeTop).coerceAtLeast(1)
 
         val startX = (safeLeft + startColumnOffset).coerceIn(safeLeft, safeRight - 1)
@@ -341,6 +362,93 @@ object SpectrumCVUtils {
         }
 
         return output
+    }
+
+    /**
+     * 在 ROI 指定列范围内提取颜色增强轮廓，用于标定图的彩色峰值检测。
+     */
+    private fun extractColorProfilesByColumns(
+        bitmap: Bitmap,
+        roi: Rect,
+        startColumnOffset: Int,
+        columnCount: Int
+    ): RowColorProfiles {
+        val safeLeft = max(0, roi.left)
+        val safeTop = max(0, roi.top)
+        val safeRight = minOf(bitmap.width, roi.right)
+        val safeBottom = minOf(bitmap.height, roi.bottom)
+        val roiHeight = (safeBottom - safeTop).coerceAtLeast(1)
+
+        val startX = (safeLeft + startColumnOffset).coerceIn(safeLeft, safeRight - 1)
+        val width = columnCount.coerceAtLeast(1).coerceAtMost(safeRight - startX)
+        val rowPixels = IntArray(width)
+
+        val luminance = FloatArray(roiHeight)
+        val redEnhanced = FloatArray(roiHeight)
+        val greenEnhanced = FloatArray(roiHeight)
+        val blueEnhanced = FloatArray(roiHeight)
+        val purpleEnhanced = FloatArray(roiHeight)
+
+        for (row in 0 until roiHeight) {
+            bitmap.getPixels(
+                rowPixels,
+                0,
+                width,
+                startX,
+                safeTop + row,
+                width,
+                1
+            )
+
+            var redSum = 0.0
+            var greenSum = 0.0
+            var blueSum = 0.0
+            rowPixels.forEach { pixel ->
+                redSum += (pixel shr 16) and 0xFF
+                greenSum += (pixel shr 8) and 0xFF
+                blueSum += pixel and 0xFF
+            }
+
+            val meanRed = (redSum / width).toFloat()
+            val meanGreen = (greenSum / width).toFloat()
+            val meanBlue = (blueSum / width).toFloat()
+            val meanLuma = (0.299f * meanRed + 0.587f * meanGreen + 0.114f * meanBlue)
+
+            luminance[row] = meanLuma
+            redEnhanced[row] = (meanRed - max(meanGreen, meanBlue) * 0.62f).coerceAtLeast(0f)
+            greenEnhanced[row] = (meanGreen - max(meanRed, meanBlue) * 0.58f).coerceAtLeast(0f)
+            blueEnhanced[row] = (meanBlue - max(meanRed, meanGreen) * 0.52f).coerceAtLeast(0f)
+            purpleEnhanced[row] = (((meanRed + meanBlue) * 0.5f) - meanGreen * 0.45f).coerceAtLeast(0f)
+        }
+
+        return RowColorProfiles(
+            luminance = smoothAndNormalizeProfile(luminance),
+            redEnhanced = smoothAndNormalizeProfile(redEnhanced),
+            greenEnhanced = smoothAndNormalizeProfile(greenEnhanced),
+            blueEnhanced = smoothAndNormalizeProfile(blueEnhanced),
+            purpleEnhanced = smoothAndNormalizeProfile(purpleEnhanced)
+        )
+    }
+
+    private fun smoothAndNormalizeProfile(profile: FloatArray): FloatArray {
+        if (profile.isEmpty()) return profile
+
+        val smoothed = FloatArray(profile.size) { index ->
+            val start = (index - 2).coerceAtLeast(0)
+            val end = (index + 2).coerceAtMost(profile.lastIndex)
+            var sum = 0f
+            for (sampleIndex in start..end) {
+                sum += profile[sampleIndex]
+            }
+            sum / (end - start + 1).toFloat()
+        }
+
+        val minValue = smoothed.minOrNull() ?: 0f
+        val maxValue = smoothed.maxOrNull() ?: minValue
+        val range = (maxValue - minValue).coerceAtLeast(1f)
+        return FloatArray(smoothed.size) { index ->
+            ((smoothed[index] - minValue) / range).coerceIn(0f, 1f)
+        }
     }
 
     /**
@@ -399,31 +507,51 @@ object SpectrumCVUtils {
         expectedPeaksCount: Int
     ): List<Int> {
         if (profile.isEmpty() || expectedPeaksCount <= 0) return emptyList()
+        val candidates = collectPeakCandidates(profile)
+        return selectPeakRows(
+            candidates = candidates,
+            rectTop = rectTop,
+            expectedPeaksCount = expectedPeaksCount,
+            profileSize = profile.size
+        )
+    }
+
+    private fun collectPeakCandidates(profile: FloatArray): List<Pair<Int, Float>> {
+        if (profile.size < 3) return emptyList()
 
         val maxVal = profile.maxOrNull() ?: 0f
         val avgVal = profile.average().toFloat()
-        val threshold = maxOf(maxVal * 0.1f, avgVal * 1.2f)
+        val threshold = maxOf(maxVal * 0.14f, avgVal * 1.12f)
         val candidates = mutableListOf<Pair<Int, Float>>()
 
-        for (y in 1 until profile.lastIndex) {
-            val value = profile[y]
-            if (value < threshold) continue
-            if (value >= profile[y - 1] && value >= profile[y + 1]) {
-                candidates += y to value
+        for (index in 1 until profile.lastIndex) {
+            val current = profile[index]
+            if (current < threshold) continue
+            if (current >= profile[index - 1] && current >= profile[index + 1]) {
+                candidates += index to current
             }
         }
+        return candidates
+    }
 
-        val minPeakDistance = (profile.size * 0.045f).toInt().coerceAtLeast(8)
+    private fun selectPeakRows(
+        candidates: List<Pair<Int, Float>>,
+        rectTop: Int,
+        expectedPeaksCount: Int,
+        profileSize: Int
+    ): List<Int> {
+        if (candidates.isEmpty() || expectedPeaksCount <= 0) return emptyList()
+
+        val minPeakDistance = (profileSize * 0.045f).toInt().coerceAtLeast(8)
         val mergedPeaks = mutableListOf<Pair<Int, Float>>()
-        candidates.sortedBy { it.first }.forEach { candidate ->
-            val nearbyPeak = mergedPeaks.find { kotlin.math.abs(it.first - candidate.first) < minPeakDistance }
-            if (nearbyPeak != null) {
-                if (candidate.second > nearbyPeak.second) {
-                    mergedPeaks.remove(nearbyPeak)
-                    mergedPeaks.add(candidate)
+        candidates.sortedByDescending { it.second }.forEach { candidate ->
+            val existingIndex = mergedPeaks.indexOfFirst { abs(it.first - candidate.first) < minPeakDistance }
+            if (existingIndex >= 0) {
+                if (candidate.second > mergedPeaks[existingIndex].second) {
+                    mergedPeaks[existingIndex] = candidate
                 }
             } else {
-                mergedPeaks.add(candidate)
+                mergedPeaks += candidate
             }
         }
 
@@ -432,6 +560,28 @@ object SpectrumCVUtils {
             .take(expectedPeaksCount)
             .sortedBy { it.first }
             .map { rectTop + it.first }
+    }
+
+    private fun detectPeaksFromEnhancedProfiles(
+        profiles: RowColorProfiles,
+        rectTop: Int,
+        expectedPeaksCount: Int
+    ): List<Int> {
+        if (expectedPeaksCount <= 0) return emptyList()
+
+        val candidates = buildList {
+            addAll(collectPeakCandidates(profiles.redEnhanced))
+            addAll(collectPeakCandidates(profiles.greenEnhanced))
+            addAll(collectPeakCandidates(profiles.blueEnhanced))
+            addAll(collectPeakCandidates(profiles.purpleEnhanced))
+        }
+
+        return selectPeakRows(
+            candidates = candidates,
+            rectTop = rectTop,
+            expectedPeaksCount = expectedPeaksCount,
+            profileSize = profiles.luminance.size
+        )
     }
 
     /**
@@ -528,6 +678,24 @@ object SpectrumCVUtils {
         if (expectedPeaksCount <= 0) return emptyList()
 
         val brightWindow = findFirstBrightColumnWindow(bitmap, rect)
+        val peaksFromColorWindow = brightWindow?.let { (startColumnOffset, columnCount) ->
+            val focusedProfiles = extractColorProfilesByColumns(
+                bitmap = bitmap,
+                roi = rect,
+                startColumnOffset = startColumnOffset,
+                columnCount = columnCount
+            )
+            detectPeaksFromEnhancedProfiles(
+                profiles = focusedProfiles,
+                rectTop = rect.top,
+                expectedPeaksCount = expectedPeaksCount
+            ).also { peaks ->
+                Log.d(
+                    TAG,
+                    "颜色增强寻峰: startColumnOffset=$startColumnOffset, columnCount=$columnCount, peaks=$peaks"
+                )
+            }
+        } ?: emptyList()
         val peaksFromBrightColumns = brightWindow?.let { (startColumnOffset, columnCount) ->
             val focusedProfile = extractIntensityProfileByColumns(
                 bitmap = bitmap,
@@ -543,9 +711,25 @@ object SpectrumCVUtils {
             }
         } ?: emptyList()
 
+        if (peaksFromColorWindow.size >= expectedPeaksCount) {
+            return peaksFromColorWindow
+        }
+
         if (peaksFromBrightColumns.size >= expectedPeaksCount) {
             return peaksFromBrightColumns
         }
+
+        val peaksFromFullColor = detectPeaksFromEnhancedProfiles(
+            profiles = extractColorProfilesByColumns(
+                bitmap = bitmap,
+                roi = rect,
+                startColumnOffset = 0,
+                columnCount = (rect.right - rect.left).coerceAtLeast(1)
+            ),
+            rectTop = rect.top,
+            expectedPeaksCount = expectedPeaksCount
+        )
+        Log.d(TAG, "全宽颜色增强寻峰结果: $peaksFromFullColor")
 
         val fullWidthProfile = extractIntensityProfile(bitmap, rect)
         val peaksFromFullWidth = detectPeaksFromProfile(
@@ -555,11 +739,20 @@ object SpectrumCVUtils {
         )
         Log.d(TAG, "全宽寻峰结果: $peaksFromFullWidth")
 
-        val selectedPeaks = when {
-            peaksFromFullWidth.size >= expectedPeaksCount -> peaksFromFullWidth
-            peaksFromBrightColumns.size >= peaksFromFullWidth.size -> peaksFromBrightColumns
-            else -> peaksFromFullWidth
-        }
+        val selectedPeaks = listOf(
+            peaksFromColorWindow,
+            peaksFromBrightColumns,
+            peaksFromFullColor,
+            peaksFromFullWidth
+        ).sortedWith(
+            compareByDescending<List<Int>> { it.size }
+                .thenByDescending { peaks ->
+                    peaks.sumOf { peakY ->
+                        val relativeIndex = (peakY - rect.top).coerceIn(0, fullWidthProfile.lastIndex)
+                        fullWidthProfile.getOrElse(relativeIndex) { 0f }.toDouble()
+                    }
+                }
+        ).firstOrNull().orEmpty()
 
         Log.d(TAG, "最终选取 ${selectedPeaks.size} 个峰值点: $selectedPeaks")
         return selectedPeaks
@@ -625,6 +818,308 @@ object SpectrumCVUtils {
      * 保底策略:将图片宽度均分为 count 份,生成默认的垂直矩形通道区域。
      * 用于 OpenCV 检测失败或检测结果不足时。
      */
+    /**
+     * 对光谱图进行非强制质量检查，返回分数与问题项。
+     */
+    fun analyzeSpectrumImageQuality(
+        bitmap: Bitmap,
+        trackRects: List<Rect>
+    ): SpectrumImageQualityReport {
+        if (trackRects.isEmpty()) {
+            return SpectrumImageQualityReport(
+                score = 35,
+                issues = listOf(SpectrumImageQualityIssueType.MERGED_CHANNELS)
+            )
+        }
+
+        val sortedRects = trackRects.sortedBy { it.left }
+        val effectiveRects = sortedRects.map { rect ->
+            val bounds = detectEffectiveHeightBounds(bitmap, rect)
+            Rect(rect.left, bounds.top, rect.right, bounds.bottomExclusive)
+        }
+        val signalStats = effectiveRects.map { computeRoiLuminanceStats(bitmap, it) }
+        val signalMean = signalStats.map { it.mean }.average()
+        val signalSaturatedRatio = signalStats.map { it.saturatedRatio }.average()
+        val signalDarkRatio = signalStats.map { it.darkRatio }.average()
+
+        val backgroundRects = buildBackgroundSampleRects(bitmap, sortedRects, effectiveRects)
+        val backgroundStats = backgroundRects.map { computeRoiLuminanceStats(bitmap, it) }
+        val backgroundMean = backgroundStats.map { it.mean }.averageOrZero()
+        val backgroundStdDev = backgroundStats.map { it.mean }.sampleStdDev()
+
+        val signalContrast = signalMean - backgroundMean
+        val blurVariance = estimateBlurVariance(bitmap, boundingRect(effectiveRects))
+        val tiltDegrees = estimateAverageTiltDegrees(bitmap, effectiveRects)
+        val minimumGapRatio = computeMinimumGapRatio(sortedRects)
+        val valleyBrightnessRatio = computeValleyBrightnessRatio(bitmap, sortedRects, effectiveRects, signalMean)
+
+        val issues = mutableListOf<SpectrumImageQualityIssueType>()
+        var score = 100
+
+        if (signalSaturatedRatio > 0.08) {
+            issues += SpectrumImageQualityIssueType.OVER_EXPOSED
+            score -= 22
+        } else if (signalSaturatedRatio > 0.03) {
+            score -= 10
+        }
+
+        if (signalContrast < 18.0 || signalDarkRatio > 0.72) {
+            issues += SpectrumImageQualityIssueType.UNDER_EXPOSED
+            score -= 18
+        }
+
+        if (blurVariance >= 0.0 && blurVariance < 65.0) {
+            issues += SpectrumImageQualityIssueType.BLURRED
+            score -= 18
+        }
+
+        if (tiltDegrees > 5.0) {
+            issues += SpectrumImageQualityIssueType.TILTED
+            score -= 14
+        }
+
+        if (minimumGapRatio < 0.08 || valleyBrightnessRatio > 0.38) {
+            issues += SpectrumImageQualityIssueType.MERGED_CHANNELS
+            score -= 20
+        }
+
+        if (backgroundStdDev > 14.0) {
+            issues += SpectrumImageQualityIssueType.UNEVEN_BACKGROUND
+            score -= 14
+        }
+
+        return SpectrumImageQualityReport(
+            score = score.coerceIn(0, 100),
+            issues = issues.distinct(),
+            overExposureRatio = signalSaturatedRatio,
+            signalContrast = signalContrast,
+            blurVariance = blurVariance,
+            tiltDegrees = tiltDegrees,
+            minimumGapRatio = minimumGapRatio,
+            backgroundStdDev = backgroundStdDev
+        )
+    }
+
+    private fun computeRoiLuminanceStats(bitmap: Bitmap, rect: Rect): RoiLuminanceStats {
+        val safeLeft = rect.left.coerceIn(0, bitmap.width - 1)
+        val safeTop = rect.top.coerceIn(0, bitmap.height - 1)
+        val safeRight = rect.right.coerceIn(safeLeft + 1, bitmap.width)
+        val safeBottom = rect.bottom.coerceIn(safeTop + 1, bitmap.height)
+        val width = safeRight - safeLeft
+        val height = safeBottom - safeTop
+        val rowPixels = IntArray(width)
+
+        var sum = 0.0
+        var sumSquares = 0.0
+        var minValue = 255
+        var maxValue = 0
+        var saturatedCount = 0
+        var darkCount = 0
+        val pixelCount = (width * height).coerceAtLeast(1)
+
+        for (row in 0 until height) {
+            bitmap.getPixels(rowPixels, 0, width, safeLeft, safeTop + row, width, 1)
+            rowPixels.forEach { pixel ->
+                val red = (pixel shr 16) and 0xFF
+                val green = (pixel shr 8) and 0xFF
+                val blue = pixel and 0xFF
+                val luminance = (0.299 * red + 0.587 * green + 0.114 * blue).toInt()
+                sum += luminance
+                sumSquares += luminance * luminance
+                minValue = min(minValue, luminance)
+                maxValue = max(maxValue, luminance)
+                if (luminance >= 245) saturatedCount++
+                if (luminance <= 25) darkCount++
+            }
+        }
+
+        val mean = sum / pixelCount.toDouble()
+        val variance = (sumSquares / pixelCount.toDouble()) - (mean * mean)
+        return RoiLuminanceStats(
+            mean = mean,
+            min = minValue,
+            max = maxValue,
+            stdDev = sqrt(variance.coerceAtLeast(0.0)),
+            saturatedRatio = saturatedCount.toDouble() / pixelCount.toDouble(),
+            darkRatio = darkCount.toDouble() / pixelCount.toDouble()
+        )
+    }
+
+    private fun buildBackgroundSampleRects(
+        bitmap: Bitmap,
+        trackRects: List<Rect>,
+        effectiveRects: List<Rect>
+    ): List<Rect> {
+        if (trackRects.isEmpty()) return emptyList()
+
+        val averageTrackWidth = trackRects.map { it.width() }.average().toInt().coerceAtLeast(12)
+        val topBoundary = effectiveRects.minOf { it.top }
+        val bottomBoundary = effectiveRects.maxOf { it.bottom }
+        val sampleHeight = ((bottomBoundary - topBoundary) * 0.12f).toInt().coerceAtLeast(12)
+        val rects = mutableListOf<Rect>()
+
+        val leftWidth = min(averageTrackWidth, trackRects.first().left.coerceAtLeast(0))
+        if (leftWidth >= 8) {
+            rects += Rect(0, topBoundary, leftWidth, bottomBoundary)
+        }
+
+        val rightStart = trackRects.last().right
+        val rightWidth = min(averageTrackWidth, bitmap.width - rightStart)
+        if (rightWidth >= 8) {
+            rects += Rect(rightStart, topBoundary, rightStart + rightWidth, bottomBoundary)
+        }
+
+        if (topBoundary >= sampleHeight) {
+            rects += Rect(0, topBoundary - sampleHeight, bitmap.width, topBoundary)
+        }
+
+        if (bitmap.height - bottomBoundary >= sampleHeight) {
+            rects += Rect(0, bottomBoundary, bitmap.width, bottomBoundary + sampleHeight)
+        }
+
+        return rects.filter { it.width() >= 8 && it.height() >= 8 }
+    }
+
+    private fun boundingRect(rects: List<Rect>): Rect {
+        val left = rects.minOf { it.left }
+        val top = rects.minOf { it.top }
+        val right = rects.maxOf { it.right }
+        val bottom = rects.maxOf { it.bottom }
+        return Rect(left, top, right, bottom)
+    }
+
+    private fun estimateBlurVariance(bitmap: Bitmap, rect: Rect): Double {
+        val safeLeft = rect.left.coerceAtLeast(0)
+        val safeTop = rect.top.coerceAtLeast(0)
+        val safeWidth = rect.width().coerceIn(1, bitmap.width - safeLeft)
+        val safeHeight = rect.height().coerceIn(1, bitmap.height - safeTop)
+        if (safeWidth <= 1 || safeHeight <= 1) return 0.0
+
+        val croppedBitmap = Bitmap.createBitmap(bitmap, safeLeft, safeTop, safeWidth, safeHeight)
+        val src = Mat()
+        val gray = Mat()
+        val laplacian = Mat()
+        val mean = MatOfDouble()
+        val stdDev = MatOfDouble()
+
+        return try {
+            Utils.bitmapToMat(croppedBitmap, src)
+            Imgproc.cvtColor(src, gray, Imgproc.COLOR_RGBA2GRAY)
+            Imgproc.Laplacian(gray, laplacian, gray.depth())
+            Core.meanStdDev(laplacian, mean, stdDev)
+            val sigma = stdDev.toArray().firstOrNull() ?: 0.0
+            sigma * sigma
+        } catch (_: Exception) {
+            0.0
+        } finally {
+            croppedBitmap.recycle()
+            src.release()
+            gray.release()
+            laplacian.release()
+            mean.release()
+            stdDev.release()
+        }
+    }
+
+    private fun estimateAverageTiltDegrees(bitmap: Bitmap, effectiveRects: List<Rect>): Double {
+        val angles = effectiveRects.mapNotNull { rect ->
+            val trackHeight = rect.height().coerceAtLeast(1)
+            val sampleHeight = (trackHeight * 0.18f).toInt().coerceAtLeast(6)
+            val topCenter = estimateBrightnessCentroidX(
+                bitmap = bitmap,
+                rect = Rect(rect.left, rect.top, rect.right, (rect.top + sampleHeight).coerceAtMost(rect.bottom))
+            )
+            val bottomCenter = estimateBrightnessCentroidX(
+                bitmap = bitmap,
+                rect = Rect(rect.left, (rect.bottom - sampleHeight).coerceAtLeast(rect.top), rect.right, rect.bottom)
+            )
+            if (topCenter == null || bottomCenter == null) {
+                null
+            } else {
+                Math.toDegrees(atan((bottomCenter - topCenter) / trackHeight.toDouble())).let(::abs)
+            }
+        }
+        return if (angles.isEmpty()) 0.0 else angles.average()
+    }
+
+    private fun estimateBrightnessCentroidX(bitmap: Bitmap, rect: Rect): Double? {
+        val safeLeft = rect.left.coerceIn(0, bitmap.width - 1)
+        val safeTop = rect.top.coerceIn(0, bitmap.height - 1)
+        val safeRight = rect.right.coerceIn(safeLeft + 1, bitmap.width)
+        val safeBottom = rect.bottom.coerceIn(safeTop + 1, bitmap.height)
+        val width = safeRight - safeLeft
+        val height = safeBottom - safeTop
+        if (width <= 0 || height <= 0) return null
+
+        val rowPixels = IntArray(width)
+        var weightedX = 0.0
+        var totalWeight = 0.0
+
+        for (row in 0 until height) {
+            bitmap.getPixels(rowPixels, 0, width, safeLeft, safeTop + row, width, 1)
+            rowPixels.forEachIndexed { column, pixel ->
+                val red = (pixel shr 16) and 0xFF
+                val green = (pixel shr 8) and 0xFF
+                val blue = pixel and 0xFF
+                val luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+                weightedX += (safeLeft + column) * luminance
+                totalWeight += luminance
+            }
+        }
+
+        return if (totalWeight <= 0.0) null else weightedX / totalWeight
+    }
+
+    private fun computeMinimumGapRatio(trackRects: List<Rect>): Double {
+        if (trackRects.size < 2) return 1.0
+        val averageTrackWidth = trackRects.map { it.width() }.average().coerceAtLeast(1.0)
+        return trackRects.zipWithNext()
+            .minOf { (left, right) ->
+                ((right.left - left.right).toDouble() / averageTrackWidth).coerceAtLeast(0.0)
+            }
+    }
+
+    private fun computeValleyBrightnessRatio(
+        bitmap: Bitmap,
+        trackRects: List<Rect>,
+        effectiveRects: List<Rect>,
+        signalMean: Double
+    ): Double {
+        if (trackRects.size < 2 || signalMean <= 0.0) return 0.0
+
+        val ratios = trackRects.zipWithNext().mapIndexedNotNull { index, (left, right) ->
+            val gapStart = left.right
+            val gapEnd = right.left
+            if (gapEnd - gapStart < 4) {
+                1.0
+            } else {
+                val overlapTop = max(effectiveRects[index].top, effectiveRects[index + 1].top)
+                val overlapBottom = min(effectiveRects[index].bottom, effectiveRects[index + 1].bottom)
+                if (overlapBottom - overlapTop < 6) {
+                    null
+                } else {
+                    val valleyRect = Rect(gapStart, overlapTop, gapEnd, overlapBottom)
+                    computeRoiLuminanceStats(bitmap, valleyRect).mean / signalMean
+                }
+            }
+        }
+        return ratios.maxOrNull() ?: 0.0
+    }
+
+    private fun List<Double>.averageOrZero(): Double {
+        return if (isEmpty()) 0.0 else average()
+    }
+
+    private fun List<Double>.sampleStdDev(): Double {
+        if (size <= 1) return 0.0
+        val mean = average()
+        val variance = sumOf { value ->
+            val delta = value - mean
+            delta * delta
+        } / size.toDouble()
+        return sqrt(variance)
+    }
+
     private fun createFallbackTracks(width: Int, height: Int, count: Int): List<Rect> {
         if (count <= 0) return emptyList()
 

@@ -91,6 +91,8 @@ import kotlin.math.roundToInt
 fun CameraCaptureScreen(
     navController: NavController,
     outputPath: String?,
+    captureMode: String?,
+    expectedSpectrumTracks: Int,
     viewModel: CameraCaptureViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -105,6 +107,12 @@ fun CameraCaptureScreen(
     val captureLockedLabel = stringResource(R.string.camera_capture_status_locked_short)
     val captureFallbackLabel = stringResource(R.string.camera_capture_status_fallback_short)
     val zoomLabel = stringResource(R.string.camera_capture_compact_zoom_label)
+    val qualityIssueOverExposed = stringResource(R.string.spectrum_quality_issue_over_exposed)
+    val qualityIssueUnderExposed = stringResource(R.string.spectrum_quality_issue_under_exposed)
+    val qualityIssueBlurred = stringResource(R.string.spectrum_quality_issue_blurred)
+    val qualityIssueTilted = stringResource(R.string.spectrum_quality_issue_tilted)
+    val qualityIssueMergedChannels = stringResource(R.string.spectrum_quality_issue_merged_channels)
+    val qualityIssueUnevenBackground = stringResource(R.string.spectrum_quality_issue_uneven_background)
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -113,8 +121,12 @@ fun CameraCaptureScreen(
         }
     }
 
-    LaunchedEffect(outputPath) {
-        viewModel.initialize(outputPath)
+    LaunchedEffect(outputPath, captureMode, expectedSpectrumTracks) {
+        viewModel.initialize(
+            outputPath = outputPath,
+            captureMode = captureMode,
+            expectedSpectrumTracks = expectedSpectrumTracks
+        )
     }
 
     LaunchedEffect(previewView, lifecycleOwner, uiState.outputPath) {
@@ -322,6 +334,72 @@ fun CameraCaptureScreen(
                 onResetDefaults = viewModel::resetDefaults
             )
         }
+    }
+
+    uiState.pendingSpectrumQualityReview?.let { review ->
+        val qualityStatus = when (review.report.decision) {
+            com.muc.fluocolorquant.utils.math.SpectrumImageQualityDecision.PASS ->
+                stringResource(R.string.spectrum_quality_status_good)
+            com.muc.fluocolorquant.utils.math.SpectrumImageQualityDecision.REVIEW ->
+                stringResource(R.string.spectrum_quality_status_review)
+            com.muc.fluocolorquant.utils.math.SpectrumImageQualityDecision.RETAKE ->
+                stringResource(R.string.spectrum_quality_status_retake)
+        }
+        val issueSummary = review.report.issues.distinct().joinToString(separator = " / ") { issue ->
+            when (issue) {
+                com.muc.fluocolorquant.utils.math.SpectrumImageQualityIssueType.OVER_EXPOSED ->
+                    qualityIssueOverExposed
+                com.muc.fluocolorquant.utils.math.SpectrumImageQualityIssueType.UNDER_EXPOSED ->
+                    qualityIssueUnderExposed
+                com.muc.fluocolorquant.utils.math.SpectrumImageQualityIssueType.BLURRED ->
+                    qualityIssueBlurred
+                com.muc.fluocolorquant.utils.math.SpectrumImageQualityIssueType.TILTED ->
+                    qualityIssueTilted
+                com.muc.fluocolorquant.utils.math.SpectrumImageQualityIssueType.MERGED_CHANNELS ->
+                    qualityIssueMergedChannels
+                com.muc.fluocolorquant.utils.math.SpectrumImageQualityIssueType.UNEVEN_BACKGROUND ->
+                    qualityIssueUnevenBackground
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = viewModel::dismissSpectrumQualityReview,
+            title = {
+                Text(
+                    text = stringResource(R.string.camera_capture_quality_dialog_title)
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(
+                            R.string.camera_capture_quality_dialog_status,
+                            qualityStatus,
+                            review.report.score
+                        )
+                    )
+                    if (issueSummary.isNotBlank()) {
+                        Text(
+                            text = stringResource(
+                                R.string.camera_capture_quality_dialog_issues,
+                                issueSummary
+                            )
+                        )
+                    }
+                    Text(text = stringResource(R.string.camera_capture_quality_dialog_desc))
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::continueAfterSpectrumQualityReview) {
+                    Text(text = stringResource(R.string.camera_capture_quality_continue))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::retakeAfterSpectrumQualityReview) {
+                    Text(text = stringResource(R.string.camera_capture_quality_retake))
+                }
+            }
+        )
     }
 }
 

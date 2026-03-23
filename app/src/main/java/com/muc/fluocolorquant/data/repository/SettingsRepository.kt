@@ -49,6 +49,7 @@ class SettingsRepository @Inject constructor(
     private val SPECTRUM_MAX_TRACK_COUNT_KEY = intPreferencesKey("spectrum_max_track_count")
     private val SPECTRUM_DEFAULT_LIGHT_SOURCE_KEY = stringPreferencesKey("spectrum_default_light_source")
     private val SPECTRUM_LAST_REFERENCE_WAVELENGTHS_KEY = stringPreferencesKey("spectrum_last_reference_wavelengths")
+    private val SPECTRUM_QUALITY_CHECK_ENABLED_KEY = booleanPreferencesKey("spectrum_quality_check_enabled")
 
     // 获取当前语言设置，默认为系统语言
     val languageFlow: Flow<String> = languageDataStore.data.map { preferences ->
@@ -280,6 +281,16 @@ class SettingsRepository @Inject constructor(
             preferences[SPECTRUM_LAST_REFERENCE_WAVELENGTHS_KEY] = wavelengths
         }
     }
+
+    val spectrumQualityCheckEnabledFlow: Flow<Boolean> = appSettingsDataStore.data.map { preferences ->
+        preferences[SPECTRUM_QUALITY_CHECK_ENABLED_KEY] ?: DEFAULT_SPECTRUM_QUALITY_CHECK_ENABLED
+    }
+
+    suspend fun setSpectrumQualityCheckEnabled(enabled: Boolean) {
+        appSettingsDataStore.edit { preferences ->
+            preferences[SPECTRUM_QUALITY_CHECK_ENABLED_KEY] = enabled
+        }
+    }
     
     companion object {
         const val THEME_MODE_SYSTEM = "system"
@@ -300,5 +311,6 @@ class SettingsRepository @Inject constructor(
         const val DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT = 1
         const val DEFAULT_SPECTRUM_MAX_TRACK_COUNT = 10
         const val DEFAULT_SPECTRUM_DEFAULT_LIGHT_SOURCE = "LED_WHITE"
+        const val DEFAULT_SPECTRUM_QUALITY_CHECK_ENABLED = true
     }
 }

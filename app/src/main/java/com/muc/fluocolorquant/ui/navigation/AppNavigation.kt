@@ -68,19 +68,32 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         }
 
         composable(
-            route = "${Screen.ImageCapture.route}?outputPath={outputPath}",
+            route = "${Screen.ImageCapture.route}?outputPath={outputPath}&captureMode={captureMode}&expectedSpectrumTracks={expectedSpectrumTracks}",
             arguments = listOf(
                 navArgument("outputPath") {
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
+                },
+                navArgument("captureMode") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("expectedSpectrumTracks") {
+                    type = NavType.IntType
+                    defaultValue = 1
                 }
             )
         ) { backStackEntry ->
             val outputPath = backStackEntry.arguments?.getString("outputPath")?.let(Uri::decode)
+            val captureMode = backStackEntry.arguments?.getString("captureMode")
+            val expectedSpectrumTracks = backStackEntry.arguments?.getInt("expectedSpectrumTracks") ?: 1
             CameraCaptureScreen(
                 navController = navController,
-                outputPath = outputPath
+                outputPath = outputPath,
+                captureMode = captureMode,
+                expectedSpectrumTracks = expectedSpectrumTracks
             )
         }
 

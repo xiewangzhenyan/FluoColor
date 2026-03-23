@@ -12,12 +12,43 @@ data class SpectrumCalibrationReferenceData(
 )
 
 /**
+ * 自动标定质量等级。
+ */
+enum class SpectrumAutoCalibrationQualityLevel {
+    EXCELLENT,
+    USABLE,
+    REVIEW
+}
+
+/**
+ * 自动标定诊断原因。
+ */
+enum class SpectrumAutoCalibrationIssue {
+    FIT_RMSE_HIGH,
+    EFFECTIVE_HEIGHT_LOW,
+    EFFECTIVE_HEIGHT_HIGH,
+    FALLBACK_ALIGNMENT,
+    IMAGE_QUALITY_WARNING
+}
+
+/**
  * 手动标定点的轻量持久化模型。
  */
 data class SpectrumCalibrationReferencePoint(
     val x: Float,
     val y: Float,
     val wavelength: Float
+)
+
+/**
+ * 自动标定残差点诊断数据。
+ */
+data class SpectrumCalibrationResidualPoint(
+    val rank: Int,
+    val normalizedY: Double,
+    val referenceWavelength: Double,
+    val fittedWavelength: Double,
+    val residual: Double
 )
 
 /**
@@ -30,5 +61,11 @@ data class SpectrumAutoCalibrationDebug(
     val fitRmse: Double? = null,
     val effectiveCoverage: Double? = null,
     val qualityScore: Int? = null,
+    val qualityLevel: SpectrumAutoCalibrationQualityLevel? = null,
+    val issues: List<SpectrumAutoCalibrationIssue> = emptyList(),
+    val meanAbsoluteResidual: Double? = null,
+    val maxResidual: Double? = null,
+    val residualPoints: List<SpectrumCalibrationResidualPoint> = emptyList(),
+    val equation: String? = null,
     val usedFallbackAlignment: Boolean = false
 )

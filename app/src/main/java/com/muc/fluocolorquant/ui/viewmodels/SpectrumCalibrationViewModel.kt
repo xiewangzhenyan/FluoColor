@@ -12,9 +12,12 @@ import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.R
 import com.google.gson.Gson
 import com.muc.fluocolorquant.data.enums.SpectrumCalibrationType
+import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationIssue
 import com.muc.fluocolorquant.data.model.SpectrumCalibration
+import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationQualityLevel
 import com.muc.fluocolorquant.data.model.SpectrumCalibrationReferenceData
 import com.muc.fluocolorquant.data.model.SpectrumCalibrationReferencePoint
+import com.muc.fluocolorquant.data.model.SpectrumCalibrationResidualPoint
 import com.muc.fluocolorquant.data.model.SpectrumResult
 import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationDebug
 import com.muc.fluocolorquant.data.repository.ProjectRepository
@@ -23,6 +26,9 @@ import com.muc.fluocolorquant.data.repository.SpectrumRepository
 import com.muc.fluocolorquant.utils.UiText
 import com.muc.fluocolorquant.utils.math.SpectrumCalibrationMath
 import com.muc.fluocolorquant.utils.math.EffectiveHeightBounds
+import com.muc.fluocolorquant.utils.math.SpectrumImageQualityDecision
+import com.muc.fluocolorquant.utils.math.SpectrumImageQualityIssueType
+import com.muc.fluocolorquant.utils.math.SpectrumImageQualityReport
 import com.muc.fluocolorquant.utils.math.SpectrumCVUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -30,7 +36,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.apache.commons.math3.fitting.PolynomialCurveFitter
@@ -52,6 +60,8 @@ data class SpectrumCalibrationUiState(
     val trackRects: List<Rect> = emptyList(),
     val calibrationMode: CalibrationMode = CalibrationMode.NONE,
     val calibrationImageBitmap: Bitmap? = null,
+    val originalQualityReport: SpectrumImageQualityReport? = null,
+    val calibrationQualityReport: SpectrumImageQualityReport? = null,
     val referenceWavelengths: List<Float> = emptyList(),
     val currentTrackIndex: Int = 0,
     val manualPoints: Map<Int, List<ManualMark>> = emptyMap(),
@@ -59,6 +69,7 @@ data class SpectrumCalibrationUiState(
     val isLoading: Boolean = false,
     val isAutoFitting: Boolean = false,
     val errorMessage: UiText? = null,
+    val warningMessage: UiText? = null,
     val infoMessage: UiText? = null, // 用于传递操作成功的提示信息
     val showModeDialog: Boolean = false,
     val showDimensionMismatchDialog: Boolean = false,
@@ -84,6 +95,12 @@ private data class AutoCalibrationChannelRuntime(
     val referencePeakCount: Int,
     val fitRmse: Double,
     val qualityScore: Int,
+    val qualityLevel: SpectrumAutoCalibrationQualityLevel,
+    val issues: List<SpectrumAutoCalibrationIssue>,
+    val meanAbsoluteResidual: Double,
+    val maxResidual: Double,
+    val residualPoints: List<SpectrumCalibrationResidualPoint>,
+    val equation: String,
     val usedFallbackAlignment: Boolean
 )
 
@@ -104,9 +121,59 @@ class SpectrumCalibrationViewModel @Inject constructor(
     private val undoStack = ArrayDeque<CalibrationSnapshot>()
     private val maxUndoSteps = 20
     private var autoCalibrationRuntime: Map<Int, AutoCalibrationChannelRuntime> = emptyMap()
+    private var spectrumQualityCheckEnabled: Boolean = SettingsRepository.DEFAULT_SPECTRUM_QUALITY_CHECK_ENABLED
+
+    init {
+        viewModelScope.launch {
+            settingsRepository.spectrumQualityCheckEnabledFlow.collect { enabled ->
+                spectrumQualityCheckEnabled = enabled
+            }
+        }
+    }
 
     private fun text(resId: Int, vararg args: Any): UiText {
         return UiText.StringResource(resId, args.toList())
+    }
+
+    private suspend fun isSpectrumQualityCheckEnabled(): Boolean {
+        return settingsRepository.spectrumQualityCheckEnabledFlow.first()
+    }
+
+    private fun buildQualityWarning(
+        report: SpectrumImageQualityReport,
+        isCalibrationImage: Boolean
+    ): UiText? {
+        if (!report.hasIssues) return null
+
+        val issueSummary = report.issues.joinToString(separator = "、") { issue ->
+            when (issue) {
+                SpectrumImageQualityIssueType.OVER_EXPOSED ->
+                    context.getString(R.string.spectrum_quality_issue_over_exposed)
+                SpectrumImageQualityIssueType.UNDER_EXPOSED ->
+                    context.getString(R.string.spectrum_quality_issue_under_exposed)
+                SpectrumImageQualityIssueType.BLURRED ->
+                    context.getString(R.string.spectrum_quality_issue_blurred)
+                SpectrumImageQualityIssueType.TILTED ->
+                    context.getString(R.string.spectrum_quality_issue_tilted)
+                SpectrumImageQualityIssueType.MERGED_CHANNELS ->
+                    context.getString(R.string.spectrum_quality_issue_merged_channels)
+                SpectrumImageQualityIssueType.UNEVEN_BACKGROUND ->
+                    context.getString(R.string.spectrum_quality_issue_uneven_background)
+            }
+        }
+
+        val templateId = when {
+            report.decision == SpectrumImageQualityDecision.RETAKE && isCalibrationImage ->
+                R.string.spectrum_quality_warning_calibration_retake
+            report.decision == SpectrumImageQualityDecision.RETAKE ->
+                R.string.spectrum_quality_warning_original_retake
+            isCalibrationImage ->
+                R.string.spectrum_quality_warning_calibration
+            else ->
+                R.string.spectrum_quality_warning_original
+        }
+
+        return UiText.DynamicString(context.getString(templateId, issueSummary))
     }
 
     fun loadOriginal(projectId: String, imageUri: String) {
@@ -123,10 +190,20 @@ class SpectrumCalibrationViewModel @Inject constructor(
                 val project = projectRepository.getProjectById(projectId)
                 val expectedTracks = project?.spectrumColumnCount ?: 1
                 val trackRects = SpectrumCVUtils.detectSpectrumTracks(bitmap, expectedTracks)
+                val qualityReport = if (isSpectrumQualityCheckEnabled()) {
+                    SpectrumCVUtils.analyzeSpectrumImageQuality(bitmap, trackRects)
+                } else {
+                    null
+                }
                 _uiState.update {
                     it.copy(
                         originalBitmap = bitmap,
                         trackRects = trackRects,
+                        originalQualityReport = qualityReport,
+                        calibrationQualityReport = null,
+                        warningMessage = qualityReport?.let { report ->
+                            buildQualityWarning(report, isCalibrationImage = false)
+                        },
                         showModeDialog = true,
                         currentTrackIndex = 0
                     )
@@ -160,14 +237,27 @@ class SpectrumCalibrationViewModel @Inject constructor(
     fun onCalibrationImageLoaded(bitmap: Bitmap) {
         val original = _uiState.value.originalBitmap ?: return
         autoCalibrationRuntime = emptyMap()
+        val expectedTrackCount = _uiState.value.trackRects.size.coerceAtLeast(1)
         // 移除尺寸限制，接受任意尺寸的标定图
         // 对齐计算将在 performAutoCalibration 中完成
-        _uiState.update { 
+        val qualityReport = runCatching {
+            if (spectrumQualityCheckEnabled) {
+                val calibrationTrackRects = SpectrumCVUtils.detectSpectrumTracks(bitmap, expectedTrackCount)
+                SpectrumCVUtils.analyzeSpectrumImageQuality(bitmap, calibrationTrackRects)
+            } else {
+                null
+            }
+        }.getOrNull()
+        _uiState.update {
             it.copy(
-                calibrationImageBitmap = bitmap, 
-                showDimensionMismatchDialog = false, 
-                errorMessage = null
-            ) 
+                calibrationImageBitmap = bitmap,
+                calibrationQualityReport = qualityReport,
+                showDimensionMismatchDialog = false,
+                errorMessage = null,
+                warningMessage = qualityReport?.let { report ->
+                    buildQualityWarning(report, isCalibrationImage = true)
+                } ?: it.warningMessage
+            )
         }
         Log.d("SpectrumCalibration", "标定图已加载: ${bitmap.width}x${bitmap.height} (原始图: ${original.width}x${original.height})")
     }
@@ -361,6 +451,10 @@ class SpectrumCalibrationViewModel @Inject constructor(
         _uiState.update { it.copy(infoMessage = null) }
     }
 
+    fun clearWarningMessage() {
+        _uiState.update { it.copy(warningMessage = null) }
+    }
+
     /** 关闭重试建议对话框 */
     fun dismissRetryDialog() {
         _uiState.update { it.copy(showRetryDialog = false) }
@@ -550,6 +644,18 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     // 优先使用线性拟合
                     val coefficients = if (ref.size <= 3) fitLinear(data) else fitQuadratic(data)
                     val fitRmse = SpectrumCalibrationMath.calculateFitRmse(data, coefficients)
+                    val meanAbsoluteResidual = SpectrumCalibrationMath.calculateMeanAbsoluteResidual(
+                        points = data,
+                        coefficients = coefficients
+                    )
+                    val maxResidual = SpectrumCalibrationMath.calculateMaxResidual(
+                        points = data,
+                        coefficients = coefficients
+                    )
+                    val residualPoints = SpectrumCalibrationMath.buildResidualPoints(
+                        points = data,
+                        coefficients = coefficients
+                    )
                     val usedFallbackAlignment = alignment == null || effectiveBounds.usedFallback
                     val qualityScore = SpectrumCalibrationMath.calculateAutoCalibrationQualityScore(
                         detectedPeakCount = peaksInCalib.size,
@@ -558,6 +664,15 @@ class SpectrumCalibrationViewModel @Inject constructor(
                         effectiveCoverage = effectiveBounds.coverage,
                         usedFallbackAlignment = usedFallbackAlignment
                     )
+                    val qualityLevel = SpectrumCalibrationMath.resolveAutoCalibrationQualityLevel(qualityScore)
+                        ?: SpectrumAutoCalibrationQualityLevel.REVIEW
+                    val issues = SpectrumCalibrationMath.collectAutoCalibrationIssues(
+                        fitRmse = fitRmse,
+                        effectiveCoverage = effectiveBounds.coverage,
+                        usedFallbackAlignment = usedFallbackAlignment,
+                        hasImageQualityWarning = _uiState.value.calibrationQualityReport?.hasIssues == true
+                    )
+                    val equation = SpectrumCalibrationMath.formatNormalizedCalibrationEquation(coefficients)
                     coeffMap[index] = coefficients
                     runtimeMap[index] = AutoCalibrationChannelRuntime(
                         previewRect = buildPreviewRect(searchRect, effectiveBounds),
@@ -566,6 +681,12 @@ class SpectrumCalibrationViewModel @Inject constructor(
                         referencePeakCount = ref.size,
                         fitRmse = fitRmse,
                         qualityScore = qualityScore,
+                        qualityLevel = qualityLevel,
+                        issues = issues,
+                        meanAbsoluteResidual = meanAbsoluteResidual,
+                        maxResidual = maxResidual,
+                        residualPoints = residualPoints,
+                        equation = equation,
                         usedFallbackAlignment = usedFallbackAlignment
                     )
                 }
@@ -641,6 +762,12 @@ class SpectrumCalibrationViewModel @Inject constructor(
                                 fitRmse = runtime.fitRmse,
                                 effectiveCoverage = runtime.effectiveBounds.coverage,
                                 qualityScore = runtime.qualityScore,
+                                qualityLevel = runtime.qualityLevel,
+                                issues = runtime.issues,
+                                meanAbsoluteResidual = runtime.meanAbsoluteResidual,
+                                maxResidual = runtime.maxResidual,
+                                residualPoints = runtime.residualPoints,
+                                equation = runtime.equation,
                                 usedFallbackAlignment = runtime.usedFallbackAlignment
                             )
                         }

@@ -1,13 +1,17 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
+import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.utils.UiText
+import com.muc.fluocolorquant.utils.camera.CameraCaptureMetadataStore
 import com.muc.fluocolorquant.utils.camera.CameraCaptureCapabilitiesSnapshot
 import com.muc.fluocolorquant.utils.camera.CameraCaptureControlState
 import com.muc.fluocolorquant.utils.camera.CameraCaptureDefaults
@@ -15,8 +19,11 @@ import com.muc.fluocolorquant.utils.camera.CameraEngine
 import com.muc.fluocolorquant.utils.camera.CameraZoomSnapshot
 import com.muc.fluocolorquant.utils.camera.FixedCameraCaptureRequest
 import com.muc.fluocolorquant.utils.camera.toFixedCameraCaptureRequest
+import com.muc.fluocolorquant.utils.math.SpectrumCVUtils
+import com.muc.fluocolorquant.utils.math.SpectrumImageQualityReport
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,13 +31,22 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
+data class SpectrumCapturedQualityReview(
+    val imageUri: String,
+    val report: SpectrumImageQualityReport
+)
+
 data class CameraCaptureUiState(
     val outputPath: String? = null,
+    val captureMode: String? = null,
+    val expectedSpectrumTracks: Int = 1,
     val controlState: CameraCaptureControlState = CameraCaptureControlState(),
     val appliedRequest: FixedCameraCaptureRequest? = null,
     val capabilities: CameraCaptureCapabilitiesSnapshot? = null,
@@ -39,7 +55,8 @@ data class CameraCaptureUiState(
     val isSaving: Boolean = false,
     val bindError: UiText? = null,
     val showInfoDialog: Boolean = false,
-    val showAdvancedSheet: Boolean = false
+    val showAdvancedSheet: Boolean = false,
+    val pendingSpectrumQualityReview: SpectrumCapturedQualityReview? = null
 )
 
 sealed interface CameraCaptureEffect {
@@ -55,7 +72,8 @@ sealed interface CameraCaptureEffect {
 
 @HiltViewModel
 class CameraCaptureViewModel @Inject constructor(
-    private val cameraEngine: CameraEngine
+    private val cameraEngine: CameraEngine,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CameraCaptureUiState())
@@ -68,7 +86,11 @@ class CameraCaptureViewModel @Inject constructor(
     private var applySettingsJob: Job? = null
     private var zoomJob: Job? = null
 
-    fun initialize(outputPath: String?) {
+    fun initialize(
+        outputPath: String?,
+        captureMode: String?,
+        expectedSpectrumTracks: Int
+    ) {
         if (outputPath.isNullOrBlank()) {
             viewModelScope.launch {
                 _effects.emit(
@@ -87,7 +109,10 @@ class CameraCaptureViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 outputPath = outputPath,
-                bindError = null
+                captureMode = captureMode,
+                expectedSpectrumTracks = expectedSpectrumTracks.coerceAtLeast(1),
+                bindError = null,
+                pendingSpectrumQualityReview = null
             )
         }
     }
@@ -190,10 +215,18 @@ class CameraCaptureViewModel @Inject constructor(
                     runCatching {
                         cameraEngine.captureImage(File(outputPath))
                     }.onSuccess { imageUri ->
-                        _uiState.update { it.copy(isSaving = false) }
-                        _effects.emit(
-                            CameraCaptureEffect.NavigateToCrop(imageUri.toString())
-                        )
+                        val review = buildSpectrumQualityReview(imageUri)
+                        _uiState.update {
+                            it.copy(
+                                isSaving = false,
+                                pendingSpectrumQualityReview = review
+                            )
+                        }
+                        if (review == null) {
+                            _effects.emit(
+                                CameraCaptureEffect.NavigateToCrop(imageUri.toString())
+                            )
+                        }
                     }.onFailure { throwable ->
                         if (throwable is CancellationException) throw throwable
 
@@ -290,6 +323,34 @@ class CameraCaptureViewModel @Inject constructor(
         _uiState.update { it.copy(showAdvancedSheet = visible) }
     }
 
+    fun dismissSpectrumQualityReview() {
+        _uiState.update { it.copy(pendingSpectrumQualityReview = null) }
+    }
+
+    fun continueAfterSpectrumQualityReview() {
+        val review = _uiState.value.pendingSpectrumQualityReview ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(pendingSpectrumQualityReview = null) }
+            _effects.emit(CameraCaptureEffect.NavigateToCrop(review.imageUri))
+        }
+    }
+
+    fun retakeAfterSpectrumQualityReview() {
+        val review = _uiState.value.pendingSpectrumQualityReview ?: return
+        val imageFile = File(Uri.parse(review.imageUri).path.orEmpty())
+
+        runCatching {
+            if (imageFile.exists()) {
+                imageFile.delete()
+            }
+            val metadataFile = CameraCaptureMetadataStore.buildMetadataFile(imageFile)
+            if (metadataFile.exists()) {
+                metadataFile.delete()
+            }
+        }
+        _uiState.update { it.copy(pendingSpectrumQualityReview = null) }
+    }
+
     private fun updateControlState(transform: CameraCaptureControlState.() -> CameraCaptureControlState) {
         _uiState.update {
             it.copy(
@@ -357,5 +418,38 @@ class CameraCaptureViewModel @Inject constructor(
         zoomJob?.cancel()
         cameraEngine.clear()
         super.onCleared()
+    }
+
+    private suspend fun buildSpectrumQualityReview(imageUri: Uri): SpectrumCapturedQualityReview? {
+        val state = _uiState.value
+        if (!state.captureMode.equals("SPECTRUM", ignoreCase = true)) {
+            return null
+        }
+
+        val qualityCheckEnabled = settingsRepository.spectrumQualityCheckEnabledFlow.first()
+        if (!qualityCheckEnabled) return null
+
+        val bitmap = withContext(Dispatchers.IO) {
+            BitmapFactory.decodeFile(File(imageUri.path.orEmpty()).absolutePath)
+        } ?: return null
+
+        val trackRects = withContext(Dispatchers.Default) {
+            SpectrumCVUtils.detectSpectrumTracks(
+                bitmap = bitmap,
+                expectedTracks = state.expectedSpectrumTracks.coerceAtLeast(1)
+            )
+        }
+        val report = withContext(Dispatchers.Default) {
+            SpectrumCVUtils.analyzeSpectrumImageQuality(bitmap, trackRects)
+        }
+
+        return if (report.hasIssues || report.decision != com.muc.fluocolorquant.utils.math.SpectrumImageQualityDecision.PASS) {
+            SpectrumCapturedQualityReview(
+                imageUri = imageUri.toString(),
+                report = report
+            )
+        } else {
+            null
+        }
     }
 }

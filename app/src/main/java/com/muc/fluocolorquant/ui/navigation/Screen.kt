@@ -12,8 +12,17 @@ sealed class Screen(open val route: String) {
         fun createRoute(): String = route
     }
     object ImageCapture : Screen("image_capture") {
-        fun createRoute(outputPath: String): String {
-            return "$route?outputPath=$outputPath"
+        fun createRoute(
+            outputPath: String,
+            captureMode: String? = null,
+            expectedSpectrumTracks: Int? = null
+        ): String {
+            val queryParts = buildList {
+                add("outputPath=$outputPath")
+                captureMode?.let { add("captureMode=$it") }
+                expectedSpectrumTracks?.let { add("expectedSpectrumTracks=$it") }
+            }
+            return "$route?${queryParts.joinToString(separator = "&")}"
         }
     }
     object ImageCrop : Screen("image_crop") {

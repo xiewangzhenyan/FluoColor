@@ -75,6 +75,8 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.Analyte
+import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationIssue
+import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationQualityLevel
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.components.charts.ChartData
@@ -83,6 +85,7 @@ import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.ExportViewModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumCalibrationComparisonUiModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumChannelUiModel
+import com.muc.fluocolorquant.ui.viewmodels.SpectrumCurveMode
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumPeakUiModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumResultViewModel
 import kotlinx.coroutines.launch
@@ -109,7 +112,7 @@ fun SpectrumResultScreen(
     val pageBackgroundColor = colorScheme.background
     val secondaryTextColor = colorScheme.onSurfaceVariant
     val exportPrepareFailed = stringResource(R.string.spectrum_export_prepare_failed)
-    var showQuickSettings by remember { mutableStateOf(true) }
+    var showQuickSettings by remember(projectId) { mutableStateOf(false) }
     var showComparison by remember { mutableStateOf(false) }
     var editingChannel by remember { mutableStateOf<SpectrumChannelUiModel?>(null) }
     var pendingSmoothing by remember(state.smoothingLevel) { mutableStateOf(state.smoothingLevel.toFloat()) }
@@ -309,8 +312,10 @@ fun SpectrumResultScreen(
                     ) { page ->
                         ChannelResultPage(
                             channelData = state.results[page],
+                            curveMode = state.curveMode,
                             modifier = Modifier.fillMaxSize(),
-                            onEditAnalyte = { editingChannel = state.results[page] }
+                            onEditAnalyte = { editingChannel = state.results[page] },
+                            onCurveModeChange = viewModel::setCurveMode
                         )
                     }
                 }
@@ -495,9 +500,13 @@ private fun SpectrumEmptyState(
 @Composable
 private fun ChannelResultPage(
     channelData: SpectrumChannelUiModel,
+    curveMode: SpectrumCurveMode,
     modifier: Modifier = Modifier,
-    onEditAnalyte: () -> Unit
+    onEditAnalyte: () -> Unit,
+    onCurveModeChange: (SpectrumCurveMode) -> Unit
 ) {
+    val activeChartData = channelData.resolveChartData(curveMode)
+    val activePeaks = channelData.resolvePeaks(curveMode)
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
@@ -522,12 +531,15 @@ private fun ChannelResultPage(
         }
 
         SpectrumCurveCard(
-            chartData = channelData.chartData,
-            modifier = Modifier.fillMaxWidth()
+            chartData = activeChartData,
+            curveMode = curveMode,
+            modifier = Modifier.fillMaxWidth(),
+            onCurveModeChange = onCurveModeChange
         )
 
         PeakInfoCard(
-            peaks = channelData.peaks,
+            peaks = activePeaks,
+            curveMode = curveMode,
             dataPointCount = channelData.dataPointCount,
             modifier = Modifier.fillMaxWidth()
         )
@@ -638,11 +650,33 @@ private fun CalibrationComparisonCard(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val qualityScore = comparison.qualityScore
-    val qualityLabel = when {
-        qualityScore == null -> stringResource(R.string.spectrum_calibration_quality_pending)
-        qualityScore >= 85 -> stringResource(R.string.spectrum_calibration_quality_excellent)
-        qualityScore >= 70 -> stringResource(R.string.spectrum_calibration_quality_usable)
-        else -> stringResource(R.string.spectrum_calibration_quality_review)
+    val qualityLabel = when (comparison.qualityLevel) {
+        SpectrumAutoCalibrationQualityLevel.EXCELLENT ->
+            stringResource(R.string.spectrum_calibration_quality_excellent)
+        SpectrumAutoCalibrationQualityLevel.USABLE ->
+            stringResource(R.string.spectrum_calibration_quality_usable)
+        SpectrumAutoCalibrationQualityLevel.REVIEW ->
+            stringResource(R.string.spectrum_calibration_quality_review)
+        null -> when {
+            qualityScore == null -> stringResource(R.string.spectrum_calibration_quality_pending)
+            qualityScore >= 85 -> stringResource(R.string.spectrum_calibration_quality_excellent)
+            qualityScore >= 70 -> stringResource(R.string.spectrum_calibration_quality_usable)
+            else -> stringResource(R.string.spectrum_calibration_quality_review)
+        }
+    }
+    val issueLabels = comparison.issues.map { issue ->
+        when (issue) {
+            SpectrumAutoCalibrationIssue.FIT_RMSE_HIGH ->
+                stringResource(R.string.spectrum_calibration_issue_fit_rmse_high)
+            SpectrumAutoCalibrationIssue.EFFECTIVE_HEIGHT_LOW ->
+                stringResource(R.string.spectrum_calibration_issue_effective_height_low)
+            SpectrumAutoCalibrationIssue.EFFECTIVE_HEIGHT_HIGH ->
+                stringResource(R.string.spectrum_calibration_issue_effective_height_high)
+            SpectrumAutoCalibrationIssue.FALLBACK_ALIGNMENT ->
+                stringResource(R.string.spectrum_calibration_issue_fallback_alignment)
+            SpectrumAutoCalibrationIssue.IMAGE_QUALITY_WARNING ->
+                stringResource(R.string.spectrum_calibration_issue_image_quality_warning)
+        }
     }
 
     Card(
@@ -769,12 +803,168 @@ private fun CalibrationComparisonCard(
                 )
             }
 
+            if (comparison.meanAbsoluteResidual != null || comparison.maxResidual != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    InfoItem(
+                        label = stringResource(R.string.spectrum_calibration_mean_residual),
+                        value = comparison.meanAbsoluteResidual?.let {
+                            String.format(Locale.US, "%.4f", it)
+                        } ?: "--",
+                        modifier = Modifier.weight(1f),
+                        highlightColor = Color(0xFF8B5CF6)
+                    )
+                    InfoItem(
+                        label = stringResource(R.string.spectrum_calibration_max_residual),
+                        value = comparison.maxResidual?.let {
+                            String.format(Locale.US, "%.4f", it)
+                        } ?: "--",
+                        modifier = Modifier.weight(1f),
+                        highlightColor = Color(0xFFF97316)
+                    )
+                }
+            }
+
+            comparison.equation?.takeIf { it.isNotBlank() }?.let { equation ->
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.outlinedCardColors(
+                        containerColor = colorScheme.surfaceVariant.copy(alpha = 0.18f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.spectrum_calibration_equation),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = equation,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
+            if (comparison.residualPoints.isNotEmpty()) {
+                CalibrationResidualSection(
+                    residualPoints = comparison.residualPoints,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            if (issueLabels.isNotEmpty()) {
+                Text(
+                    text = issueLabels.joinToString(separator = " / "),
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariant
+                )
+            }
+
             if (comparison.usedFallbackAlignment) {
                 Text(
                     text = stringResource(R.string.spectrum_calibration_alignment_fallback),
                     fontSize = 12.sp,
                     color = colorScheme.error
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalibrationResidualSection(
+    residualPoints: List<com.muc.fluocolorquant.data.model.SpectrumCalibrationResidualPoint>,
+    modifier: Modifier = Modifier
+) {
+    val colorScheme = MaterialTheme.colorScheme
+
+    OutlinedCard(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = colorScheme.surfaceVariant.copy(alpha = 0.18f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.spectrum_calibration_residual_section_title),
+                style = MaterialTheme.typography.labelMedium,
+                color = colorScheme.onSurfaceVariant
+            )
+
+            residualPoints.forEach { point ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colorScheme.surface.copy(alpha = 0.88f))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.spectrum_calibration_residual_rank,
+                                point.rank
+                            ),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colorScheme.onSurface
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.spectrum_calibration_residual_reference_value,
+                                point.referenceWavelength
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.spectrum_calibration_residual_fitted_value,
+                                point.fittedWavelength
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colorScheme.onSurface
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.spectrum_calibration_residual_delta_value,
+                                point.residual
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (kotlin.math.abs(point.residual) <= 1.0) {
+                                Color(0xFF10B981)
+                            } else {
+                                colorScheme.secondary
+                            }
+                        )
+                    }
+                }
             }
         }
     }
@@ -849,7 +1039,9 @@ private fun ComparisonImagePanel(
 @Composable
 private fun SpectrumCurveCard(
     chartData: ChartData,
-    modifier: Modifier = Modifier
+    curveMode: SpectrumCurveMode,
+    modifier: Modifier = Modifier,
+    onCurveModeChange: (SpectrumCurveMode) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
     Card(
@@ -864,32 +1056,62 @@ private fun SpectrumCurveCard(
                 .padding(16.dp)
         ) {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 12.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colorScheme.primary),
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ShowChart,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ShowChart,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.spectrum_curve_title),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = colorScheme.onSurface
                     )
                 }
-                Text(
-                    text = stringResource(R.string.spectrum_curve_title),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = colorScheme.onSurface
-                )
             }
-            
+
+            CurveModeSegmentedControl(
+                curveMode = curveMode,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                onCurveModeChange = onCurveModeChange
+            )
+
+            Text(
+                text = when (curveMode) {
+                    SpectrumCurveMode.RAW ->
+                        stringResource(R.string.spectrum_curve_mode_raw_desc)
+                    SpectrumCurveMode.CLASSIC ->
+                        stringResource(R.string.spectrum_curve_mode_classic_desc)
+                    SpectrumCurveMode.BASELINE ->
+                        stringResource(R.string.spectrum_curve_mode_baseline_desc)
+                    SpectrumCurveMode.ENHANCED ->
+                        stringResource(R.string.spectrum_curve_mode_enhanced_desc)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
             CurveChart(
                 data = chartData,
                 modifier = Modifier
@@ -904,8 +1126,89 @@ private fun SpectrumCurveCard(
  * 峰值信息卡片。
  */
 @Composable
+private fun CurveModeSegmentedControl(
+    curveMode: SpectrumCurveMode,
+    modifier: Modifier = Modifier,
+    onCurveModeChange: (SpectrumCurveMode) -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            CurveModeSegmentButton(
+                text = stringResource(R.string.spectrum_curve_mode_raw),
+                selected = curveMode == SpectrumCurveMode.RAW,
+                modifier = Modifier.weight(1f),
+                onClick = { onCurveModeChange(SpectrumCurveMode.RAW) }
+            )
+            CurveModeSegmentButton(
+                text = stringResource(R.string.spectrum_curve_mode_classic),
+                selected = curveMode == SpectrumCurveMode.CLASSIC,
+                modifier = Modifier.weight(1f),
+                onClick = { onCurveModeChange(SpectrumCurveMode.CLASSIC) }
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            CurveModeSegmentButton(
+                text = stringResource(R.string.spectrum_curve_mode_baseline),
+                selected = curveMode == SpectrumCurveMode.BASELINE,
+                modifier = Modifier.weight(1f),
+                onClick = { onCurveModeChange(SpectrumCurveMode.BASELINE) }
+            )
+            CurveModeSegmentButton(
+                text = stringResource(R.string.spectrum_curve_mode_enhanced),
+                selected = curveMode == SpectrumCurveMode.ENHANCED,
+                modifier = Modifier.weight(1f),
+                onClick = { onCurveModeChange(SpectrumCurveMode.ENHANCED) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun CurveModeSegmentButton(
+    text: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) colorScheme.primary
+                else Color.Transparent
+            )
+            .border(
+                width = if (selected) 0.dp else 1.dp,
+                color = if (selected) Color.Transparent else colorScheme.outline.copy(alpha = 0.38f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            textAlign = TextAlign.Center,
+            color = if (selected) colorScheme.onPrimary else colorScheme.onSurface,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+        )
+    }
+}
+
+@Composable
 private fun PeakInfoCard(
     peaks: List<SpectrumPeakUiModel>,
+    curveMode: SpectrumCurveMode,
     dataPointCount: Int,
     modifier: Modifier = Modifier
 ) {
@@ -976,6 +1279,43 @@ private fun PeakInfoCard(
                 )
             }
 
+            if (curveMode == SpectrumCurveMode.BASELINE || curveMode == SpectrumCurveMode.ENHANCED) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    InfoItem(
+                        label = stringResource(R.string.spectrum_peak_prominence),
+                        value = primaryPeak?.let { String.format(Locale.US, "%.3f", it.prominence) } ?: "--",
+                        modifier = Modifier.weight(1f),
+                        highlightColor = Color(0xFF8B5CF6)
+                    )
+                    InfoItem(
+                        label = stringResource(R.string.spectrum_peak_fwhm),
+                        value = primaryPeak?.let { String.format(Locale.US, "%.2f nm", it.fullWidthHalfMax) } ?: "--",
+                        modifier = Modifier.weight(1f),
+                        highlightColor = Color(0xFFF59E0B)
+                    )
+                    InfoItem(
+                        label = stringResource(R.string.spectrum_peak_snr),
+                        value = primaryPeak?.let { String.format(Locale.US, "%.2f", it.signalToNoise) } ?: "--",
+                        modifier = Modifier.weight(1f),
+                        highlightColor = Color(0xFF06B6D4)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                InfoItem(
+                    label = stringResource(R.string.spectrum_peak_area),
+                    value = primaryPeak?.let { String.format(Locale.US, "%.3f", it.area) } ?: "--",
+                    modifier = Modifier.fillMaxWidth(),
+                    highlightColor = Color(0xFFEC4899)
+                )
+            }
+
             if (peaks.size > 1) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -1010,6 +1350,18 @@ private fun PeakInfoCard(
                                 text = String.format(Locale.US, "%.3f", peak.intensity),
                                 color = Color(0xFFEF4444),
                                 fontWeight = FontWeight.Medium
+                            )
+                        }
+                        if (curveMode == SpectrumCurveMode.BASELINE || curveMode == SpectrumCurveMode.ENHANCED) {
+                            Text(
+                                text = stringResource(
+                                    R.string.spectrum_peak_secondary_metrics,
+                                    String.format(Locale.US, "%.2f", peak.signalToNoise),
+                                    String.format(Locale.US, "%.2f nm", peak.fullWidthHalfMax)
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp, top = 4.dp)
                             )
                         }
                     }

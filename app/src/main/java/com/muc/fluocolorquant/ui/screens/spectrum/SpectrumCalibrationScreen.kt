@@ -94,6 +94,9 @@ import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.CalibrationMode
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumCalibrationViewModel
+import com.muc.fluocolorquant.utils.math.SpectrumImageQualityDecision
+import com.muc.fluocolorquant.utils.math.SpectrumImageQualityIssueType
+import com.muc.fluocolorquant.utils.math.SpectrumImageQualityReport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -128,6 +131,13 @@ fun SpectrumCalibrationScreen(
         state.infoMessage?.let {
             toastManager.showToast(it.asString(context), ToastType.SUCCESS)
             viewModel.clearInfoMessage()
+        }
+    }
+
+    LaunchedEffect(state.warningMessage) {
+        state.warningMessage?.let {
+            toastManager.showToast(it.asString(context), ToastType.WARNING)
+            viewModel.clearWarningMessage()
         }
     }
 
@@ -284,7 +294,19 @@ fun SpectrumCalibrationScreen(
             onDismissRequest = { viewModel.dismissRetryDialog() },
             icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFE68A00)) },
             title = { Text(stringResource(R.string.auto_calibration_retry_title)) },
-            text = { Text(stringResource(R.string.auto_calibration_retry_message)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = state.errorMessage?.asString(context)
+                            ?: stringResource(R.string.auto_calibration_retry_message)
+                    )
+                    Text(
+                        text = stringResource(R.string.auto_calibration_retry_message),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.dismissRetryDialog()
@@ -419,6 +441,20 @@ private fun AutoCalibrationSection(
                     Text(stringResource(R.string.upload_calibration_image))
                 }
             }
+
+            state.originalQualityReport?.let { report ->
+                SpectrumQualitySummaryCard(
+                    title = stringResource(R.string.spectrum_quality_card_original),
+                    report = report
+                )
+            }
+
+            state.calibrationQualityReport?.let { report ->
+                SpectrumQualitySummaryCard(
+                    title = stringResource(R.string.spectrum_quality_card_calibration),
+                    report = report
+                )
+            }
         }
 
         // 分隔线
@@ -546,6 +582,88 @@ private fun AutoCalibrationSection(
                 Text(stringResource(R.string.show_spectrum_result))
             } else {
                 Text(stringResource(R.string.start_fitting))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpectrumQualitySummaryCard(
+    title: String,
+    report: SpectrumImageQualityReport
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val decisionLabel = when (report.decision) {
+        SpectrumImageQualityDecision.PASS ->
+            stringResource(R.string.spectrum_quality_status_good)
+        SpectrumImageQualityDecision.REVIEW ->
+            stringResource(R.string.spectrum_quality_status_review)
+        SpectrumImageQualityDecision.RETAKE ->
+            stringResource(R.string.spectrum_quality_status_retake)
+    }
+    val issueLabels = report.issues.map { issue ->
+        when (issue) {
+            SpectrumImageQualityIssueType.OVER_EXPOSED ->
+                stringResource(R.string.spectrum_quality_issue_over_exposed)
+            SpectrumImageQualityIssueType.UNDER_EXPOSED ->
+                stringResource(R.string.spectrum_quality_issue_under_exposed)
+            SpectrumImageQualityIssueType.BLURRED ->
+                stringResource(R.string.spectrum_quality_issue_blurred)
+            SpectrumImageQualityIssueType.TILTED ->
+                stringResource(R.string.spectrum_quality_issue_tilted)
+            SpectrumImageQualityIssueType.MERGED_CHANNELS ->
+                stringResource(R.string.spectrum_quality_issue_merged_channels)
+            SpectrumImageQualityIssueType.UNEVEN_BACKGROUND ->
+                stringResource(R.string.spectrum_quality_issue_uneven_background)
+        }
+    }
+
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = decisionLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (report.decision) {
+                            SpectrumImageQualityDecision.PASS -> colorScheme.primary
+                            SpectrumImageQualityDecision.REVIEW -> colorScheme.tertiary
+                            SpectrumImageQualityDecision.RETAKE -> colorScheme.error
+                        }
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.spectrum_quality_score_compact, report.score),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = when (report.decision) {
+                        SpectrumImageQualityDecision.PASS -> colorScheme.primary
+                        SpectrumImageQualityDecision.REVIEW -> colorScheme.tertiary
+                        SpectrumImageQualityDecision.RETAKE -> colorScheme.error
+                    }
+                )
+            }
+
+            if (issueLabels.isNotEmpty()) {
+                Text(
+                    text = issueLabels.joinToString(separator = " / "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colorScheme.onSurfaceVariant
+                )
             }
         }
     }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -29,13 +30,15 @@ class SettingsViewModel @Inject constructor(
                 settingsRepository.spectrumMinWavelengthFlow,
                 settingsRepository.spectrumMaxWavelengthFlow,
                 settingsRepository.spectrumSmoothingFlow,
-                settingsRepository.spectrumSensitivityFlow
-            ) { min, max, smoothing, sensitivity ->
+                settingsRepository.spectrumSensitivityFlow,
+                settingsRepository.spectrumQualityCheckEnabledFlow
+            ) { min, max, smoothing, sensitivity, qualityCheckEnabled ->
                 SettingsUiState(
                     spectrumMinWavelength = min,
                     spectrumMaxWavelength = max,
                     spectrumSmoothing = smoothing,
-                    spectrumSensitivity = sensitivity
+                    spectrumSensitivity = sensitivity,
+                    spectrumQualityCheckEnabled = qualityCheckEnabled
                 )
             }
 
@@ -312,6 +315,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setSpectrumQualityCheckEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setSpectrumQualityCheckEnabled(enabled)
+        }
+    }
+
     /**
      * 恢复光谱默认配置
      */
@@ -323,6 +332,7 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.setSpectrumSensitivity(SettingsRepository.DEFAULT_SPECTRUM_SENSITIVITY)
             settingsRepository.setSpectrumDefaultTrackCount(SettingsRepository.DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT)
             settingsRepository.setSpectrumMaxTrackCount(SettingsRepository.DEFAULT_SPECTRUM_MAX_TRACK_COUNT)
+            settingsRepository.setSpectrumQualityCheckEnabled(SettingsRepository.DEFAULT_SPECTRUM_QUALITY_CHECK_ENABLED)
         }
     }
 
@@ -351,5 +361,6 @@ data class SettingsUiState(
     val spectrumSmoothing: Int = SettingsRepository.DEFAULT_SPECTRUM_SMOOTHING,
     val spectrumSensitivity: String = SettingsRepository.DEFAULT_SPECTRUM_SENSITIVITY,
     val spectrumDefaultTrackCount: Int = SettingsRepository.DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT,
-    val spectrumMaxTrackCount: Int = SettingsRepository.DEFAULT_SPECTRUM_MAX_TRACK_COUNT
+    val spectrumMaxTrackCount: Int = SettingsRepository.DEFAULT_SPECTRUM_MAX_TRACK_COUNT,
+    val spectrumQualityCheckEnabled: Boolean = SettingsRepository.DEFAULT_SPECTRUM_QUALITY_CHECK_ENABLED
 )

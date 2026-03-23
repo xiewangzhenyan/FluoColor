@@ -1,6 +1,11 @@
 package com.muc.fluocolorquant.utils.math
 
 import android.graphics.Rect
+import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationIssue
+import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationQualityLevel
+import com.muc.fluocolorquant.data.model.SpectrumCalibrationResidualPoint
+import java.util.Locale
+import kotlin.math.abs
 
 /**
  * 鍏夎氨鑷姩鏍囧畾涓殑褰掍竴鍖栧潗鏍囪绠楀伐鍏枫€? */
@@ -54,6 +59,53 @@ object SpectrumCalibrationMath {
     }
 
     /**
+     * 计算平均绝对残差。
+     */
+    fun calculateMeanAbsoluteResidual(
+        points: List<Pair<Double, Double>>,
+        coefficients: DoubleArray
+    ): Double {
+        if (points.isEmpty()) return 0.0
+        return points.map { (x, y) ->
+            abs(evaluatePolynomial(coefficients, x) - y)
+        }.average()
+    }
+
+    /**
+     * 计算最大绝对残差。
+     */
+    fun calculateMaxResidual(
+        points: List<Pair<Double, Double>>,
+        coefficients: DoubleArray
+    ): Double {
+        if (points.isEmpty()) return 0.0
+        return points.maxOf { (x, y) ->
+            abs(evaluatePolynomial(coefficients, x) - y)
+        }
+    }
+
+    /**
+     * 构建逐参考点残差明细，便于在结果页展示参考波长与拟合值的差异。
+     */
+    fun buildResidualPoints(
+        points: List<Pair<Double, Double>>,
+        coefficients: DoubleArray
+    ): List<SpectrumCalibrationResidualPoint> {
+        if (points.isEmpty()) return emptyList()
+
+        return points.mapIndexed { index, (normalizedY, referenceWavelength) ->
+            val fittedWavelength = evaluatePolynomial(coefficients, normalizedY)
+            SpectrumCalibrationResidualPoint(
+                rank = index + 1,
+                normalizedY = normalizedY,
+                referenceWavelength = referenceWavelength,
+                fittedWavelength = fittedWavelength,
+                residual = fittedWavelength - referenceWavelength
+            )
+        }
+    }
+
+    /**
      * 根据峰匹配完整度、拟合残差和有效高度覆盖率综合计算自动标定得分。
      */
     fun calculateAutoCalibrationQualityScore(
@@ -96,5 +148,79 @@ object SpectrumCalibrationMath {
         }
 
         return score.toInt().coerceIn(0, 100)
+    }
+
+    /**
+     * 根据自动标定得分映射质量等级。
+     */
+    fun resolveAutoCalibrationQualityLevel(score: Int?): SpectrumAutoCalibrationQualityLevel? {
+        if (score == null) return null
+        return when {
+            score >= 85 -> SpectrumAutoCalibrationQualityLevel.EXCELLENT
+            score >= 70 -> SpectrumAutoCalibrationQualityLevel.USABLE
+            else -> SpectrumAutoCalibrationQualityLevel.REVIEW
+        }
+    }
+
+    /**
+     * 汇总自动标定诊断原因，供结果页与提示文案复用。
+     */
+    fun collectAutoCalibrationIssues(
+        fitRmse: Double?,
+        effectiveCoverage: Double?,
+        usedFallbackAlignment: Boolean,
+        hasImageQualityWarning: Boolean
+    ): List<SpectrumAutoCalibrationIssue> {
+        val issues = mutableListOf<SpectrumAutoCalibrationIssue>()
+
+        if (fitRmse != null && fitRmse > 18.0) {
+            issues += SpectrumAutoCalibrationIssue.FIT_RMSE_HIGH
+        }
+        if (effectiveCoverage != null) {
+            when {
+                effectiveCoverage < 0.18 ->
+                    issues += SpectrumAutoCalibrationIssue.EFFECTIVE_HEIGHT_LOW
+                effectiveCoverage > 0.95 ->
+                    issues += SpectrumAutoCalibrationIssue.EFFECTIVE_HEIGHT_HIGH
+            }
+        }
+        if (usedFallbackAlignment) {
+            issues += SpectrumAutoCalibrationIssue.FALLBACK_ALIGNMENT
+        }
+        if (hasImageQualityWarning) {
+            issues += SpectrumAutoCalibrationIssue.IMAGE_QUALITY_WARNING
+        }
+
+        return issues.distinct()
+    }
+
+    /**
+     * 将自动标定方程格式化为便于结果页展示的形式。
+     * 自动标定当前拟合的是 λ = f(t)，其中 t 为 0.0 - 1.0 的归一化纵坐标。
+     */
+    fun formatNormalizedCalibrationEquation(coefficients: DoubleArray): String {
+        val a = coefficients.getOrElse(0) { 0.0 }
+        val b = coefficients.getOrElse(1) { 0.0 }
+        val c = coefficients.getOrElse(2) { 0.0 }
+
+        return if (abs(a) < 1e-6) {
+            "λ(t) = ${formatSignedNumber(b, includePlus = false)}·t ${formatConstant(c)}"
+        } else {
+            "λ(t) = ${formatSignedNumber(a, includePlus = false)}·t² ${formatSignedNumber(b)}·t ${formatConstant(c)}"
+        }
+    }
+
+    private fun formatSignedNumber(value: Double, includePlus: Boolean = true): String {
+        return if (includePlus && value >= 0.0) {
+            "+ ${String.format(Locale.US, "%.3f", value)}"
+        } else {
+            String.format(Locale.US, "%.3f", value)
+        }
+    }
+
+    private fun formatConstant(value: Double): String {
+        val absValue = abs(value)
+        val operator = if (value >= 0.0) "+" else "-"
+        return "$operator ${String.format(Locale.US, "%.3f", absValue)}"
     }
 }
