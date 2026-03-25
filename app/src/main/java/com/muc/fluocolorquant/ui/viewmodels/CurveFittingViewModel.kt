@@ -234,7 +234,7 @@ class CurveFittingViewModel @Inject constructor(
                     if (concentration != null && well.pixelValueJson != null) {
                         // 从JSON中提取指定像素类型的值
                         val pixelValues = parsePixelValues(well.pixelValueJson)
-                        val pixelValue = pixelValues[pixelType.name]
+                        val pixelValue = getPixelValue(pixelValues, pixelType)
                         
                         if (pixelValue != null) {
                             Pair(concentration, pixelValue)
@@ -252,7 +252,7 @@ class CurveFittingViewModel @Inject constructor(
                 val samplePixelValues = samples.mapNotNull { well ->
                     if (well.pixelValueJson != null) {
                         val pixelValues = parsePixelValues(well.pixelValueJson)
-                        pixelValues[pixelType.name]
+                        getPixelValue(pixelValues, pixelType)
                     } else null
                 }
                 
@@ -303,6 +303,14 @@ class CurveFittingViewModel @Inject constructor(
             emptyMap()
         }
     }
+
+    /**
+     * 兼容历史数据中使用枚举名、新数据使用 identifier 存储的像素键。
+     */
+    private fun getPixelValue(
+        pixelValues: Map<String, Double>,
+        pixelType: PixelType
+    ): Double? = pixelValues[pixelType.identifier] ?: pixelValues[pixelType.name]
     
     /**
      * 获取孔位标签（如A1, B2等）
@@ -356,7 +364,7 @@ class CurveFittingViewModel @Inject constructor(
                         val concentration = well.trueConcentration
                         if (concentration != null && well.pixelValueJson != null) {
                             val pixelValues = parsePixelValues(well.pixelValueJson)
-                            val pixelValue = pixelValues[model.pixelType.name]
+                            val pixelValue = getPixelValue(pixelValues, model.pixelType)
                             if (pixelValue != null) {
                                 Pair(concentration, pixelValue)
                             } else null
@@ -367,7 +375,7 @@ class CurveFittingViewModel @Inject constructor(
                     val samplePixelValues = samples.mapNotNull { well ->
                         if (well.pixelValueJson != null) {
                             val pixelValues = parsePixelValues(well.pixelValueJson)
-                            pixelValues[model.pixelType.name]
+                            getPixelValue(pixelValues, model.pixelType)
                         } else null
                     }
                     

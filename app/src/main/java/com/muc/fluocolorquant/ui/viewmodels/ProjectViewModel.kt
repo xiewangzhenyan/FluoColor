@@ -251,90 +251,75 @@ class ProjectViewModel @Inject constructor(
     ): String? {
         return try {
             val projectId = UUID.randomUUID().toString()
-            val isSpectrum = detectionMode == DetectionMode.SPECTRUM
+            when (detectionMode) {
+                DetectionMode.SPECTRUM -> {
+                    if (imageUri.isBlank()) return null
 
-            if (isSpectrum) {
-                // 分支 A: 光谱模式 (SPECTRUM)
-                if (imageUri.isBlank()) return null
-                
-                // 确保每个通道都已绑定分析物
-                val spectrumTrackCount = _spectrumTrackCount.value.coerceAtLeast(1)
-                for (index in 1..spectrumTrackCount) {
-                    if (_spectrumColumnMapping.value[index] == null) return null
-                }
+                    // 确保每个通道都已绑定分析物
+                    val spectrumTrackCount = _spectrumTrackCount.value.coerceAtLeast(1)
+                    for (index in 1..spectrumTrackCount) {
+                        if (_spectrumColumnMapping.value[index] == null) return null
+                    }
 
-                // 数据准备：转换为只包含 ID 的 Map 并序列化为 JSON
-                val mappingJson = Gson().toJson(_spectrumColumnMapping.value.mapValues { it.value.id })
-
-                // 创建 Project 对象（光谱模式）
-                val project = Project(
-                    id = projectId,
-                    name = name,
-                    detectionMode = detectionMode.name,
-                    recognitionType = "AUTO",
-                    imageUri = imageUri,
-                    rows = 1,  // 光谱模式固定值
-                    columns = 1,  // 光谱模式固定值
-                    createTime = Date(),
-                    userId = userId ?: "guest",
-                    lastRunTimestamp = null,
-                    analysisMethod = "LSPR_SPECTRUM",  // 光谱模式固定值
-                    lightSource = _spectrumLightSource.value.name,
-                    spectrumColumnCount = spectrumTrackCount,
-                    spectrumColumnMappingJson = mappingJson
-                )
-
-                // 保存项目到数据库
-                projectRepository.createProject(project)
-                
-                // 注意：光谱模式不保存 ProjectAnalyteJoin
-
-            } else {
-                // 分支 B: 标准模式 (FLUORESCENCE / COLORIMETRIC)
-                
-                // 处理默认值
-                val defaultRows = settingsRepository.defaultRowsFlow.first()
-                val defaultColumns = settingsRepository.defaultColumnsFlow.first()
-                val finalRows = rows ?: defaultRows
-                val finalColumns = columns ?: defaultColumns
-                val finalAnalysisMethod = analysisMethod ?: AnalysisMethod.DL_MODEL
-
-                // 创建 Project 对象（标准模式）
-                val project = Project(
-                    id = projectId,
-                    name = name,
-                    detectionMode = detectionMode.name,
-                    recognitionType = "AUTO",
-                    imageUri = imageUri,
-                    rows = finalRows,
-                    columns = finalColumns,
-                    createTime = Date(),
-                    userId = userId ?: "guest",
-                    lastRunTimestamp = null,
-                    analysisMethod = finalAnalysisMethod.name,
-                    lightSource = null,
-                    spectrumColumnCount = 1,
-                    spectrumColumnMappingJson = null
-                )
-
-                // 保存项目到数据库
-                projectRepository.createProject(project)
-
-                // 为每个选中的分析物创建关联（标准模式）
-                _selectedAnalyteConfigs.value.forEach { config ->
-                    val analyteJoin = ProjectAnalyteJoin(
-                        projectId = projectId,
-                        analyteId = config.analyte.id,
-                        maxConcentration = config.maxConcentration.toDoubleOrNull(),
-                        concentrationUnit = config.concentrationUnit,
-                        fkTemplateId = null
+                    val mappingJson = Gson().toJson(_spectrumColumnMapping.value.mapValues { it.value.id })
+                    val project = Project(
+                        id = projectId,
+                        name = name,
+                        detectionMode = detectionMode.name,
+                        recognitionType = "AUTO",
+                        imageUri = imageUri,
+                        rows = 1,
+                        columns = 1,
+                        createTime = Date(),
+                        userId = userId ?: "guest",
+                        lastRunTimestamp = null,
+                        analysisMethod = "LSPR_SPECTRUM",
+                        lightSource = _spectrumLightSource.value.name,
+                        spectrumColumnCount = spectrumTrackCount,
+                        spectrumColumnMappingJson = mappingJson
                     )
-                    projectAnalyteJoinRepository.addProjectAnalyteJoin(analyteJoin)
+                    projectRepository.createProject(project)
                 }
 
-                // 检查是否是单孔(1x1)项目
-                if (project.rows == 1 && project.columns == 1) {
-                    if (project.analysisMethod == "CURVE_FIT") {
+                DetectionMode.FLUORESCENCE,
+                DetectionMode.COLORIMETRIC -> {
+                    val defaultRows = settingsRepository.defaultRowsFlow.first()
+                    val defaultColumns = settingsRepository.defaultColumnsFlow.first()
+                    val finalRows = rows ?: defaultRows
+                    val finalColumns = columns ?: defaultColumns
+                    val finalAnalysisMethod = analysisMethod ?: AnalysisMethod.DL_MODEL
+                    val project = Project(
+                        id = projectId,
+                        name = name,
+                        detectionMode = detectionMode.name,
+                        recognitionType = "AUTO",
+                        imageUri = imageUri,
+                        rows = finalRows,
+                        columns = finalColumns,
+                        createTime = Date(),
+                        userId = userId ?: "guest",
+                        lastRunTimestamp = null,
+                        analysisMethod = finalAnalysisMethod.name,
+                        lightSource = null,
+                        spectrumColumnCount = 1,
+                        spectrumColumnMappingJson = null
+                    )
+
+                    projectRepository.createProject(project)
+
+                    _selectedAnalyteConfigs.value.forEach { config ->
+                        val analyteJoin = ProjectAnalyteJoin(
+                            projectId = projectId,
+                            analyteId = config.analyte.id,
+                            maxConcentration = config.maxConcentration.toDoubleOrNull(),
+                            concentrationUnit = config.concentrationUnit,
+                            fkTemplateId = null
+                        )
+                        projectAnalyteJoinRepository.addProjectAnalyteJoin(analyteJoin)
+                    }
+
+                    // 第一阶段先显式拆分项目类型，后续再分别引入更细的采集与分析配置。
+                    if (project.rows == 1 && project.columns == 1 && project.analysisMethod == "CURVE_FIT") {
                         _showTemplateSelectionDialog.value = true
                     }
                 }

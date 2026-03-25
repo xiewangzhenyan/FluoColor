@@ -2,6 +2,7 @@ package com.muc.fluocolorquant.data.repository
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.RectF
 import android.net.Uri
 import android.util.Log
@@ -12,6 +13,8 @@ import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.ui.viewmodels.WellDetection
+import com.muc.fluocolorquant.utils.DetectionModeKind
+import com.muc.fluocolorquant.utils.DetectionModeSupport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -19,6 +22,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.pytorch.IValue
 import org.pytorch.LiteModuleLoader
+import org.pytorch.Module
 import org.pytorch.torchvision.TensorImageUtils
 import java.io.File
 import java.io.FileOutputStream
@@ -26,6 +30,7 @@ import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * 孔位结果仓库
@@ -38,6 +43,11 @@ class WellResultRepository @Inject constructor(
     private val projectDao: ProjectDao,
     private val context: Context
 ) {
+    private data class ConcentrationInferenceConfig(
+        val detectionMode: DetectionModeKind,
+        val modelAssetPath: String
+    )
+
     companion object {
         private const val TAG = "WellResultRepository"
         private const val CONCENTRATION_MODEL_PATH = "models/improved_concentration_model_lite.ptl"
@@ -268,21 +278,21 @@ class WellResultRepository @Inject constructor(
             }
             
             // 更新检测运行状态
+            val inferenceConfig = resolveInferenceConfig(detectionRun.projectId)
             detectionRunDao.updateDetectionRun(
                 detectionRun.copy(
                     status = "Processing", 
-                    concentrationModelUsed = CONCENTRATION_MODEL_PATH
+                    concentrationModelUsed = inferenceConfig.modelAssetPath
                 )
             )
             
             // 加载浓度预测模型
-            val modelPath = assetFilePath(context, CONCENTRATION_MODEL_PATH)
-            if (modelPath == null) {
+            val concentrationModel = loadConcentrationModel(inferenceConfig.modelAssetPath)
+            if (concentrationModel == null) {
                 Log.e(TAG, "加载浓度预测模型失败")
                 throw Exception("加载浓度预测模型失败")
             }
             
-            val concentrationModel = LiteModuleLoader.load(modelPath)
             Log.d(TAG, "浓度预测模型加载成功")
             
             // 裁剪图像并预测浓度
@@ -300,7 +310,11 @@ class WellResultRepository @Inject constructor(
                     val croppedBitmap = cropWellImage(originalBitmap, rect)
                     
                     // 预测浓度
-                    val concentration = predictConcentration(croppedBitmap, concentrationModel)
+                    val concentration = predictConcentration(
+                        croppedBitmap,
+                        concentrationModel,
+                        inferenceConfig.detectionMode
+                    )
                     
                     // 保存裁剪图像（可选）
                     val identifier = saveWellImage(croppedBitmap, runId, index)
@@ -378,6 +392,142 @@ class WellResultRepository @Inject constructor(
         
         return croppedBitmap
     }
+
+    /**
+     * 解析项目对应的推理配置。
+     * 当前优先尝试模式专用模型，若资源不存在则回退到通用模型。
+     */
+    private suspend fun resolveInferenceConfig(projectId: String): ConcentrationInferenceConfig {
+        val project = projectDao.getProjectById(projectId)
+        val detectionMode = DetectionModeSupport.fromStorageValue(project?.detectionMode)
+        val candidatePaths = DetectionModeSupport.concentrationModelCandidates(detectionMode)
+        val resolvedPath = candidatePaths.firstOrNull(::assetExists) ?: CONCENTRATION_MODEL_PATH
+
+        if (resolvedPath != candidatePaths.first()) {
+            Log.w(
+                TAG,
+                "未找到 ${detectionMode.name} 模式专用浓度模型，已回退到通用模型: $resolvedPath"
+            )
+        }
+
+        return ConcentrationInferenceConfig(
+            detectionMode = detectionMode,
+            modelAssetPath = resolvedPath
+        )
+    }
+
+    /**
+     * 检查 assets 中是否存在指定文件。
+     */
+    private fun assetExists(assetName: String): Boolean {
+        return try {
+            context.assets.open(assetName).use { }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * 加载浓度预测模型。
+     */
+    private fun loadConcentrationModel(assetName: String): Module? {
+        val modelPath = assetFilePath(context, assetName) ?: return null
+        return LiteModuleLoader.load(modelPath)
+    }
+
+    /**
+     * 根据检测模式对孔位图像做轻量级预处理。
+     * 这里只做温和增强，避免破坏现有模型输入分布。
+     */
+    private fun preprocessBitmapForMode(
+        wellBitmap: Bitmap,
+        detectionMode: DetectionModeKind
+    ): Bitmap {
+        return when (detectionMode) {
+            DetectionModeKind.FLUORESCENCE -> preprocessFluorescenceBitmap(wellBitmap)
+            DetectionModeKind.COLORIMETRIC -> preprocessColorimetricBitmap(wellBitmap)
+            DetectionModeKind.SPECTRUM -> wellBitmap
+        }
+    }
+
+    /**
+     * 荧光模式：轻微压暗背景并增强亮信号，强调亮点与暗背景的对比。
+     */
+    private fun preprocessFluorescenceBitmap(bitmap: Bitmap): Bitmap {
+        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val width = mutableBitmap.width
+        val height = mutableBitmap.height
+        val blackLevel = 10
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val pixel = mutableBitmap.getPixel(x, y)
+                val alpha = Color.alpha(pixel)
+                val red = ((Color.red(pixel) - blackLevel).coerceAtLeast(0) * 1.05f).roundToInt()
+                val green = ((Color.green(pixel) - blackLevel).coerceAtLeast(0) * 1.15f).roundToInt()
+                val blue = ((Color.blue(pixel) - blackLevel).coerceAtLeast(0) * 1.05f).roundToInt()
+                mutableBitmap.setPixel(
+                    x,
+                    y,
+                    Color.argb(alpha, clampChannel(red), clampChannel(green), clampChannel(blue))
+                )
+            }
+        }
+
+        return mutableBitmap
+    }
+
+    /**
+     * 比色模式：做温和的灰世界白平衡，降低环境光偏色对颜色特征的影响。
+     */
+    private fun preprocessColorimetricBitmap(bitmap: Bitmap): Bitmap {
+        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val width = mutableBitmap.width
+        val height = mutableBitmap.height
+        val totalPixels = (width * height).coerceAtLeast(1)
+
+        var totalRed = 0L
+        var totalGreen = 0L
+        var totalBlue = 0L
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val pixel = mutableBitmap.getPixel(x, y)
+                totalRed += Color.red(pixel)
+                totalGreen += Color.green(pixel)
+                totalBlue += Color.blue(pixel)
+            }
+        }
+
+        val avgRed = totalRed.toFloat() / totalPixels
+        val avgGreen = totalGreen.toFloat() / totalPixels
+        val avgBlue = totalBlue.toFloat() / totalPixels
+        val grayAverage = (avgRed + avgGreen + avgBlue) / 3f
+
+        val redScale = (grayAverage / avgRed.coerceAtLeast(1f)).coerceIn(0.85f, 1.15f)
+        val greenScale = (grayAverage / avgGreen.coerceAtLeast(1f)).coerceIn(0.85f, 1.15f)
+        val blueScale = (grayAverage / avgBlue.coerceAtLeast(1f)).coerceIn(0.85f, 1.15f)
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val pixel = mutableBitmap.getPixel(x, y)
+                val alpha = Color.alpha(pixel)
+                val red = (Color.red(pixel) * redScale).roundToInt()
+                val green = (Color.green(pixel) * greenScale).roundToInt()
+                val blue = (Color.blue(pixel) * blueScale).roundToInt()
+                mutableBitmap.setPixel(
+                    x,
+                    y,
+                    Color.argb(alpha, clampChannel(red), clampChannel(green), clampChannel(blue))
+                )
+            }
+        }
+
+        return mutableBitmap
+    }
+
+    private fun clampChannel(value: Int): Int = value.coerceIn(0, 255)
     
     /**
      * 预测浓度
@@ -385,11 +535,17 @@ class WellResultRepository @Inject constructor(
      * @param model 浓度预测模型
      * @return 预测的浓度值
      */
-    private fun predictConcentration(wellBitmap: Bitmap, model: org.pytorch.Module): Double {
+    private fun predictConcentration(
+        wellBitmap: Bitmap,
+        model: Module,
+        detectionMode: DetectionModeKind
+    ): Double {
+        val preparedBitmap = preprocessBitmapForMode(wellBitmap, detectionMode)
+
         // 准备输入
         val mean = floatArrayOf(0.485f, 0.456f, 0.406f)
         val std = floatArrayOf(0.229f, 0.224f, 0.225f)
-        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(wellBitmap, mean, std)
+        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(preparedBitmap, mean, std)
         
         // 执行推理
         val outputTensor = model.forward(IValue.from(inputTensor)).toTensor()
@@ -497,13 +653,13 @@ class WellResultRepository @Inject constructor(
     ): Double? = withContext(Dispatchers.IO) {
         try {
             // 加载浓度预测模型
-            val modelPath = assetFilePath(context, CONCENTRATION_MODEL_PATH)
-            if (modelPath == null) {
+            val inferenceConfig = resolveInferenceConfig(projectId)
+            val concentrationModel = loadConcentrationModel(inferenceConfig.modelAssetPath)
+            if (concentrationModel == null) {
                 Log.e(TAG, "加载浓度预测模型失败")
                 return@withContext null
             }
             
-            val concentrationModel = LiteModuleLoader.load(modelPath)
             Log.d(TAG, "浓度预测模型加载成功")
             
             // 从URI加载图像
@@ -525,7 +681,11 @@ class WellResultRepository @Inject constructor(
             )
             
             // 预测浓度
-            val concentration = predictConcentration(resizedBitmap, concentrationModel)
+            val concentration = predictConcentration(
+                resizedBitmap,
+                concentrationModel,
+                inferenceConfig.detectionMode
+            )
             
             // 保存到数据库
             val wellResult = WellResult(
@@ -660,13 +820,13 @@ class WellResultRepository @Inject constructor(
             progressCallback(10)
             
             // 加载浓度预测模型
-            val modelPath = assetFilePath(context, CONCENTRATION_MODEL_PATH)
-            if (modelPath == null) {
+            val inferenceConfig = resolveInferenceConfig(detectionRun.projectId)
+            val concentrationModel = loadConcentrationModel(inferenceConfig.modelAssetPath)
+            if (concentrationModel == null) {
                 Log.e(TAG, "加载浓度预测模型失败")
                 return@withContext emptyList()
             }
-            
-            val concentrationModel = LiteModuleLoader.load(modelPath)
+
             Log.d(TAG, "浓度预测模型加载成功")
             
             // 更新进度到20%
@@ -697,7 +857,11 @@ class WellResultRepository @Inject constructor(
                                 updatedWellResults.add(wellResult)
                             } else {
                                 // 预测浓度
-                                val concentration = predictConcentration(wellBitmap, concentrationModel)
+                                val concentration = predictConcentration(
+                                    wellBitmap,
+                                    concentrationModel,
+                                    inferenceConfig.detectionMode
+                                )
                                 
                                 // 更新孔位结果
                                 updatedWellResults.add(wellResult.copy(predictedConcentration = concentration))

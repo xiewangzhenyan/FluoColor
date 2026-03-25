@@ -380,7 +380,7 @@ fun AnalyteTabRow(
                         text = {
                             Text(
                                 text = analyte.name,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                             )
                         },

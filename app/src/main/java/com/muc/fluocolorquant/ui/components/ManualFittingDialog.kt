@@ -43,6 +43,7 @@ fun ManualFittingDialog(
     standardWells: List<WellResult>,
     fittingResults: List<FittingResult>,
     isLoading: Boolean,
+    recommendedPixelTypes: Set<PixelType>,
     onDismiss: () -> Unit,
     onStartFitting: (concentrations: Map<Int, Double>, functions: Set<FittingFunction>, pixelTypes: Set<PixelType>) -> Unit,
     onResultSelected: (FittingResult) -> Unit,
@@ -90,6 +91,7 @@ fun ManualFittingDialog(
                 // 浓度输入阶段
                 FittingInputStage(
                     standardWells = standardWells,
+                    recommendedPixelTypes = recommendedPixelTypes,
                     onDismiss = onDismiss,
                     onStartFitting = onStartFitting
                 )
@@ -104,13 +106,22 @@ fun ManualFittingDialog(
 @Composable
 private fun FittingInputStage(
     standardWells: List<WellResult>,
+    recommendedPixelTypes: Set<PixelType>,
     onDismiss: () -> Unit,
     onStartFitting: (concentrations: Map<Int, Double>, functions: Set<FittingFunction>, pixelTypes: Set<PixelType>) -> Unit
 ) {
     var concentrations by remember { mutableStateOf(mapOf<Int, String>()) }
     // 默认勾选常用且计算速度快的算法
     var selectedFunctions by remember { mutableStateOf(setOf(FittingFunction.LINEAR, FittingFunction.QUADRATIC, FittingFunction.RODBARD)) }
-    var selectedPixelTypes by remember { mutableStateOf(setOf(PixelType.GRAY_LUMINOSITY, PixelType.RATIO_RB)) }
+    var selectedPixelTypes by remember(recommendedPixelTypes) {
+        mutableStateOf(
+            if (recommendedPixelTypes.isNotEmpty()) {
+                recommendedPixelTypes
+            } else {
+                setOf(PixelType.GRAY_LUMINOSITY, PixelType.RATIO_RB)
+            }
+        )
+    }
 
     // 检查是否可以开始拟合（所有浓度都已输入）
     val canStartFitting = remember(concentrations, standardWells) {

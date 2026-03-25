@@ -209,6 +209,15 @@
     <!-- Result Screen -->
     <string name="return_to_home">Return to Home</string>
     <string name="creation_time">Creation Time: %1$s</string>
+    <string name="result_project_detection_mode_label">Detection Mode: </string>
+    <string name="result_project_analysis_method_label">Analysis Method: </string>
+    <string name="result_project_analytes_label">Analytes: </string>
+    <string name="result_project_creation_time_label">Creation Time: </string>
+    <string name="result_project_concentration_unit_label">Concentration Unit: </string>
+    <string name="result_project_capture_thumbnail_label">Captured Image</string>
+    <string name="result_project_capture_thumbnail_desc">Project capture thumbnail</string>
+    <string name="result_project_capture_preview_action">View full image</string>
+    <string name="result_project_capture_close_action">Close image preview</string>
     <string name="concentration_heatmap">Concentration Heatmap</string>
     <string name="unit_label">Unit: %1$s</string>
     <string name="well_position">Well %1$s%2$d</string>

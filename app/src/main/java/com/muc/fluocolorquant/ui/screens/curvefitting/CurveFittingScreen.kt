@@ -151,6 +151,7 @@ fun CurveFittingScreen(
             standardWells = wellLayoutViewModel.getStandardWells(),
             fittingResults = fittingResults,
             isLoading = isFittingLoading,
+            recommendedPixelTypes = wellLayoutViewModel.recommendedPixelTypesForCurrentProject(),
             onDismiss = {
                 wellLayoutViewModel.dismissManualFitDialog()
             },

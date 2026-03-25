@@ -27,6 +27,7 @@ import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
 import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.WellResultRepository
+import com.muc.fluocolorquant.utils.DetectionModeSupport
 import com.muc.fluocolorquant.utils.PixelExtractionUtils
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import com.muc.fluocolorquant.utils.math.FittingResult
@@ -130,6 +131,32 @@ class WellLayoutViewModel @Inject constructor(
         )
 
     // 存储从上个页面传递过来的原始图像Bitmap
+    /**
+     * 获取当前项目对应的检测模式。
+     */
+    private fun currentDetectionMode() =
+        DetectionModeSupport.fromStorageValue(_currentProject.value?.detectionMode)
+
+    /**
+     * 获取当前项目建议使用的默认像素特征。
+     */
+    private fun defaultPixelTypeForCurrentProject(): PixelType =
+        DetectionModeSupport.defaultPixelType(currentDetectionMode())
+
+    /**
+     * 获取当前项目建议优先勾选的像素特征集合。
+     */
+    fun recommendedPixelTypesForCurrentProject(): Set<PixelType> =
+        DetectionModeSupport.recommendedPixelTypes(currentDetectionMode())
+
+    /**
+     * 兼容历史数据中同时存在 identifier 和枚举名两种存储键。
+     */
+    private fun getPixelValue(
+        pixelValues: Map<String, Double>,
+        pixelType: PixelType
+    ): Double? = pixelValues[pixelType.identifier] ?: pixelValues[pixelType.name]
+
     private val _originalBitmap = MutableStateFlow<Bitmap?>(null)
     val originalBitmap: StateFlow<Bitmap?> = _originalBitmap.asStateFlow()
 
@@ -576,7 +603,8 @@ class WellLayoutViewModel @Inject constructor(
                 updatedWell.pixelValueJson?.let { json ->
                     try {
                         val pixelValues = parsePixelValues(json)
-                        val pixelValue = pixelValues[fittingResult.pixelType?.identifier]
+                        val pixelType = fittingResult.pixelType ?: defaultPixelTypeForCurrentProject()
+                        val pixelValue = getPixelValue(pixelValues, pixelType)
                         if (pixelValue != null) {
                             val predictedConc = FittingEngine.predictConcentration(
                                 fittingResult.parameters,
@@ -820,14 +848,14 @@ class WellLayoutViewModel @Inject constructor(
 
                 // 提取标准品的浓度和像素值
                 val standardPoints = mutableListOf<Pair<Double, Double>>()
-                val pixelType = PixelType.GREEN // 默认使用GREEN通道
+                val pixelType = defaultPixelTypeForCurrentProject()
 
                 standardWells.forEach { well ->
                     val concentration = well.trueConcentration
                     if (concentration != null && well.pixelValueJson != null) {
                         try {
                             val pixelValues = parsePixelValues(well.pixelValueJson!!)
-                            val pixelValue = pixelValues[pixelType.name] ?: return@forEach
+                            val pixelValue = getPixelValue(pixelValues, pixelType) ?: return@forEach
                             standardPoints.add(Pair(concentration, pixelValue))
                         } catch (e: Exception) {
                             Log.e(TAG, "解析像素值失败: ${e.message}")
@@ -950,7 +978,7 @@ class WellLayoutViewModel @Inject constructor(
                     id = curveModelId,
                     name = "${_selectedAnalyte.value?.name ?: "Unknown"}_Manual_${System.currentTimeMillis()}",
                     function = result.function,
-                    pixelType = result.pixelType ?: PixelType.GREEN,
+                    pixelType = result.pixelType ?: defaultPixelTypeForCurrentProject(),
                     parameters = result.params,
                     metrics = result.allMetrics,
                     dataPoints = result.standardPoints,
@@ -1003,7 +1031,8 @@ class WellLayoutViewModel @Inject constructor(
                         well.pixelValueJson?.let { json ->
                             try {
                                 val pixelValues = parsePixelValues(json)
-                                val pixelValue = pixelValues[result.pixelType?.identifier]
+                                val pixelType = result.pixelType ?: defaultPixelTypeForCurrentProject()
+                                val pixelValue = getPixelValue(pixelValues, pixelType)
                                 if (pixelValue != null) {
                                     val concentration = FittingEngine.predictConcentration(
                                         result.parameters,
@@ -1297,7 +1326,8 @@ class WellLayoutViewModel @Inject constructor(
                     try {
                         val pixelValues = parsePixelValues(well.pixelValueJson!!)
                         // 默认使用GREEN通道
-                        val pixelValue = pixelValues[PixelType.GREEN.name] ?: return@mapNotNull null
+                        val pixelValue = getPixelValue(pixelValues, defaultPixelTypeForCurrentProject())
+                            ?: return@mapNotNull null
                         Pair(concentration, pixelValue)
                     } catch (e: Exception) {
                         Log.e(TAG, "解析像素值失败: ${e.message}")
@@ -1329,7 +1359,8 @@ class WellLayoutViewModel @Inject constructor(
                     try {
                         val pixelValues = parsePixelValues(well.pixelValueJson!!)
                         // 默认使用GREEN通道
-                        val pixelValue = pixelValues[PixelType.GREEN.name] ?: return@mapNotNull null
+                        val pixelValue = getPixelValue(pixelValues, defaultPixelTypeForCurrentProject())
+                            ?: return@mapNotNull null
 
                         // 使用拟合结果预测浓度
                         val concentration = FittingEngine.predictConcentration(
@@ -1361,7 +1392,7 @@ class WellLayoutViewModel @Inject constructor(
                 id = UUID.randomUUID().toString(),
                 name = "${currentAnalyte.name}_${System.currentTimeMillis()}",
                 function = fittingResult.function,
-                pixelType = PixelType.GREEN, // 默认使用GREEN通道
+                pixelType = fittingResult.pixelType ?: defaultPixelTypeForCurrentProject(),
                 parameters = fittingResult.params,  // 使用FittingResult中的params计算属性，它返回Map<String, Double>
                 metrics = fittingResult.metrics,
                 createdAt = Date()
@@ -1433,12 +1464,14 @@ class WellLayoutViewModel @Inject constructor(
                             try {
                                 // 确保pixelType不为null，如果为null则使用默认值
                                 val pixelType = fittingResult.pixelType ?: run {
-                                    Log.w(TAG, "样本 ${well.wellIndex} 的像素类型为null，使用默认GREEN类型")
-                                    PixelType.GREEN
+                                    Log.w(TAG, "样本 ${well.wellIndex} 的像素类型为空，已回退到当前模式的推荐特征")
+                                    defaultPixelTypeForCurrentProject()
                                 }
                                 
+                                val resolvedPixelType =
+                                    if (fittingResult.pixelType == null) defaultPixelTypeForCurrentProject() else pixelType
                                 val pixelMap = PixelExtractionUtils.jsonToMap(json)
-                                val pixelValue = pixelMap[pixelType.identifier]
+                                val pixelValue = getPixelValue(pixelMap, resolvedPixelType)
                                 if (pixelValue != null) {
                                     val concentration = FittingEngine.predictConcentration(
                                         fittingResult.parameters,
@@ -1456,7 +1489,7 @@ class WellLayoutViewModel @Inject constructor(
                                         Log.d(TAG, "样本 ${well.wellIndex} 计算浓度: $concentration")
                                     }
                                 } else {
-                                    Log.w(TAG, "样本 ${well.wellIndex} 没有所需的像素值类型: ${pixelType.displayName}")
+                                    Log.w(TAG, "样本 ${well.wellIndex} 没有所需的像素值类型: ${resolvedPixelType.displayName}")
                                 }
                             } catch (e: Exception) {
                                 Log.e(TAG, "处理样本 ${well.wellIndex} 出错: ${e.message}", e)
