@@ -1,15 +1,17 @@
 package com.muc.fluocolorquant.utils.camera
 
 import android.content.Context
+import android.os.Build
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.net.Uri
 import android.util.Log
 import android.util.Range
+import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.Camera2CameraControl
 import androidx.camera.camera2.interop.CaptureRequestOptions
-import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
@@ -72,6 +74,7 @@ private data class PreparedCameraUseCases(
 /**
  * 基于 CameraX + Camera2Interop 的默认相机引擎实现。
  */
+@ExperimentalCamera2Interop
 class CameraXCameraEngine @Inject constructor(
     @ApplicationContext private val context: Context
 ) : CameraEngine {
@@ -246,6 +249,7 @@ private suspend fun awaitCameraProvider(context: Context): ProcessCameraProvider
         )
     }
 
+@ExperimentalCamera2Interop
 private fun prepareCameraUseCases(
     context: Context,
     requestedSettings: FixedCameraCaptureRequest
@@ -295,8 +299,16 @@ private fun extractCapabilities(
     val supportsManualSensor = availableCapabilities.contains(
         CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR
     )
-    val supportsAeLock = characteristics.get(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE) == true
-    val supportsAwbLock = characteristics.get(CameraCharacteristics.CONTROL_AWB_LOCK_AVAILABLE) == true
+    val supportsAeLock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        characteristics.get(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE) == true
+    } else {
+        false
+    }
+    val supportsAwbLock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        characteristics.get(CameraCharacteristics.CONTROL_AWB_LOCK_AVAILABLE) == true
+    } else {
+        false
+    }
 
     val compensationRange = characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
     val exposureCompensationRange = compensationRange?.lower?.let { lower ->
@@ -351,6 +363,7 @@ private fun normalizeRequest(
     )
 }
 
+@ExperimentalCamera2Interop
 private fun buildCaptureRequestOptions(
     request: FixedCameraCaptureRequest,
     capabilities: CameraCaptureCapabilitiesSnapshot
@@ -407,6 +420,7 @@ private fun buildCaptureRequestOptions(
     return builder.build()
 }
 
+@ExperimentalCamera2Interop
 private fun applyFixedCaptureOptions(
     previewBuilder: CameraPreview.Builder,
     imageCaptureBuilder: ImageCapture.Builder,
@@ -425,6 +439,7 @@ private fun applyFixedCaptureOptions(
     )
 }
 
+@ExperimentalCamera2Interop
 private fun <T> applyRequestOptionsToExtender(
     extender: Camera2Interop.Extender<T>,
     request: FixedCameraCaptureRequest,

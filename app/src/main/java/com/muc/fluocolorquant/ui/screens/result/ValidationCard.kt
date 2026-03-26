@@ -205,7 +205,7 @@ fun ValidationResults(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "暂无验证数据",
+                text = stringResource(R.string.validation_no_data),
                 style = MaterialTheme.typography.bodyMedium
             )
         }

@@ -187,7 +187,8 @@ fun ExportBottomPanel(
 
                     val reportData = ExportViewModel.ReportData(
                         project = project,
-                        analyteDetails = selectedAnalyteDetails.toList()
+                        analyteDetails = selectedAnalyteDetails.toList(),
+                        detectionRun = detectionRun
                     )
 
                     exportViewModel.startCsvExport(reportData)
@@ -198,7 +199,8 @@ fun ExportBottomPanel(
 
                     val reportData = ExportViewModel.ReportData(
                         project = project,
-                        analyteDetails = selectedAnalyteDetails.toList()
+                        analyteDetails = selectedAnalyteDetails.toList(),
+                        detectionRun = detectionRun
                     )
 
                     exportViewModel.startPngExport(reportData)
@@ -209,10 +211,23 @@ fun ExportBottomPanel(
 
                     val reportData = ExportViewModel.ReportData(
                         project = project,
-                        analyteDetails = selectedAnalyteDetails.toList()
+                        analyteDetails = selectedAnalyteDetails.toList(),
+                        detectionRun = detectionRun
                     )
 
                     exportViewModel.startPdfExport(reportData)
+                },
+                onExportArchive = {
+                    val selectedAnalyteDetails = analyteResultDetails.values
+                        .filter { selectedAnalytes.contains(it.analyte) }
+
+                    val reportData = ExportViewModel.ReportData(
+                        project = project,
+                        analyteDetails = selectedAnalyteDetails.toList(),
+                        detectionRun = detectionRun
+                    )
+
+                    exportViewModel.startArchiveExport(reportData, captureScreenshot())
                 }
             )
         }
@@ -326,7 +341,7 @@ fun AnalyteSelectionDialog(
                                 )
                                 Icon(
                                     imageVector = Icons.Filled.Science,
-                                    contentDescription = "Analyte Icon",
+                                    contentDescription = stringResource(R.string.export_analyte_icon_desc),
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier
                                         .padding(start = 8.dp)
@@ -368,7 +383,8 @@ fun ExportOptionsDialog(
     onDismiss: () -> Unit,
     onExportCsv: () -> Unit,
     onExportPng: () -> Unit,
-    onExportPdf: () -> Unit
+    onExportPdf: () -> Unit,
+    onExportArchive: () -> Unit
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -442,6 +458,16 @@ fun ExportOptionsDialog(
                         icon = Icons.Default.PictureAsPdf,
                         backgroundColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
                         onClick = onExportPdf
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    ExportOption(
+                        title = stringResource(R.string.export_archive_title),
+                        description = stringResource(R.string.export_archive_desc),
+                        icon = Icons.Default.FileDownload,
+                        backgroundColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f),
+                        onClick = onExportArchive
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))

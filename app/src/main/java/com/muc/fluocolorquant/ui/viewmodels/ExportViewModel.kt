@@ -25,12 +25,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.AnalyteResultDetails
+import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.SpectrumExportData
 import com.muc.fluocolorquant.data.model.SpectrumChannelExportModel
 import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
-import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
+import com.muc.fluocolorquant.utils.ResultTraceabilityUtils
+import com.muc.fluocolorquant.utils.camera.CameraCaptureMetadataStore
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import com.muc.fluocolorquant.utils.math.WellMappingUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -41,6 +43,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -49,11 +52,14 @@ import java.util.Locale
 import javax.inject.Inject
 import com.muc.fluocolorquant.data.enums.PixelType
 import com.muc.fluocolorquant.ui.components.charts.ChartData
-import java.io.FileInputStream
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * ViewModel负责处理所有导出相关的功能
@@ -102,7 +108,8 @@ class ExportViewModel @Inject constructor(
      */
     data class ReportData(
         val project: Project,
-        val analyteDetails: List<AnalyteResultDetails>
+        val analyteDetails: List<AnalyteResultDetails>,
+        val detectionRun: DetectionRun? = null
     )
 
     /**
@@ -168,10 +175,215 @@ class ExportViewModel @Inject constructor(
     }
 
     /**
+     * 导出科研归档包。
+     * 归档内包含 PDF、CSV、结果页截图、原始图片、裁切图片与可追溯 JSON。
+     */
+    fun startArchiveExport(reportData: ReportData, resultSnapshot: Bitmap?) {
+        _exportState.value = ExportState.InProgress
+        viewModelScope.launch {
+            try {
+                val filePath = exportResearchArchive(reportData, resultSnapshot)
+                _exportState.value = ExportState.Success(
+                    message = context.getString(R.string.export_archive_success),
+                    filePath = filePath
+                )
+            } catch (e: Exception) {
+                Log.e("ExportViewModel", "Archive export failed", e)
+                _exportState.value = ExportState.Error(
+                    context.getString(R.string.export_error, e.localizedMessage ?: "Unknown error")
+                )
+            }
+        }
+    }
+
+    /**
      * 重置导出状态
      */
     fun resetExportState() {
         _exportState.value = ExportState.Idle
+    }
+
+    @Suppress("DEPRECATION")
+    private fun getDownloadDirectory(): File {
+        val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (publicDownloads != null && (publicDownloads.exists() || publicDownloads.mkdirs())) {
+            return publicDownloads
+        }
+        return context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: context.filesDir
+    }
+
+    private fun writeTraceabilityCsvHeader(
+        fos: FileOutputStream,
+        reportData: ReportData
+    ) {
+        val traceability = reportData.analyteDetails.firstOrNull()?.traceabilityInfo
+        val captureMetadata = traceability?.captureMetadata
+        val lines = buildList {
+            add("# Project: ${reportData.project.name}")
+            add("# Detection Mode: ${reportData.project.detectionMode}")
+            add("# Analysis Method: ${reportData.project.analysisMethod}")
+            add("# Export Time: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}")
+            reportData.detectionRun?.detectionModelUsed?.let { add("# Detection Model: $it") }
+            reportData.detectionRun?.concentrationModelUsed?.let { add("# Concentration Model: $it") }
+            captureMetadata?.capturedAtLabel?.let { add("# Capture Time: $it") }
+            captureMetadata?.iso?.let { add("# Capture ISO: $it") }
+            captureMetadata?.exposureTimeMs?.let {
+                add("# Capture Exposure: ${String.format(Locale.US, "%.2f", it)} ms")
+            }
+            captureMetadata?.awbModeLabel?.let { add("# Capture AWB: $it") }
+            if (reportData.analyteDetails.isNotEmpty()) {
+                add(
+                    "# Analyte Settings: " + reportData.analyteDetails.joinToString(" | ") { detail ->
+                        buildString {
+                            append(detail.analyte.name)
+                            detail.traceabilityInfo?.templateName?.let { append(" template=$it") }
+                            detail.traceabilityInfo?.curveModelName?.let { append(" curve=$it") }
+                            detail.traceabilityInfo?.pixelFeatureName?.let { append(" pixel=$it") }
+                        }
+                    }
+                )
+            }
+            add("")
+        }
+        fos.write(lines.joinToString("\n").toByteArray())
+    }
+
+    private suspend fun exportResearchArchive(
+        reportData: ReportData,
+        resultSnapshot: Bitmap?
+    ): String = withContext(Dispatchers.IO) {
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val safeProjectName = reportData.project.name.replace(" ", "_")
+        val zipFile = File(getDownloadDirectory(), "FluoColor_Archive_${safeProjectName}_$timestamp.zip")
+        val workDir = File(context.cacheDir, "archive_${safeProjectName}_$timestamp")
+
+        if (!workDir.exists()) {
+            workDir.mkdirs()
+        }
+
+        try {
+            val pdfFile = File(workDir, "report.pdf")
+            exportFullPdfReport(reportData, pdfFile)
+
+            val csvFile = File(workDir, "results.csv")
+            exportDataToCsv(reportData, csvFile)
+
+            val manifestFile = File(workDir, "traceability_manifest.json")
+            manifestFile.writeText(buildTraceabilityManifest(reportData).toString(2))
+
+            val snapshotFile = resultSnapshot?.let {
+                File(workDir, "result_snapshot.png").also { file ->
+                    FileOutputStream(file).use { output ->
+                        it.compress(Bitmap.CompressFormat.PNG, 100, output)
+                    }
+                }
+            }
+
+            val projectImageFile = resolveExistingFile(reportData.project.imageUri)
+            val projectMetadataFile = projectImageFile
+                ?.let(CameraCaptureMetadataStore::buildMetadataFile)
+                ?.takeIf(File::exists)
+
+            val cropFiles = reportData.analyteDetails
+                .flatMap { detail -> detail.wellResults }
+                .mapNotNull { it.croppedImageIdentifier }
+                .mapNotNull(::resolveExistingFile)
+                .distinctBy { it.absolutePath }
+
+            ZipOutputStream(FileOutputStream(zipFile)).use { zip ->
+                addFileToZip(zip, pdfFile, "report/report.pdf")
+                addFileToZip(zip, csvFile, "report/results.csv")
+                addFileToZip(zip, manifestFile, "manifest/traceability_manifest.json")
+                snapshotFile?.let { addFileToZip(zip, it, "report/result_snapshot.png") }
+                projectImageFile?.let {
+                    addFileToZip(zip, it, "source/${sanitizeArchiveName(it.name)}")
+                }
+                projectMetadataFile?.let {
+                    addFileToZip(zip, it, "source/${sanitizeArchiveName(it.name)}")
+                }
+                cropFiles.forEachIndexed { index, file ->
+                    addFileToZip(zip, file, "well_crops/${index + 1}_${sanitizeArchiveName(file.name)}")
+                }
+            }
+
+            val fileUri = Uri.fromFile(zipFile)
+            context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, fileUri))
+            return@withContext zipFile.absolutePath
+        } finally {
+            workDir.deleteRecursively()
+        }
+    }
+
+    private fun buildTraceabilityManifest(reportData: ReportData): JSONObject {
+        val captureMetadata = ResultTraceabilityUtils.readCaptureMetadata(reportData.project.imageUri)
+        return JSONObject().apply {
+            put("exportedAt", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).format(Date()))
+            put("project", JSONObject().apply {
+                put("id", reportData.project.id)
+                put("name", reportData.project.name)
+                put("detectionMode", reportData.project.detectionMode)
+                put("recognitionType", reportData.project.recognitionType)
+                put("analysisMethod", reportData.project.analysisMethod)
+                put("imageUri", reportData.project.imageUri)
+                put("createdAt", reportData.project.createTime.toString())
+            })
+            put("detectionRun", JSONObject().apply {
+                put("runId", reportData.detectionRun?.runId)
+                put("timestamp", reportData.detectionRun?.timestamp?.toString())
+                put("detectionModelUsed", reportData.detectionRun?.detectionModelUsed)
+                put("concentrationModelUsed", reportData.detectionRun?.concentrationModelUsed)
+                put("confThreshold", reportData.detectionRun?.confThreshold)
+                put("iouThreshold", reportData.detectionRun?.iouThreshold)
+                put("wellsDetected", reportData.detectionRun?.wellsDetected)
+            })
+            put("captureMetadata", JSONObject().apply {
+                put("capturedAt", captureMetadata?.capturedAtLabel)
+                put("iso", captureMetadata?.iso)
+                put("exposureTimeMs", captureMetadata?.exposureTimeMs)
+                put("exposureCompensationIndex", captureMetadata?.exposureCompensationIndex)
+                put("awbMode", captureMetadata?.awbModeLabel)
+                put("metadataFilePath", captureMetadata?.metadataFilePath)
+            })
+            put("analytes", JSONArray().apply {
+                reportData.analyteDetails.forEach { detail ->
+                    put(
+                        JSONObject().apply {
+                            put("id", detail.analyte.id)
+                            put("name", detail.analyte.name)
+                            put("analysisMethod", detail.analysisMethod)
+                            put("templateName", detail.traceabilityInfo?.templateName)
+                            put("curveModelName", detail.traceabilityInfo?.curveModelName)
+                            put("pixelFeatureName", detail.traceabilityInfo?.pixelFeatureName)
+                            put("wellCount", detail.wellResults.size)
+                            put("concentrationUnit", detail.concentrationUnit)
+                        }
+                    )
+                }
+            })
+        }
+    }
+
+    private fun resolveExistingFile(identifier: String): File? {
+        if (identifier.isBlank()) return null
+        return when {
+            identifier.startsWith("file://") -> Uri.parse(identifier).path?.let(::File)
+            identifier.startsWith("content://") -> null
+            else -> File(identifier)
+        }?.takeIf { it.exists() }
+    }
+
+    private fun addFileToZip(zip: ZipOutputStream, file: File, entryName: String) {
+        if (!file.exists()) return
+        FileInputStream(file).use { input ->
+            zip.putNextEntry(ZipEntry(entryName))
+            input.copyTo(zip)
+            zip.closeEntry()
+        }
+    }
+
+    private fun sanitizeArchiveName(name: String): String {
+        return name.replace(Regex("[^A-Za-z0-9._-]"), "_")
     }
 
     // ==================== 光谱导出功能 ====================
@@ -242,15 +454,17 @@ class ExportViewModel @Inject constructor(
      * 导出数据为CSV文件
      * @return 保存的文件路径
      */
-    private suspend fun exportDataToCsv(reportData: ReportData): String = withContext(Dispatchers.IO) {
+    private suspend fun exportDataToCsv(
+        reportData: ReportData,
+        targetFile: File? = null
+    ): String = withContext(Dispatchers.IO) {
         try {
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val fileName = "FluoColor_${reportData.project.name.replace(" ", "_")}_$timestamp.csv"
-
-            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val file = File(downloadDir, fileName)
+            val file = targetFile ?: File(getDownloadDirectory(), fileName)
 
             FileOutputStream(file).use { fos ->
+                writeTraceabilityCsvHeader(fos, reportData)
                 val pixelTypeHeaders = PixelType.values().joinToString(",") { it.identifier }
                 val titleLine = "Well,WellIndex,AnalyteName,AnalysisMethod,PredictedConcentration,TrueConcentration,Unit,$pixelTypeHeaders\n"
                 fos.write(titleLine.toByteArray())
@@ -293,8 +507,10 @@ class ExportViewModel @Inject constructor(
                 }
             }
 
-            val fileUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-            context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, fileUri))
+            if (targetFile == null) {
+                val fileUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, fileUri))
+            }
 
             return@withContext file.absolutePath
         } catch (e: IOException) {
@@ -312,8 +528,7 @@ class ExportViewModel @Inject constructor(
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val fileName = "FluoColor_Spectrum_${data.project.name.replace(" ", "_")}_$timestamp.csv"
 
-            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val file = File(downloadDir, fileName)
+            val file = File(getDownloadDirectory(), fileName)
 
             FileOutputStream(file).use { fos ->
                 // 写入头部注释
@@ -534,7 +749,7 @@ class ExportViewModel @Inject constructor(
                 val xValue = xMin + (xMax - xMin) * i / xTickCount
                 val xPos = left + (graphWidth * (xValue - xMin) / (xMax - xMin)).toFloat()
                 canvas.drawLine(xPos, bottom, xPos, bottom + 10, axisPaint)
-                canvas.drawText(String.format("%.0f", xValue), xPos, bottom + 35f, tickLabelPaint)
+                canvas.drawText(String.format(Locale.US, "%.0f", xValue), xPos, bottom + 35f, tickLabelPaint)
             }
 
             // 绘制Y轴刻度
@@ -544,7 +759,7 @@ class ExportViewModel @Inject constructor(
                 val yValue = yMin + (yMax - yMin) * i / yTickCount
                 val yPos = top + graphHeight - (graphHeight * (yValue - yMin) / (yMax - yMin)).toFloat()
                 canvas.drawLine(left - 10, yPos, left, yPos, axisPaint)
-                canvas.drawText(String.format("%.2f", yValue), left - 15f, yPos + 6, tickLabelPaint)
+                canvas.drawText(String.format(Locale.US, "%.2f", yValue), left - 15f, yPos + 6, tickLabelPaint)
             }
 
             // 绘制光谱曲线
@@ -579,7 +794,7 @@ class ExportViewModel @Inject constructor(
                         isAntiAlias = true
                         textAlign = Paint.Align.CENTER
                     }
-                    canvas.drawText(String.format("%.1f nm", point.x), x, y - 15, peakLabelPaint)
+                    canvas.drawText(String.format(Locale.US, "%.1f nm", point.x), x, y - 15, peakLabelPaint)
                 }
             }
 
@@ -662,7 +877,7 @@ class ExportViewModel @Inject constructor(
                 val xValue = xMin + (xMax - xMin) * i / xTickCount
                 val xPos = left + (graphWidth * (xValue - xMin) / (xMax - xMin)).toFloat()
                 canvas.drawLine(xPos, bottom, xPos, bottom + 10, axisPaint)
-                canvas.drawText(String.format("%.0f", xValue), xPos, bottom + 35f, tickLabelPaint)
+                canvas.drawText(String.format(Locale.US, "%.0f", xValue), xPos, bottom + 35f, tickLabelPaint)
             }
             
             // 绘制Y轴刻度
@@ -672,7 +887,7 @@ class ExportViewModel @Inject constructor(
                 val yValue = yMin + (yMax - yMin) * i / yTickCount
                 val yPos = top + graphHeight - (graphHeight * (yValue - yMin) / (yMax - yMin)).toFloat()
                 canvas.drawLine(left - 10, yPos, left, yPos, axisPaint)
-                canvas.drawText(String.format("%.2f", yValue), left - 15f, yPos + 6, tickLabelPaint)
+                canvas.drawText(String.format(Locale.US, "%.2f", yValue), left - 15f, yPos + 6, tickLabelPaint)
             }
             
             // 为每个通道定义不同的颜色 - 15种颜色
@@ -817,7 +1032,7 @@ class ExportViewModel @Inject constructor(
                     if (concentration != null) {
                         val textColor = if (composeColor.red * 0.299 + composeColor.green * 0.587 + composeColor.blue * 0.114 > 0.6) android.graphics.Color.BLACK else android.graphics.Color.WHITE
                         textPaint.color = textColor
-                        canvas.drawText(String.format("%.1f", concentration), left + cellWidth / 2, top + cellHeight / 2 + 8f, textPaint)
+                        canvas.drawText(String.format(Locale.US, "%.1f", concentration), left + cellWidth / 2, top + cellHeight / 2 + 8f, textPaint)
                     }
                 }
             }
@@ -848,11 +1063,11 @@ class ExportViewModel @Inject constructor(
             legendTextPaint.textAlign = Paint.Align.LEFT
             canvas.drawText("0.00", legendX, legendY + legendHeight + 30f, legendTextPaint)
             legendTextPaint.textAlign = Paint.Align.RIGHT
-            canvas.drawText(String.format("%.2f", maxConcentration), legendX + legendWidth, legendY + legendHeight + 30f, legendTextPaint)
+            canvas.drawText(String.format(Locale.US, "%.2f", maxConcentration), legendX + legendWidth, legendY + legendHeight + 30f, legendTextPaint)
 
             // 图例标题，居中显示
             legendTextPaint.textAlign = Paint.Align.CENTER
-            canvas.drawText(context.getString(R.string.bitmap_legend_concentration_range_format, String.format("%.2f", maxConcentration), analyteDetail.concentrationUnit),
+            canvas.drawText(context.getString(R.string.bitmap_legend_concentration_range_format, String.format(Locale.US, "%.2f", maxConcentration), analyteDetail.concentrationUnit),
                 legendX + legendWidth / 2, legendY - 10f, legendTextPaint)
 
             return bitmap
@@ -927,7 +1142,7 @@ class ExportViewModel @Inject constructor(
                 val yValue = minConcentration + (maxConcentration - minConcentration) * i / yGridLines
                 val yPos = topPadding + graphHeight - (graphHeight * (yValue - minConcentration) / (maxConcentration - minConcentration)).toFloat()
                 canvas.drawLine(leftPadding - 5, yPos, leftPadding + graphWidth, yPos, Paint().apply { color = android.graphics.Color.LTGRAY; strokeWidth = 1f })
-                canvas.drawText(String.format("%.1f", yValue), leftPadding - 10, yPos + 8, labelPaint)
+                canvas.drawText(String.format(Locale.US, "%.1f", yValue), leftPadding - 10, yPos + 8, labelPaint)
             }
 
             if (validResults.size > 1) {
@@ -1069,7 +1284,7 @@ class ExportViewModel @Inject constructor(
             val x = left + i * (graphWidth / numTicks)
             canvas.drawLine(x, bottom, x, bottom + 10, axisPaint)
             canvas.drawLine(x, top, x, bottom, gridPaint)
-            canvas.drawText(String.format("%.2f", value), x, bottom + 35, labelPaint)
+            canvas.drawText(String.format(Locale.US, "%.2f", value), x, bottom + 35, labelPaint)
         }
 
         labelPaint.textAlign = Paint.Align.RIGHT
@@ -1078,7 +1293,7 @@ class ExportViewModel @Inject constructor(
             val y = bottom - i * (graphHeight / numTicks)
             canvas.drawLine(left, y, left - 10, y, axisPaint)
             canvas.drawLine(left, y, right, y, gridPaint)
-            canvas.drawText(String.format("%.2f", value), left - 15, y + 8, labelPaint)
+            canvas.drawText(String.format(Locale.US, "%.2f", value), left - 15, y + 8, labelPaint)
         }
     }
 
@@ -1174,10 +1389,13 @@ class ExportViewModel @Inject constructor(
      *
      * @return 保存的文件路径
      */
-    private suspend fun exportFullPdfReport(reportData: ReportData): String = withContext(Dispatchers.IO) {
+    private suspend fun exportFullPdfReport(
+        reportData: ReportData,
+        targetFile: File? = null
+    ): String = withContext(Dispatchers.IO) {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val fileName = "FluoColor_Report_${reportData.project.name.replace(" ", "_")}_$timestamp.pdf"
-        val reportFile = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), fileName)
+        val reportFile = targetFile ?: File(getDownloadDirectory(), fileName)
         val document = PdfDocument()
 
         try {
@@ -1215,8 +1433,10 @@ class ExportViewModel @Inject constructor(
             document.close()
         }
 
-        val fileUri = Uri.fromFile(reportFile)
-        context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, fileUri))
+        if (targetFile == null) {
+            val fileUri = Uri.fromFile(reportFile)
+            context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, fileUri))
+        }
         return@withContext reportFile.absolutePath
     }
 
@@ -1314,6 +1534,17 @@ class ExportViewModel @Inject constructor(
         drawFormattedText(canvas, 
             context.getString(R.string.pdf_label_detection_mode_format, detectionModeText), 
             cardLeft + padding, yOffset, textPaint, cardRight - cardLeft - 2 * padding)
+
+        buildTraceabilityPdfLines(reportData).forEach { line ->
+            yOffset = drawFormattedText(
+                canvas,
+                line,
+                cardLeft + padding,
+                yOffset + 10f,
+                textPaint,
+                cardRight - cardLeft - 2 * padding
+            )
+        }
         
         // 绘制内容总览卡片
         yOffset = cardTop + cardHeight + 24f
@@ -1357,6 +1588,60 @@ class ExportViewModel @Inject constructor(
         )
         
         Log.d("ExportViewModel", "封面页创建成功")
+    }
+
+    private fun buildTraceabilityPdfLines(reportData: ReportData): List<String> {
+        val traceability = reportData.analyteDetails.firstOrNull()?.traceabilityInfo ?: return emptyList()
+        val captureLine = buildString {
+            traceability.captureMetadata?.capturedAtLabel?.let {
+                append(context.getString(R.string.result_traceability_capture_time))
+                append(it)
+            }
+            traceability.captureMetadata?.iso?.let {
+                if (isNotEmpty()) append("  |  ")
+                append(context.getString(R.string.result_traceability_capture_iso))
+                append(it)
+            }
+            traceability.captureMetadata?.exposureTimeMs?.let {
+                if (isNotEmpty()) append("  |  ")
+                append(context.getString(R.string.result_traceability_capture_exposure))
+                append(context.getString(R.string.result_traceability_exposure_value, formatPdfDecimal(it)))
+            }
+        }
+
+        return buildList {
+            traceability.detectionModelName?.let {
+                add(context.getString(R.string.result_traceability_detection_model) + it)
+            }
+            traceability.concentrationModelName?.let {
+                add(context.getString(R.string.result_traceability_concentration_model) + it)
+            }
+            if (captureLine.isNotBlank()) {
+                add(captureLine)
+            }
+            val thresholdLine = buildString {
+                traceability.confidenceThreshold?.let {
+                    append(context.getString(R.string.result_traceability_conf_threshold))
+                    append(context.getString(R.string.result_traceability_threshold_value, formatPdfDecimal(it.toDouble())))
+                }
+                traceability.iouThreshold?.let {
+                    if (isNotEmpty()) append("  |  ")
+                    append(context.getString(R.string.result_traceability_iou_threshold))
+                    append(context.getString(R.string.result_traceability_threshold_value, formatPdfDecimal(it.toDouble())))
+                }
+            }
+            if (thresholdLine.isNotBlank()) {
+                add(thresholdLine)
+            }
+        }
+    }
+
+    private fun formatPdfDecimal(value: Double): String {
+        return if (value == value.toLong().toDouble()) {
+            value.toLong().toString()
+        } else {
+            String.format(Locale.US, "%.2f", value)
+        }
     }
 
     /**
@@ -1623,6 +1908,17 @@ class ExportViewModel @Inject constructor(
             context.getString(R.string.pdf_label_detection_mode_format, detectionModeText),
             PDF_MARGIN, yOffset, textPaint, PDF_CONTENT_WIDTH) + 20f
 
+        buildTraceabilityPdfLines(reportData).forEach { line ->
+            yOffset = drawFormattedText(
+                canvas,
+                line,
+                PDF_MARGIN,
+                yOffset,
+                textPaint,
+                PDF_CONTENT_WIDTH
+            ) + 10f
+        }
+
         // 章节目录
         val chapterTitlePaint = createTextPaint(14f)
         reportData.analyteDetails.forEachIndexed { index, detail ->
@@ -1689,8 +1985,8 @@ class ExportViewModel @Inject constructor(
                     else -> "未知"
                 }
 
-                val predicted = wellResult.predictedConcentration?.let { String.format("%.4f", it) } ?: "-"
-                val trueVal = wellResult.trueConcentration?.let { String.format("%.4f", it) } ?: "-"
+                val predicted = wellResult.predictedConcentration?.let { String.format(Locale.US, "%.4f", it) } ?: "-"
+                val trueVal = wellResult.trueConcentration?.let { String.format(Locale.US, "%.4f", it) } ?: "-"
 
                 data.add(listOf(
                     wellLabel,
@@ -2056,7 +2352,7 @@ class ExportViewModel @Inject constructor(
             y = drawFormattedText(canvas, context.getString(R.string.curve_parameters), PDF_MARGIN, y, textPaint, PDF_CONTENT_WIDTH) + 5f
 
             val paramText = model.parameters.entries.joinToString(", ") { (key, value) ->
-                "$key: ${String.format("%.4f", value)}"
+                "$key: ${String.format(Locale.US, "%.4f", value)}"
             }
             y = drawFormattedText(canvas, paramText, PDF_MARGIN + 20f, y, smallTextPaint, PDF_CONTENT_WIDTH - 20f) + 10f
 
@@ -2065,7 +2361,7 @@ class ExportViewModel @Inject constructor(
                 y = drawFormattedText(canvas, context.getString(R.string.fitting_quality), PDF_MARGIN, y, textPaint, PDF_CONTENT_WIDTH) + 5f
 
                 val metricText = metrics.entries.joinToString(", ") { (key, value) ->
-                    "$key: ${String.format("%.4f", value)}"
+                    "$key: ${String.format(Locale.US, "%.4f", value)}"
                 }
                 y = drawFormattedText(canvas, metricText, PDF_MARGIN + 20f, y, smallTextPaint, PDF_CONTENT_WIDTH - 20f) + 10f
             }
@@ -2296,8 +2592,8 @@ class ExportViewModel @Inject constructor(
                     }
                 }
 
-                val predicted = wellResult.predictedConcentration?.let { String.format("%.4f", it) } ?: "-"
-                val trueVal = wellResult.trueConcentration?.let { String.format("%.4f", it) } ?: "-"
+                val predicted = wellResult.predictedConcentration?.let { String.format(Locale.US, "%.4f", it) } ?: "-"
+                val trueVal = wellResult.trueConcentration?.let { String.format(Locale.US, "%.4f", it) } ?: "-"
 
                 data.add(listOf(
                     wellLabel,
@@ -2588,7 +2884,7 @@ class ExportViewModel @Inject constructor(
     private suspend fun exportSpectrumPdfReport(data: SpectrumExportData): String = withContext(Dispatchers.IO) {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val fileName = "FluoColor_Spectrum_Report_${data.project.name.replace(" ", "_")}_$timestamp.pdf"
-        val reportFile = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), fileName)
+        val reportFile = File(getDownloadDirectory(), fileName)
         val document = PdfDocument()
         try {
             var pageCount = 1
@@ -2703,8 +2999,8 @@ class ExportViewModel @Inject constructor(
             listOf(
                 channel.channelIndex.toString(),
                 channel.analyteName,
-                channel.peakWavelength?.let { String.format("%.1f", it) } ?: "-",
-                channel.peakIntensity?.let { String.format("%.3f", it) } ?: "-",
+                channel.peakWavelength?.let { String.format(Locale.US, "%.1f", it) } ?: "-",
+                channel.peakIntensity?.let { String.format(Locale.US, "%.3f", it) } ?: "-",
                 channel.dataPointCount.toString()
             )
         }

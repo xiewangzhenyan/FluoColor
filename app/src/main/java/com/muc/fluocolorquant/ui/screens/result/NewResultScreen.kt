@@ -28,7 +28,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,18 +48,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
-import com.muc.fluocolorquant.ui.components.LocalToastManager
-import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.ExportViewModel
 import com.muc.fluocolorquant.ui.viewmodels.ResultViewModel
@@ -84,10 +82,8 @@ fun NewResultScreen(
     val analytesList by viewModel.analytesList.collectAsState()
     val selectedAnalyteId by viewModel.selectedAnalyteId.collectAsState()
     val concentrationUnit by viewModel.concentrationUnit.collectAsState()
-    val toastManager = LocalToastManager.current
     var showExportPanel by remember { mutableStateOf(false) }
     val view = LocalView.current
-    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(runId, projectId) {
@@ -97,9 +93,6 @@ fun NewResultScreen(
             else -> viewModel.loadDefaultOrMostRecentResults()
         }
     }
-
-    val project = (resultState as? ResultViewModel.ResultState.Success)?.project
-    val isStandardCurveFitting = project?.analysisMethod == "CURVE_FIT"
 
     Scaffold(
         topBar = {
@@ -134,25 +127,6 @@ fun NewResultScreen(
                     actionIconContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showExportPanel = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = stringResource(R.string.export)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = stringResource(R.string.export))
-                }
-            }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
@@ -237,6 +211,9 @@ fun NewResultScreen(
                             val currentAnalyteId = selectedAnalyteId ?: ""
                             val currentAnalyteDetails = analyteResultsMap[currentAnalyteId]
                             if (currentAnalyteDetails != null) {
+                                ResultTraceabilityCard(currentAnalyteDetails)
+                                Spacer(modifier = Modifier.height(16.dp))
+
                                 AnalysisPlanCard(currentAnalyteDetails)
                                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -319,7 +296,10 @@ fun NewResultScreen(
                         )
                         val canvas = android.graphics.Canvas(bitmap)
                         rootView.draw(canvas)
-                        val statusBarHeight = getStatusBarHeight(context)
+                        val statusBarHeight = ViewCompat.getRootWindowInsets(rootView)
+                            ?.getInsets(WindowInsetsCompat.Type.statusBars())
+                            ?.top
+                            ?: 0
                         android.graphics.Bitmap.createBitmap(
                             bitmap,
                             0,
@@ -391,9 +371,4 @@ fun AnalyteTabRow(
             }
         }
     }
-}
-
-private fun getStatusBarHeight(context: android.content.Context): Int {
-    val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
-    return if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else 0
 }

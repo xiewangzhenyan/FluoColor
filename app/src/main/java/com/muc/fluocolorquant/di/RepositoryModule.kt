@@ -96,6 +96,7 @@ abstract class RepositoryModule {
     ): SpectrumRepository
 
     @Binds
+    @androidx.camera.camera2.interop.ExperimentalCamera2Interop
     abstract fun provideCameraEngine(
         cameraXCameraEngine: CameraXCameraEngine
     ): CameraEngine

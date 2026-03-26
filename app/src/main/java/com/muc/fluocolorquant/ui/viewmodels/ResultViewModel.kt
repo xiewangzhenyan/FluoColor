@@ -21,6 +21,7 @@ import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.PixelType
 import com.muc.fluocolorquant.ui.components.charts.ChartData
 import com.muc.fluocolorquant.ui.components.charts.ChartPoint
+import com.muc.fluocolorquant.utils.ResultTraceabilityUtils
 import com.muc.fluocolorquant.utils.math.MetricsCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -287,7 +288,13 @@ class ResultViewModel @Inject constructor(
                         fittedCurveModel = curveModel,
                         standardCurveChartData = standardCurveChartData,
                         concentrationTrendChartData = concentrationTrendChartData,
-                        validationData = null // 初始为空，需要用户触发验证分析
+                        validationData = null, // 初始为空，需要用户触发验证分析
+                        traceabilityInfo = ResultTraceabilityUtils.buildTraceabilityInfo(
+                            project = project,
+                            detectionRun = detectionRun,
+                            template = template,
+                            curveModel = curveModel
+                        )
                     )
 
                     // 添加到结果Map

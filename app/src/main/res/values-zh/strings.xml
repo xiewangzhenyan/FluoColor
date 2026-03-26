@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
     <string name="app_name">FluoColorQuant</string>
     
     <!-- Common -->
@@ -276,9 +276,9 @@
     <string name="recognition_type_res">识别类型: %1$s</string>
     <string name="max_concentration_res">最大浓度: %1$s %2$s</string>
     <string name="error">错误</string>
-    <string name="concentration_percent_format">%.2f%%</string>
-    <string name="concentration_format">%.2f %s</string>
-    <string name="concentration_percent_and_value">%.2f%% (%.2f %s)</string>
+    <string name="concentration_percent_format">%1$.2f%%</string>
+    <string name="concentration_format">%1$.2f %2$s</string>
+    <string name="concentration_percent_and_value">%1$.2f%% (%2$.2f %3$s)</string>
     <string name="value_format">%.1f</string>
     <string name="close_button">×</string>
     <string name="well_position_short">%1$s%2$d</string>
@@ -345,7 +345,7 @@
     <string name="csv_header_line_format">孔位,索引,浓度百分比,浓度(%s)</string>
     <string name="bitmap_title_heatmap_with_name">%s - 浓度热力图</string>
     <string name="bitmap_title_value_distribution_with_name">%s - 浓度分布图</string>
-    <string name="bitmap_legend_concentration_range_format">浓度范围: 0 - %s %s</string>
+    <string name="bitmap_legend_concentration_range_format">浓度范围: 0 - %1$s %2$s</string>
     <string name="bitmap_axis_label_concentration_with_unit">浓度 (%s)</string>
     <string name="bitmap_axis_label_well_id_capital">孔位编号</string>
     <string name="pdf_report_main_title">分析报告</string>
@@ -361,11 +361,15 @@
     <string name="no_template_used">未使用模板</string>
     <string name="antigen_manufacturer_placeholder">抗原生产商: %s</string>
     <string name="antibody_manufacturer_placeholder">抗体生产商: %s</string>
-    <string name="reliable_range_format">可靠范围: %s - %s %s</string>
+    <string name="reliable_range_format">可靠范围: %1$s - %2$s %3$s</string>
     
     <string name="result_display">结果展示</string>
     <string name="heatmap">热力图</string>
     <string name="value_map">数值图</string>
+    <string name="result_display_heatmap_desc">以热力图方式展示各孔浓度分布，适合快速查看整体差异。</string>
+    <string name="result_display_value_map_desc">直接展示每个孔位的数值结果，便于精确读取与人工复核。</string>
+    <string name="result_display_chart_desc">以浓度趋势图方式比较各孔变化，便于观察分布走势。</string>
+    <string name="result_display_standard_curve_desc">展示当前分析物的标准曲线与拟合效果，用于核对模型质量。</string>
     <string name="trend_chart">趋势图</string>
     <string name="standard_curve">标准曲线</string>
     <string name="no_standard_curve_data">无标准曲线数据</string>
@@ -378,7 +382,7 @@
     <string name="agreement_metrics">一致性指标</string>
     <string name="input_true_concentrations">输入真实浓度值</string>
     <string name="generate_validation_report">生成验证报告</string>
-    <string name="predicted_concentration_format">预测值: %.4f %s</string>
+    <string name="predicted_concentration_format">预测值: %1$.4f %2$s</string>
     <string name="true_concentration">真实浓度</string>
     
     <string name="no_analytes_found">该项目中未找到分析物</string>
@@ -386,7 +390,7 @@
     <string name="concentration_chart_for">%s 浓度图表</string>
     <string name="pdf_label_detection_mode_format">检测模式: %s</string>
     <string name="pdf_label_recognition_type_format">识别类型: %s</string>
-    <string name="pdf_label_max_concentration_format">最大浓度: %s %s</string>
+    <string name="pdf_label_max_concentration_format">最大浓度: %1$s %2$s</string>
     <string name="pdf_label_creation_time_format">创建时间: %s</string>
     <string name="pdf_header_detection_run_info">检测运行信息</string>
     <string name="pdf_label_detection_model_format">检测模型: %s</string>
@@ -396,12 +400,12 @@
     <string name="pdf_label_wells_detected_count_format">检测到孔位数: %s</string>
     <string name="pdf_header_statistics">统计信息</string>
     <string name="pdf_label_valid_data_points_format">有效数据点: %d</string>
-    <string name="pdf_label_avg_predicted_concentration_format">平均预测浓度百分比: %.2f%%</string>
-    <string name="pdf_label_max_predicted_concentration_format">最高预测浓度百分比: %.2f%%</string>
-    <string name="pdf_label_min_predicted_concentration_format">最低预测浓度百分比: %.2f%%</string>
-    <string name="pdf_label_avg_actual_concentration_format">平均实际浓度: %.2f %s</string>
-    <string name="pdf_label_max_actual_concentration_format">最高实际浓度: %.2f %s</string>
-    <string name="pdf_label_min_actual_concentration_format">最低实际浓度: %.2f %s</string>
+    <string name="pdf_label_avg_predicted_concentration_format">平均预测浓度百分比: %1$.2f%%</string>
+    <string name="pdf_label_max_predicted_concentration_format">最高预测浓度百分比: %1$.2f%%</string>
+    <string name="pdf_label_min_predicted_concentration_format">最低预测浓度百分比: %1$.2f%%</string>
+    <string name="pdf_label_avg_actual_concentration_format">平均实际浓度: %1$.2f %2$s</string>
+    <string name="pdf_label_max_actual_concentration_format">最高实际浓度: %1$.2f %2$s</string>
+    <string name="pdf_label_min_actual_concentration_format">最低实际浓度: %1$.2f %2$s</string>
     <string name="pdf_header_concentration_distribution_chart">浓度分布图</string>
     <string name="pdf_report_continued_title">分析报告（续）</string>
     <string name="pdf_footer_generated_on_app_format">由FluoColorQuant生成于 %s</string>
@@ -791,7 +795,7 @@
 
     <!-- 结果显示相关字符串 -->
     <string name="concentration_unit_res">浓度单位: %s</string>
-    <string name="concentration_value_format">浓度: %.2f %s</string>
+    <string name="concentration_value_format">浓度: %1$.2f %2$s</string>
 
     <!-- PDF导出相关字符串 -->
     <string name="pdf_title_analysis_report">分析报告</string>
@@ -1218,4 +1222,34 @@
     <string name="spectrum_calibration_residual_reference_value">参考 %.1f nm</string>
     <string name="spectrum_calibration_residual_fitted_value">拟合 %.1f nm</string>
     <string name="spectrum_calibration_residual_delta_value">Δ %.2f nm</string>
+    <string name="export_archive_title">科研归档包 ZIP</string>
+    <string name="export_archive_desc">一次性导出 PDF、CSV、原图、裁切图、元数据 JSON 和结果截图。</string>
+    <string name="export_archive_success">科研归档包导出成功</string>
+    <string name="export_analyte_icon_desc">分析物图标</string>
+    <string name="validation_no_data">暂无验证数据</string>
+
+    <string name="result_traceability_title">结果可追溯</string>
+    <string name="result_traceability_subtitle">回看本次结果对应的采集、推理、阈值与相机运行设置。</string>
+    <string name="result_traceability_not_available">暂无</string>
+    <string name="result_traceability_capture_time">拍摄时间： </string>
+    <string name="result_traceability_recognition_type">识别方式</string>
+    <string name="result_traceability_detection_model">检测模型： </string>
+    <string name="result_traceability_concentration_model">浓度模型： </string>
+    <string name="result_traceability_capture_iso">ISO</string>
+    <string name="result_traceability_capture_exposure">曝光</string>
+    <string name="result_traceability_capture_awb">白平衡</string>
+    <string name="result_traceability_conf_threshold">置信度阈值： </string>
+    <string name="result_traceability_iou_threshold">IoU 阈值： </string>
+    <string name="result_traceability_template">使用模板</string>
+    <string name="result_traceability_curve_model">曲线模型</string>
+    <string name="result_traceability_pixel_feature">像素特征</string>
+    <string name="result_traceability_recognition_auto">自动识别</string>
+    <string name="result_traceability_recognition_manual">手动识别</string>
+    <string name="result_traceability_exposure_value">%1$s ms</string>
+    <string name="result_traceability_threshold_value">%1$s</string>
+    <string name="analysis_method_label">分析方法</string>
+    <string name="analysis_plan_reliable_range_label">可靠范围</string>
+    <string name="analysis_plan_reliable_range_value">%1$s - %2$s %3$s</string>
+    <string name="analysis_plan_antigen_label">抗原试剂</string>
+    <string name="analysis_plan_antibody_label">抗体试剂</string>
 </resources>

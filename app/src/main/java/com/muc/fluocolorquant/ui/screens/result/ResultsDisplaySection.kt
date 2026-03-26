@@ -37,8 +37,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,6 +93,36 @@ fun ResultsDisplaySection(
 
     // 确定要显示的页面数量
     val pageCount = if (details.analysisMethod == "CURVE_FIT" && details.fittedCurveModel != null) 4 else 3
+    val pageOptions = remember(pageCount) {
+        buildList {
+            add(
+                ResultDisplayPageOption(
+                    titleRes = R.string.heatmap,
+                    descriptionRes = R.string.result_display_heatmap_desc
+                )
+            )
+            add(
+                ResultDisplayPageOption(
+                    titleRes = R.string.value_map,
+                    descriptionRes = R.string.result_display_value_map_desc
+                )
+            )
+            add(
+                ResultDisplayPageOption(
+                    titleRes = R.string.concentration_chart,
+                    descriptionRes = R.string.result_display_chart_desc
+                )
+            )
+            if (pageCount == 4) {
+                add(
+                    ResultDisplayPageOption(
+                        titleRes = R.string.standard_curve,
+                        descriptionRes = R.string.result_display_standard_curve_desc
+                    )
+                )
+            }
+        }
+    }
 
     val pagerState = rememberPagerState { pageCount }
 
@@ -137,67 +165,20 @@ fun ResultsDisplaySection(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 选项卡
-            TabRow(
-                selectedTabIndex = pagerState.currentPage,
+            ResultDisplaySegmentedControl(
+                options = pageOptions,
+                selectedIndex = pagerState.currentPage,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp)),
-                containerColor = colorScheme.surfaceVariant.copy(alpha = 0.24f),
-                contentColor = colorScheme.onSurfaceVariant,
-                divider = {},
-                indicator = {}
-            ) {
-                // 浓度热力图页签
-                Tab(
-                    selected = pagerState.currentPage == 0,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                    selectedContentColor = colorScheme.primary,
-                    unselectedContentColor = colorScheme.onSurfaceVariant,
-                    text = { Text(stringResource(R.string.heatmap)) }
-                )
+                    .fillMaxWidth(),
+                onSelect = { page -> scope.launch { pagerState.animateScrollToPage(page) } }
+            )
 
-                // 浓度数值图页签
-                Tab(
-                    selected = pagerState.currentPage == 1,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                    selectedContentColor = colorScheme.primary,
-                    unselectedContentColor = colorScheme.onSurfaceVariant,
-                    text = { Text(stringResource(R.string.value_map)) }
-                )
-
-                // 浓度折线图页签
-                Tab(
-                    selected = pagerState.currentPage == 2,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
-                    selectedContentColor = colorScheme.primary,
-                    unselectedContentColor = colorScheme.onSurfaceVariant,
-                    text = { 
-                        Text(
-                            text = stringResource(R.string.concentration_chart),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                )
-
-                // 标准曲线页签 (仅当使用曲线拟合时显示)
-                if (pageCount == 4) {
-                    Tab(
-                        selected = pagerState.currentPage == 3,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(3) } },
-                        selectedContentColor = colorScheme.primary,
-                        unselectedContentColor = colorScheme.onSurfaceVariant,
-                        text = { 
-                            Text(
-                                text = stringResource(R.string.standard_curve),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    )
-                }
-            }
+            Text(
+                text = stringResource(pageOptions[pagerState.currentPage].descriptionRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 10.dp)
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -225,6 +206,72 @@ fun ResultsDisplaySection(
                     .align(Alignment.CenterHorizontally)
                     .padding(top = 16.dp)
             )
+        }
+    }
+}
+
+private data class ResultDisplayPageOption(
+    val titleRes: Int,
+    val descriptionRes: Int
+)
+
+@Composable
+private fun ResultDisplaySegmentedControl(
+    options: List<ResultDisplayPageOption>,
+    selectedIndex: Int,
+    modifier: Modifier = Modifier,
+    onSelect: (Int) -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val rows = remember(options) {
+        if (options.size > 3) options.chunked(2) else listOf(options)
+    }
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        var optionIndex = 0
+        rows.forEach { rowOptions ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                rowOptions.forEach { option ->
+                    val currentIndex = optionIndex
+                    val selected = currentIndex == selectedIndex
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (selected) colorScheme.primary
+                                else colorScheme.surface.copy(alpha = 0.9f)
+                            )
+                            .border(
+                                width = if (selected) 0.dp else 1.dp,
+                                color = colorScheme.outline.copy(alpha = 0.22f),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .clickable { onSelect(currentIndex) }
+                            .padding(horizontal = 12.dp, vertical = 14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(option.titleRes),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selected) colorScheme.onPrimary else colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    optionIndex += 1
+                }
+            }
         }
     }
 }

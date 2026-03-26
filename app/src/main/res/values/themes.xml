@@ -4,7 +4,6 @@
     <style name="Theme.FluoColorQuant" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@color/white</item>
         <item name="android:navigationBarColor">@color/white</item>
-        <item name="android:windowLightStatusBar">true</item>
     </style>
 
     <style name="Theme.FluoColorQuant.Splash" parent="Theme.FluoColorQuant">

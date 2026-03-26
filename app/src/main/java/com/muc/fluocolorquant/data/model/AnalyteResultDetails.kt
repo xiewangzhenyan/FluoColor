@@ -23,7 +23,8 @@ data class AnalyteResultDetails(
     val concentrationTrendChartData: ChartData? = null, // 浓度折线图的数据
 
     // 精度验证数据 (可空，因为需要用户触发)
-    val validationData: ValidationData? = null
+    val validationData: ValidationData? = null,
+    val traceabilityInfo: ResultTraceabilityInfo? = null
 )
 
 /**
