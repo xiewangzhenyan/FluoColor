@@ -38,7 +38,7 @@ class SessionManager @Inject constructor(
 
     // 检查用户是否已登录
     suspend fun isLoggedIn(): Boolean {
-        return userIdFlow.first() != null
+        return getCurrentUser() != null
     }
 
     // 保存登录会话
@@ -60,6 +60,10 @@ class SessionManager @Inject constructor(
     // 获取当前登录的用户信息
     suspend fun getCurrentUser(): User? {
         val userId = userIdFlow.first() ?: return null
-        return userRepository.getUserById(userId)
+        val user = userRepository.getUserById(userId)
+        if (user == null) {
+            clearSession()
+        }
+        return user
     }
 } 

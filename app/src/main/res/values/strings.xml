@@ -71,6 +71,9 @@
     <string name="unknown_user">Unknown User</string>
     <string name="confirm_logout">Confirm Logout</string>
     <string name="confirm_logout_message">Are you sure you want to logout?</string>
+    <string name="login_required_redirect">Login expired. Please log in again.</string>
+    <string name="logout_success">Logged out successfully</string>
+    <string name="navigation_failed">Navigation failed: %1$s</string>
     <string name="user_avatar">User Avatar</string>
     <string name="user_menu">User Menu</string>
 

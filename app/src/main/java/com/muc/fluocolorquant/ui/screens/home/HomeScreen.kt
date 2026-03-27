@@ -1,8 +1,7 @@
-package com.muc.fluocolorquant.ui.screens.home
+﻿package com.muc.fluocolorquant.ui.screens.home
 
 import android.net.Uri
 import android.util.Log
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.MutableTransitionState
@@ -91,6 +90,9 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import coil.size.Size
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.data.model.User
+import com.muc.fluocolorquant.ui.components.LocalToastManager
+import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
 import kotlinx.coroutines.delay
@@ -103,14 +105,24 @@ data class BottomNavItem(
     val badgeCount: Int? = null
 )
 
+private fun isLoginInvalid(currentUser: User?, unknownUserString: String): Boolean {
+    return currentUser == null || currentUser.username == unknownUserString
+}
+
+private fun navigateToLogin(navController: NavController) {
+    navController.navigate(Screen.Login.route) {
+        launchSingleTop = true
+        popUpTo(navController.graph.id) { inclusive = true }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
     userViewModel: UserViewModel = hiltViewModel()
 ) {
-    // 获取上下文
-    val context = LocalContext.current
+    val toastManager = LocalToastManager.current
 
     // 底部导航项
     val bottomNavItems = listOf(
@@ -123,27 +135,8 @@ fun HomeScreen(
     val pagerState = rememberPagerState(initialPage = 0) { bottomNavItems.size }
     val coroutineScope = rememberCoroutineScope()
 
-    // 在顶部操作栏中添加用户信息和退出登录选项
-    val currentUser by userViewModel.currentUser.collectAsState()
-
-    // 提前获取字符串资源
-    val unknownUserString = stringResource(R.string.unknown_user)
-
-    // 记录页面是否刚刚进入，避免刚进入页面就立即检查并导航
-    val initialComposition = remember { mutableStateOf(true) }
-
-    // 检查用户状态，如果是Unknown User，跳转到登录页面
-    // 但要避免在初始化时和登录后立即导航，这可能导致导航循环
-    LaunchedEffect(currentUser) {
-        // 如果不是初次渲染，并且用户状态为空或Unknown User，则导航到登录页面
-        if (!initialComposition.value && (currentUser == null || currentUser?.username == unknownUserString)) {
-            navController.navigate(Screen.Login.route) {
-                popUpTo(navController.graph.id) { inclusive = true }
-            }
-        }
-        // 第一次渲染后将标记设为false
-        initialComposition.value = false
-    }
+    val loginRequiredMessage = stringResource(R.string.login_required_redirect)
+    val logoutSuccessMessage = stringResource(R.string.logout_success)
 
     // 监听导航返回事件，确保用户数据更新
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -166,12 +159,14 @@ fun HomeScreen(
                 actions = {
                     UserMenu(
                         onLogout = {
-                            // 退出登录后无需额外操作，回调留空
-                            userViewModel.logout { }
-                            // 注意：UserMenu内部会处理导航，这里不需要重复
+                            userViewModel.logout {
+                                toastManager.showToast(logoutSuccessMessage, ToastType.SUCCESS)
+                                navigateToLogin(navController)
+                            }
                         },
                         userViewModel = userViewModel,
-                        navController = navController
+                        navController = navController,
+                        loginRequiredMessage = loginRequiredMessage
                     )
                 }
             )
@@ -270,12 +265,20 @@ fun HomePageContent(
     navController: NavController,
     userViewModel: UserViewModel = hiltViewModel()
 ) {
-    // 获取上下文
-    val context = LocalContext.current
+    val toastManager = LocalToastManager.current
     val currentUser by userViewModel.currentUser.collectAsState()
 
-    // 提前获取字符串资源
     val unknownUserString = stringResource(R.string.unknown_user)
+    val loginRequiredMessage = stringResource(R.string.login_required_redirect)
+    val navigationFailedMessage = stringResource(R.string.navigation_failed)
+    val requireLoginThen: (() -> Unit) -> Unit = { onAuthenticated ->
+        if (isLoginInvalid(currentUser, unknownUserString)) {
+            toastManager.showToast(loginRequiredMessage, ToastType.WARNING)
+            navigateToLogin(navController)
+        } else {
+            onAuthenticated()
+        }
+    }
 
     // 动画状态控制
     val newProjectCardVisible = remember { MutableTransitionState(false) }
@@ -324,12 +327,7 @@ fun HomePageContent(
                     .padding(bottom = 16.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .clickable {
-                        // 检查用户状态
-                        if (currentUser == null || currentUser?.username == unknownUserString) {
-                            navController.navigate(Screen.Login.route) {
-                                popUpTo(navController.graph.id) { inclusive = true }
-                            }
-                        } else {
+                        requireLoginThen {
                             navController.navigate(Screen.NewProject.route)
                         }
                     },
@@ -387,17 +385,15 @@ fun HomePageContent(
 
                     Button(
                         onClick = {
-                            // 检查用户状态
-                            if (currentUser == null || currentUser?.username == unknownUserString) {
-                                navController.navigate(Screen.Login.route) {
-                                    popUpTo(navController.graph.id) { inclusive = true }
-                                }
-                            } else {
+                            requireLoginThen {
                                 try {
                                     navController.navigate(Screen.NewProject.route)
                                 } catch (e: Exception) {
                                     Log.e("HomeScreen", "导航错误: ${e.message}", e)
-                                    Toast.makeText(context, "导航错误: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    toastManager.showToast(
+                                        navigationFailedMessage.format(e.message ?: ""),
+                                        ToastType.ERROR
+                                    )
                                 }
                             }
                         },
@@ -480,10 +476,19 @@ fun HistoryPageContent(
     navController: NavController,
     userViewModel: UserViewModel = hiltViewModel()
 ) {
+    val toastManager = LocalToastManager.current
     val currentUser by userViewModel.currentUser.collectAsState()
 
-    // 提前获取字符串资源
     val unknownUserString = stringResource(R.string.unknown_user)
+    val loginRequiredMessage = stringResource(R.string.login_required_redirect)
+    val requireLoginThen: (() -> Unit) -> Unit = { onAuthenticated ->
+        if (isLoginInvalid(currentUser, unknownUserString)) {
+            toastManager.showToast(loginRequiredMessage, ToastType.WARNING)
+            navigateToLogin(navController)
+        } else {
+            onAuthenticated()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -546,12 +551,7 @@ fun HistoryPageContent(
                 // 查看更多按钮
                 Button(
                     onClick = {
-                        // 检查用户状态
-                        if (currentUser == null || currentUser?.username == unknownUserString) {
-                            navController.navigate(Screen.Login.route) {
-                                popUpTo(navController.graph.id) { inclusive = true }
-                            }
-                        } else {
+                        requireLoginThen {
                             navController.navigate(Screen.History.route)
                         }
                     },
@@ -820,15 +820,23 @@ fun FunctionItem(
 fun UserMenu(
     onLogout: () -> Unit,
     userViewModel: UserViewModel = hiltViewModel(),
-    navController: NavController
+    navController: NavController,
+    loginRequiredMessage: String
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
+    val toastManager = LocalToastManager.current
     val currentUser by userViewModel.currentUser.collectAsState()
 
-    // 提前获取字符串资源
     val unknownUserString = stringResource(R.string.unknown_user)
+    val requireLoginThen: (() -> Unit) -> Unit = { onAuthenticated ->
+        if (isLoginInvalid(currentUser, unknownUserString)) {
+            toastManager.showToast(loginRequiredMessage, ToastType.WARNING)
+            navigateToLogin(navController)
+        } else {
+            onAuthenticated()
+        }
+    }
 
     Box {
         IconButton(onClick = { expanded = true }) {
@@ -914,12 +922,7 @@ fun UserMenu(
                 text = { Text(stringResource(R.string.settings)) },
                 onClick = {
                     expanded = false
-                    // 检查用户状态
-                    if (currentUser == null || currentUser?.username == unknownUserString) {
-                        navController.navigate(Screen.Login.route) {
-                            popUpTo(navController.graph.id) { inclusive = true }
-                        }
-                    } else {
+                    requireLoginThen {
                         navController.navigate(Screen.Settings.route)
                     }
                 },
@@ -937,12 +940,7 @@ fun UserMenu(
                 text = { Text(stringResource(R.string.profile)) },
                 onClick = {
                     expanded = false
-                    // 检查用户状态
-                    if (currentUser == null || currentUser?.username == unknownUserString) {
-                        navController.navigate(Screen.Login.route) {
-                            popUpTo(navController.graph.id) { inclusive = true }
-                        }
-                    } else {
+                    requireLoginThen {
                         navController.navigate(Screen.Profile.route)
                     }
                 },
@@ -981,17 +979,8 @@ fun UserMenu(
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            // 先关闭对话框
                             showLogoutDialog = false
-                            // 调用 logout 函数
                             onLogout()
-                            // 立即导航到登录页面
-                            navController.navigate(Screen.Login.route) {
-                                // 清除所有页面，以确保用户不能返回
-                                popUpTo(navController.graph.id) {
-                                    inclusive = true
-                                }
-                            }
                         },
                         colors = ButtonDefaults.textButtonColors(
                             contentColor = MaterialTheme.colorScheme.error

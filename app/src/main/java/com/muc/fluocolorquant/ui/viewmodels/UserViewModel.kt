@@ -27,18 +27,30 @@ class UserViewModel @Inject constructor(
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
 
     init {
-        // 检查是否已经登录
         checkLoginStatus()
     }
 
+    /**
+     * 启动时同步一次会话状态，避免残留的 userId 让界面误判为已登录。
+     */
     private fun checkLoginStatus() {
         viewModelScope.launch {
-            if (sessionManager.isLoggedIn()) {
-                _loginState.value = LoginState.Success
-                sessionManager.getCurrentUser()?.let { user ->
-                    _currentUser.value = user
-                }
-            }
+            syncSessionState()
+        }
+    }
+
+    /**
+     * 以“能拿到有效用户实体”为准同步登录状态。
+     * 当 DataStore 中只剩残留 userId、用户实体已不存在时，会自动回到未登录状态。
+     */
+    private suspend fun syncSessionState() {
+        val user = sessionManager.getCurrentUser()
+        if (user != null) {
+            _currentUser.value = user
+            _loginState.value = LoginState.Success
+        } else {
+            _currentUser.value = null
+            _loginState.value = LoginState.Idle
         }
     }
 
@@ -86,26 +98,26 @@ class UserViewModel @Inject constructor(
         }
     }
 
-    // [MODIFIED] 修改 logout 函数，增加 onLogoutComplete 回调
+    /**
+     * 退出登录时先清理会话，再统一回调页面做导航，避免出现“未知用户”中间态卡住页面。
+     */
     fun logout(onLogoutComplete: () -> Unit) {
         viewModelScope.launch {
             sessionManager.clearSession()
             _currentUser.value = null
             _loginState.value = LoginState.Idle
-            // 切换到主线程执行UI导航操作
             withContext(Dispatchers.Main) {
                 onLogoutComplete()
             }
         }
     }
 
-    // 添加刷新用户数据的方法
+    /**
+     * 页面恢复时刷新会话状态；如果当前会话已经失效，会同步回到未登录状态。
+     */
     fun refreshUserData() {
         viewModelScope.launch {
-            // 从 sessionManager 获取最新的用户信息
-            sessionManager.getCurrentUser()?.let { user ->
-                _currentUser.value = user
-            }
+            syncSessionState()
         }
     }
 
@@ -120,8 +132,7 @@ class UserViewModel @Inject constructor(
                     userRepository.updateUser(updatedUser)
                     _currentUser.value = updatedUser
                 }
-            } catch (e: Exception) {
-                // 处理错误
+            } catch (_: Exception) {
             }
         }
     }
@@ -144,8 +155,7 @@ class UserViewModel @Inject constructor(
                     userRepository.updateUser(updatedUser)
                     _currentUser.value = updatedUser
                 }
-            } catch (e: Exception) {
-                // 处理错误
+            } catch (_: Exception) {
             }
         }
     }
@@ -157,19 +167,14 @@ class UserViewModel @Inject constructor(
     ): Boolean {
         return try {
             val user = userRepository.getUserById(userId)
-
-            // 验证旧密码是否正确
             if (user != null && user.password == oldPassword) {
-                // 更新密码
                 val updatedUser = user.copy(password = newPassword)
                 userRepository.updateUser(updatedUser)
                 true
             } else {
-                // 旧密码不正确
                 false
             }
-        } catch (e: Exception) {
-            // 发生异常
+        } catch (_: Exception) {
             false
         }
     }
