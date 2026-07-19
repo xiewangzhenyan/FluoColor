@@ -44,7 +44,7 @@ import com.muc.fluocolorquant.data.model.WellResult
         ExperimentTemplate::class
     ],
     version = 9,
-    exportSchema = false
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {

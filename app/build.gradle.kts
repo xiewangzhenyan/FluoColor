@@ -68,6 +68,14 @@ android {
     }
 }
 
+// Room schema 会纳入版本控制，用于验证数据库迁移不会破坏历史科研数据。
+kapt {
+    arguments {
+        arg("room.schemaLocation", "$projectDir/schemas")
+        arg("room.incremental", "true")
+    }
+}
+
 dependencies {
     // 您的所有依赖项保持不变
     implementation(libs.androidx.core.ktx)
@@ -120,6 +128,7 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }
