@@ -6,7 +6,12 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.muc.fluocolorquant.data.AppDatabase
+import com.muc.fluocolorquant.data.migration.DatabaseMigrations
 import com.muc.fluocolorquant.data.dao.DetectionRunDao
+import com.muc.fluocolorquant.data.dao.AcquisitionProfileDao
+import com.muc.fluocolorquant.data.dao.AnalysisModelDao
+import com.muc.fluocolorquant.data.dao.CaptureArtifactDao
+import com.muc.fluocolorquant.data.dao.CarrierProfileDao
 import com.muc.fluocolorquant.data.dao.ProjectDao
 import com.muc.fluocolorquant.data.dao.UserDao
 import com.muc.fluocolorquant.data.dao.WellResultDao
@@ -16,6 +21,7 @@ import com.muc.fluocolorquant.data.dao.CurveModelDao
 import com.muc.fluocolorquant.data.dao.ProjectAnalyteJoinDao
 import com.muc.fluocolorquant.data.dao.ExperimentTemplateDao
 import com.muc.fluocolorquant.data.dao.SpectrumDao
+import com.muc.fluocolorquant.data.dao.SiteMeasurementDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -43,9 +49,18 @@ object DatabaseModule {
             AppDatabase::class.java,
             "fluocolor_database"
         )
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+        .addMigrations(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7,
+            MIGRATION_7_8,
+            MIGRATION_8_9,
+            DatabaseMigrations.MIGRATION_9_10
+        )
         .addCallback(prepopulateCallback)  // 添加预填充回调
-        .fallbackToDestructiveMigration() // 版本更新时，如果没有提供迁移路径，则重建数据库
         .build()
     }
     
@@ -688,4 +703,29 @@ object DatabaseModule {
     fun provideExperimentTemplateDao(appDatabase: AppDatabase): ExperimentTemplateDao {
         return appDatabase.experimentTemplateDao()
     }
-} 
+
+    @Provides
+    fun provideCarrierProfileDao(appDatabase: AppDatabase): CarrierProfileDao {
+        return appDatabase.carrierProfileDao()
+    }
+
+    @Provides
+    fun provideAcquisitionProfileDao(appDatabase: AppDatabase): AcquisitionProfileDao {
+        return appDatabase.acquisitionProfileDao()
+    }
+
+    @Provides
+    fun provideAnalysisModelDao(appDatabase: AppDatabase): AnalysisModelDao {
+        return appDatabase.analysisModelDao()
+    }
+
+    @Provides
+    fun provideCaptureArtifactDao(appDatabase: AppDatabase): CaptureArtifactDao {
+        return appDatabase.captureArtifactDao()
+    }
+
+    @Provides
+    fun provideSiteMeasurementDao(appDatabase: AppDatabase): SiteMeasurementDao {
+        return appDatabase.siteMeasurementDao()
+    }
+}

@@ -66,6 +66,11 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
     }
+
+    // MigrationTestHelper 从 androidTest assets 读取历史 Room schema。
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
 }
 
 // Room schema 会纳入版本控制，用于验证数据库迁移不会破坏历史科研数据。

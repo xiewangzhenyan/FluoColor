@@ -56,5 +56,13 @@ data class DetectionRun(
     val errorMessage: String?,            // 错误信息（如果失败）
     val confThreshold: Float?,            // 置信度阈值
     val iouThreshold: Float?,             // IoU阈值
-    val wellsDetected: Int?               // 检测到的孔位数量
-) 
+    val wellsDetected: Int?,              // 检测到的孔位数量
+
+    // 运行级不可变快照和QC摘要，避免历史结果读取后来被修改的全局配置。
+    val effectiveConfigSnapshotJson: String? = null,
+    val acquisitionMetadataJson: String? = null,
+    val processingVersionJson: String? = null,
+    val frameQcJson: String? = null,
+    val siteQcSummaryJson: String? = null,
+    val configurationDeviationJson: String? = null
+)

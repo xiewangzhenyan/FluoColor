@@ -5,8 +5,11 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
+import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
+import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -55,4 +58,39 @@ interface ExperimentTemplateDao {
      */
     @Query("DELETE FROM experiment_templates WHERE id = :id")
     suspend fun deleteTemplateById(id: String)
-} 
+
+    /** 获取模板中全部分析物配置。 */
+    @Query("SELECT * FROM template_analyte_configs WHERE templateId = :templateId ORDER BY displayOrder, id")
+    suspend fun getAnalyteConfigs(templateId: String): List<TemplateAnalyteConfig>
+
+    /** 获取模板中全部位点分配。 */
+    @Query("SELECT * FROM template_site_assignments WHERE templateId = :templateId ORDER BY rowIndex, columnIndex")
+    suspend fun getSiteAssignments(templateId: String): List<TemplateSiteAssignment>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAnalyteConfigs(configs: List<TemplateAnalyteConfig>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSiteAssignments(assignments: List<TemplateSiteAssignment>)
+
+    @Query("DELETE FROM template_analyte_configs WHERE templateId = :templateId")
+    suspend fun deleteAnalyteConfigs(templateId: String)
+
+    @Query("DELETE FROM template_site_assignments WHERE templateId = :templateId")
+    suspend fun deleteSiteAssignments(templateId: String)
+
+    /**
+     * 原子替换模板子配置，避免用户保存过程中只写入一半布局。
+     */
+    @Transaction
+    suspend fun replaceTemplateChildren(
+        templateId: String,
+        analyteConfigs: List<TemplateAnalyteConfig>,
+        siteAssignments: List<TemplateSiteAssignment>
+    ) {
+        deleteSiteAssignments(templateId)
+        deleteAnalyteConfigs(templateId)
+        if (analyteConfigs.isNotEmpty()) upsertAnalyteConfigs(analyteConfigs)
+        if (siteAssignments.isNotEmpty()) upsertSiteAssignments(siteAssignments)
+    }
+}

@@ -8,6 +8,8 @@
 
 **Tech Stack:** Kotlin、Room 2.6.1、Hilt、JUnit 4、AndroidX Room Testing、Jetpack Compose 工程现有 Gradle/KAPT 配置。
 
+**实施状态（2026-07-19）：** 工作包 1 已完成。领域枚举、21 个 Room 实体、15 个 DAO、9→10 显式迁移、历史数据保留测试和 README 均已落地；模板/资源管理 Compose 页面按范围边界留给后续工作包。
+
 ---
 
 ## 文件结构

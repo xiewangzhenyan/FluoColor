@@ -20,6 +20,7 @@ FluoColor 是一款基于 **Android + Jetpack Compose** 构建的**多模态生�
 | **质量门控** | 光谱成像质量诊断（过曝/欠曝/模糊/倾斜/通道粘连）+ 自动标定质量评分（优/可用/待复核三级） |
 | **科研级留档** | 原生 PdfDocument 报告 + CSV/PNG 导出 + **可复现 ZIP 归档**（报告+数据+溯源清单+原图+逐孔裁切图）+ Bland–Altman 一致性分析 |
 | **工程架构** | Kotlin + Compose + MVVM + Hilt + Room + CameraX + Coroutines/Flow，140+ 源文件，纯离线运行 |
+| **多模态重构基础** | Room 10 已建立版本化载体档案、采集设备档案、实验模板子表、通用分析模型、采集附件与逐位点测量模型，为孔板与微流控芯片共用同一项目链路提供数据基础 |
 
 ---
 
@@ -167,20 +168,25 @@ UI (Jetpack Compose) ── ViewModel (状态/业务) ── Repository ── D
 
 ## 6. 数据模型与持久化
 
-Room 本地数据库，**11 个实体 + 10 个 DAO**，覆盖项目、检测、结果、光谱、曲线模型、模板与用户：
+Room 本地数据库当前为 **version 10**，共 **21 个实体 + 15 个 DAO**。版本 9→10 使用显式迁移并配套真实设备迁移测试，禁止使用破坏性回退清空历史科研数据。
 
-| 实体 | 说明 |
+| 模型分组 | 说明 |
 | --- | --- |
-| `Project` | 项目（检测模式、分析方法、分析物） |
-| `DetectionRun` | 一次检测运行（含推理阈值等参数） |
-| `WellResult` | 单孔结果（特征、浓度、置信度） |
-| `SpectrumCalibration` | 光谱标定记录 |
-| `SpectrumResult` | 光谱结果 |
-| `CurveModel` | 标准曲线模型 |
-| `ExperimentTemplate` | 实验模板 |
-| `Analyte` / `Reagent` / `ProjectAnalyteJoin` / `User` | 分析物、试剂、关联与用户 |
+| `Project` / `DetectionRun` | 项目与单次运行；新增模板版本、不可变配置快照、实际采集元数据、处理器版本和 QC 快照字段 |
+| `CarrierProfile` | 版本化实验载体档案，统一描述孔板、微流控芯片、自定义阵列的行列、位点形状、方向标记、ROI 与定位器配置 |
+| `AcquisitionProfile` | 版本化采集设备档案，保存手机/相机匹配规则、光学模块、固定装置、相机控制策略与图像质量规则 |
+| `ExperimentTemplate` / `TemplateAnalyteConfig` / `TemplateSiteAssignment` | 模板主档、多分析物配置与通用阵列位点布局；模板可经历草稿、发布、归档和历史兼容状态 |
+| `AnalysisModel` | 模态无关的分析模型主档，明确检测模态、输入协议、主特征、处理器版本、兼容载体/设备和可靠范围 |
+| `StandardCurveDefinition` / `CalibrationPoint` | 传统标准曲线定义及其原始重复标定点；保留批次、排除标记与排除原因以支持复算 |
+| `DeepLearningModelDefinition` | 端侧深度学习模型文件、校验和、输入尺寸、归一化规则与训练数据版本 |
+| `CaptureArtifact` | 一次运行中的原始/派生采集附件；当前支持终点图和单图光谱，并为后续暗场、参考和 LSPR 前后配对保留明确角色 |
+| `SiteMeasurement` | 统一的逐位点科学测量，分开保存原始信号、校正信号、主特征、背景、SNR、置信度、可靠性与处理器版本 |
+| 旧模型 | `WellResult`、`SpectrumCalibration`、`SpectrumResult`、`CurveModel` 等继续保留，保证已有孔板和单图光谱项目兼容 |
+| 基础资源 | `Analyte`、`Reagent`、`ProjectAnalyteJoin`、`User` |
 
-DAO：`ProjectDao`、`DetectionRunDao`、`WellResultDao`、`SpectrumDao`、`CurveModelDao`、`ExperimentTemplateDao`、`AnalyteDao`、`ReagentDao`、`ProjectAnalyteJoinDao`、`UserDao`。复杂类型通过 `Converters` 序列化存储。
+新增 DAO 包括 `CarrierProfileDao`、`AcquisitionProfileDao`、`AnalysisModelDao`、`CaptureArtifactDao` 和 `SiteMeasurementDao`；`ExperimentTemplateDao` 已支持事务式替换模板的多分析物与位点子项。复杂类型继续通过 `Converters` 或具备明确契约的版本化 JSON 存储。
+
+> 当前进度：本轮已完成多模态重构的领域模型与数据库基础。模板资源库/向导、模板优先的新建项目、微流控布局编辑器和结果可视化属于后续 Compose 工作包，尚未在本轮宣称为已完成界面功能。
 
 ---
 
@@ -226,11 +232,12 @@ DAO：`ProjectDao`、`DetectionRunDao`、`WellResultDao`、`SpectrumDao`、`Curv
 app/
 ├─ src/main/java/com/muc/fluocolorquant
 │  ├─ data
-│  │  ├─ model            11 个 Room 实体 + 结果/溯源数据模型
-│  │  ├─ dao              10 个 DAO
+│  │  ├─ model            21 个 Room 实体 + 结果/溯源数据模型
+│  │  ├─ dao              15 个 DAO
 │  │  ├─ repository       仓库层
 │  │  ├─ converters       Room 类型转换器
-│  │  └─ enums            像素类型、拟合函数、孔位角色等枚举
+│  │  ├─ enums            像素类型、拟合函数、载体、输入协议、采集角色等稳定枚举
+│  │  └─ migration        可测试、可审查的 Room 显式迁移
 │  ├─ di                  Hilt 注入模块
 │  ├─ ui
 │  │  ├─ components        通用 Compose 组件、图表、表格
@@ -312,8 +319,9 @@ app/
 
 ## 14. 当前优化方向
 
-1. 补齐比色/荧光主链路的单元测试与 UI 测试
-2. 进一步拉开比色与荧光的专业处理差异
-3. 持续清理遗留技术债与编译警告
-4. 加强实验模板、批量处理与历史趋势分析
-5. 继续增强科研级留档与复现能力
+1. 基于 Room 10 领域基础实现载体档案、采集设备档案、分析模型库和实验模板库的 Compose 管理界面
+2. 将“新建项目”重构为模板优先流程，并支持从已发布模板生成可追溯的项目配置快照
+3. 实现 10×10、15×15 与自定义阵列布局编辑器，以及适合微流控芯片的缩放、筛选和位点详情交互
+4. 为孔板与微流控芯片分别接入可替换定位器，并进一步拉开比色与荧光的专业处理、质量控制和特征工程差异
+5. 在比色/荧光主链路稳定后，再实现光谱/LSPR 的成对采集、波长位移标定和定量工作流
+6. 补齐上述主链路的单元测试、Room 迁移测试和 Compose UI 测试，持续清理遗留技术债与编译警告

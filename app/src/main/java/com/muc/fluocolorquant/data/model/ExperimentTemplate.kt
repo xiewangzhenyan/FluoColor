@@ -1,9 +1,12 @@
 package com.muc.fluocolorquant.data.model
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.muc.fluocolorquant.data.enums.InputProtocol
+import com.muc.fluocolorquant.data.enums.TemplateLifecycleStatus
 import java.util.Date
 import java.util.UUID
 
@@ -40,5 +43,19 @@ data class ExperimentTemplate(
     val concentrationUnit: String,  // 该实验方案的浓度单位
     val defaultLayoutJson: String?, // [新增] 用于存储可选的、建议性的孔板布局JSON
     val createdAt: Date = Date(),   // 创建时间
-    val updatedAt: Date = Date()    // 最后更新时间
-) 
+    val updatedAt: Date = Date(),   // 最后更新时间
+
+    // 新模板领域字段。旧的单分析物/曲线字段暂时保留，作为历史兼容主项。
+    @ColumnInfo(defaultValue = "1")
+    val version: Int = 1,
+    @ColumnInfo(defaultValue = "'DRAFT'")
+    val status: String = TemplateLifecycleStatus.DRAFT.code,
+    val carrierProfileId: String? = null,
+    val detectionMode: String? = null,
+    val readoutLayout: String? = null,
+    val acquisitionProfileId: String? = null,
+    @ColumnInfo(defaultValue = "'ENDPOINT_ONLY'")
+    val inputProtocol: String = InputProtocol.ENDPOINT_ONLY.code,
+    val qcProfileJson: String? = null,
+    val publishedAt: Date? = null
+)

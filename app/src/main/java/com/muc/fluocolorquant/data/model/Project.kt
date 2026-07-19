@@ -24,5 +24,13 @@ data class Project(
     val createTime: Date,          // 创建时间
     val userId: String,            // 创建用户ID
     val lastRunTimestamp: Date?,   // 最近一次运行时间
-    val analysisMethod: String     // DL_MODEL / CURVE_FIT
+    val analysisMethod: String,    // DL_MODEL / CURVE_FIT
+
+    // 以下字段用于模板优先的新项目流程；全部提供默认值以兼容旧页面的构造调用。
+    val templateId: String? = null,             // 创建项目时选择的模板ID
+    val templateVersion: Int? = null,           // 创建时冻结的模板版本
+    val templateSnapshotJson: String? = null,   // 不可变模板快照，历史结果只读取该字段
+    val overrideJson: String? = null,            // 项目相对模板的显式覆盖和原因
+    val projectBatch: String? = null,            // 实验项目批次
+    val sampleBatch: String? = null              // 样本批次
 )
