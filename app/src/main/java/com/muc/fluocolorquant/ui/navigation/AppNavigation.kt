@@ -33,6 +33,8 @@ import com.muc.fluocolorquant.ui.screens.settings.ManualCurveInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ManualDataInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ExperimentTemplateManagementScreen
 import com.muc.fluocolorquant.ui.screens.settings.CreateExperimentTemplateScreen
+import com.muc.fluocolorquant.ui.screens.settings.resources.AcquisitionProfileManagementScreen
+import com.muc.fluocolorquant.ui.screens.settings.resources.CarrierProfileManagementScreen
 import com.muc.fluocolorquant.ui.screens.spectrum.SpectrumCalibrationScreen
 import com.muc.fluocolorquant.ui.screens.spectrum.SpectrumResultScreen
 import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
@@ -276,6 +278,16 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         // 曲线模型库页面
         composable(route = Screen.CurveModelLibrary.route) {
             CurveModelManagementScreen(navController = navController)
+        }
+
+        // 版本化载体与布局库
+        composable(route = Screen.CarrierProfileManagement.route) {
+            CarrierProfileManagementScreen(navController = navController)
+        }
+
+        // 版本化采集设备档案库
+        composable(route = Screen.AcquisitionProfileManagement.route) {
+            AcquisitionProfileManagementScreen(navController = navController)
         }
 
         // 手动曲线输入页面

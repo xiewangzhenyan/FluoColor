@@ -75,6 +75,8 @@ sealed class Screen(open val route: String) {
     object AnalyteManagement : Screen("analyte_management")
     object ReagentLibrary : Screen("reagent_library")
     object CurveModelLibrary : Screen("curve_model_library")
+    object CarrierProfileManagement : Screen("carrier_profile_management")
+    object AcquisitionProfileManagement : Screen("acquisition_profile_management")
 
     // 实验模板管理相关路由
     object ExperimentTemplateManagement : Screen("experiment_template_management")

@@ -8,6 +8,8 @@
 
 **Tech Stack:** Kotlin、Jetpack Compose、Material 3、Room、Hilt、Coroutines/Flow、JUnit 4。
 
+**实施状态（2026-07-19）：** 工作包 2A 已完成；系统设置四分组、载体与布局库、采集设备档案、资源版本化/归档、双语字符串和自定义 Toast 约束均已落地。
+
 ---
 
 ## 文件结构
