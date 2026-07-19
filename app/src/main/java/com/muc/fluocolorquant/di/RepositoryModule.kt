@@ -23,6 +23,10 @@ import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepositoryImpl
 import com.muc.fluocolorquant.data.repository.SpectrumRepository
 import com.muc.fluocolorquant.data.repository.SpectrumRepositoryImpl
+import com.muc.fluocolorquant.data.repository.AcquisitionProfileRepository
+import com.muc.fluocolorquant.data.repository.AcquisitionProfileRepositoryImpl
+import com.muc.fluocolorquant.data.repository.CarrierProfileRepository
+import com.muc.fluocolorquant.data.repository.CarrierProfileRepositoryImpl
 import com.muc.fluocolorquant.utils.camera.CameraEngine
 import com.muc.fluocolorquant.utils.camera.CameraXCameraEngine
 import dagger.Binds
@@ -85,6 +89,20 @@ abstract class RepositoryModule {
     abstract fun provideExperimentTemplateRepository(
         experimentTemplateRepositoryImpl: ExperimentTemplateRepositoryImpl
     ): ExperimentTemplateRepository
+
+    /** 提供载体档案仓库，所有载体编辑统一走版本化保存。 */
+    @Binds
+    @Singleton
+    abstract fun provideCarrierProfileRepository(
+        carrierProfileRepositoryImpl: CarrierProfileRepositoryImpl
+    ): CarrierProfileRepository
+
+    /** 提供采集设备档案仓库，禁止界面直接物理删除设备资源。 */
+    @Binds
+    @Singleton
+    abstract fun provideAcquisitionProfileRepository(
+        acquisitionProfileRepositoryImpl: AcquisitionProfileRepositoryImpl
+    ): AcquisitionProfileRepository
 
     /**
      * 提供光谱仓库实现
