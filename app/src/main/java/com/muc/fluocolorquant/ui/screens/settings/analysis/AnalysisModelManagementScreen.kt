@@ -1163,6 +1163,21 @@ private fun primaryFeatureLabel(code: String): String = when (AnalysisPrimaryFea
     AnalysisPrimaryFeature.OPTICAL_DENSITY -> stringResource(
         R.string.analysis_model_feature_optical_density
     )
+    AnalysisPrimaryFeature.GRAY_LUMINOSITY -> stringResource(
+        R.string.analysis_model_feature_gray_luminosity
+    )
+    AnalysisPrimaryFeature.RED_INTENSITY -> stringResource(
+        R.string.analysis_model_feature_red_intensity
+    )
+    AnalysisPrimaryFeature.GREEN_INTENSITY -> stringResource(
+        R.string.analysis_model_feature_green_intensity
+    )
+    AnalysisPrimaryFeature.BLUE_INTENSITY -> stringResource(
+        R.string.analysis_model_feature_blue_intensity
+    )
+    AnalysisPrimaryFeature.AVERAGE_RGB -> stringResource(
+        R.string.analysis_model_feature_average_rgb
+    )
     AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY -> stringResource(
         R.string.analysis_model_feature_net_fluorescence
     )

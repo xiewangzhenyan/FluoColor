@@ -23,8 +23,8 @@ data class LabPhotometry(
 /**
  * 比色处理器配置。
  *
- * 参考位点来自模板冻结布局，不能在检测后随意选择。当前正式主特征只允许 ΔE2000
- * 或光密度，避免把荧光强度特征错误用于比色模型。
+ * 参考位点来自模板冻结布局，不能在检测后随意选择。普通模型优先使用 ΔE2000 或
+ * 光密度；为兼容旧96孔板数据和多列 CSV，也允许从统一白平衡后的 RGB 计算常用特征。
  */
 data class ColorimetricProcessorConfig(
     val referenceSiteIndices: Set<Int>,
@@ -34,9 +34,16 @@ data class ColorimetricProcessorConfig(
     init {
         require(referenceSiteIndices.isNotEmpty()) { "比色处理必须至少指定一个模板参考位" }
         require(
-            primaryFeature == AnalysisPrimaryFeature.DELTA_E_2000 ||
-                primaryFeature == AnalysisPrimaryFeature.OPTICAL_DENSITY
-        ) { "比色处理器只支持 ΔE2000 或光密度主特征" }
+            primaryFeature in setOf(
+                AnalysisPrimaryFeature.DELTA_E_2000,
+                AnalysisPrimaryFeature.OPTICAL_DENSITY,
+                AnalysisPrimaryFeature.GRAY_LUMINOSITY,
+                AnalysisPrimaryFeature.RED_INTENSITY,
+                AnalysisPrimaryFeature.GREEN_INTENSITY,
+                AnalysisPrimaryFeature.BLUE_INTENSITY,
+                AnalysisPrimaryFeature.AVERAGE_RGB
+            )
+        ) { "比色处理器收到不兼容的主特征" }
         require(specularHighlightRatioLimit in 0.0..1.0) { "反光比例阈值必须位于 0 到 1" }
     }
 }
@@ -114,6 +121,12 @@ object ColorimetricPhotometryProcessor {
             val primaryValue = when (config.primaryFeature) {
                 AnalysisPrimaryFeature.DELTA_E_2000 -> deltaE
                 AnalysisPrimaryFeature.OPTICAL_DENSITY -> opticalDensity
+                AnalysisPrimaryFeature.GRAY_LUMINOSITY -> luminance(balanced)
+                AnalysisPrimaryFeature.RED_INTENSITY -> balanced.red
+                AnalysisPrimaryFeature.GREEN_INTENSITY -> balanced.green
+                AnalysisPrimaryFeature.BLUE_INTENSITY -> balanced.blue
+                AnalysisPrimaryFeature.AVERAGE_RGB ->
+                    (balanced.red + balanced.green + balanced.blue) / 3.0
                 else -> error("构造器已经阻止不兼容的比色主特征")
             }
             ColorimetricSitePhotometry(

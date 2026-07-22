@@ -32,6 +32,7 @@ import com.muc.fluocolorquant.ui.screens.settings.ReagentLibraryScreen
 import com.muc.fluocolorquant.ui.screens.settings.CurveModelManagementScreen
 import com.muc.fluocolorquant.ui.screens.settings.ManualCurveInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ManualDataInputScreen
+import com.muc.fluocolorquant.ui.screens.settings.StandardCurveLibraryScreen
 import com.muc.fluocolorquant.ui.screens.settings.ExperimentTemplateManagementScreen
 import com.muc.fluocolorquant.ui.screens.settings.template.ExperimentTemplateWizardScreen
 import com.muc.fluocolorquant.ui.screens.settings.resources.AcquisitionProfileManagementScreen
@@ -283,10 +284,10 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         }
 
-        // 普通设置恢复为用户熟悉的曲线模型库。统一分析模型的底层表暂时继续保留，
+        // 普通设置统一进入标准曲线库。统一分析模型的底层表继续承载科学契约，
         // 但不再把模型文件、SHA、尺寸和参数 JSON 表单暴露给普通用户。
         composable(route = Screen.CurveModelLibrary.route) {
-            CurveModelManagementScreen(navController = navController)
+            StandardCurveLibraryScreen(navController = navController)
         }
 
         // 历史 CurveModel、手动曲线和旧项目查询继续从兼容入口访问。
@@ -310,7 +311,16 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         }
 
         // 手动数据输入页面
-        composable(route = Screen.ManualDataInput.route) {
+        composable(
+            route = "${Screen.ManualDataInput.route}?modelId={modelId}",
+            arguments = listOf(
+                navArgument("modelId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) {
             ManualDataInputScreen(navController = navController)
         }
 

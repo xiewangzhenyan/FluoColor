@@ -177,6 +177,13 @@ enum class AnalysisModelLifecycleStatus(override val code: String) : StableDomai
 enum class AnalysisPrimaryFeature(override val code: String) : StableDomainCode {
     DELTA_E_2000("DELTA_E_2000"),
     OPTICAL_DENSITY("OPTICAL_DENSITY"),
+    // 常用 RGB/灰度特征保留为比色高级选项，用于兼容已有实验数据和多列 CSV。
+    // 新模型仍优先推荐 ΔE2000 或光密度，不能把这些特征静默用于荧光定量。
+    GRAY_LUMINOSITY("GRAY_LUMINOSITY"),
+    RED_INTENSITY("RED_INTENSITY"),
+    GREEN_INTENSITY("GREEN_INTENSITY"),
+    BLUE_INTENSITY("BLUE_INTENSITY"),
+    AVERAGE_RGB("AVERAGE_RGB"),
     NET_FLUORESCENCE_INTENSITY("NET_FLUORESCENCE_INTENSITY"),
     INTEGRATED_FLUORESCENCE_INTENSITY("INTEGRATED_FLUORESCENCE_INTENSITY"),
     FLUORESCENCE_SNR("FLUORESCENCE_SNR"),

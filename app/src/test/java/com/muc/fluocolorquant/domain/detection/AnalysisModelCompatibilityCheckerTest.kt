@@ -70,6 +70,16 @@ class AnalysisModelCompatibilityCheckerTest {
         assertTrue(ModelCompatibilityReason.INVALID_COMPATIBILITY_METADATA in result.reasons)
     }
 
+    @Test
+    fun `空采集设备范围表示由手机自动记录元数据`() {
+        val result = AnalysisModelCompatibilityChecker.check(
+            model = compatibleModel().copy(compatibleAcquisitionProfileIdsJson = "[]"),
+            request = compatibleRequest().copy(acquisitionProfileId = "direct-auto-capture")
+        )
+
+        assertEquals(ModelCompatibilityResult.Compatible, result)
+    }
+
     private fun compatibleModel(): AnalysisModel {
         return AnalysisModel(
             id = "model-1",

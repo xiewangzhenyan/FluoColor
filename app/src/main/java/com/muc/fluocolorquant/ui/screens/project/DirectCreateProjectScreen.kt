@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.Biotech
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
@@ -99,6 +100,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.domain.project.DirectCarrierPreset
 import com.muc.fluocolorquant.domain.project.ProjectDetectionDestination
@@ -107,6 +109,7 @@ import com.muc.fluocolorquant.ui.components.ScientificPickerOption
 import com.muc.fluocolorquant.ui.components.ScientificPickerSheet
 import com.muc.fluocolorquant.ui.components.ScientificSelectionField
 import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.components.analysisFeatureLabel
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.DirectProjectEvent
 import com.muc.fluocolorquant.ui.viewmodels.DirectProjectUiState
@@ -245,6 +248,7 @@ fun DirectCreateProjectScreen(
         onCustomColumnsChange = viewModel::updateCustomColumns,
         onAnalyteChange = viewModel::updateAnalyte,
         onConcentrationUnitChange = viewModel::updateConcentrationUnit,
+        onAnalysisModelChange = viewModel::updateAnalysisModel,
         onSampleIdChange = viewModel::updateSampleId,
         onReferenceRowChange = viewModel::updateColorReferenceRow,
         onReferenceColumnChange = viewModel::updateColorReferenceColumn,
@@ -317,6 +321,7 @@ private fun DirectCreateProjectContent(
     onCustomColumnsChange: (String) -> Unit,
     onAnalyteChange: (String) -> Unit,
     onConcentrationUnitChange: (String) -> Unit,
+    onAnalysisModelChange: (String?) -> Unit,
     onSampleIdChange: (String) -> Unit,
     onReferenceRowChange: (String) -> Unit,
     onReferenceColumnChange: (String) -> Unit,
@@ -326,6 +331,7 @@ private fun DirectCreateProjectContent(
 ) {
     var showAnalytePicker by rememberSaveable { mutableStateOf(false) }
     var showUnitPicker by rememberSaveable { mutableStateOf(false) }
+    var showAnalysisModelPicker by rememberSaveable { mutableStateOf(false) }
     val selectedAnalyte = state.analytes.firstOrNull { it.id == state.form.selectedAnalyteId }
 
     Scaffold(
@@ -490,7 +496,13 @@ private fun DirectCreateProjectContent(
                     singleLine = true
                 )
 
-                DirectSignalOnlyNotice()
+                DirectAnalysisModelSelector(
+                    models = state.compatibleModels,
+                    selectedModelId = state.form.selectedAnalysisModelId,
+                    automaticallySelected = state.compatibleModels.size == 1 &&
+                        !state.form.analysisModelSelectionExplicit,
+                    onOpenPicker = { showAnalysisModelPicker = true }
+                )
 
                 AnimatedVisibility(
                     visible = state.form.requiresColorReference,
@@ -587,6 +599,31 @@ private fun DirectCreateProjectContent(
             selectedId = state.form.concentrationUnit,
             onSelect = onConcentrationUnitChange,
             onDismiss = { showUnitPicker = false }
+        )
+    }
+
+    if (showAnalysisModelPicker) {
+        ScientificPickerSheet(
+            title = stringResource(R.string.direct_create_select_model),
+            options = listOf(
+                ScientificPickerOption(
+                    id = SIGNAL_ONLY_OPTION_ID,
+                    title = stringResource(R.string.direct_create_signal_only_option),
+                    subtitle = stringResource(R.string.direct_create_signal_only_model_desc),
+                    icon = Icons.Default.Info
+                )
+            ) + state.compatibleModels.map { model ->
+                ScientificPickerOption(
+                    id = model.id,
+                    title = model.name,
+                    icon = Icons.Default.AutoGraph
+                )
+            },
+            selectedId = state.form.selectedAnalysisModelId ?: SIGNAL_ONLY_OPTION_ID,
+            onSelect = { selectedId ->
+                onAnalysisModelChange(selectedId.takeUnless { it == SIGNAL_ONLY_OPTION_ID })
+            },
+            onDismiss = { showAnalysisModelPicker = false }
         )
     }
 }
@@ -821,6 +858,47 @@ private fun DirectCarrierPresetTile(
     }
 }
 
+/**
+ * 定量曲线选择器。
+ *
+ * 唯一候选会自动选中；多个候选通过全宽底部面板选择；用户始终可以主动切换到仅信号。
+ * 页面只显示曲线名称和可理解的信号类型，不暴露拟合参数 JSON 或处理器机器字段。
+ */
+@Composable
+private fun DirectAnalysisModelSelector(
+    models: List<com.muc.fluocolorquant.data.model.AnalysisModel>,
+    selectedModelId: String?,
+    automaticallySelected: Boolean,
+    onOpenPicker: () -> Unit
+) {
+    val selectedModel = models.firstOrNull { it.id == selectedModelId }
+    val selectedFeature = selectedModel?.primaryFeature
+        ?.let(AnalysisPrimaryFeature::fromCode)
+    val selectedFeatureLabel = if (selectedFeature != null) {
+        analysisFeatureLabel(selectedFeature)
+    } else {
+        null
+    }
+
+    if (models.isEmpty()) {
+        DirectSignalOnlyNotice()
+        return
+    }
+
+    ScientificSelectionField(
+        label = stringResource(R.string.direct_create_quantitation_model),
+        value = selectedModel?.name ?: stringResource(R.string.direct_create_signal_only_option),
+        placeholder = stringResource(R.string.direct_create_select_model),
+        icon = Icons.Default.AutoGraph,
+        onClick = onOpenPicker,
+        supportingValue = when {
+            selectedModel == null -> stringResource(R.string.direct_create_signal_only_model_desc)
+            automaticallySelected -> stringResource(R.string.direct_create_model_auto_selected)
+            else -> selectedFeatureLabel
+        }
+    )
+}
+
 /** 仅信号说明压缩为轻量提示行，不再占据一张独立大卡片。 */
 @Composable
 private fun DirectSignalOnlyNotice() {
@@ -855,6 +933,9 @@ private fun DirectSignalOnlyNotice() {
         }
     }
 }
+
+/** 底部选择器使用的内部稳定 ID，不会写入表单或数据库。 */
+private const val SIGNAL_ONLY_OPTION_ID = "__signal_only__"
 
 /**
  * 大图预览继承旧版 240dp 图片区的优点，使用 Fit 显示完整实验图，不把芯片边缘裁掉。

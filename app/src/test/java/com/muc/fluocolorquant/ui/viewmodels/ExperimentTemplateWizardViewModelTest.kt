@@ -531,6 +531,8 @@ class ExperimentTemplateWizardViewModelTest {
         override suspend fun getBundle(id: String): AnalysisModelBundle? = null
         override suspend fun createDraft(bundle: AnalysisModelBundle) = bundle
         override suspend fun updateDraft(bundle: AnalysisModelBundle) = Unit
+        override suspend fun replace(bundle: AnalysisModelBundle) = Unit
+        override suspend fun delete(id: String) = Unit
         override suspend fun createNextDraft(previousId: String): AnalysisModelBundle =
             error("本测试未使用")
         override suspend fun publish(id: String) = Unit

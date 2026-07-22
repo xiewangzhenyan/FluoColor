@@ -23,7 +23,7 @@ class AnalysisModelFormStateTest {
         val draft = AnalysisModelDraft()
 
         assertTrue(draft.compatibleAcquisitionProfileIds.isEmpty())
-        assertTrue(
+        assertFalse(
             AnalysisModelFormError.ACQUISITION_PROFILE_REQUIRED in
                 completeStandardCurveDraft()
                     .copy(compatibleAcquisitionProfileIds = emptySet())
@@ -76,7 +76,7 @@ class AnalysisModelFormStateTest {
     }
 
     @Test
-    fun `发布校验拒绝缺少载体或采集设备兼容范围`() {
+    fun `发布校验仍要求载体但允许手机自动采集元数据`() {
         val draft = completeStandardCurveDraft().copy(
             compatibleCarrierTypes = emptySet(),
             compatibleAcquisitionProfileIds = emptySet()
@@ -85,7 +85,7 @@ class AnalysisModelFormStateTest {
         val errors = draft.validateForPublication()
 
         assertTrue(AnalysisModelFormError.CARRIER_REQUIRED in errors)
-        assertTrue(AnalysisModelFormError.ACQUISITION_PROFILE_REQUIRED in errors)
+        assertFalse(AnalysisModelFormError.ACQUISITION_PROFILE_REQUIRED in errors)
     }
 
     @Test

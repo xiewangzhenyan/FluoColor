@@ -107,7 +107,12 @@ sealed class Screen(open val route: String) {
     
     // 曲线模型输入相关路由
     object ManualCurveInput : Screen("manual_curve_input")
-    object ManualDataInput : Screen("manual_data_input")
+    object ManualDataInput : Screen("manual_data_input") {
+        fun createRoute(modelId: String? = null): String = modelId
+            ?.takeIf(String::isNotBlank)
+            ?.let { "$route?modelId=${android.net.Uri.encode(it)}" }
+            ?: route
+    }
     
     // 光谱标定页面路由
     object SpectrumCalibration : Screen("spectrum_calibration/{projectId}/{imagePath}") {

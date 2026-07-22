@@ -80,6 +80,42 @@ class AnalysisModelRepositoryImpl @Inject constructor(
         )
     }
 
+    /**
+     * 直接编辑现有资源，保留模型 ID、创建时间和当前发布状态。
+     *
+     * 项目创建时会复制完整 [AnalysisModelBundle] 到项目快照，所以资源库后续编辑只影响
+     * 未来项目；历史检测结果仍继续使用当时冻结的拟合函数、参数与原始标定点。
+     */
+    override suspend fun replace(bundle: AnalysisModelBundle) {
+        val current = analysisModelDao.getById(bundle.model.id)
+            ?: throw IllegalArgumentException("分析模型不存在")
+        val normalizedName = bundle.model.name.trim()
+        require(normalizedName.isNotEmpty()) { "分析模型名称不能为空" }
+
+        val model = bundle.model.copy(
+            id = current.id,
+            name = normalizedName,
+            status = current.status,
+            version = current.version,
+            createdAt = current.createdAt,
+            updatedAt = Date()
+        )
+        val normalized = bundle.withModelIdentity(model)
+        analysisModelDao.replaceBundle(
+            model = normalized.model,
+            standardCurve = normalized.standardCurve,
+            deepLearning = normalized.deepLearning,
+            calibrationPoints = normalized.calibrationPoints
+        )
+    }
+
+    /** 删除资源库中的模型；Room 外键会同步清理子定义并把模板引用安全置空。 */
+    override suspend fun delete(id: String) {
+        val current = analysisModelDao.getById(id)
+            ?: throw IllegalArgumentException("分析模型不存在")
+        analysisModelDao.deleteModelById(current.id)
+    }
+
     override suspend fun createNextDraft(previousId: String): AnalysisModelBundle {
         val previous = getBundle(previousId)
             ?: throw IllegalArgumentException("源分析模型不存在")

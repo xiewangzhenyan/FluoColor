@@ -7,6 +7,7 @@ import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR_NAME
 import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR_VERSION
+import com.muc.fluocolorquant.domain.detection.AnalysisFeaturePolicy
 
 /** 分析模型列表可使用的生命周期筛选条件。 */
 enum class AnalysisModelStatusFilter {
@@ -96,16 +97,10 @@ data class AnalysisModelDraft(
     /** 当前“检测模态 + 输入协议”允许作为主输入的科学特征。 */
     val allowedPrimaryFeatures: Set<String>
         get() = when (DetectionModality.fromCode(detectionMode)) {
-            DetectionModality.COLORIMETRIC -> setOf(
-                AnalysisPrimaryFeature.DELTA_E_2000.code,
-                AnalysisPrimaryFeature.OPTICAL_DENSITY.code
-            )
-
-            DetectionModality.FLUORESCENCE -> setOf(
-                AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY.code,
-                AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY.code,
-                AnalysisPrimaryFeature.FLUORESCENCE_SNR.code
-            )
+            DetectionModality.COLORIMETRIC,
+            DetectionModality.FLUORESCENCE -> AnalysisFeaturePolicy.allowedFeatures(
+                requireNotNull(DetectionModality.fromCode(detectionMode))
+            ).mapTo(linkedSetOf(), AnalysisPrimaryFeature::code)
 
             DetectionModality.SPECTRUM -> when (InputProtocol.fromCode(inputProtocol)) {
                 InputProtocol.SINGLE_SPECTRUM_ANALYSIS -> setOf(
@@ -158,9 +153,8 @@ data class AnalysisModelDraft(
         if (compatibleCarrierTypes.isEmpty()) {
             add(AnalysisModelFormError.CARRIER_REQUIRED)
         }
-        if (compatibleAcquisitionProfileIds.isEmpty()) {
-            add(AnalysisModelFormError.ACQUISITION_PROFILE_REQUIRED)
-        }
+        // 空设备范围表示由手机拍摄链自动记录真实设备与曝光元数据，不再强迫普通用户
+        // 为每一台手机手工建立“采集设备档案”。载体范围仍必须明确，防止跨结构误用。
 
         when (modelType) {
             AnalysisModelType.STANDARD_CURVE -> {

@@ -82,15 +82,24 @@ object AnalysisModelCompatibilityChecker {
             reasons += ModelCompatibilityReason.PROCESSOR_VERSION_MISMATCH
         }
 
-        val carrierTypes = parseCompatibilitySet(model.compatibleCarrierTypesJson)
-        val acquisitionProfiles = parseCompatibilitySet(model.compatibleAcquisitionProfileIdsJson)
+        val carrierTypes = parseCompatibilitySet(
+            json = model.compatibleCarrierTypesJson,
+            allowEmpty = false
+        )
+        val acquisitionProfiles = parseCompatibilitySet(
+            json = model.compatibleAcquisitionProfileIdsJson,
+            // 空设备范围表示使用手机在拍摄时自动记录真实元数据，不要求用户预建设备档案。
+            allowEmpty = true
+        )
         if (carrierTypes == null || acquisitionProfiles == null) {
             reasons += ModelCompatibilityReason.INVALID_COMPATIBILITY_METADATA
         } else {
             if (request.carrierType.code !in carrierTypes) {
                 reasons += ModelCompatibilityReason.CARRIER_TYPE_MISMATCH
             }
-            if (request.acquisitionProfileId !in acquisitionProfiles) {
+            if (acquisitionProfiles.isNotEmpty() &&
+                request.acquisitionProfileId !in acquisitionProfiles
+            ) {
                 reasons += ModelCompatibilityReason.ACQUISITION_PROFILE_MISMATCH
             }
         }
@@ -103,14 +112,17 @@ object AnalysisModelCompatibilityChecker {
     }
 
     /**
-     * 兼容范围必须是非空 JSON 字符串数组；null、空数组、非字符串或损坏 JSON 都视为
-     * 科学元数据无效，不能解释为“兼容所有设备/载体”。
+     * 载体范围必须是非空 JSON 字符串数组；采集设备范围允许为空数组，表示依靠手机自动
+     * 记录 ISO、曝光、焦距等实际元数据。null、非字符串或损坏 JSON 仍视为元数据无效。
      */
-    private fun parseCompatibilitySet(json: String?): Set<String>? {
+    private fun parseCompatibilitySet(json: String?, allowEmpty: Boolean): Set<String>? {
         if (json.isNullOrBlank()) return null
         return try {
             val values: List<String> = gson.fromJson(json, stringListType) ?: return null
-            values.map(String::trim).filter(String::isNotEmpty).toSet().takeIf(Set<String>::isNotEmpty)
+            values.map(String::trim)
+                .filter(String::isNotEmpty)
+                .toSet()
+                .takeIf { allowEmpty || it.isNotEmpty() }
         } catch (_: JsonParseException) {
             null
         } catch (_: ClassCastException) {

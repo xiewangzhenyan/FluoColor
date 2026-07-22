@@ -2,10 +2,19 @@ package com.muc.fluocolorquant.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.muc.fluocolorquant.data.enums.AnalysisModelType
+import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.InputProtocol
+import com.muc.fluocolorquant.data.model.AnalysisModel
 import com.muc.fluocolorquant.data.model.Analyte
+import com.muc.fluocolorquant.data.repository.AnalysisModelRepository
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
 import com.muc.fluocolorquant.data.repository.SettingsRepository
+import com.muc.fluocolorquant.domain.detection.AnalysisFeaturePolicy
+import com.muc.fluocolorquant.domain.detection.AnalysisModelCompatibilityChecker
+import com.muc.fluocolorquant.domain.detection.ModelCompatibilityRequest
+import com.muc.fluocolorquant.domain.detection.ModelCompatibilityResult
 import com.muc.fluocolorquant.domain.project.DirectCarrierPreset
 import com.muc.fluocolorquant.domain.project.DirectProjectCreateRequest
 import com.muc.fluocolorquant.domain.project.DirectProjectCreationCoordinator
@@ -27,9 +36,48 @@ import javax.inject.Inject
 data class DirectProjectUiState(
     val analytes: List<Analyte> = emptyList(),
     val concentrationUnits: List<String> = emptyList(),
+    val analysisModels: List<AnalysisModel> = emptyList(),
     val form: DirectProjectFormState = DirectProjectFormState(),
     val isLoading: Boolean = true
-)
+) {
+    /**
+     * 按完整科学契约筛选当前表单可用的发布曲线。
+     *
+     * 每个模型使用自己的主特征参与检查，因此同一分析物可以同时拥有 ΔE、光密度或不同
+     * 荧光信号曲线；真正选择哪条曲线由用户完成，检测链不会在后台擅自替换。
+     */
+    val compatibleModels: List<AnalysisModel>
+        get() {
+            val analyteId = form.selectedAnalyteId ?: return emptyList()
+            if (form.detectionModality == DetectionModality.SPECTRUM) return emptyList()
+            val processor = AnalysisFeaturePolicy.processorIdentity(form.detectionModality)
+            return analysisModels.filter { model ->
+                val feature = AnalysisPrimaryFeature.fromCode(model.primaryFeature)
+                    ?: return@filter false
+                model.modelType == AnalysisModelType.STANDARD_CURVE.code &&
+                    model.concentrationUnit == form.concentrationUnit.trim() &&
+                    AnalysisFeaturePolicy.isCompatible(form.detectionModality, feature) &&
+                    AnalysisModelCompatibilityChecker.check(
+                        model = model,
+                        request = ModelCompatibilityRequest(
+                            analyteId = analyteId,
+                            modality = form.detectionModality,
+                            inputProtocol = InputProtocol.ENDPOINT_ONLY,
+                            primaryFeature = feature,
+                            carrierType = form.carrierType,
+                            // 直接新建使用一次性手机采集档案；模型设备范围为空数组时按通配处理。
+                            acquisitionProfileId = DIRECT_AUTO_ACQUISITION_ID,
+                            processorName = processor.first,
+                            processorVersion = processor.second
+                        )
+                    ) == ModelCompatibilityResult.Compatible
+            }.sortedBy(AnalysisModel::name)
+        }
+
+    companion object {
+        private const val DIRECT_AUTO_ACQUISITION_ID = "direct-auto-capture"
+    }
+}
 
 /** 导航和 Toast 使用的一次性事件。 */
 sealed interface DirectProjectEvent {
@@ -54,6 +102,7 @@ sealed interface DirectProjectEvent {
 class DirectProjectViewModel @Inject constructor(
     private val analyteRepository: AnalyteRepository,
     private val settingsRepository: SettingsRepository,
+    private val analysisModelRepository: AnalysisModelRepository,
     private val coordinator: DirectProjectCreationCoordinator
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DirectProjectUiState())
@@ -65,6 +114,7 @@ class DirectProjectViewModel @Inject constructor(
     init {
         observeAnalytes()
         observeConcentrationUnits()
+        observeAnalysisModels()
     }
 
     private fun observeAnalytes() {
@@ -73,13 +123,25 @@ class DirectProjectViewModel @Inject constructor(
                 _uiState.update { state ->
                     val retainedSelection = state.form.selectedAnalyteId
                         ?.takeIf { selectedId -> analytes.any { it.id == selectedId } }
+                    val nextAnalyteId = retainedSelection ?: analytes.singleOrNull()?.id
+                    val analyteChanged = nextAnalyteId != state.form.selectedAnalyteId
                     state.copy(
                         analytes = analytes.sortedBy(Analyte::name),
                         form = state.form.copy(
-                            selectedAnalyteId = retainedSelection ?: analytes.singleOrNull()?.id
+                            selectedAnalyteId = nextAnalyteId,
+                            selectedAnalysisModelId = if (analyteChanged) {
+                                null
+                            } else {
+                                state.form.selectedAnalysisModelId
+                            },
+                            analysisModelSelectionExplicit = if (analyteChanged) {
+                                false
+                            } else {
+                                state.form.analysisModelSelectionExplicit
+                            }
                         ),
                         isLoading = false
-                    )
+                    ).reconcileAnalysisModelSelection()
                 }
             }
         }
@@ -93,31 +155,65 @@ class DirectProjectViewModel @Inject constructor(
                     .sorted()
                     .ifEmpty { listOf("ng/mL", "pg/mL", "μg/mL", "mg/mL") }
                 _uiState.update { state ->
+                    val nextUnit = state.form.concentrationUnit
+                        .takeIf { it in sortedUnits }
+                        ?: sortedUnits.firstOrNull()
+                        ?: "ng/mL"
+                    val unitChanged = nextUnit != state.form.concentrationUnit
                     state.copy(
                         concentrationUnits = sortedUnits,
                         form = state.form.copy(
-                            concentrationUnit = state.form.concentrationUnit
-                                .takeIf { it in sortedUnits }
-                                ?: sortedUnits.firstOrNull()
-                                ?: "ng/mL"
+                            concentrationUnit = nextUnit,
+                            selectedAnalysisModelId = if (unitChanged) {
+                                null
+                            } else {
+                                state.form.selectedAnalysisModelId
+                            },
+                            analysisModelSelectionExplicit = if (unitChanged) {
+                                false
+                            } else {
+                                state.form.analysisModelSelectionExplicit
+                            }
                         )
-                    )
+                    ).reconcileAnalysisModelSelection()
+                }
+            }
+        }
+    }
+
+    private fun observeAnalysisModels() {
+        viewModelScope.launch {
+            analysisModelRepository.observeAll().collect { models ->
+                _uiState.update { state ->
+                    state.copy(analysisModels = models).reconcileAnalysisModelSelection()
                 }
             }
         }
     }
 
     fun updateProjectName(value: String) = updateForm { copy(projectName = value) }
-    fun updateDetectionModality(value: DetectionModality) = updateForm {
+    fun updateDetectionModality(value: DetectionModality) = updateModelMatchingForm {
         copy(detectionModality = value)
     }
-    fun updateCarrierPreset(value: DirectCarrierPreset) = updateForm { copy(carrierPreset = value) }
-    fun updateCustomRows(value: String) = updateForm { copy(customRowsInput = value.filter(Char::isDigit)) }
-    fun updateCustomColumns(value: String) = updateForm {
+    fun updateCarrierPreset(value: DirectCarrierPreset) = updateModelMatchingForm {
+        copy(carrierPreset = value)
+    }
+    fun updateCustomRows(value: String) = updateModelMatchingForm {
+        copy(customRowsInput = value.filter(Char::isDigit))
+    }
+    fun updateCustomColumns(value: String) = updateModelMatchingForm {
         copy(customColumnsInput = value.filter(Char::isDigit))
     }
-    fun updateAnalyte(value: String) = updateForm { copy(selectedAnalyteId = value) }
-    fun updateConcentrationUnit(value: String) = updateForm { copy(concentrationUnit = value) }
+    fun updateAnalyte(value: String) = updateModelMatchingForm { copy(selectedAnalyteId = value) }
+    fun updateConcentrationUnit(value: String) = updateModelMatchingForm {
+        copy(concentrationUnit = value)
+    }
+    fun updateAnalysisModel(value: String?) = updateForm {
+        copy(
+            selectedAnalysisModelId = value,
+            analysisModelSelectionExplicit = true
+        )
+    }
     fun updateSampleId(value: String) = updateForm { copy(sampleId = value) }
     fun updateImageUri(value: String?) = updateForm { copy(imageUri = value) }
     fun updateColorReferenceRow(value: String) = updateForm {
@@ -153,6 +249,7 @@ class DirectProjectViewModel @Inject constructor(
                         imageUri = form.imageUri.orEmpty(),
                         userId = userId,
                         concentrationUnit = form.concentrationUnit,
+                        analysisModelId = form.selectedAnalysisModelId,
                         sampleId = form.sampleId,
                         colorReferenceRow = if (form.requiresColorReference) {
                             form.colorReferenceRowInput.toIntOrNull()?.minus(1)
@@ -189,5 +286,38 @@ class DirectProjectViewModel @Inject constructor(
         transform: DirectProjectFormState.() -> DirectProjectFormState
     ) {
         _uiState.update { state -> state.copy(form = state.form.transform()) }
+    }
+
+    /** 影响兼容筛选的字段变化时清除旧选择，再按“唯一候选自动选中”规则重新裁决。 */
+    private inline fun updateModelMatchingForm(
+        transform: DirectProjectFormState.() -> DirectProjectFormState
+    ) {
+        _uiState.update { state ->
+            state.copy(
+                form = state.form.transform().copy(
+                    selectedAnalysisModelId = null,
+                    analysisModelSelectionExplicit = false
+                )
+            ).reconcileAnalysisModelSelection()
+        }
+    }
+
+    /**
+     * 唯一兼容曲线自动选中；多个候选等待用户选择；没有候选则保持仅信号。
+     * 用户明确选择“仅信号”后不会被后续数据库 Flow 刷新强行改回曲线。
+     */
+    private fun DirectProjectUiState.reconcileAnalysisModelSelection(): DirectProjectUiState {
+        val candidates = compatibleModels
+        val currentId = form.selectedAnalysisModelId
+        val currentStillValid = currentId != null && candidates.any { it.id == currentId }
+        if (form.analysisModelSelectionExplicit && (currentId == null || currentStillValid)) {
+            return this
+        }
+        return copy(
+            form = form.copy(
+                selectedAnalysisModelId = candidates.singleOrNull()?.id,
+                analysisModelSelectionExplicit = false
+            )
+        )
     }
 }

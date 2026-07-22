@@ -71,6 +71,9 @@ interface AnalysisModelDao {
     @Query("DELETE FROM calibration_points WHERE analysisModelId = :analysisModelId")
     suspend fun deleteCalibrationPoints(analysisModelId: String)
 
+    @Query("DELETE FROM analysis_models WHERE id = :id")
+    suspend fun deleteModelById(id: String)
+
     @Query("SELECT MAX(version) FROM analysis_models WHERE name = :name")
     suspend fun getLatestVersionByName(name: String): Int?
 
@@ -112,6 +115,30 @@ interface AnalysisModelDao {
     /** 草稿更新会先清理旧专用定义，再写入当前模型类型对应的数据。 */
     @Transaction
     suspend fun replaceDraftBundle(
+        model: AnalysisModel,
+        standardCurve: StandardCurveDefinition?,
+        deepLearning: DeepLearningModelDefinition?,
+        calibrationPoints: List<CalibrationPoint>
+    ) {
+        update(model)
+        deleteStandardCurveDefinition(model.id)
+        deleteDeepLearningDefinition(model.id)
+        deleteCalibrationPoints(model.id)
+        standardCurve?.let { upsertStandardCurve(it) }
+        deepLearning?.let { upsertDeepLearningDefinition(it) }
+        if (calibrationPoints.isNotEmpty()) {
+            insertCalibrationPoints(calibrationPoints)
+        }
+    }
+
+    /**
+     * 普通资源库的“编辑”会直接更新当前曲线，而不是制造一个用户看不懂的新版本。
+     *
+     * 已经创建的项目保存的是完整冻结快照，因此这里更新资源库主档不会篡改历史项目；
+     * 子表仍在同一事务中整体替换，避免拟合参数与标定点处于不同编辑批次。
+     */
+    @Transaction
+    suspend fun replaceBundle(
         model: AnalysisModel,
         standardCurve: StandardCurveDefinition?,
         deepLearning: DeepLearningModelDefinition?,

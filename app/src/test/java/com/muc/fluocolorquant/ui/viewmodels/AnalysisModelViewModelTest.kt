@@ -126,7 +126,7 @@ class AnalysisModelViewModelTest {
     }
 
     @Test
-    fun `发布前校验会阻止缺少设备兼容范围的草稿`() =
+    fun `空设备范围按手机自动采集语义允许发布`() =
         runTest(mainDispatcherRule.testDispatcher) {
         val incomplete = bundleFromDraft(
             completeDraft().copy(compatibleAcquisitionProfileIds = emptySet()),
@@ -140,9 +140,8 @@ class AnalysisModelViewModelTest {
         viewModel.publish(incomplete.model.id)
         advanceUntilIdle()
 
-        val validation = event.await() as AnalysisModelEvent.ValidationFailed
-        assertTrue(AnalysisModelFormError.ACQUISITION_PROFILE_REQUIRED in validation.errors)
-        assertTrue(modelRepository.publishedIds.isEmpty())
+        assertEquals(AnalysisModelEvent.Published, event.await())
+        assertEquals(listOf(incomplete.model.id), modelRepository.publishedIds)
     }
 
     @Test
@@ -270,6 +269,16 @@ class AnalysisModelViewModelTest {
             updatedBundles += bundle
             bundles[bundle.model.id] = bundle
             models.value = models.value.map { if (it.id == bundle.model.id) bundle.model else it }
+        }
+
+        override suspend fun replace(bundle: AnalysisModelBundle) {
+            bundles[bundle.model.id] = bundle
+            models.value = models.value.map { if (it.id == bundle.model.id) bundle.model else it }
+        }
+
+        override suspend fun delete(id: String) {
+            bundles.remove(id)
+            models.value = models.value.filterNot { it.id == id }
         }
 
         override suspend fun createNextDraft(previousId: String): AnalysisModelBundle {

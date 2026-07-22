@@ -90,7 +90,9 @@ fun SettingsScreen(navController: NavController) {
             Screen.ReagentLibrary.route
         ),
         SettingsEntry(
-            R.string.library_curve_model_title,
+            // 普通用户入口统一使用“标准曲线库”。旧资源仍保留给历史页面或兼容代码，
+            // 但不再把标准曲线误称为需要用户理解内部实现的“曲线模型”。
+            R.string.standard_curve_library_title,
             R.string.library_curve_model_desc,
             Icons.Default.Analytics,
             Screen.CurveModelLibrary.route

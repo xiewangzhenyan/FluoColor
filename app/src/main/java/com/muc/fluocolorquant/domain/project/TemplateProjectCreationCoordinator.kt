@@ -271,8 +271,11 @@ class TemplateProjectCreationCoordinator @Inject constructor(
                     model.id
                 )
             }
-            if (acquisition != null &&
-                acquisition.id !in StableCodeArrayJson.decode(model.compatibleAcquisitionProfileIdsJson)
+            val compatibleAcquisitionIds = StableCodeArrayJson.decode(
+                model.compatibleAcquisitionProfileIdsJson
+            )
+            if (acquisition != null && compatibleAcquisitionIds.isNotEmpty() &&
+                acquisition.id !in compatibleAcquisitionIds
             ) {
                 issues += TemplatePreflightIssue(
                     TemplatePreflightCode.MODEL_ACQUISITION_MISMATCH,

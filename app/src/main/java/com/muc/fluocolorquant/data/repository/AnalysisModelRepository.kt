@@ -24,6 +24,8 @@ interface AnalysisModelRepository {
     suspend fun getBundle(id: String): AnalysisModelBundle?
     suspend fun createDraft(bundle: AnalysisModelBundle): AnalysisModelBundle
     suspend fun updateDraft(bundle: AnalysisModelBundle)
+    suspend fun replace(bundle: AnalysisModelBundle)
+    suspend fun delete(id: String)
     suspend fun createNextDraft(previousId: String): AnalysisModelBundle
     suspend fun publish(id: String)
     suspend fun archive(id: String)

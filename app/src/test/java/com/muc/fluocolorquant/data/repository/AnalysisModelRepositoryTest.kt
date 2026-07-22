@@ -93,6 +93,43 @@ class AnalysisModelRepositoryTest {
         }
     }
 
+    @Test
+    fun `普通资源库直接编辑发布曲线且不改变模型ID和版本`() = runBlocking {
+        val dao = FakeAnalysisModelDao()
+        val repository = AnalysisModelRepositoryImpl(dao)
+        val created = repository.createDraft(standardCurveBundle(name = "CEA 模型"))
+        repository.publish(created.model.id)
+
+        repository.replace(
+            created.copy(
+                model = created.model.copy(name = "CEA 模型（修订）"),
+                calibrationPoints = created.calibrationPoints.map {
+                    it.copy(signalValue = it.signalValue + 1.0)
+                }
+            )
+        )
+        val loaded = requireNotNull(repository.getBundle(created.model.id))
+
+        assertEquals(created.model.id, loaded.model.id)
+        assertEquals(1, loaded.model.version)
+        assertEquals(AnalysisModelLifecycleStatus.PUBLISHED.code, loaded.model.status)
+        assertEquals("CEA 模型（修订）", loaded.model.name)
+        assertEquals(listOf(3.0, 21.0), loaded.calibrationPoints.map { it.signalValue })
+    }
+
+    @Test
+    fun `普通资源库删除曲线会同时删除专用定义和标定点`() = runBlocking {
+        val dao = FakeAnalysisModelDao()
+        val repository = AnalysisModelRepositoryImpl(dao)
+        val created = repository.createDraft(standardCurveBundle(name = "待删除模型"))
+
+        repository.delete(created.model.id)
+
+        assertEquals(null, repository.getBundle(created.model.id))
+        assertEquals(null, dao.getStandardCurveDefinition(created.model.id))
+        assertEquals(emptyList<CalibrationPoint>(), dao.getCalibrationPoints(created.model.id))
+    }
+
     private fun standardCurveBundle(name: String): AnalysisModelBundle {
         val model = AnalysisModel(
             id = "temporary-id",
@@ -208,6 +245,13 @@ class AnalysisModelRepositoryTest {
 
         override suspend fun deleteCalibrationPoints(analysisModelId: String) {
             points.remove(analysisModelId)
+        }
+
+        override suspend fun deleteModelById(id: String) {
+            models.value = models.value.filterNot { it.id == id }
+            curves.remove(id)
+            deepModels.remove(id)
+            points.remove(id)
         }
 
         override suspend fun getLatestVersionByName(name: String): Int? =

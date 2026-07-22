@@ -315,6 +315,8 @@ class TemplateProjectCreationCoordinatorTest {
         override suspend fun getBundle(id: String): AnalysisModelBundle? = bundles[id]
         override suspend fun createDraft(bundle: AnalysisModelBundle): AnalysisModelBundle = unsupported()
         override suspend fun updateDraft(bundle: AnalysisModelBundle) = unsupported()
+        override suspend fun replace(bundle: AnalysisModelBundle) = unsupported()
+        override suspend fun delete(id: String) = unsupported()
         override suspend fun createNextDraft(previousId: String): AnalysisModelBundle = unsupported()
         override suspend fun publish(id: String) = unsupported()
         override suspend fun archive(id: String) = unsupported()

@@ -20,6 +20,8 @@ data class DirectProjectFormState(
     val customColumnsInput: String = "10",
     val selectedAnalyteId: String? = null,
     val concentrationUnit: String = "",
+    val selectedAnalysisModelId: String? = null,
+    val analysisModelSelectionExplicit: Boolean = false,
     val sampleId: String = "",
     val imageUri: String? = null,
     val colorReferenceRowInput: String = "1",

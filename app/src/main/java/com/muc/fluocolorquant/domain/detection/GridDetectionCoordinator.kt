@@ -915,18 +915,7 @@ class GridDetectionCoordinator @Inject constructor(
         modality: DetectionModality?,
         feature: AnalysisPrimaryFeature
     ): Boolean {
-        return when (modality) {
-            DetectionModality.COLORIMETRIC -> feature in setOf(
-                AnalysisPrimaryFeature.DELTA_E_2000,
-                AnalysisPrimaryFeature.OPTICAL_DENSITY
-            )
-            DetectionModality.FLUORESCENCE -> feature in setOf(
-                AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
-                AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY,
-                AnalysisPrimaryFeature.FLUORESCENCE_SNR
-            )
-            else -> false
-        }
+        return modality?.let { AnalysisFeaturePolicy.isCompatible(it, feature) } == true
     }
 
     private fun fluorescenceChannelValue(

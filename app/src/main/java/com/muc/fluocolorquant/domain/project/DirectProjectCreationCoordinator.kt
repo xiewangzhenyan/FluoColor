@@ -24,7 +24,12 @@ import com.muc.fluocolorquant.data.model.StandardCurveDefinition
 import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
+import com.muc.fluocolorquant.data.repository.AnalysisModelRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.domain.detection.AnalysisFeaturePolicy
+import com.muc.fluocolorquant.domain.detection.AnalysisModelCompatibilityChecker
+import com.muc.fluocolorquant.domain.detection.ModelCompatibilityRequest
+import com.muc.fluocolorquant.domain.detection.ModelCompatibilityResult
 import com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
 import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR_NAME
@@ -62,6 +67,7 @@ data class DirectProjectCreateRequest(
     val imageUri: String,
     val userId: String,
     val concentrationUnit: String,
+    val analysisModelId: String? = null,
     val sampleId: String = "",
     val colorReferenceRow: Int? = null,
     val colorReferenceColumn: Int? = null
@@ -87,7 +93,8 @@ sealed interface DirectProjectCreationOutcome {
  */
 @Singleton
 class DirectProjectCreationCoordinator @Inject constructor(
-    private val projectRepository: ProjectRepository
+    private val projectRepository: ProjectRepository,
+    private val analysisModelRepository: AnalysisModelRepository
 ) {
     private val gson = Gson()
 
@@ -124,7 +131,6 @@ class DirectProjectCreationCoordinator @Inject constructor(
         val templateId = "direct-template-$projectId"
         val carrierId = "direct-carrier-$projectId"
         val acquisitionId = "direct-acquisition-$projectId"
-        val modelId = "direct-signal-only-$projectId"
 
         val carrier = CarrierProfile(
             id = carrierId,
@@ -174,7 +180,7 @@ class DirectProjectCreationCoordinator @Inject constructor(
             inputProtocol = InputProtocol.ENDPOINT_ONLY.code,
             purpose = "direct-project"
         )
-        val primaryFeature = when (request.detectionModality) {
+        val defaultPrimaryFeature = when (request.detectionModality) {
             DetectionModality.COLORIMETRIC -> AnalysisPrimaryFeature.DELTA_E_2000
             DetectionModality.FLUORESCENCE -> AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY
             DetectionModality.SPECTRUM -> error("光谱项目由独立分支创建")
@@ -186,50 +192,41 @@ class DirectProjectCreationCoordinator @Inject constructor(
                 FLUORESCENCE_PROCESSOR_NAME to FLUORESCENCE_PROCESSOR_VERSION
             DetectionModality.SPECTRUM -> error("光谱项目由独立分支创建")
         }
-        val model = AnalysisModel(
-            id = modelId,
-            name = "signal-only",
-            modelType = AnalysisModelType.STANDARD_CURVE.code,
-            analyteId = request.analyte.id,
-            detectionMode = request.detectionModality.code,
-            inputProtocol = InputProtocol.ENDPOINT_ONLY.code,
-            primaryFeature = primaryFeature.code,
-            processorName = processor.first,
-            processorVersion = processor.second,
-            compatibleCarrierTypesJson = gson.toJson(listOf(geometry.carrierType.code)),
-            compatibleAcquisitionProfileIdsJson = gson.toJson(listOf(acquisitionId)),
-            concentrationUnit = request.concentrationUnit.trim(),
-            reliableRangeMin = 0.0,
-            reliableRangeMax = 1.0,
-            status = AnalysisModelLifecycleStatus.PUBLISHED.code,
-            version = 1,
-            createdAt = now,
-            updatedAt = now
+        val selectedBundle = resolveSelectedModel(
+            modelId = request.analysisModelId,
+            request = request,
+            carrierType = geometry.carrierType,
+            acquisitionId = acquisitionId,
+            processor = processor
+        ) ?: if (request.analysisModelId.isNullOrBlank()) {
+            null
+        } else {
+            return DirectProjectCreationOutcome.InvalidRequest
+        }
+        val modelBundle = selectedBundle ?: createSignalOnlyBundle(
+            projectId = projectId,
+            request = request,
+            carrierType = geometry.carrierType,
+            acquisitionId = acquisitionId,
+            primaryFeature = defaultPrimaryFeature,
+            processor = processor,
+            now = now
         )
+        val model = modelBundle.model
+        val modelId = model.id
         val templateAnalyte = TemplateAnalyteConfig(
             id = "direct-analyte-config-$projectId",
             templateId = templateId,
             analyteId = request.analyte.id,
             analysisModelId = modelId,
             concentrationUnit = request.concentrationUnit.trim(),
-            reliableRangeMin = null,
-            reliableRangeMax = null,
+            reliableRangeMin = selectedBundle?.model?.reliableRangeMin,
+            reliableRangeMax = selectedBundle?.model?.reliableRangeMax,
             displayConfigJson = if (request.detectionModality == DetectionModality.FLUORESCENCE) {
                 ScientificDetectionConfigCodec.encodeFluorescenceDisplay(FluorescenceChannel.GREEN)
             } else {
                 null
             }
-        )
-        val modelBundle = AnalysisModelBundle(
-            model = model,
-            standardCurve = StandardCurveDefinition(
-                analysisModelId = modelId,
-                fittingFunction = "linear",
-                // 空参数对象是有意的：量化器会将其识别为不可执行模型并回退为仅信号，
-                // 而不是把任意默认斜率伪装成真实标准曲线。
-                parametersJson = "{}",
-                monotonicDirection = "AUTO"
-            )
         )
         val assignments = buildAssignments(
             projectId = projectId,
@@ -271,7 +268,7 @@ class DirectProjectCreationCoordinator @Inject constructor(
             createTime = now,
             userId = normalizedUserId,
             lastRunTimestamp = null,
-            analysisMethod = "SIGNAL_ONLY",
+            analysisMethod = if (selectedBundle == null) "SIGNAL_ONLY" else "CURVE_FIT",
             templateId = templateId,
             templateVersion = 1,
             templateSnapshotJson = TemplateProjectSnapshotCodec.encode(snapshot),
@@ -292,6 +289,93 @@ class DirectProjectCreationCoordinator @Inject constructor(
         return DirectProjectCreationOutcome.Created(
             project = project,
             destination = ProjectDetectionDestination.GRID_ENDPOINT
+        )
+    }
+
+    /**
+     * 读取并验证用户选择的真实标准曲线。
+     *
+     * 主特征以模型自身声明为准，但必须属于当前模态、使用当前生产处理器，并通过分析物、
+     * 单位、载体和设备兼容检查。任一字段不一致都返回失败，绝不偷偷换成“相似曲线”。
+     */
+    private suspend fun resolveSelectedModel(
+        modelId: String?,
+        request: DirectProjectCreateRequest,
+        carrierType: CarrierType,
+        acquisitionId: String,
+        processor: Pair<String, String>
+    ): AnalysisModelBundle? {
+        val normalizedId = modelId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val bundle = analysisModelRepository.getBundle(normalizedId) ?: return null
+        val model = bundle.model
+        val feature = AnalysisPrimaryFeature.fromCode(model.primaryFeature) ?: return null
+        if (
+            AnalysisModelType.fromCode(model.modelType) != AnalysisModelType.STANDARD_CURVE ||
+            bundle.standardCurve == null ||
+            bundle.deepLearning != null ||
+            bundle.calibrationPoints.size < 2 ||
+            model.concentrationUnit != request.concentrationUnit.trim() ||
+            !AnalysisFeaturePolicy.isCompatible(request.detectionModality, feature)
+        ) {
+            return null
+        }
+        val compatibility = AnalysisModelCompatibilityChecker.check(
+            model = model,
+            request = ModelCompatibilityRequest(
+                analyteId = request.analyte.id,
+                modality = request.detectionModality,
+                inputProtocol = InputProtocol.ENDPOINT_ONLY,
+                primaryFeature = feature,
+                carrierType = carrierType,
+                acquisitionProfileId = acquisitionId,
+                processorName = processor.first,
+                processorVersion = processor.second
+            )
+        )
+        return bundle.takeIf { compatibility == ModelCompatibilityResult.Compatible }
+    }
+
+    /** 构造不可执行的内部模型，使无曲线项目仍能复用同一快照结构并安全回退为仅信号。 */
+    private fun createSignalOnlyBundle(
+        projectId: String,
+        request: DirectProjectCreateRequest,
+        carrierType: CarrierType,
+        acquisitionId: String,
+        primaryFeature: AnalysisPrimaryFeature,
+        processor: Pair<String, String>,
+        now: Date
+    ): AnalysisModelBundle {
+        val modelId = "direct-signal-only-$projectId"
+        val model = AnalysisModel(
+            id = modelId,
+            name = "signal-only",
+            modelType = AnalysisModelType.STANDARD_CURVE.code,
+            analyteId = request.analyte.id,
+            detectionMode = request.detectionModality.code,
+            inputProtocol = InputProtocol.ENDPOINT_ONLY.code,
+            primaryFeature = primaryFeature.code,
+            processorName = processor.first,
+            processorVersion = processor.second,
+            compatibleCarrierTypesJson = gson.toJson(listOf(carrierType.code)),
+            compatibleAcquisitionProfileIdsJson = gson.toJson(listOf(acquisitionId)),
+            concentrationUnit = request.concentrationUnit.trim(),
+            reliableRangeMin = 0.0,
+            reliableRangeMax = 1.0,
+            status = AnalysisModelLifecycleStatus.PUBLISHED.code,
+            version = 1,
+            createdAt = now,
+            updatedAt = now
+        )
+        return AnalysisModelBundle(
+            model = model,
+            standardCurve = StandardCurveDefinition(
+                analysisModelId = modelId,
+                fittingFunction = "linear",
+                // 空参数对象是有意的：量化器会将其识别为不可执行模型并回退为仅信号，
+                // 而不是把任意默认斜率伪装成真实标准曲线。
+                parametersJson = "{}",
+                monotonicDirection = "AUTO"
+            )
         )
     }
 
