@@ -1,6 +1,7 @@
 package com.muc.fluocolorquant.ui.screens.settings.resources
 
 import com.muc.fluocolorquant.data.enums.CarrierType
+import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.enums.SiteShape
 import org.junit.Assert.assertEquals

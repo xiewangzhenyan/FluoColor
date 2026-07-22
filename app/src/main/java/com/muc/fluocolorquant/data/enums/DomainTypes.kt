@@ -55,6 +55,22 @@ enum class ResourceStatus(override val code: String) : StableDomainCode {
     }
 }
 
+/**
+ * 检测信号的科学模态。
+ *
+ * 该编码会同时进入采集设备、分析模型、实验模板和项目快照，因此必须位于领域层，
+ * 不能由某个 Compose 页面私自维护另一套字符串常量。
+ */
+enum class DetectionModality(override val code: String) : StableDomainCode {
+    COLORIMETRIC("COLORIMETRIC"),
+    FLUORESCENCE("FLUORESCENCE"),
+    SPECTRUM("SPECTRUM");
+
+    companion object {
+        fun fromCode(code: String?): DetectionModality? = findByStableCode(code)
+    }
+}
+
 /** 图像或光谱在载体上的读出组织方式。 */
 enum class ReadoutLayout(override val code: String) : StableDomainCode {
     GRID_SITES("GRID_SITES"),
@@ -106,9 +122,77 @@ enum class AnalysisModelType(override val code: String) : StableDomainCode {
 }
 
 /**
- * 一次检测运行中的原始采集附件角色。
+ * 实验模板中的通用位点角色。
+ *
+ * 这些编码同时进入模板子表、项目快照、定位结果和导出文件，禁止使用孔板专属的
+ * “well role”命名。未配置位点不保存记录；确实不参与实验的物理位点使用 [DISABLED]。
+ */
+enum class TemplateSiteRole(override val code: String) : StableDomainCode {
+    SAMPLE("SAMPLE"),
+    STANDARD("STANDARD"),
+    BLANK("BLANK"),
+    NEGATIVE_CONTROL("NEGATIVE_CONTROL"),
+    POSITIVE_CONTROL("POSITIVE_CONTROL"),
+    REFERENCE("REFERENCE"),
+    DISABLED("DISABLED");
+
+    companion object {
+        fun fromCode(code: String?): TemplateSiteRole? = findByStableCode(code)
+    }
+}
+
+/** 空白或参考位的作用范围，默认只服务所属分析物。 */
+enum class TemplateReferenceScope(override val code: String) : StableDomainCode {
+    ANALYTE("ANALYTE"),
+    GLOBAL("GLOBAL");
+
+    companion object {
+        fun fromCode(code: String?): TemplateReferenceScope? = findByStableCode(code)
+    }
+}
+
+/**
+ * 分析模型的发布生命周期。
+ *
+ * 草稿允许原地补全；已发布版本不可覆盖，修改时必须创建下一版本；归档版本只供历史
+ * 项目和审计读取。旧曲线迁移得到的记录使用 [LEGACY]，不会自动参与新模板匹配。
+ */
+enum class AnalysisModelLifecycleStatus(override val code: String) : StableDomainCode {
+    DRAFT("DRAFT"),
+    PUBLISHED("PUBLISHED"),
+    ARCHIVED("ARCHIVED"),
+    LEGACY("LEGACY");
+
+    companion object {
+        fun fromCode(code: String?): AnalysisModelLifecycleStatus? = findByStableCode(code)
+    }
+}
+
+/**
+ * 分析模型用于定量或指标计算的稳定主特征编码。
+ *
+ * 这里只列入当前设计已经定义且能够解释的特征；后续新增特征必须同时补充处理器版本、
+ * 兼容性校验和发布验证，不能仅在界面中增加一个自由文本选项。
+ */
+enum class AnalysisPrimaryFeature(override val code: String) : StableDomainCode {
+    DELTA_E_2000("DELTA_E_2000"),
+    OPTICAL_DENSITY("OPTICAL_DENSITY"),
+    NET_FLUORESCENCE_INTENSITY("NET_FLUORESCENCE_INTENSITY"),
+    INTEGRATED_FLUORESCENCE_INTENSITY("INTEGRATED_FLUORESCENCE_INTENSITY"),
+    FLUORESCENCE_SNR("FLUORESCENCE_SNR"),
+    PEAK_WAVELENGTH_NM("PEAK_WAVELENGTH_NM"),
+    DELTA_PEAK_WAVELENGTH_NM("DELTA_PEAK_WAVELENGTH_NM");
+
+    companion object {
+        fun fromCode(code: String?): AnalysisPrimaryFeature? = findByStableCode(code)
+    }
+}
+
+/**
+ * 一次检测运行中的原始采集与派生处理证据角色。
  *
  * 设备波长标定图不属于这里，它应进入独立的设备标定档案；这里仅描述项目运行输入。
+ * `PROCESS_*` 角色是算法从冻结原图生成的只读诊断证据，不得作为定量输入再次计算。
  */
 enum class CaptureRole(override val code: String) : StableDomainCode {
     ENDPOINT("ENDPOINT"),
@@ -116,7 +200,20 @@ enum class CaptureRole(override val code: String) : StableDomainCode {
     DARK("DARK"),
     REFERENCE("REFERENCE"),
     PRE_ANALYTE_BASELINE("PRE_ANALYTE_BASELINE"),
-    POST_REACTION_ENDPOINT("POST_REACTION_ENDPOINT");
+    POST_REACTION_ENDPOINT("POST_REACTION_ENDPOINT"),
+    PROCESS_ORIGINAL_GEOMETRY("PROCESS_ORIGINAL_GEOMETRY"),
+    PROCESS_CANDIDATE_RESPONSE("PROCESS_CANDIDATE_RESPONSE"),
+    PROCESS_RECTIFIED("PROCESS_RECTIFIED"),
+    PROCESS_GRID_OVERLAY("PROCESS_GRID_OVERLAY"),
+    PROCESS_ROI_BACKGROUND("PROCESS_ROI_BACKGROUND"),
+    PROCESS_BACKGROUND_FIELD("PROCESS_BACKGROUND_FIELD"),
+    PROCESS_SIGNAL_HEATMAP("PROCESS_SIGNAL_HEATMAP"),
+    PROCESS_SNR_HEATMAP("PROCESS_SNR_HEATMAP"),
+    PROCESS_CORRECTED_COLOR("PROCESS_CORRECTED_COLOR");
+
+    /** 结果页据此把原始图与处理过程分开，避免在原图标签错误叠加矫正坐标。 */
+    val isProcessingEvidence: Boolean
+        get() = name.startsWith("PROCESS_")
 
     companion object {
         fun fromCode(code: String?): CaptureRole? = findByStableCode(code)

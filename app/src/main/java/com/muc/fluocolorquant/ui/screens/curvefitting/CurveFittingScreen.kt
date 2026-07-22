@@ -34,6 +34,7 @@ import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.components.VirtualLayoutInteractionBoard
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.WellLayoutViewModel
+import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import com.muc.fluocolorquant.utils.math.FittingResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -149,6 +150,7 @@ fun CurveFittingScreen(
     if (showManualFittingDialog) {
         ManualFittingDialog(
             standardWells = wellLayoutViewModel.getStandardWells(),
+            gridColumns = GridLayoutPolicy.resolveProject(currentProject).columns,
             fittingResults = fittingResults,
             isLoading = isFittingLoading,
             recommendedPixelTypes = wellLayoutViewModel.recommendedPixelTypesForCurrentProject(),

@@ -23,7 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Layers
@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -156,7 +157,10 @@ fun SpectrumResultScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back)
+                        )
                     }
                 },
                 actions = {
@@ -171,17 +175,17 @@ fun SpectrumResultScreen(
                             Icon(
                                 painter = painterResource(id = R.drawable.export),
                                 contentDescription = stringResource(R.string.spectrum_export_title),
-                                tint = colorScheme.onPrimary,
+                                tint = colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = accentColor,
-                    titleContentColor = colorScheme.onPrimary,
-                    navigationIconContentColor = colorScheme.onPrimary,
-                    actionIconContentColor = colorScheme.onPrimary
+                    containerColor = colorScheme.surface,
+                    titleContentColor = colorScheme.onSurface,
+                    navigationIconContentColor = colorScheme.onSurface,
+                    actionIconContentColor = colorScheme.onSurfaceVariant
                 )
             )
         }
@@ -1044,6 +1048,19 @@ private fun SpectrumCurveCard(
     onCurveModeChange: (SpectrumCurveMode) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    var showCurveModeHelp by remember(curveMode) { mutableStateOf(false) }
+    val curveModeTitle = when (curveMode) {
+        SpectrumCurveMode.RAW -> stringResource(R.string.spectrum_curve_mode_raw)
+        SpectrumCurveMode.CLASSIC -> stringResource(R.string.spectrum_curve_mode_classic)
+        SpectrumCurveMode.BASELINE -> stringResource(R.string.spectrum_curve_mode_baseline)
+        SpectrumCurveMode.ENHANCED -> stringResource(R.string.spectrum_curve_mode_enhanced)
+    }
+    val curveModeDescription = when (curveMode) {
+        SpectrumCurveMode.RAW -> stringResource(R.string.spectrum_curve_mode_raw_desc)
+        SpectrumCurveMode.CLASSIC -> stringResource(R.string.spectrum_curve_mode_classic_desc)
+        SpectrumCurveMode.BASELINE -> stringResource(R.string.spectrum_curve_mode_baseline_desc)
+        SpectrumCurveMode.ENHANCED -> stringResource(R.string.spectrum_curve_mode_enhanced_desc)
+    }
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
@@ -1059,7 +1076,8 @@ private fun SpectrumCurveCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1086,6 +1104,13 @@ private fun SpectrumCurveCard(
                         color = colorScheme.onSurface
                     )
                 }
+                IconButton(onClick = { showCurveModeHelp = true }) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = stringResource(R.string.spectrum_curve_mode_help_action),
+                        tint = colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             CurveModeSegmentedControl(
@@ -1096,22 +1121,6 @@ private fun SpectrumCurveCard(
                 onCurveModeChange = onCurveModeChange
             )
 
-            Text(
-                text = when (curveMode) {
-                    SpectrumCurveMode.RAW ->
-                        stringResource(R.string.spectrum_curve_mode_raw_desc)
-                    SpectrumCurveMode.CLASSIC ->
-                        stringResource(R.string.spectrum_curve_mode_classic_desc)
-                    SpectrumCurveMode.BASELINE ->
-                        stringResource(R.string.spectrum_curve_mode_baseline_desc)
-                    SpectrumCurveMode.ENHANCED ->
-                        stringResource(R.string.spectrum_curve_mode_enhanced_desc)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-
             CurveChart(
                 data = chartData,
                 modifier = Modifier
@@ -1119,6 +1128,27 @@ private fun SpectrumCurveCard(
                     .height(300.dp)
             )
         }
+    }
+
+    if (showCurveModeHelp) {
+        AlertDialog(
+            onDismissRequest = { showCurveModeHelp = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null
+                )
+            },
+            title = {
+                Text(stringResource(R.string.spectrum_curve_mode_help_title, curveModeTitle))
+            },
+            text = { Text(curveModeDescription) },
+            confirmButton = {
+                TextButton(onClick = { showCurveModeHelp = false }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            }
+        )
     }
 }
 
@@ -1169,6 +1199,7 @@ private fun CurveModeSegmentedControl(
             )
         }
     }
+
 }
 
 @Composable

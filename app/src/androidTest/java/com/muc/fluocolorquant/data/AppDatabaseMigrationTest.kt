@@ -47,6 +47,193 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migrate10To11_preservesLegacyTemplateAndAllowsMultiAnalyteMasterRecord() {
+        migrationHelper.createDatabase(TEMPLATE_DATABASE_NAME, 10).apply {
+            insertVersion10TemplateFixture()
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            TEMPLATE_DATABASE_NAME,
+            11,
+            true,
+            DatabaseMigrations.MIGRATION_10_11
+        ).use { database ->
+            database.query(
+                "SELECT templateName, analyteId, fkCurveModelId FROM experiment_templates " +
+                    "WHERE id = 'template-v10'"
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("版本10旧模板", cursor.getString(0))
+                assertEquals("analyte-v10", cursor.getString(1))
+                assertEquals("curve-v10", cursor.getString(2))
+            }
+
+            assertTemplateCompatibilityColumnsAreNullable(database)
+
+            // 新多分析物模板的主档不再伪造一个旧分析物和旧 CurveModel 外键。
+            database.execSQL(
+                """
+                INSERT INTO experiment_templates (
+                    id, templateName, analyteId, reagentAntigenId, reagentAntibodyId,
+                    fkCurveModelId, reliableRangeMin, reliableRangeMax, concentrationUnit,
+                    defaultLayoutJson, createdAt, updatedAt, version, status,
+                    carrierProfileId, detectionMode, readoutLayout, acquisitionProfileId,
+                    inputProtocol, qcProfileJson, publishedAt
+                ) VALUES (
+                    'template-v11', '10×10双分析物模板', NULL, NULL, NULL,
+                    NULL, 0.0, 0.0, '', NULL, 2, 2, 1, 'DRAFT',
+                    NULL, 'COLORIMETRIC', 'GRID_SITES', NULL,
+                    'ENDPOINT_ONLY', NULL, NULL
+                )
+                """.trimIndent()
+            )
+            database.query(
+                "SELECT analyteId, fkCurveModelId FROM experiment_templates " +
+                    "WHERE id = 'template-v11'"
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertTrue(cursor.isNull(0))
+                assertTrue(cursor.isNull(1))
+            }
+        }
+    }
+
+    @Test
+    fun migrate11To12_preservesScientificSignalAndAddsQuantificationColumns() {
+        migrationHelper.createDatabase(RESULT_DATABASE_NAME, 11).apply {
+            insertVersion11SiteMeasurementFixture()
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            RESULT_DATABASE_NAME,
+            12,
+            true,
+            DatabaseMigrations.MIGRATION_11_12
+        ).use { database ->
+            database.query(
+                """
+                SELECT primaryFeatureName, primaryFeatureValue, backgroundValue,
+                       signalToNoiseRatio, signalDetectable, qualityReliable,
+                       concentrationValue, concentrationUnit, reliableRangeStatus,
+                       modelSnapshotJson, quantificationQcJson
+                FROM site_measurements WHERE id = 1
+                """.trimIndent()
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("NET_FLUORESCENCE_INTENSITY", cursor.getString(0))
+                assertEquals(42.5, cursor.getDouble(1), 0.0001)
+                assertEquals(8.0, cursor.getDouble(2), 0.0001)
+                assertEquals(12.0, cursor.getDouble(3), 0.0001)
+                assertEquals(1, cursor.getInt(4))
+                assertEquals(1, cursor.getInt(5))
+                assertTrue(cursor.isNull(6))
+                assertTrue(cursor.isNull(7))
+                assertTrue(cursor.isNull(8))
+                assertTrue(cursor.isNull(9))
+                assertTrue(cursor.isNull(10))
+            }
+        }
+    }
+
+    /** 在 Room 11 中写入一条新检测链的真实科学信号，验证迁移不会丢失已有数据。 */
+    private fun SupportSQLiteDatabase.insertVersion11SiteMeasurementFixture() {
+        execSQL("INSERT INTO analytes (id, name) VALUES ('analyte-v11', 'CEA')")
+        execSQL(
+            """
+            INSERT INTO projects (
+                id, name, detectionMode, recognitionType, imageUri, rows, columns,
+                lightSource, spectrumColumnCount, spectrumColumnMappingJson,
+                createTime, userId, lastRunTimestamp, analysisMethod,
+                templateId, templateVersion, templateSnapshotJson, overrideJson,
+                projectBatch, sampleBatch
+            ) VALUES (
+                'project-v11', 'Room11微流控项目', 'FLUORESCENCE', 'AUTO', '/input.png',
+                10, 10, NULL, 1, NULL, 1, 'user-v11', NULL, 'STANDARD_CURVE',
+                NULL, NULL, NULL, NULL, NULL, NULL
+            )
+            """.trimIndent()
+        )
+        execSQL(
+            """
+            INSERT INTO detection_runs (
+                runId, projectId, timestamp, detectionModelUsed, concentrationModelUsed,
+                status, errorMessage, confThreshold, iouThreshold, wellsDetected,
+                effectiveConfigSnapshotJson, acquisitionMetadataJson, processingVersionJson,
+                frameQcJson, siteQcSummaryJson, configurationDeviationJson
+            ) VALUES (
+                'run-v11', 'project-v11', 2, 'PG-Grid', NULL,
+                'SignalOnlyCompleted', NULL, NULL, NULL, 1,
+                NULL, NULL, NULL, NULL, NULL, NULL
+            )
+            """.trimIndent()
+        )
+        execSQL(
+            """
+            INSERT INTO site_measurements (
+                id, runId, siteIndex, analyteId, detectionMode,
+                rawSignalJson, correctedSignalJson, primaryFeatureName, primaryFeatureValue,
+                backgroundValue, signalToNoiseRatio, confidence, signalDetectable,
+                qualityReliable, qcJson, processorName, processorVersion
+            ) VALUES (
+                1, 'run-v11', 0, 'analyte-v11', 'FLUORESCENCE',
+                '{}', '{}', 'NET_FLUORESCENCE_INTENSITY', 42.5,
+                8.0, 12.0, 0.98, 1, 1, '{}', 'fluorescence-photometry', 'v1'
+            )
+            """.trimIndent()
+        )
+    }
+
+    /** 在版本 10 schema 中写入仍使用旧单分析物兼容字段的模板。 */
+    private fun SupportSQLiteDatabase.insertVersion10TemplateFixture() {
+        execSQL("INSERT INTO analytes (id, name) VALUES ('analyte-v10', 'CEA')")
+        execSQL(
+            """
+            INSERT INTO curve_models (
+                id, name, function, pixelType, parameters, metrics, dataPoints, createdAt, updatedAt
+            ) VALUES (
+                'curve-v10', '版本10曲线', 'linear', 'gray_luminosity',
+                '{"a":1.0,"b":0.0}', NULL, NULL, 1, 1
+            )
+            """.trimIndent()
+        )
+        execSQL(
+            """
+            INSERT INTO experiment_templates (
+                id, templateName, analyteId, reagentAntigenId, reagentAntibodyId,
+                fkCurveModelId, reliableRangeMin, reliableRangeMax, concentrationUnit,
+                defaultLayoutJson, createdAt, updatedAt, version, status,
+                carrierProfileId, detectionMode, readoutLayout, acquisitionProfileId,
+                inputProtocol, qcProfileJson, publishedAt
+            ) VALUES (
+                'template-v10', '版本10旧模板', 'analyte-v10', NULL, NULL,
+                'curve-v10', 0.1, 100.0, 'ng/mL', NULL, 1, 1, 1, 'LEGACY',
+                NULL, 'COLORIMETRIC', 'GRID_SITES', NULL,
+                'ENDPOINT_ONLY', NULL, NULL
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun assertTemplateCompatibilityColumnsAreNullable(
+        database: SupportSQLiteDatabase
+    ) {
+        val notNullByColumn = mutableMapOf<String, Int>()
+        database.query("PRAGMA table_info(experiment_templates)").use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            val notNullIndex = cursor.getColumnIndexOrThrow("notnull")
+            while (cursor.moveToNext()) {
+                notNullByColumn[cursor.getString(nameIndex)] = cursor.getInt(notNullIndex)
+            }
+        }
+        assertEquals(0, notNullByColumn["analyteId"])
+        assertEquals(0, notNullByColumn["fkCurveModelId"])
+        assertEquals(0, notNullByColumn["purpose"])
+        assertEquals(0, notNullByColumn["versionNote"])
+    }
+
     /** 在版本 9 schema 中写入一组满足外键约束的最小历史数据。 */
     private fun SupportSQLiteDatabase.insertLegacyFixture() {
         execSQL("INSERT INTO analytes (id, name) VALUES ('analyte-1', 'CEA')")
@@ -165,5 +352,7 @@ class AppDatabaseMigrationTest {
 
     private companion object {
         const val TEST_DATABASE_NAME = "multimodal-migration-test"
+        const val TEMPLATE_DATABASE_NAME = "template-v11-migration-test"
+        const val RESULT_DATABASE_NAME = "result-v12-migration-test"
     }
 }

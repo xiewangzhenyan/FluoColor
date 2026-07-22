@@ -41,6 +41,7 @@ import java.io.File
 @Composable
 fun ManualFittingDialog(
     standardWells: List<WellResult>,
+    gridColumns: Int,
     fittingResults: List<FittingResult>,
     isLoading: Boolean,
     recommendedPixelTypes: Set<PixelType>,
@@ -91,6 +92,7 @@ fun ManualFittingDialog(
                 // 浓度输入阶段
                 FittingInputStage(
                     standardWells = standardWells,
+                    gridColumns = gridColumns,
                     recommendedPixelTypes = recommendedPixelTypes,
                     onDismiss = onDismiss,
                     onStartFitting = onStartFitting
@@ -106,13 +108,22 @@ fun ManualFittingDialog(
 @Composable
 private fun FittingInputStage(
     standardWells: List<WellResult>,
+    gridColumns: Int,
     recommendedPixelTypes: Set<PixelType>,
     onDismiss: () -> Unit,
     onStartFitting: (concentrations: Map<Int, Double>, functions: Set<FittingFunction>, pixelTypes: Set<PixelType>) -> Unit
 ) {
     var concentrations by remember { mutableStateOf(mapOf<Int, String>()) }
-    // 默认勾选常用且计算速度快的算法
-    var selectedFunctions by remember { mutableStateOf(setOf(FittingFunction.LINEAR, FittingFunction.QUADRATIC, FittingFunction.RODBARD)) }
+    // 普通用户默认只比较成熟的线性、4PL、5PL；其他函数仍可手动勾选用于专家分析。
+    var selectedFunctions by remember {
+        mutableStateOf(
+            setOf(
+                FittingFunction.LINEAR,
+                FittingFunction.RODBARD,
+                FittingFunction.LOGISTIC
+            )
+        )
+    }
     var selectedPixelTypes by remember(recommendedPixelTypes) {
         mutableStateOf(
             if (recommendedPixelTypes.isNotEmpty()) {
@@ -149,6 +160,7 @@ private fun FittingInputStage(
             items(standardWells, key = { it.resultId }) { well ->
                 StandardConcentrationInputRow(
                     well = well,
+                    gridColumns = gridColumns,
                     value = concentrations[well.wellIndex] ?: "",
                     onValueChange = { newValue ->
                         concentrations = concentrations + (well.wellIndex to newValue)
@@ -275,6 +287,7 @@ private fun FittingInputStage(
 @Composable
 private fun StandardConcentrationInputRow(
     well: WellResult,
+    gridColumns: Int,
     value: String,
     onValueChange: (String) -> Unit
 ) {
@@ -285,7 +298,8 @@ private fun StandardConcentrationInputRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 孔位标签
-        val wellLabel = WellMappingUtils.getWellLabel(well.virtualRow ?: 0, well.virtualCol ?: 0)
+        // 旧 virtualRow/virtualCol 可能来自固定 12 列映射，按当前项目列数从索引重算。
+        val wellLabel = WellMappingUtils.getWellLabelForIndex(well.wellIndex, gridColumns)
         
         // 孔位图像
         AsyncImage(

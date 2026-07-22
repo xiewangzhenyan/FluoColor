@@ -11,6 +11,9 @@ sealed class Screen(open val route: String) {
     object NewProject : Screen("new_project") {
         fun createRoute(): String = route
     }
+    object QuickCreateProject : Screen("quick_create_project") {
+        fun createRoute(): String = route
+    }
     object ImageCapture : Screen("image_capture") {
         fun createRoute(
             outputPath: String,
@@ -75,15 +78,31 @@ sealed class Screen(open val route: String) {
     object AnalyteManagement : Screen("analyte_management")
     object ReagentLibrary : Screen("reagent_library")
     object CurveModelLibrary : Screen("curve_model_library")
+    // 旧路由继续指向统一分析模型库；历史曲线使用独立兼容入口，避免旧项目数据丢失。
+    object LegacyCurveModelLibrary : Screen("legacy_curve_model_library")
     object CarrierProfileManagement : Screen("carrier_profile_management")
     object AcquisitionProfileManagement : Screen("acquisition_profile_management")
 
     // 实验模板管理相关路由
     object ExperimentTemplateManagement : Screen("experiment_template_management")
     object CreateExperimentTemplate : Screen("create_experiment_template") {
-        fun createRoute(templateId: String? = null): String {
-            return templateId?.let { "$route?templateId=$it" } ?: route
+        fun createRoute(
+            templateId: String? = null,
+            sourceTemplateId: String? = null
+        ): String {
+            val query = buildList {
+                templateId?.let { add("templateId=${android.net.Uri.encode(it)}") }
+                sourceTemplateId?.let {
+                    add("sourceTemplateId=${android.net.Uri.encode(it)}")
+                }
+            }
+            return if (query.isEmpty()) route else "$route?${query.joinToString("&")}"
         }
+
+        /** 从已发布模板创建下一草稿版本，禁止把发布版本直接放进原地编辑流程。 */
+        fun createCopyRoute(sourceTemplateId: String): String = createRoute(
+            sourceTemplateId = sourceTemplateId
+        )
     }
     
     // 曲线模型输入相关路由

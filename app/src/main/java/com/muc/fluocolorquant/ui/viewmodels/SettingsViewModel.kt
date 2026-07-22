@@ -218,7 +218,7 @@ class SettingsViewModel @Inject constructor(
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = 12 // 默认12行
+            initialValue = SettingsRepository.DEFAULT_ROWS
         )
     
     // 更新默认行数
@@ -233,7 +233,7 @@ class SettingsViewModel @Inject constructor(
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = 8 // 默认8列
+            initialValue = SettingsRepository.DEFAULT_COLUMNS
         )
     
     // 更新默认列数

@@ -19,7 +19,8 @@ import com.muc.fluocolorquant.ui.screens.imagecrop.ImageCropScreen
 import com.muc.fluocolorquant.ui.screens.image.ImageCorrectionScreen
 import com.muc.fluocolorquant.ui.screens.profile.ProfileScreen
 import com.muc.fluocolorquant.ui.screens.project.NewProjectScreen
-import com.muc.fluocolorquant.ui.screens.result.NewResultScreen
+import com.muc.fluocolorquant.ui.screens.project.DirectCreateProjectScreen
+import com.muc.fluocolorquant.ui.screens.result.ResultGatewayScreen
 import com.muc.fluocolorquant.ui.screens.settings.AppSettingsScreen
 import com.muc.fluocolorquant.ui.screens.settings.DetectionSettingsScreen
 import com.muc.fluocolorquant.ui.screens.settings.SettingsScreen
@@ -32,7 +33,7 @@ import com.muc.fluocolorquant.ui.screens.settings.CurveModelManagementScreen
 import com.muc.fluocolorquant.ui.screens.settings.ManualCurveInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ManualDataInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ExperimentTemplateManagementScreen
-import com.muc.fluocolorquant.ui.screens.settings.CreateExperimentTemplateScreen
+import com.muc.fluocolorquant.ui.screens.settings.template.ExperimentTemplateWizardScreen
 import com.muc.fluocolorquant.ui.screens.settings.resources.AcquisitionProfileManagementScreen
 import com.muc.fluocolorquant.ui.screens.settings.resources.CarrierProfileManagementScreen
 import com.muc.fluocolorquant.ui.screens.spectrum.SpectrumCalibrationScreen
@@ -67,6 +68,13 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             route = Screen.NewProject.route
         ) {
             NewProjectScreen(navController = navController)
+        }
+
+        // 快速新建只引用已发布模板，不再后台合成或归档一次性模板。
+        composable(
+            route = Screen.QuickCreateProject.route
+        ) {
+            DirectCreateProjectScreen(navController = navController)
         }
 
         composable(
@@ -213,7 +221,7 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         ) { backStackEntry ->
             val runId = backStackEntry.arguments?.getString("runId")
-            NewResultScreen(
+            ResultGatewayScreen(
                 navController = navController,
                 runId = runId
             )
@@ -229,7 +237,7 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         ) { backStackEntry ->
             val runId = backStackEntry.arguments?.getString("runId")
-            NewResultScreen(
+            ResultGatewayScreen(
                 navController = navController,
                 runId = runId
             )
@@ -275,8 +283,14 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         }
 
-        // 曲线模型库页面
+        // 普通设置恢复为用户熟悉的曲线模型库。统一分析模型的底层表暂时继续保留，
+        // 但不再把模型文件、SHA、尺寸和参数 JSON 表单暴露给普通用户。
         composable(route = Screen.CurveModelLibrary.route) {
+            CurveModelManagementScreen(navController = navController)
+        }
+
+        // 历史 CurveModel、手动曲线和旧项目查询继续从兼容入口访问。
+        composable(route = Screen.LegacyCurveModelLibrary.route) {
             CurveModelManagementScreen(navController = navController)
         }
 
@@ -307,9 +321,14 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
 
         // 创建/编辑实验模板页面
         composable(
-            route = Screen.CreateExperimentTemplate.createRoute("{templateId}"), // Use the createRoute pattern
+            route = "${Screen.CreateExperimentTemplate.route}?templateId={templateId}&sourceTemplateId={sourceTemplateId}",
             arguments = listOf(
                 navArgument("templateId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("sourceTemplateId") {
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
@@ -317,9 +336,12 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         ) { backStackEntry ->
             val templateId = backStackEntry.arguments?.getString("templateId")
-            CreateExperimentTemplateScreen(
+            val sourceTemplateId = backStackEntry.arguments?.getString("sourceTemplateId")
+            // 直接编辑仅用于草稿；复制已发布方案会先创建独立的新版本草稿。
+            ExperimentTemplateWizardScreen(
                 navController = navController,
-                templateId = templateId
+                templateId = templateId,
+                sourceTemplateId = sourceTemplateId
             )
         }
 

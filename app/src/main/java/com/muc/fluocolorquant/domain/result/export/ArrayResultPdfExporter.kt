@@ -1,0 +1,545 @@
+package com.muc.fluocolorquant.domain.result.export
+
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.pdf.PdfDocument
+import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
+import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
+import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
+import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
+import com.muc.fluocolorquant.utils.pdf.PdfCoverPageContent
+import com.muc.fluocolorquant.utils.pdf.PdfCoverPageRenderer
+import java.io.ByteArrayOutputStream
+import java.nio.charset.StandardCharsets
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.min
+
+/**
+ * 使用统一 XML 封面模板和 Android 原生 PdfDocument 绘制科研摘要。
+ *
+ * PDF 只读取冻结结果领域，不访问数据库；封面复用96孔板报告的 pdf_cover_page.xml，
+ * 后续热力图颜色与 QC 标记分开绘制，避免失败标记覆盖科学数值底色。
+ */
+object ArrayResultPdfExporter {
+    private const val PAGE_WIDTH = 595
+    private const val PAGE_HEIGHT = 842
+    private const val PAGE_MARGIN = 40f
+
+    fun createPdf(
+        context: Context,
+        snapshot: ArrayResultSnapshot,
+        labels: ArrayResultPdfLabels
+    ): ByteArray {
+        val document = PdfDocument()
+        // 新增统一封面后，页数为：封面 + 总览 + 每个分析物一页 + QC/追溯。
+        val totalPages = snapshot.analytes.size + 3
+        try {
+            drawCoverPage(document, context, snapshot, labels, totalPages)
+            drawOverviewPage(document, snapshot, labels, pageNumber = 2, totalPages = totalPages)
+            snapshot.analytes.sortedBy(ArrayAnalyteResult::displayOrder).forEachIndexed { index, analyte ->
+                drawAnalytePage(
+                    document = document,
+                    snapshot = snapshot,
+                    analyte = analyte,
+                    labels = labels,
+                    pageNumber = index + 3,
+                    totalPages = totalPages
+                )
+            }
+            drawTraceabilityPage(
+                document = document,
+                snapshot = snapshot,
+                labels = labels,
+                pageNumber = totalPages,
+                totalPages = totalPages
+            )
+            return ByteArrayOutputStream().use { output ->
+                document.writeTo(output)
+                output.toByteArray()
+            }
+        } finally {
+            document.close()
+        }
+    }
+
+    /** 使用用户指定的 pdf_cover_page.xml 生成第一页，不再单独手绘一套阵列封面。 */
+    private fun drawCoverPage(
+        document: PdfDocument,
+        context: Context,
+        snapshot: ArrayResultSnapshot,
+        labels: ArrayResultPdfLabels,
+        totalPages: Int
+    ) {
+        val page = document.startPage(pageInfo(1))
+        val sortedAnalytes = snapshot.analytes.sortedBy(ArrayAnalyteResult::displayOrder)
+        val overviewLines = buildList {
+            add(context.getString(R.string.pdf_chapter_title_format, 1, labels.overviewHeatmap))
+            sortedAnalytes.forEachIndexed { index, analyte ->
+                add(context.getString(R.string.pdf_chapter_title_format, index + 2, analyte.name))
+            }
+            add(
+                context.getString(
+                    R.string.pdf_chapter_title_format,
+                    sortedAnalytes.size + 2,
+                    labels.qualityControl
+                )
+            )
+        }
+        PdfCoverPageRenderer.draw(
+            context = context,
+            targetCanvas = page.canvas,
+            pageWidth = PAGE_WIDTH,
+            pageHeight = PAGE_HEIGHT,
+            content = PdfCoverPageContent(
+                title = labels.documentTitle,
+                projectLine = context.getString(
+                    R.string.pdf_label_project_name_format,
+                    snapshot.projectName
+                ),
+                dateLine = context.getString(
+                    R.string.array_pdf_cover_run_time_format,
+                    formatTimestamp(snapshot.runTimestampEpochMillis)
+                ),
+                detectionModeLine = context.getString(
+                    R.string.pdf_label_detection_mode_format,
+                    snapshot.detectionMode
+                ),
+                overviewLines = overviewLines,
+                generatedAtLine = context.getString(
+                    R.string.pdf_generated_on,
+                    DateFormat.getDateTimeInstance(
+                        DateFormat.MEDIUM,
+                        DateFormat.SHORT,
+                        Locale.getDefault()
+                    ).format(Date())
+                ),
+                pageNumberLine = context.getString(R.string.pdf_page_number, 1, totalPages)
+            )
+        )
+        document.finishPage(page)
+    }
+
+    private fun drawOverviewPage(
+        document: PdfDocument,
+        snapshot: ArrayResultSnapshot,
+        labels: ArrayResultPdfLabels,
+        pageNumber: Int,
+        totalPages: Int
+    ) {
+        val page = document.startPage(pageInfo(pageNumber))
+        val canvas = page.canvas
+        val titlePaint = textPaint(22f, Color.rgb(28, 44, 61), bold = true)
+        val bodyPaint = textPaint(10.5f, Color.rgb(55, 65, 81))
+        val labelPaint = textPaint(10.5f, Color.rgb(75, 85, 99), bold = true)
+        canvas.drawText(labels.documentTitle, PAGE_MARGIN, 54f, titlePaint)
+        var y = drawWrappedText(
+            canvas,
+            labels.frozenEvidenceNote,
+            PAGE_MARGIN,
+            75f,
+            PAGE_WIDTH - PAGE_MARGIN * 2,
+            bodyPaint,
+            14f
+        ) + 10f
+        y = drawKeyValue(canvas, labels.project, snapshot.projectName, y, labelPaint, bodyPaint)
+        y = drawKeyValue(canvas, labels.runId, snapshot.runId, y, labelPaint, bodyPaint)
+        y = drawKeyValue(
+            canvas,
+            labels.runTime,
+            formatTimestamp(snapshot.runTimestampEpochMillis),
+            y,
+            labelPaint,
+            bodyPaint
+        )
+        y = drawKeyValue(canvas, labels.status, snapshot.runStatus, y, labelPaint, bodyPaint)
+        y = drawKeyValue(canvas, labels.detectionMode, snapshot.detectionMode, y, labelPaint, bodyPaint)
+        y = drawKeyValue(
+            canvas,
+            labels.carrier,
+            "${snapshot.carrier.name} v${snapshot.carrier.version}",
+            y,
+            labelPaint,
+            bodyPaint
+        )
+        y = drawKeyValue(canvas, labels.layout, "${snapshot.rows} × ${snapshot.columns}", y, labelPaint, bodyPaint)
+
+        val measurementCount = snapshot.sites.sumOf { it.measurements.size }
+        val reliableCount = snapshot.sites.sumOf { site ->
+            site.measurements.count(ArraySiteMeasurementResult::qualityReliable)
+        }
+        y += 5f
+        drawSummaryMetric(canvas, labels.physicalSites, snapshot.sites.size.toString(), PAGE_MARGIN, y)
+        drawSummaryMetric(canvas, labels.measurements, measurementCount.toString(), 215f, y)
+        drawSummaryMetric(canvas, labels.reliableMeasurements, reliableCount.toString(), 390f, y)
+        y += 64f
+
+        canvas.drawText(labels.overviewHeatmap, PAGE_MARGIN, y, textPaint(14f, Color.rgb(31, 41, 55), true))
+        y += 12f
+        drawGrid(
+            canvas = canvas,
+            snapshot = snapshot,
+            top = y,
+            maxHeight = min(420f, PAGE_HEIGHT - y - 70f),
+            cellColor = { site -> overviewColor(site) }
+        )
+        drawFooter(canvas, pageNumber, totalPages, labels)
+        document.finishPage(page)
+    }
+
+    private fun drawAnalytePage(
+        document: PdfDocument,
+        snapshot: ArrayResultSnapshot,
+        analyte: ArrayAnalyteResult,
+        labels: ArrayResultPdfLabels,
+        pageNumber: Int,
+        totalPages: Int
+    ) {
+        val page = document.startPage(pageInfo(pageNumber))
+        val canvas = page.canvas
+        val titlePaint = textPaint(20f, Color.rgb(28, 44, 61), bold = true)
+        val bodyPaint = textPaint(10.5f, Color.rgb(55, 65, 81))
+        val labelPaint = textPaint(10.5f, Color.rgb(75, 85, 99), bold = true)
+        canvas.drawText("${labels.analyteSection}: ${analyte.name}", PAGE_MARGIN, 54f, titlePaint)
+        var y = 83f
+        y = drawKeyValue(
+            canvas,
+            labels.model,
+            "${analyte.modelName} v${analyte.modelVersion}",
+            y,
+            labelPaint,
+            bodyPaint
+        )
+        y = drawKeyValue(canvas, labels.primaryFeature, analyte.primaryFeature, y, labelPaint, bodyPaint)
+        y = drawKeyValue(
+            canvas,
+            labels.reliableRange,
+            reliableRangeText(analyte, labels.noValue),
+            y,
+            labelPaint,
+            bodyPaint
+        )
+
+        val siteMeasurements = snapshot.sites.mapNotNull { site ->
+            site.measurements.firstOrNull { it.analyteId == analyte.analyteId }
+        }
+        val concentrationValues = siteMeasurements.mapNotNull { it.concentrationValue?.finiteOrNull() }
+        val useConcentration = concentrationValues.isNotEmpty()
+        val observedValues = if (useConcentration) {
+            concentrationValues
+        } else {
+            siteMeasurements.mapNotNull { it.primaryFeatureValue?.finiteOrNull() }
+        }
+        val minimum = if (useConcentration) {
+            analyte.reliableRangeMin?.finiteOrNull() ?: observedValues.minOrNull() ?: 0.0
+        } else {
+            observedValues.minOrNull() ?: 0.0
+        }
+        val maximum = if (useConcentration) {
+            analyte.reliableRangeMax?.finiteOrNull() ?: observedValues.maxOrNull() ?: 1.0
+        } else {
+            observedValues.maxOrNull() ?: 1.0
+        }
+        y += 10f
+        canvas.drawText(
+            if (useConcentration) labels.concentrationHeatmap else labels.signalHeatmap,
+            PAGE_MARGIN,
+            y,
+            textPaint(14f, Color.rgb(31, 41, 55), true)
+        )
+        y += 12f
+        drawGrid(
+            canvas = canvas,
+            snapshot = snapshot,
+            top = y,
+            maxHeight = min(520f, PAGE_HEIGHT - y - 75f),
+            cellColor = { site ->
+                val measurement = site.measurements.firstOrNull { it.analyteId == analyte.analyteId }
+                val value = if (useConcentration) {
+                    measurement?.concentrationValue
+                } else {
+                    measurement?.primaryFeatureValue
+                }
+                value?.finiteOrNull()?.let { heatmapColor(it, minimum, maximum) }
+                    ?: Color.rgb(226, 232, 240)
+            },
+            measurementForQc = { site ->
+                site.measurements.firstOrNull { it.analyteId == analyte.analyteId }
+            }
+        )
+        drawFooter(canvas, pageNumber, totalPages, labels)
+        document.finishPage(page)
+    }
+
+    private fun drawTraceabilityPage(
+        document: PdfDocument,
+        snapshot: ArrayResultSnapshot,
+        labels: ArrayResultPdfLabels,
+        pageNumber: Int,
+        totalPages: Int
+    ) {
+        val page = document.startPage(pageInfo(pageNumber))
+        val canvas = page.canvas
+        val titlePaint = textPaint(20f, Color.rgb(28, 44, 61), bold = true)
+        val sectionPaint = textPaint(14f, Color.rgb(31, 41, 55), bold = true)
+        val bodyPaint = textPaint(10.5f, Color.rgb(55, 65, 81))
+        val labelPaint = textPaint(10.5f, Color.rgb(75, 85, 99), bold = true)
+        canvas.drawText(labels.qualityControl, PAGE_MARGIN, 54f, titlePaint)
+
+        val siteMeasurements = snapshot.sites.flatMap(ArrayPhysicalSiteResult::measurements)
+        val siteFailureCount = siteMeasurements.count { !it.qualityReliable }
+        val lowSignalCount = siteMeasurements.count { !it.signalDetectable }
+        var y = 86f
+        y = drawKeyValue(
+            canvas,
+            labels.frameIssueCount,
+            snapshot.frame.qcIssues.size.toString(),
+            y,
+            labelPaint,
+            bodyPaint
+        )
+        y = drawKeyValue(canvas, labels.siteFailureCount, siteFailureCount.toString(), y, labelPaint, bodyPaint)
+        y = drawKeyValue(canvas, labels.lowSignalCount, lowSignalCount.toString(), y, labelPaint, bodyPaint)
+        if (snapshot.frame.qcIssues.isNotEmpty()) {
+            y += 8f
+            for (issue in snapshot.frame.qcIssues.take(12)) {
+                val evidence = "${issue.severity.name} · ${issue.code.name} · ${issue.measuredValue} / ${issue.threshold}"
+                y = drawWrappedText(
+                    canvas,
+                    evidence,
+                    PAGE_MARGIN + 8f,
+                    y,
+                    PAGE_WIDTH - PAGE_MARGIN * 2 - 8f,
+                    bodyPaint,
+                    14f
+                ) + 4f
+            }
+        }
+
+        y += 18f
+        canvas.drawText(labels.traceability, PAGE_MARGIN, y, sectionPaint)
+        y += 24f
+        y = drawKeyValue(
+            canvas,
+            labels.locator,
+            "${snapshot.frame.locatorName} ${snapshot.frame.locatorVersion}",
+            y,
+            labelPaint,
+            bodyPaint
+        )
+        val processors = snapshot.analytes
+            .map { "${it.processorName} ${it.processorVersion}" }
+            .distinct()
+            .joinToString()
+            .ifBlank { labels.noValue }
+        y = drawKeyValue(canvas, labels.processor, processors, y, labelPaint, bodyPaint)
+        y = drawKeyValue(
+            canvas,
+            labels.frozenSnapshot,
+            "SHA-256 ${ArrayResultExporter.sha256(snapshot.effectiveConfigSnapshotJson.toByteArray(StandardCharsets.UTF_8))}",
+            y,
+            labelPaint,
+            bodyPaint
+        )
+        y += 12f
+        drawWrappedText(
+            canvas,
+            snapshot.runId,
+            PAGE_MARGIN,
+            y,
+            PAGE_WIDTH - PAGE_MARGIN * 2,
+            bodyPaint,
+            14f
+        )
+        drawFooter(canvas, pageNumber, totalPages, labels)
+        document.finishPage(page)
+    }
+
+    private fun drawGrid(
+        canvas: Canvas,
+        snapshot: ArrayResultSnapshot,
+        top: Float,
+        maxHeight: Float,
+        cellColor: (ArrayPhysicalSiteResult) -> Int,
+        measurementForQc: ((ArrayPhysicalSiteResult) -> ArraySiteMeasurementResult?)? = null
+    ) {
+        val width = PAGE_WIDTH - PAGE_MARGIN * 2
+        val cellSize = min(width / snapshot.columns.coerceAtLeast(1), maxHeight / snapshot.rows.coerceAtLeast(1))
+        val gridWidth = cellSize * snapshot.columns
+        val left = PAGE_MARGIN + (width - gridWidth) / 2f
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 0.6f
+            color = Color.argb(100, 71, 85, 105)
+        }
+        val failureBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = min(2.2f, cellSize / 4f)
+            color = Color.rgb(220, 38, 38)
+        }
+        val lowSignal = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.rgb(2, 136, 209)
+        }
+        val sitesByIndex = snapshot.sites.associateBy(ArrayPhysicalSiteResult::siteIndex)
+        for (row in 0 until snapshot.rows) {
+            for (column in 0 until snapshot.columns) {
+                val index = row * snapshot.columns + column
+                val site = sitesByIndex[index]
+                val rect = RectF(
+                    left + column * cellSize,
+                    top + row * cellSize,
+                    left + (column + 1) * cellSize,
+                    top + (row + 1) * cellSize
+                )
+                fill.color = site?.let(cellColor) ?: Color.rgb(241, 245, 249)
+                canvas.drawRect(rect, fill)
+                canvas.drawRect(rect, border)
+                val measurement = site?.let { measurementForQc?.invoke(it) }
+                if (measurement != null && !measurement.qualityReliable) {
+                    canvas.drawRect(rect, failureBorder)
+                }
+                if (measurement != null && !measurement.signalDetectable) {
+                    canvas.drawCircle(
+                        rect.right - cellSize * 0.22f,
+                        rect.top + cellSize * 0.22f,
+                        min(3f, cellSize * 0.10f),
+                        lowSignal
+                    )
+                }
+            }
+        }
+    }
+
+    private fun overviewColor(site: ArrayPhysicalSiteResult): Int {
+        if (site.measurements.isEmpty()) return Color.rgb(226, 232, 240)
+        if (site.measurements.any { !it.qualityReliable }) return Color.rgb(254, 202, 202)
+        if (site.measurements.any { !it.signalDetectable }) return Color.rgb(254, 240, 138)
+        return Color.rgb(187, 247, 208)
+    }
+
+    private fun heatmapColor(value: Double, minimum: Double, maximum: Double): Int {
+        val normalized = if (maximum > minimum) {
+            ((value - minimum) / (maximum - minimum)).coerceIn(0.0, 1.0)
+        } else {
+            0.5
+        }
+        return if (normalized <= 0.5) {
+            interpolateColor(Color.rgb(37, 99, 235), Color.rgb(245, 158, 11), normalized * 2.0)
+        } else {
+            interpolateColor(Color.rgb(245, 158, 11), Color.rgb(220, 38, 38), (normalized - 0.5) * 2.0)
+        }
+    }
+
+    private fun interpolateColor(start: Int, end: Int, ratio: Double): Int {
+        fun channel(startValue: Int, endValue: Int): Int {
+            return (startValue + (endValue - startValue) * ratio).toInt().coerceIn(0, 255)
+        }
+        return Color.rgb(
+            channel(Color.red(start), Color.red(end)),
+            channel(Color.green(start), Color.green(end)),
+            channel(Color.blue(start), Color.blue(end))
+        )
+    }
+
+    private fun drawSummaryMetric(canvas: Canvas, label: String, value: String, left: Float, top: Float) {
+        val rect = RectF(left, top, left + 150f, top + 50f)
+        val background = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(241, 245, 249)
+            style = Paint.Style.FILL
+        }
+        canvas.drawRoundRect(rect, 10f, 10f, background)
+        canvas.drawText(value, left + 12f, top + 22f, textPaint(16f, Color.rgb(15, 118, 110), true))
+        canvas.drawText(label, left + 12f, top + 39f, textPaint(8.5f, Color.rgb(71, 85, 105)))
+    }
+
+    private fun drawKeyValue(
+        canvas: Canvas,
+        label: String,
+        value: String,
+        top: Float,
+        labelPaint: Paint,
+        valuePaint: Paint
+    ): Float {
+        canvas.drawText(label, PAGE_MARGIN, top, labelPaint)
+        val nextY = drawWrappedText(
+            canvas,
+            value,
+            165f,
+            top,
+            PAGE_WIDTH - 165f - PAGE_MARGIN,
+            valuePaint,
+            14f
+        )
+        return nextY + 5f
+    }
+
+    private fun drawWrappedText(
+        canvas: Canvas,
+        text: String,
+        left: Float,
+        top: Float,
+        maxWidth: Float,
+        paint: Paint,
+        lineHeight: Float
+    ): Float {
+        if (text.isEmpty()) return top
+        var y = top
+        var start = 0
+        while (start < text.length) {
+            val count = paint.breakText(text, start, text.length, true, maxWidth, null)
+                .coerceAtLeast(1)
+            val newline = text.indexOf('\n', start).takeIf { it in start until (start + count) }
+            val end = newline ?: (start + count)
+            canvas.drawText(text, start, end, left, y, paint)
+            start = if (newline != null) newline + 1 else end
+            y += lineHeight
+        }
+        return y
+    }
+
+    private fun drawFooter(
+        canvas: Canvas,
+        pageNumber: Int,
+        totalPages: Int,
+        labels: ArrayResultPdfLabels
+    ) {
+        val footer = String.format(Locale.getDefault(), labels.pageFormat, pageNumber, totalPages)
+        val paint = textPaint(9f, Color.rgb(100, 116, 139))
+        canvas.drawText(footer, PAGE_WIDTH - PAGE_MARGIN - paint.measureText(footer), PAGE_HEIGHT - 24f, paint)
+    }
+
+    private fun reliableRangeText(analyte: ArrayAnalyteResult, missing: String): String {
+        val minimum = analyte.reliableRangeMin?.finiteOrNull() ?: return missing
+        val maximum = analyte.reliableRangeMax?.finiteOrNull() ?: return missing
+        return "$minimum – $maximum ${analyte.concentrationUnit}"
+    }
+
+    private fun formatTimestamp(timestamp: Long): String {
+        return DateFormat.getDateTimeInstance(
+            DateFormat.MEDIUM,
+            DateFormat.SHORT,
+            Locale.getDefault()
+        ).format(Date(timestamp))
+    }
+
+    private fun pageInfo(pageNumber: Int): PdfDocument.PageInfo {
+        return PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create()
+    }
+
+    private fun textPaint(size: Float, color: Int, bold: Boolean = false): Paint {
+        return Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = size
+            this.color = color
+            typeface = if (bold) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+        }
+    }
+
+    private fun Double.finiteOrNull(): Double? = takeIf(Double::isFinite)
+}

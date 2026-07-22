@@ -2,6 +2,7 @@ package com.muc.fluocolorquant.data.repository
 
 import com.muc.fluocolorquant.data.dao.ProjectDao
 import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.data.model.ProjectAnalyteJoin
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,6 +25,13 @@ class ProjectRepositoryImpl @Inject constructor(
     
     override suspend fun createProject(project: Project) {
         projectDao.insertProject(project)
+    }
+
+    override suspend fun createProjectWithAnalytes(
+        project: Project,
+        joins: List<ProjectAnalyteJoin>
+    ) {
+        projectDao.insertProjectWithAnalytes(project, joins)
     }
     
     override suspend fun updateProject(project: Project) {

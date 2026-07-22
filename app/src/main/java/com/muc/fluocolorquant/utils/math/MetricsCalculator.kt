@@ -44,26 +44,23 @@ object MetricsCalculator {
             sumAbsError += abs(residual)
         }
         
-        // 确保总平方和不为零，避免除零错误
-        if (ssTot < 1e-10) {
-            ssTot = 1.0 // 设置一个小的非零值
+        /*
+         * R² 可以为负数：这表示模型甚至不如直接使用观测均值。旧实现把负值截断为0，
+         * 会掩盖严重不良模型，并让自动择优误以为多个失败模型质量相同。常量响应数据中，
+         * 只有残差同样接近0时才定义为完全拟合。
+         */
+        val r2 = if (ssTot < 1e-10) {
+            if (ssRes < 1e-10) 1.0 else 0.0
+        } else {
+            1.0 - (ssRes / ssTot)
         }
         
-        // 计算各项指标
-        val r2 = 1.0 - (ssRes / ssTot)
-        
-        // 限制R²在合理范围内（0到1之间）
-        val clampedR2 = r2.coerceIn(0.0, 1.0)
-        
         // 计算调整后的R²
-        val adjustedR2 = if (n > numParameters) {
-            1.0 - ((1.0 - clampedR2) * (n - 1) / (n - numParameters - 1))
+        val adjustedR2 = if (n > numParameters + 1) {
+            1.0 - ((1.0 - r2) * (n - 1) / (n - numParameters - 1))
         } else {
             0.0
         }
-        
-        // 确保调整后的R²也在合理范围内
-        val clampedAdjustedR2 = adjustedR2.coerceIn(0.0, 1.0)
         
         // 计算均方误差
         val mse = if (n > 0) ssRes / n else 0.0
@@ -76,8 +73,8 @@ object MetricsCalculator {
         
         // 返回计算结果，确保所有值都是有限的
         return mapOf(
-            "R²" to clampedR2,
-            "Adj. R²" to clampedAdjustedR2,
+            "R²" to r2,
+            "Adj. R²" to adjustedR2,
             "MSE" to mse,
             "RMSE" to rmse,
             "MAE" to mae
@@ -98,4 +95,4 @@ object MetricsCalculator {
         val metrics = calculateAllMetrics(observed, predicted, 1)
         return metrics["R²"] ?: 0.0
     }
-} 
+}

@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -61,6 +63,7 @@ import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.enums.SiteShape
 import com.muc.fluocolorquant.data.model.CarrierProfile
+import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
 import com.muc.fluocolorquant.ui.viewmodels.CarrierProfileUiState
 import com.muc.fluocolorquant.ui.viewmodels.CarrierProfileViewModel
 
@@ -113,8 +116,6 @@ fun CarrierProfileManagementScreen(
         ) {
             item {
                 ResourceLibraryHeader(
-                    title = stringResource(R.string.carrier_library_title),
-                    subtitle = stringResource(R.string.carrier_library_subtitle),
                     accentColor = MaterialTheme.colorScheme.primary,
                     metrics = listOf(
                         ResourceSummaryMetric(
@@ -244,6 +245,7 @@ private fun QuickCarrierPresets(onChip10: () -> Unit, onChip15: () -> Unit) {
 }
 
 /** 单个载体版本卡片，归档版本只读。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CarrierProfileCard(
     profile: CarrierProfile,
@@ -277,11 +279,10 @@ private fun CarrierProfileCard(
                 ResourceStatusBadge(profile.status)
             }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 ResourceMetadataPill(carrierTypeLabel(profile.carrierType), Icons.Default.Memory)
                 ResourceMetadataPill(
@@ -405,7 +406,21 @@ private fun CarrierEditorSheet(
                 choices = CarrierType.entries,
                 selected = draft.carrierType,
                 label = { type -> carrierTypeLabel(type.code) },
-                onSelected = { onDraftChange(draft.copy(carrierType = it)) }
+                onSelected = { selectedType ->
+                    onDraftChange(
+                        draft.copy(
+                            carrierType = selectedType,
+                            targetPolarity = if (
+                                selectedType == CarrierType.MICROFLUIDIC_CHIP &&
+                                draft.targetPolarity == null
+                            ) {
+                                GridTargetPolarity.DARK
+                            } else {
+                                draft.targetPolarity
+                            }
+                        )
+                    )
+                }
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -437,6 +452,15 @@ private fun CarrierEditorSheet(
                 onSelected = { onDraftChange(draft.copy(siteShape = it)) }
             )
 
+            if (draft.carrierType == CarrierType.MICROFLUIDIC_CHIP) {
+                CarrierPolarityField(
+                    selected = draft.targetPolarity,
+                    onSelected = { polarity ->
+                        onDraftChange(draft.copy(targetPolarity = polarity))
+                    }
+                )
+            }
+
             Button(
                 onClick = onSave,
                 modifier = Modifier.fillMaxWidth(),
@@ -451,6 +475,43 @@ private fun CarrierEditorSheet(
                 )
             }
             Spacer(modifier = Modifier.height(20.dp))
+        }
+    }
+}
+
+/**
+ * 微流控局部目标的亮暗关系选择。
+ *
+ * 页面使用实验人员能直接观察的“目标比背景更暗/更亮”表达，不暴露 black-hat、top-hat
+ * 等算法术语；选择结果由 ViewModel 编码为版本化定位配置。
+ */
+@Composable
+private fun CarrierPolarityField(
+    selected: GridTargetPolarity?,
+    onSelected: (GridTargetPolarity) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.carrier_target_polarity_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = stringResource(R.string.carrier_target_polarity_description),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = selected == GridTargetPolarity.DARK,
+                onClick = { onSelected(GridTargetPolarity.DARK) },
+                label = { Text(stringResource(R.string.carrier_target_polarity_dark)) }
+            )
+            FilterChip(
+                selected = selected == GridTargetPolarity.BRIGHT,
+                onClick = { onSelected(GridTargetPolarity.BRIGHT) },
+                label = { Text(stringResource(R.string.carrier_target_polarity_bright)) }
+            )
         }
     }
 }

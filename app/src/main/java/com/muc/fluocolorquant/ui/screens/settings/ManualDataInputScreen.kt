@@ -1,77 +1,97 @@
 package com.muc.fluocolorquant.ui.screens.settings
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.PixelType
 import com.muc.fluocolorquant.ui.components.LatexView
+import com.muc.fluocolorquant.ui.components.LocalToastManager
+import com.muc.fluocolorquant.ui.components.ScientificPickerOption
+import com.muc.fluocolorquant.ui.components.ScientificPickerSheet
+import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
 import com.muc.fluocolorquant.ui.components.tables.MetricsTable
-import com.muc.fluocolorquant.ui.viewmodels.ColumnType
 import com.muc.fluocolorquant.ui.viewmodels.CreationFlowState
+import com.muc.fluocolorquant.ui.viewmodels.CurveModelEvent
 import com.muc.fluocolorquant.ui.viewmodels.CurveModelViewModel
+import com.muc.fluocolorquant.utils.math.CalibrationDataParser
 import com.muc.fluocolorquant.utils.math.FittingEngine
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
+
+/** 页面中的一行标准品数据；字符串状态允许用户在编辑过程中暂时清空输入。 */
+private data class CalibrationPointInput(
+    val concentration: String = "",
+    val signal: String = ""
+)
 
 /**
- * 手动数据输入页面
+ * 标准曲线创建页面。
+ *
+ * 普通用户只需要输入模型名、选择信号特征、录入或导入两列标定点，然后点击拟合。函数
+ * 默认为自动推荐，也可以从下拉列表指定；函数参数始终由 [FittingEngine] 计算并只读展示。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,545 +103,511 @@ fun ManualDataInputScreen(
     val creationFlowState by viewModel.activeCreationFlow.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
-    
-    // 本地状态
-    var modelName by remember { mutableStateOf("") }
-    var pixelTypeExpanded by remember { mutableStateOf(false) }
-    var showSaveDialog by remember { mutableStateOf(false) }
-    var selectedPixelType by remember { mutableStateOf<PixelType?>(PixelType.GRAY_LUMINOSITY) }
-    
-    // 行列数输入状态 - 默认为4行2列
-    var rowCountInput by remember { mutableStateOf("4") }
-    var columnCountInput by remember { mutableStateOf("2") }
-    
-    // 添加协程作用域用于处理延迟操作
+    val errorResourceId by viewModel.errorResourceId.collectAsState()
+    val manualState = creationFlowState as? CreationFlowState.ManualDataInput
+    val context = LocalContext.current
+    val toastManager = LocalToastManager.current
     val scope = rememberCoroutineScope()
-    
-    // 屏幕宽度信息，用于计算列宽
-    val configuration = LocalConfiguration.current
-    val screenWidth = configuration.screenWidthDp.dp
-    val horizontalPadding = 16.dp * 2 // 屏幕左右两边的填充
-    val rowNumberWidth = 60.dp // 行号列宽度
-    val availableWidth = screenWidth - horizontalPadding - rowNumberWidth
-    
-    // 计算是否需要水平滚动
-    val columnCount = columnCountInput.toIntOrNull() ?: 2
-    val needsScroll = columnCount >= 4
-    
-    // 计算列宽度
-    val columnWidth = if (needsScroll) {
-        150.dp // 固定宽度，超过4列时使用
-    } else {
-        // 2-3列时等分可用宽度
-        availableWidth / columnCount
+    val selectedFunctionTitle = manualState?.selectedFunction?.let { function ->
+        localizedFittingFunctionTitle(function)
     }
-    
-    // 从ViewModel的状态初始化本地状态
-    LaunchedEffect(key1 = Unit) {
-        if (creationFlowState == null) {
-            viewModel.startManualDataInput()
-            
-            // 确保初始表格大小与默认行列数匹配
-            val rowCount = rowCountInput.toIntOrNull() ?: 4
-            val columnCount = columnCountInput.toIntOrNull() ?: 2
-            
-            // 对于初始状态，需要添加行
-            for (i in 1 until rowCount) { // 默认已有1行，所以从1开始
-                viewModel.addDataRow()
+
+    var modelName by remember { mutableStateOf("") }
+    var showFunctionPicker by remember { mutableStateOf(false) }
+    var showPixelPicker by remember { mutableStateOf(false) }
+    val pointInputs = remember {
+        mutableStateListOf<CalibrationPointInput>().apply {
+            repeat(4) { add(CalibrationPointInput()) }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (creationFlowState == null) viewModel.startManualDataInput()
+    }
+
+    // 只有仓库确认保存完成后才退出页面，避免数据库失败时用户误以为模型已经创建。
+    LaunchedEffect(viewModel, context, toastManager) {
+        viewModel.events.collect { event ->
+            if (event == CurveModelEvent.ModelSaved) {
+                toastManager.showToast(
+                    context.getString(R.string.standard_curve_saved),
+                    ToastType.SUCCESS
+                )
+                navigateBack()
             }
         }
     }
-    
-    val manualDataState = (creationFlowState as? CreationFlowState.ManualDataInput)
-    
-    // 确保数据表格与用户输入行列数一致
-    LaunchedEffect(key1 = rowCountInput, key2 = columnCountInput) {
-        val rowCount = rowCountInput.toIntOrNull() ?: 4
-        val columnCount = columnCountInput.toIntOrNull() ?: 2
-        
-        if (rowCount > 0 && columnCount > 0 && manualDataState != null) {
-            // 调整数据表格大小
-            val currentRowCount = manualDataState.dataTable.size
-            val currentColumnCount = if (manualDataState.dataTable.isNotEmpty()) manualDataState.dataTable[0].size else 0
-            
-            // 先处理行数变化
-            if (rowCount > currentRowCount) {
-                // 增加行
-                for (i in 1..(rowCount - currentRowCount)) {
-                    viewModel.addDataRow()
-                }
-            } else if (rowCount < currentRowCount) {
-                // 减少行
-                for (i in 1..(currentRowCount - rowCount)) {
-                    viewModel.removeDataRow()
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val parseResult = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                        CalibrationDataParser.parse(reader.readText())
+                    } ?: error("empty_stream")
                 }
             }
-            
-            // 再处理列数变化
-            if (columnCount > currentColumnCount) {
-                // 增加列
-                for (i in 1..(columnCount - currentColumnCount)) {
-                    viewModel.addDataColumn()
+            parseResult.onSuccess { result ->
+                if (result.points.size < 2) {
+                    toastManager.showToast(
+                        context.getString(R.string.standard_curve_import_not_enough_points),
+                        ToastType.WARNING
+                    )
+                } else {
+                    pointInputs.clear()
+                    pointInputs.addAll(
+                        result.points.map { (concentration, signal) ->
+                            CalibrationPointInput(
+                                concentration = concentration.toInputText(),
+                                signal = signal.toInputText()
+                            )
+                        }
+                    )
+                    toastManager.showToast(
+                        context.getString(
+                            R.string.standard_curve_import_success,
+                            result.points.size,
+                            result.ignoredLineCount
+                        ),
+                        ToastType.SUCCESS
+                    )
                 }
-            } else if (columnCount < currentColumnCount) {
-                // 减少列
-                for (i in 1..(currentColumnCount - columnCount)) {
-                    viewModel.removeDataColumn()
-                }
+            }.onFailure {
+                toastManager.showToast(
+                    context.getString(R.string.standard_curve_import_failed),
+                    ToastType.ERROR
+                )
             }
         }
     }
-    
-    val dataTable = manualDataState?.dataTable ?: listOf(listOf(0.0, 0.0))
-    val columnTypes = manualDataState?.columnTypes ?: listOf(ColumnType.NONE, ColumnType.NONE)
-    val fittingResult = manualDataState?.fittingResult
-    
-    // 检查是否有一个浓度列和至少一个像素类型列
-    val hasConcAndPixel = remember(columnTypes) {
-        derivedStateOf {
-            columnTypes.contains(ColumnType.CONCENTRATION) && 
-            columnTypes.contains(ColumnType.PIXEL_VALUE)
-        }
-    }
-    
-    // 添加水平滚动状态
-    val horizontalScrollState = rememberScrollState()
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(text = stringResource(R.string.import_data)) },
+                title = { Text(stringResource(R.string.standard_curve_create_title)) },
                 navigationIcon = {
-                    IconButton(onClick = { navigateBack() }) {
+                    IconButton(onClick = navigateBack) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)
                         )
                     }
                 }
             )
         }
-    ) { paddingValues ->
-        Box(modifier = Modifier
-            .fillMaxSize()
-            .padding(paddingValues)
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
         ) {
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    // 行列数输入区域
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                item {
+                    StandardCurveSectionCard(
+                        title = stringResource(R.string.standard_curve_basic_section)
                     ) {
-                        // 行数输入
                         OutlinedTextField(
-                            value = rowCountInput,
-                            onValueChange = { input ->
-                                // 只接受正整数
-                                if (input.isEmpty() || input.all { it.isDigit() }) {
-                                    rowCountInput = input
-                                }
-                            },
-                            label = { Text(stringResource(R.string.row_count)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
+                            value = modelName,
+                            onValueChange = { modelName = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.model_name)) },
                             singleLine = true
                         )
-                        
-                        Spacer(modifier = Modifier.width(8.dp))
-                        
-                        // 列数输入
-                        OutlinedTextField(
-                            value = columnCountInput,
-                            onValueChange = { input ->
-                                // 只接受正整数
-                                if (input.isEmpty() || input.all { it.isDigit() }) {
-                                    columnCountInput = input
-                                }
-                            },
-                            label = { Text(stringResource(R.string.column_count)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
+                        OutlinedButton(
+                            onClick = { showPixelPicker = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                manualState?.selectedPixelType?.displayName.orEmpty(),
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(Icons.Default.ExpandMore, contentDescription = null)
+                        }
+                        OutlinedButton(
+                            onClick = { showFunctionPicker = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                selectedFunctionTitle
+                                    ?: stringResource(R.string.standard_curve_auto_recommend),
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(Icons.Default.ExpandMore, contentDescription = null)
+                        }
+                        Text(
+                            stringResource(R.string.standard_curve_auto_recommend_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // 数据输入表格 - 根据列数决定是否使用水平滚动
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, MaterialTheme.colorScheme.outline)
+                }
+
+                item {
+                    StandardCurveSectionCard(
+                        title = stringResource(R.string.standard_curve_points_section)
                     ) {
-                        Column {
-                            // 表头 - 列类型选择器
-                            Row(
-                                modifier = Modifier
-                                    .let { if (needsScroll) it.horizontalScroll(horizontalScrollState) else it.fillMaxWidth() }
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { pointInputs.add(CalibrationPointInput()) },
+                                modifier = Modifier.weight(1f)
                             ) {
-                                // 行号列
-                                Box(
-                                    modifier = Modifier
-                                        .width(rowNumberWidth)
-                                        .height(48.dp)
-                                        .border(0.5.dp, MaterialTheme.colorScheme.outline),
-                                    contentAlignment = Alignment.Center
+                                Icon(Icons.Default.Add, contentDescription = null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.standard_curve_add_point))
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    importLauncher.launch(
+                                        arrayOf("text/csv", "text/plain", "text/tab-separated-values")
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.FileOpen, contentDescription = null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.standard_curve_import_csv))
+                            }
+                        }
+                        Text(
+                            stringResource(R.string.standard_curve_csv_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                itemsIndexed(pointInputs) { index, point ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    stringResource(R.string.standard_curve_point_number, index + 1),
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                IconButton(
+                                    onClick = { if (pointInputs.size > 2) pointInputs.removeAt(index) },
+                                    enabled = pointInputs.size > 2
                                 ) {
-                                    Text(
-                                        text = "#",
-                                        style = MaterialTheme.typography.bodyMedium
+                                    Icon(
+                                        Icons.Default.DeleteOutline,
+                                        contentDescription = stringResource(R.string.remove)
                                     )
                                 }
-                                
-                                // 数据列类型选择器
-                                columnTypes.forEachIndexed { colIndex, columnType ->
-                                    var expanded by remember { mutableStateOf(false) }
-                                    
-                                    ExposedDropdownMenuBox(
-                                        expanded = expanded,
-                                        onExpandedChange = { expanded = it },
-                                        modifier = Modifier
-                                            .width(columnWidth)
-                                            .height(48.dp)
-                                            .border(0.5.dp, MaterialTheme.colorScheme.outline)
-                                    ) {
-                                        TextField(
-                                            value = when (columnType) {
-                                                ColumnType.CONCENTRATION -> stringResource(R.string.concentration)
-                                                ColumnType.PIXEL_VALUE -> selectedPixelType?.displayName ?: stringResource(R.string.pixel_type)
-                                                else -> stringResource(R.string.column_type)
-                                            },
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .menuAnchor(),
-                                            textStyle = MaterialTheme.typography.bodyMedium,
-                                            colors = ExposedDropdownMenuDefaults.textFieldColors(
-                                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
-                                            )
-                                        )
-                                        
-                                        ExposedDropdownMenu(
-                                            expanded = expanded,
-                                            onDismissRequest = { expanded = false }
-                                        ) {
-                                            // 检查是否已有浓度列，如果有且当前列不是浓度列，则不显示浓度选项
-                                            val hasConcentration = columnTypes.contains(ColumnType.CONCENTRATION)
-                                            val canSetConcentration = !hasConcentration || columnType == ColumnType.CONCENTRATION
-                                            
-                                            if (canSetConcentration) {
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.concentration)) },
-                                                    onClick = {
-                                                        viewModel.updateColumnType(colIndex, ColumnType.CONCENTRATION)
-                                                        expanded = false
-                                                    }
-                                                )
-                                            }
-                                            
-                                            // 像素类型选项
-                                            DropdownMenuItem(
-                                                text = { 
-                                                    if (selectedPixelType == null) {
-                                                        Text("选择像素类型...")
-                                                    } else {
-                                                        Text(selectedPixelType!!.displayName)
-                                                    }
-                                                },
-                                                onClick = {
-                                                    // 先将列类型设置为像素值
-                                                    viewModel.updateColumnType(colIndex, ColumnType.PIXEL_VALUE)
-                                                    expanded = false
-                                                    // 然后打开像素类型选择对话框
-                                                    pixelTypeExpanded = true
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
                             }
-                            
-                            // 表格数据行 - 根据列数决定是否使用水平滚动
-                            dataTable.forEachIndexed { rowIndex, rowData ->
-                                Row(
-                                    modifier = Modifier
-                                        .let { if (needsScroll) it.horizontalScroll(horizontalScrollState) else it.fillMaxWidth() }
-                                ) {
-                                    // 行号
-                                    Box(
-                                        modifier = Modifier
-                                            .width(rowNumberWidth)
-                                            .height(48.dp)
-                                            .border(0.5.dp, MaterialTheme.colorScheme.outline)
-                                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = (rowIndex + 1).toString(),
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
-                                    
-                                    // 数据单元格
-                                    rowData.forEachIndexed { colIndex, cellValue ->
-                                        var cellValueText by remember(rowIndex, colIndex, cellValue) {
-                                            mutableStateOf(
-                                                if (cellValue == 0.0 && rowIndex > 0) "" 
-                                                else if (cellValue == cellValue.toInt().toDouble()) cellValue.toInt().toString()
-                                                else cellValue.toString()
-                                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = point.concentration,
+                                    onValueChange = { input ->
+                                        if (input.isDecimalInput(allowNegative = false)) {
+                                            pointInputs[index] = point.copy(concentration = input)
                                         }
-                                        
-                                        OutlinedTextField(
-                                            value = cellValueText,
-                                            onValueChange = { text ->
-                                                // 只允许输入数字和小数点
-                                                if (text.isEmpty() || text.matches(Regex("^-?\\d*\\.?\\d*$"))) {
-                                                    cellValueText = text
-                                                    val value = text.toDoubleOrNull() ?: 0.0
-                                                    viewModel.updateDataTableCell(rowIndex, colIndex, value)
-                                                }
-                                            },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            modifier = Modifier
-                                                .width(columnWidth)
-                                                .height(48.dp),
-                                            textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                                textAlign = TextAlign.Center
-                                            )
-                                        )
-                                    }
-                                }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    label = { Text(stringResource(R.string.concentration)) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true
+                                )
+                                OutlinedTextField(
+                                    value = point.signal,
+                                    onValueChange = { input ->
+                                        if (input.isDecimalInput(allowNegative = true)) {
+                                            pointInputs[index] = point.copy(signal = input)
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    label = { Text(stringResource(R.string.standard_curve_signal_value)) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true
+                                )
                             }
                         }
                     }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // 开始拟合按钮
+                }
+
+                item {
                     Button(
-                        onClick = { viewModel.performFitFromData() },
-                        enabled = hasConcAndPixel.value && dataTable.size > 1,
-                        modifier = Modifier.fillMaxWidth()
+                        onClick = {
+                            val points = pointInputs.mapNotNull { point ->
+                                val concentration = point.concentration.toDoubleOrNull()
+                                val signal = point.signal.toDoubleOrNull()
+                                if (concentration != null && signal != null) concentration to signal
+                                else null
+                            }
+                            val partiallyFilled = pointInputs.any { point ->
+                                point.concentration.isBlank() xor point.signal.isBlank()
+                            }
+                            if (partiallyFilled || points.size < 2) {
+                                toastManager.showToast(
+                                    context.getString(R.string.standard_curve_points_invalid),
+                                    ToastType.WARNING
+                                )
+                            } else {
+                                viewModel.performFitFromPoints(points)
+                            }
+                        },
+                        enabled = !isLoading,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(vertical = 13.dp)
                     ) {
-                        Text(stringResource(R.string.start_fitting))
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // 显示拟合结果
-                    fittingResult?.let { result ->
-                        if (result.isSuccess) {
-                            // 提前获取所有需要的字符串资源
-                            val concentrationLabel = stringResource(R.string.concentration)
-                            val pixelTypeLabel = selectedPixelType?.displayName ?: ""
-                            val titleText = "${result.function.displayName} 拟合曲线"
-                            
-                            // 使用FittingEngine中的formatParametersToLatex函数生成LaTeX表达式
-                            val functionLatexExpression = remember(result.function, result.params) {
-                                FittingEngine.formatParametersToLatex(result.function, result.params)
-                            }
-                            
-                            // 直接使用FittingEngine的函数，不依赖ViewModel的计算
-                            val curveFunction = remember(result.function, result.params) {
-                                { x: Double -> FittingEngine.calculate(result.function, result.params, x) }
-                            }
-                            
-                            CurveChart(
-                                fittedCurve = curveFunction,
-                                selectedFunction = result.function,
-                                parameters = result.params,
-                                xAxisLabel = concentrationLabel,
-                                yAxisLabel = pixelTypeLabel,
-                                title = titleText,
-                                modifier = Modifier.height(250.dp),
-                                dataPoints = result.standardPoints
+                        Icon(Icons.Default.AutoGraph, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(
+                                if (manualState?.selectedFunction == null) {
+                                    R.string.standard_curve_start_auto_fit
+                                } else {
+                                    R.string.start_fitting
+                                }
                             )
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            // 函数表达式卡片 - 参考ManualCurveInputScreen.kt的实现
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        )
+                    }
+                }
+
+                manualState?.fittingResult?.takeIf { it.isSuccess }?.let { result ->
+                    item {
+                        StandardCurveSectionCard(
+                            title = stringResource(R.string.standard_curve_result_section)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
                             ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
                                     Text(
-                                        text = stringResource(R.string.function_expression),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                                        stringResource(
+                                            R.string.standard_curve_recommended_function,
+                                            localizedFittingFunctionTitle(result.function)
+                                        ),
+                                        fontWeight = FontWeight.SemiBold
                                     )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    // 使用 key 来强制重建LatexView，彻底清除其内部错误状态
-                                    key(functionLatexExpression) {
-                                        Box(
-                                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            LatexView(
-                                                latex = functionLatexExpression,
-                                                modifier = Modifier.padding(vertical = 8.dp)
-                                            )
-                                        }
-                                    }
+                                    Text(
+                                        stringResource(
+                                            R.string.standard_curve_r_squared,
+                                            String.format(Locale.US, "%.4f", result.rSquared)
+                                        )
+                                    )
                                 }
                             }
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            // 拟合函数显示
-                            Text(
-                                text = "拟合函数: ${result.function.displayName}",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            
-                            Spacer(modifier = Modifier.height(8.dp))
-                            
-                            // 参数显示
-                            result.params.entries.toList().forEachIndexed { index, entry ->
-                                Text(
-                                    text = "${entry.key} = ${String.format("%.6f", entry.value)}",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            // 拟合质量指标表格 - 直接使用result.allMetrics，不在UI层计算
-                            val metricsTitle = stringResource(R.string.fitting_quality)
-                            
-                            MetricsTable(
-                                metrics = result.allMetrics.mapValues { (_, value) ->
-                                    String.format("%.4f", value)
+                            CurveChart(
+                                fittedCurve = { x ->
+                                    FittingEngine.calculate(result.function, result.params, x)
                                 },
-                                title = metricsTitle
+                                selectedFunction = result.function,
+                                parameters = result.params,
+                                xAxisLabel = stringResource(R.string.concentration),
+                                yAxisLabel = manualState.selectedPixelType.displayName,
+                                title = stringResource(R.string.standard_curve_chart_title),
+                                modifier = Modifier.height(260.dp),
+                                dataPoints = result.standardPoints
                             )
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            // 保存模型按钮
+                            LatexView(
+                                latex = FittingEngine.formatParametersToLatex(
+                                    result.function,
+                                    result.params
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                                textSize = 18.sp
+                            )
+                            MetricsTable(
+                                metrics = result.metrics.mapValues { (_, value) ->
+                                    String.format(Locale.US, "%.6f", value)
+                                },
+                                title = stringResource(R.string.standard_curve_metrics_title)
+                            )
                             Button(
-                                onClick = { showSaveDialog = true },
-                                modifier = Modifier.fillMaxWidth()
+                                onClick = { viewModel.saveModel(modelName.trim()) },
+                                enabled = modelName.isNotBlank() && !isLoading,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(vertical = 13.dp)
                             ) {
                                 Icon(Icons.Default.Check, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(Modifier.width(8.dp))
                                 Text(stringResource(R.string.save_model))
                             }
                         }
                     }
                 }
+
+                item { Spacer(Modifier.height(24.dp)) }
             }
-            
-            // 错误消息对话框
-            errorMessage?.let {
-                AlertDialog(
-                    onDismissRequest = { viewModel.clearErrorMessage() },
-                    title = { Text("错误") },
-                    text = { Text(it) },
-                    confirmButton = {
-                        Button(onClick = { viewModel.clearErrorMessage() }) {
-                            Text("确定")
-                        }
-                    }
-                )
-            }
-            
-            // 像素类型选择对话框
-            if (pixelTypeExpanded) {
-                AlertDialog(
-                    onDismissRequest = { pixelTypeExpanded = false },
-                    title = { Text(stringResource(R.string.pixel_type)) },
-                    text = {
-                        // 使用垂直滚动使得所有像素类型都可见
-                        Column(
-                            modifier = Modifier
-                                .verticalScroll(rememberScrollState())
-                                .padding(vertical = 8.dp)
-                        ) {
-                            PixelType.getByCategory().forEach { (category, pixelTypes) ->
-                                Text(
-                                    text = category,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                )
-                                
-                                pixelTypes.forEach { pixelType ->
-                                    TextButton(
-                                        onClick = {
-                                            selectedPixelType = pixelType
-                                            pixelTypeExpanded = false
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(pixelType.displayName)
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        Button(onClick = { pixelTypeExpanded = false }) {
-                            Text(stringResource(R.string.cancel))
-                        }
-                    }
-                )
-            }
-            
-            // 保存对话框
-            if (showSaveDialog) {
-                AlertDialog(
-                    onDismissRequest = { 
-                        showSaveDialog = false
-                    },
-                    title = { Text(stringResource(R.string.save_model)) },
-                    text = {
-                        Column {
-                            OutlinedTextField(
-                                value = modelName,
-                                onValueChange = { modelName = it },
-                                label = { Text(stringResource(R.string.model_name)) },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    // 添加小延迟，解决输入法连接问题
-                                    delay(50)
-                                    
-                                    viewModel.saveModel(modelName)
-                                    showSaveDialog = false
-                                    navigateBack()
-                                }
-                            },
-                            enabled = modelName.isNotBlank()
-                        ) {
-                            Text(stringResource(R.string.confirm))
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { 
-                            showSaveDialog = false 
-                        }) { Text(stringResource(R.string.cancel)) }
-                    }
-                )
+
+            if (isLoading) {
+                Surface(
+                    modifier = Modifier.align(Alignment.Center),
+                    shape = RoundedCornerShape(18.dp),
+                    tonalElevation = 8.dp
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.padding(24.dp))
+                }
             }
         }
     }
-} 
+
+    errorMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearErrorMessage,
+            title = { Text(stringResource(R.string.error)) },
+            text = { Text(message) },
+            confirmButton = {
+                Button(onClick = viewModel::clearErrorMessage) {
+                    Text(stringResource(R.string.confirm))
+                }
+            }
+        )
+    }
+
+    errorResourceId?.let { resourceId ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearErrorMessage,
+            title = { Text(stringResource(R.string.error)) },
+            text = { Text(stringResource(resourceId)) },
+            confirmButton = {
+                Button(onClick = viewModel::clearErrorMessage) {
+                    Text(stringResource(R.string.confirm))
+                }
+            }
+        )
+    }
+
+    if (showPixelPicker) {
+        ScientificPickerSheet(
+            title = stringResource(R.string.pixel_type),
+            options = PixelType.entries.map { pixelType ->
+                ScientificPickerOption(id = pixelType.identifier, title = pixelType.displayName)
+            },
+            selectedId = manualState?.selectedPixelType?.identifier,
+            onSelect = { id -> PixelType.fromIdentifier(id)?.let(viewModel::updateDataPixelType) },
+            onDismiss = { showPixelPicker = false }
+        )
+    }
+
+    if (showFunctionPicker) {
+        val autoId = "AUTO"
+        val functions = FittingFunction.entries.filter { it != FittingFunction.INTERPOLATION }
+        ScientificPickerSheet(
+            title = stringResource(R.string.standard_curve_function_picker_title),
+            options = listOf(
+                ScientificPickerOption(
+                    id = autoId,
+                    title = stringResource(R.string.standard_curve_auto_recommend),
+                    subtitle = stringResource(R.string.standard_curve_auto_recommend_short_desc)
+                )
+            ) + functions.map { function ->
+                ScientificPickerOption(
+                    id = function.identifier,
+                    title = localizedFittingFunctionTitle(function),
+                    // 使用项目已集成的 jlatexmath-android 直接排版公式，不显示控制符源码。
+                    latexSubtitle = function.latexFormula
+                )
+            },
+            selectedId = manualState?.selectedFunction?.identifier ?: autoId,
+            onSelect = { id ->
+                viewModel.updateDataFittingFunction(
+                    if (id == autoId) null else FittingFunction.fromIdentifier(id)
+                )
+            },
+            onDismiss = { showFunctionPicker = false }
+        )
+    }
+}
+
+/**
+ * 返回拟合函数在当前语言下的用户可见名称。
+ *
+ * [FittingFunction.displayName] 仍用于历史数据兼容、日志和内部标识；新建标准曲线页面不再
+ * 直接显示其中固定的英文文本，避免中文界面出现大段未本地化的专业名词。
+ */
+@Composable
+private fun localizedFittingFunctionTitle(function: FittingFunction): String {
+    val resourceId = when (function) {
+        FittingFunction.LINEAR -> R.string.fitting_function_linear
+        FittingFunction.QUADRATIC -> R.string.fitting_function_quadratic
+        FittingFunction.CUBIC -> R.string.fitting_function_cubic
+        FittingFunction.QUARTIC -> R.string.fitting_function_quartic
+        FittingFunction.EXPONENTIAL -> R.string.fitting_function_exponential
+        FittingFunction.POWER -> R.string.fitting_function_power
+        FittingFunction.LOG -> R.string.fitting_function_log
+        FittingFunction.RODBARD -> R.string.fitting_function_rodbard_4pl
+        FittingFunction.GAMMA_VARIATE -> R.string.fitting_function_gamma_variate
+        FittingFunction.CUSTOM_LOG -> R.string.fitting_function_custom_log
+        FittingFunction.RODBARD_NIH -> R.string.fitting_function_rodbard_nih
+        FittingFunction.EXPONENTIAL_WITH_OFFSET -> R.string.fitting_function_exponential_offset
+        FittingFunction.GAUSSIAN -> R.string.fitting_function_gaussian
+        FittingFunction.EXPONENTIAL_RECOVERY -> R.string.fitting_function_exponential_recovery
+        FittingFunction.LOGISTIC -> R.string.fitting_function_logistic_5pl
+        FittingFunction.GOMPERTZ -> R.string.fitting_function_gompertz
+        FittingFunction.HILL -> R.string.fitting_function_hill
+        FittingFunction.GENERAL_GOMPERTZ -> R.string.fitting_function_general_gompertz
+        FittingFunction.RICHARDS -> R.string.fitting_function_richards
+        FittingFunction.INTERPOLATION -> R.string.fitting_function_interpolation
+    }
+    return stringResource(resourceId)
+}
+
+/** 统一的分区卡片，减少表单中无意义的层层嵌套。 */
+@Composable
+private fun StandardCurveSectionCard(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            content()
+        }
+    }
+}
+
+/** 根据字段语义过滤输入，防止字母、重复小数点和不允许的负号进入状态。 */
+private fun String.isDecimalInput(allowNegative: Boolean): Boolean {
+    if (isEmpty() || this == ".") return true
+    if (allowNegative && (this == "-" || this == "-.")) return true
+    val pattern = if (allowNegative) Regex("^-?\\d*(?:\\.\\d*)?$")
+    else Regex("^\\d*(?:\\.\\d*)?$")
+    return matches(pattern)
+}
+
+private fun Double.toInputText(): String {
+    return if (this % 1.0 == 0.0) toLong().toString() else toString()
+}

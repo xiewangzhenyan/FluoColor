@@ -3,12 +3,12 @@ package com.muc.fluocolorquant.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.enums.CarrierType
+import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.model.AcquisitionProfile
 import com.muc.fluocolorquant.data.repository.AcquisitionProfileRepository
 import com.muc.fluocolorquant.ui.screens.settings.resources.AcquisitionProfileDraft
 import com.muc.fluocolorquant.ui.screens.settings.resources.CameraControlStrategy
-import com.muc.fluocolorquant.ui.screens.settings.resources.DetectionModality
 import com.muc.fluocolorquant.ui.screens.settings.resources.ResourceProfileEvent
 import com.muc.fluocolorquant.ui.screens.settings.resources.ResourceProfileJsonCodec
 import com.muc.fluocolorquant.ui.screens.settings.resources.ResourceStatusFilter

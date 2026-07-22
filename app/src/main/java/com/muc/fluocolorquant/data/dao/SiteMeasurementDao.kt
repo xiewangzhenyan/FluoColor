@@ -16,6 +16,10 @@ interface SiteMeasurementDao {
     @Query("SELECT * FROM site_measurements WHERE runId = :runId AND analyteId = :analyteId ORDER BY siteIndex")
     suspend fun getByAnalyte(runId: String, analyteId: String): List<SiteMeasurement>
 
+    /** 测试、导出和运行详情使用的固定快照查询，不依赖 Flow 收集时序。 */
+    @Query("SELECT * FROM site_measurements WHERE runId = :runId ORDER BY siteIndex, id")
+    suspend fun getByRun(runId: String): List<SiteMeasurement>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertAll(measurements: List<SiteMeasurement>)
 

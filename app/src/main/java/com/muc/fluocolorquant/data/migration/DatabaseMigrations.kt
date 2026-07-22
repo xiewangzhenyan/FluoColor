@@ -25,6 +25,117 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * 版本 10 → 11：解除模板主档对单分析物和旧 CurveModel 的强制绑定。
+     *
+     * 新模板的多分析物、试剂和统一分析模型全部保存在模板子表；主档中的旧字段仅供
+     * 历史孔板流程读取。迁移通过重建表改变 NOT NULL 和外键删除语义，不伪造占位数据。
+     */
+    val MIGRATION_10_11: Migration = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            rebuildExperimentTemplateMaster(db)
+        }
+    }
+
+    /**
+     * 版本 11 → 12：为新逐位点测量补充浓度反算和模型快照字段。
+     *
+     * 所有新增列均可空，因此旧的仅信号测量天然保持合法；迁移只追加列，不重建表、不
+     * 复制数据，也不会改变现有主键、索引或外键，避免科研运行记录产生不必要风险。
+     */
+    val MIGRATION_11_12: Migration = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `concentrationValue` REAL")
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `concentrationUnit` TEXT")
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `reliableRangeStatus` TEXT")
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `modelSnapshotJson` TEXT")
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `quantificationQcJson` TEXT")
+        }
+    }
+
+    /**
+     * 重建模板主表并保持所有外部引用仍指向 `experiment_templates`。
+     *
+     * `legacy_alter_table` 防止 SQLite 在旧表改名时把子表外键同步改到临时表名；新表
+     * 建好并复制完成后才删除旧表，避免模板分析物、位点和项目关联被级联清理。
+     */
+    private fun rebuildExperimentTemplateMaster(db: SupportSQLiteDatabase) {
+        db.execSQL("PRAGMA legacy_alter_table = ON")
+        db.execSQL(
+            "ALTER TABLE `experiment_templates` RENAME TO `experiment_templates_v10_legacy`"
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `experiment_templates` (
+                `id` TEXT NOT NULL,
+                `templateName` TEXT NOT NULL,
+                `analyteId` TEXT,
+                `reagentAntigenId` TEXT,
+                `reagentAntibodyId` TEXT,
+                `fkCurveModelId` TEXT,
+                `reliableRangeMin` REAL NOT NULL,
+                `reliableRangeMax` REAL NOT NULL,
+                `concentrationUnit` TEXT NOT NULL,
+                `defaultLayoutJson` TEXT,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                `version` INTEGER NOT NULL DEFAULT 1,
+                `status` TEXT NOT NULL DEFAULT 'DRAFT',
+                `carrierProfileId` TEXT,
+                `detectionMode` TEXT,
+                `readoutLayout` TEXT,
+                `acquisitionProfileId` TEXT,
+                `inputProtocol` TEXT NOT NULL DEFAULT 'ENDPOINT_ONLY',
+                `qcProfileJson` TEXT,
+                `publishedAt` INTEGER,
+                `purpose` TEXT,
+                `versionNote` TEXT,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL,
+                FOREIGN KEY(`reagentAntigenId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL,
+                FOREIGN KEY(`reagentAntibodyId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL,
+                FOREIGN KEY(`fkCurveModelId`) REFERENCES `curve_models`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            INSERT INTO `experiment_templates` (
+                id, templateName, analyteId, reagentAntigenId, reagentAntibodyId,
+                fkCurveModelId, reliableRangeMin, reliableRangeMax, concentrationUnit,
+                defaultLayoutJson, createdAt, updatedAt, version, status,
+                carrierProfileId, detectionMode, readoutLayout, acquisitionProfileId,
+                inputProtocol, qcProfileJson, publishedAt, purpose, versionNote
+            )
+            SELECT
+                id, templateName, analyteId, reagentAntigenId, reagentAntibodyId,
+                fkCurveModelId, reliableRangeMin, reliableRangeMax, concentrationUnit,
+                defaultLayoutJson, createdAt, updatedAt, version, status,
+                carrierProfileId, detectionMode, readoutLayout, acquisitionProfileId,
+                inputProtocol, qcProfileJson, publishedAt, NULL, NULL
+            FROM `experiment_templates_v10_legacy`
+            """.trimIndent()
+        )
+        db.execSQL("DROP TABLE `experiment_templates_v10_legacy`")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_experiment_templates_analyteId` " +
+                "ON `experiment_templates` (`analyteId`)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_experiment_templates_reagentAntigenId` " +
+                "ON `experiment_templates` (`reagentAntigenId`)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_experiment_templates_reagentAntibodyId` " +
+                "ON `experiment_templates` (`reagentAntibodyId`)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_experiment_templates_fkCurveModelId` " +
+                "ON `experiment_templates` (`fkCurveModelId`)"
+        )
+        db.execSQL("PRAGMA legacy_alter_table = OFF")
+    }
+
     /** 项目只增加可空快照字段，旧记录自然保持 null，不推断不存在的模板。 */
     private fun addProjectSnapshotColumns(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE projects ADD COLUMN templateId TEXT")

@@ -1,6 +1,5 @@
 package com.muc.fluocolorquant.ui.screens.settings
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -14,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,9 +28,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Biotech
 import androidx.compose.material.icons.filled.Delete
@@ -47,7 +48,7 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -93,6 +94,10 @@ import org.json.JSONObject
 import com.muc.fluocolorquant.ui.components.LatexView
 import com.muc.fluocolorquant.ui.components.InteractivePlateGrid
 import com.muc.fluocolorquant.data.enums.WellRoleType
+import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.InputProtocol
+import com.muc.fluocolorquant.data.enums.ReadoutLayout
+import com.muc.fluocolorquant.data.enums.TemplateLifecycleStatus
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
 import com.muc.fluocolorquant.ui.components.charts.ChartData
 import com.muc.fluocolorquant.ui.components.charts.ChartPoint
@@ -104,7 +109,7 @@ import com.muc.fluocolorquant.utils.math.FittingEngine
  * 实验模板管理页面
  * 显示所有实验模板列表，提供创建、编辑和删除功能
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExperimentTemplateManagementScreen(
     navController: NavController,
@@ -128,6 +133,7 @@ fun ExperimentTemplateManagementScreen(
             viewModel.clearError()
         }
     }
+
     
     Scaffold(
         topBar = {
@@ -136,7 +142,7 @@ fun ExperimentTemplateManagementScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
-                            imageVector  = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)
                         )
                     }
@@ -144,15 +150,16 @@ fun ExperimentTemplateManagementScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            ExtendedFloatingActionButton(
                 onClick = { navController.navigate(Screen.CreateExperimentTemplate.route) },
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(
+                icon = {
+                    Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = stringResource(R.string.add_template)
-                )
-            }
+                        contentDescription = null
+                    )
+                },
+                text = { Text(stringResource(R.string.add_template)) }
+            )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
@@ -203,44 +210,17 @@ fun ExperimentTemplateManagementScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp)
                 ) {
-                    // 添加固定头部，显示模板总数
-                    stickyHeader {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
-                            tonalElevation = 3.dp
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Info,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = stringResource(R.string.history_total_records, templatesWithDetails.size),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
+                    items(
+                        templatesWithDetails.filter {
+                            it.template.status != TemplateLifecycleStatus.ARCHIVED.code
                         }
-                    }
-                    
-                    items(templatesWithDetails) { templateWithDetails ->
+                    ) { templateWithDetails ->
                         TemplateItem(
                             templateWithDetails = templateWithDetails,
                             onEditClick = {
+                                val template = templateWithDetails.template
                                 navController.navigate(
-                                    Screen.CreateExperimentTemplate.createRoute(templateWithDetails.template.id)
+                                    Screen.CreateExperimentTemplate.createRoute(template.id)
                                 )
                             },
                             onDeleteClick = {
@@ -256,11 +236,13 @@ fun ExperimentTemplateManagementScreen(
             if (showDeleteConfirmation && templateToDelete != null) {
                 AlertDialog(
                     onDismissRequest = { showDeleteConfirmation = false },
-                    title = { Text(stringResource(R.string.delete_template_title)) },
+                    title = {
+                        Text(stringResource(R.string.delete_template_title))
+                    },
                     text = { 
                         Text(
                             stringResource(
-                                R.string.delete_template_confirmation, 
+                                R.string.delete_template_confirmation,
                                 templateToDelete?.templateName ?: ""
                             )
                         ) 
@@ -268,7 +250,7 @@ fun ExperimentTemplateManagementScreen(
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                templateToDelete?.let { viewModel.deleteTemplate(it) }
+                                templateToDelete?.let(viewModel::deleteTemplate)
                                 showDeleteConfirmation = false
                                 templateToDelete = null
                             }
@@ -302,6 +284,7 @@ fun TemplateItem(
     val antigen = templateWithDetails.antigen
     val antibody = templateWithDetails.antibody
     val curveModel = templateWithDetails.curveModel
+    val isVersionedTemplate = template.carrierProfileId != null || template.detectionMode != null
     
     // 展开/折叠状态
     var expanded by remember { mutableStateOf(false) }
@@ -367,51 +350,66 @@ fun TemplateItem(
             // 基本信息区域（始终显示）
             Spacer(modifier = Modifier.height(12.dp))
             
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // 分析物行
-                TemplateInfoRow(
-                    icon = Icons.Default.Biotech,
-                    label = stringResource(R.string.analyte),
-                    value = analyte?.name ?: stringResource(R.string.unknown)
-                )
-                
-                // 试剂行
-                val reagentText = when {
-                    antigen != null && antibody != null -> "${antigen.reagentName} / ${antibody.reagentName}"
-                    antigen != null -> antigen.reagentName
-                    antibody != null -> antibody.reagentName
-                    else -> stringResource(R.string.none)
+            if (isVersionedTemplate) {
+                VersionedTemplateSummary(template = template)
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Room 10 以前的单分析物模板继续按原字段展示，避免历史数据失去入口。
+                    TemplateInfoRow(
+                        icon = Icons.Default.Biotech,
+                        label = stringResource(R.string.analyte),
+                        value = analyte?.name ?: stringResource(R.string.unknown)
+                    )
+
+                    val reagentText = when {
+                        antigen != null && antibody != null -> {
+                            "${antigen.reagentName} / ${antibody.reagentName}"
+                        }
+                        antigen != null -> antigen.reagentName
+                        antibody != null -> antibody.reagentName
+                        else -> stringResource(R.string.none)
+                    }
+                    TemplateInfoRow(
+                        icon = Icons.Default.Science,
+                        label = stringResource(R.string.reagents),
+                        value = reagentText
+                    )
+
+                    val curveModelText = curveModel?.let {
+                        "${it.name} (${it.pixelType.displayName})"
+                    } ?: stringResource(R.string.unknown)
+                    TemplateInfoRow(
+                        icon = Icons.Default.ShowChart,
+                        label = stringResource(R.string.curve_model),
+                        value = curveModelText
+                    )
+
+                    TemplateInfoRow(
+                        icon = Icons.Default.Tune,
+                        label = stringResource(R.string.range),
+                        value = "${template.reliableRangeMin} - ${template.reliableRangeMax} " +
+                            template.concentrationUnit
+                    )
                 }
-                TemplateInfoRow(
-                    icon = Icons.Default.Science,
-                    label = stringResource(R.string.reagents),
-                    value = reagentText
-                )
-                
-                // 曲线模型行
-                val curveModelText = curveModel?.let {
-                    "${it.name} (${it.pixelType.displayName})"
-                } ?: stringResource(R.string.unknown)
-                TemplateInfoRow(
-                    icon = Icons.Default.ShowChart,
-                    label = stringResource(R.string.curve_model),
-                    value = curveModelText
-                )
-                
-                // 范围行
-                TemplateInfoRow(
-                    icon = Icons.Default.Tune,
-                    label = stringResource(R.string.range),
-                    value = "${template.reliableRangeMin} - ${template.reliableRangeMax} ${template.concentrationUnit}"
-                )
+            }
+
+            // 新模板展开后展示版本科学元数据；旧模板仍保留曲线预览和 96 孔布局详情。
+            AnimatedVisibility(
+                visible = expanded && isVersionedTemplate,
+                enter = fadeIn(animationSpec = tween(300)) +
+                    expandVertically(animationSpec = tween(300)),
+                exit = fadeOut(animationSpec = tween(300)) +
+                    shrinkVertically(animationSpec = tween(300))
+            ) {
+                VersionedTemplateDetails(template = template)
             }
             
             // 展开区域（详细信息）
             AnimatedVisibility(
-                visible = expanded,
+                visible = expanded && !isVersionedTemplate,
                 enter = fadeIn(animationSpec = tween(300)) + expandVertically(animationSpec = tween(300)),
                 exit = fadeOut(animationSpec = tween(300)) + shrinkVertically(animationSpec = tween(300))
             ) {
@@ -593,26 +591,155 @@ fun TemplateItem(
             // 操作区
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onEditClick) {
+                TextButton(onClick = onEditClick) {
                     Icon(
                         imageVector = Icons.Default.Edit,
-                        contentDescription = stringResource(R.string.edit),
-                        tint = MaterialTheme.colorScheme.primary
+                        contentDescription = null,
+                        modifier = Modifier.size(19.dp)
                     )
+                    Spacer(Modifier.width(5.dp))
+                    Text(stringResource(R.string.edit))
                 }
-                
-                IconButton(onClick = onDeleteClick) {
+
+                TextButton(onClick = onDeleteClick) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = stringResource(R.string.delete),
+                        modifier = Modifier.size(19.dp),
                         tint = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text = stringResource(R.string.delete),
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
             }
         }
     }
+}
+
+/**
+ * Room 11 版本化模板的紧凑摘要。
+ *
+ * 新模板的分析物、试剂和分析模型位于子表，不能继续读取已降级为兼容字段的单分析物主表；
+ * 此处改为展示真正属于主档的检测模态、生命周期和版本，避免出现“未知分析物/0–0 范围”。
+ */
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun VersionedTemplateSummary(template: ExperimentTemplate) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        TemplateSummaryPill(
+            icon = Icons.Default.Biotech,
+            text = stringResource(R.string.template_management_multi_analyte_value)
+        )
+        TemplateSummaryPill(
+            icon = Icons.Default.Analytics,
+            text = managementDetectionModeLabel(template.detectionMode)
+        )
+    }
+}
+
+/** 版本化模板的单行科学元数据标签，避免四行摘要把单张模板卡拉得过高。 */
+@Composable
+private fun TemplateSummaryPill(icon: ImageVector, text: String) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(15.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+/** 展开区展示可审计的模板契约，不再渲染与新分析模型无关的旧曲线预览。 */
+@Composable
+private fun VersionedTemplateDetails(template: ExperimentTemplate) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Divider(
+            modifier = Modifier.padding(bottom = 8.dp),
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+        TemplateInfoRow(
+            icon = Icons.Default.ShowChart,
+            label = stringResource(R.string.template_management_readout_label),
+            value = managementReadoutLabel(template.readoutLayout)
+        )
+        TemplateInfoRow(
+            icon = Icons.Default.Science,
+            label = stringResource(R.string.template_wizard_protocol_title),
+            value = managementProtocolLabel(template.inputProtocol)
+        )
+        template.purpose?.takeIf(String::isNotBlank)?.let { purpose ->
+            TemplateInfoRow(
+                icon = Icons.Default.Article,
+                label = stringResource(R.string.template_wizard_purpose_label),
+                value = purpose
+            )
+        }
+    }
+}
+
+@Composable
+private fun managementDetectionModeLabel(code: String?): String = when (
+    DetectionModality.fromCode(code)
+) {
+    DetectionModality.COLORIMETRIC -> stringResource(R.string.analysis_model_mode_colorimetric)
+    DetectionModality.FLUORESCENCE -> stringResource(R.string.analysis_model_mode_fluorescence)
+    DetectionModality.SPECTRUM -> stringResource(R.string.analysis_model_mode_spectrum)
+    null -> stringResource(R.string.unknown)
+}
+
+@Composable
+private fun managementProtocolLabel(code: String?): String = when (InputProtocol.fromCode(code)) {
+    InputProtocol.ENDPOINT_ONLY -> stringResource(R.string.analysis_model_protocol_endpoint)
+    InputProtocol.SINGLE_SPECTRUM_ANALYSIS -> {
+        stringResource(R.string.analysis_model_protocol_single_spectrum)
+    }
+    InputProtocol.LSPR_PAIRED_QUANTIFICATION -> {
+        stringResource(R.string.analysis_model_protocol_lspr_pair)
+    }
+    null -> stringResource(R.string.unknown)
+}
+
+@Composable
+private fun managementReadoutLabel(code: String?): String = when (ReadoutLayout.fromCode(code)) {
+    ReadoutLayout.GRID_SITES -> stringResource(R.string.template_wizard_readout_grid)
+    ReadoutLayout.SPECTRAL_TRACKS -> stringResource(R.string.template_wizard_readout_tracks)
+    ReadoutLayout.SINGLE_REGION -> {
+        stringResource(R.string.template_wizard_readout_single_region)
+    }
+    ReadoutLayout.PER_SITE_SPECTRUM -> {
+        stringResource(R.string.template_wizard_readout_per_site_spectrum)
+    }
+    null -> stringResource(R.string.unknown)
 }
 
 /**
@@ -681,4 +808,4 @@ private fun LegendItem(
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp)
         )
     }
-} 
+}

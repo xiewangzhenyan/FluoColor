@@ -1,11 +1,15 @@
 package com.muc.fluocolorquant.di
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.muc.fluocolorquant.data.AppDatabase
+import com.muc.fluocolorquant.data.DefaultResourceDatabaseCallback
+import com.muc.fluocolorquant.data.DefaultUserDatabaseCallback
+import com.muc.fluocolorquant.data.MicrofluidicDemoDatabaseCallback
 import com.muc.fluocolorquant.data.migration.DatabaseMigrations
 import com.muc.fluocolorquant.data.dao.DetectionRunDao
 import com.muc.fluocolorquant.data.dao.AcquisitionProfileDao
@@ -44,7 +48,7 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
-        return Room.databaseBuilder(
+        val builder = Room.databaseBuilder(
             context,
             AppDatabase::class.java,
             "fluocolor_database"
@@ -58,10 +62,21 @@ object DatabaseModule {
             MIGRATION_6_7,
             MIGRATION_7_8,
             MIGRATION_8_9,
-            DatabaseMigrations.MIGRATION_9_10
+            DatabaseMigrations.MIGRATION_9_10,
+            DatabaseMigrations.MIGRATION_10_11,
+            DatabaseMigrations.MIGRATION_11_12
         )
-        .addCallback(prepopulateCallback)  // 添加预填充回调
-        .build()
+        .addCallback(prepopulateCallback)  // 首次建库时预填充分析物与试剂
+        .addCallback(DefaultUserDatabaseCallback) // 每次打开时幂等确保默认登录账户存在
+        .addCallback(DefaultResourceDatabaseCallback(context)) // 所有构建：幂等播种默认采集档案与常用载体
+
+        // 组会演示资源只进入可调试构建。Release 不注册该回调，真实实验数据库不会被
+        // 演示标准曲线和演示模板污染；Debug 则可在首次或已有数据库打开时幂等补齐。
+        val isDebuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        if (isDebuggable) {
+            builder.addCallback(MicrofluidicDemoDatabaseCallback(context))
+        }
+        return builder.build()
     }
     
     // 版本6到版本7的迁移策略

@@ -57,7 +57,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -740,6 +742,7 @@ private fun AdvancedCaptureSettingsSheet(
     onResetDefaults: () -> Unit
 ) {
     val contentScrollState = rememberScrollState()
+    var showCapabilityHelp by remember { mutableStateOf(false) }
     val isoOptions = remember(capabilities?.sensorIsoRange) {
         buildIntOptions(
             range = capabilities?.sensorIsoRange,
@@ -805,12 +808,6 @@ private fun AdvancedCaptureSettingsSheet(
                             Text(text = stringResource(android.R.string.ok))
                         }
                     }
-
-                    Text(
-                        text = stringResource(R.string.camera_capture_advanced_desc),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
 
                 Column(
@@ -825,29 +822,43 @@ private fun AdvancedCaptureSettingsSheet(
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
                         ),
-                        shape = RoundedCornerShape(22.dp)
+                        shape = RoundedCornerShape(18.dp)
                     ) {
-                        Column(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 18.dp, vertical = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                .padding(start = 16.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            Icon(
+                                imageVector = Icons.Filled.Tune,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                             Text(
                                 text = if (capabilities?.appliedManualSensor == true) {
                                     stringResource(R.string.camera_capture_manual_sensor_enabled)
                                 } else {
-                                    stringResource(R.string.camera_capture_manual_sensor_fallback)
+                                    stringResource(R.string.camera_capture_manual_sensor_fallback_compact)
                                 },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-                            if (capabilities?.supportsManualSensor == false) {
-                                Text(
-                                    text = stringResource(R.string.camera_capture_manual_controls_unavailable),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            // 设备能力属于按需排查信息：默认仅显示紧凑状态，避免高级设置首屏
+                            // 被两段重复说明占满；用户主动点击后再查看完整兼容性解释。
+                            if (capabilities != null && capabilities.appliedManualSensor != true) {
+                                IconButton(onClick = { showCapabilityHelp = true }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Info,
+                                        contentDescription = stringResource(
+                                            R.string.camera_capture_manual_sensor_help_action
+                                        ),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
@@ -866,7 +877,6 @@ private fun AdvancedCaptureSettingsSheet(
                                 R.string.camera_capture_supported_range_format,
                                 "${formatZoomRatio(zoomSnapshot.minZoomRatio)} - ${formatZoomRatio(zoomSnapshot.maxZoomRatio)}"
                             ),
-                            hintText = stringResource(R.string.camera_capture_zoom_gesture_hint),
                             zoomRatio = zoomSnapshot.zoomRatio,
                             minZoomRatio = zoomSnapshot.minZoomRatio,
                             maxZoomRatio = zoomSnapshot.maxZoomRatio,
@@ -998,6 +1008,37 @@ private fun AdvancedCaptureSettingsSheet(
             }
         }
     }
+
+    if (showCapabilityHelp) {
+        AlertDialog(
+            onDismissRequest = { showCapabilityHelp = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = null
+                )
+            },
+            title = {
+                Text(stringResource(R.string.camera_capture_manual_sensor_help_title))
+            },
+            text = {
+                Text(
+                    stringResource(
+                        if (capabilities?.supportsManualSensor == false) {
+                            R.string.camera_capture_manual_controls_unavailable
+                        } else {
+                            R.string.camera_capture_manual_sensor_fallback
+                        }
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showCapabilityHelp = false }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -1006,6 +1047,7 @@ private fun CaptureSettingsGroupCard(
     description: String,
     content: @Composable () -> Unit
 ) {
+    var showDescription by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -1018,20 +1060,49 @@ private fun CaptureSettingsGroupCard(
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp, vertical = 18.dp)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                IconButton(onClick = { showDescription = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = stringResource(
+                            R.string.camera_capture_group_help_action,
+                            title
+                        ),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
             content()
         }
+    }
+
+    if (showDescription) {
+        AlertDialog(
+            onDismissRequest = { showDescription = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = null
+                )
+            },
+            title = { Text(title) },
+            text = { Text(description) },
+            confirmButton = {
+                TextButton(onClick = { showDescription = false }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            }
+        )
     }
 }
 
@@ -1040,7 +1111,6 @@ private fun ZoomSliderSection(
     title: String,
     valueText: String,
     rangeText: String,
-    hintText: String,
     zoomRatio: Float,
     minZoomRatio: Float,
     maxZoomRatio: Float,
@@ -1083,11 +1153,6 @@ private fun ZoomSliderSection(
                     activeTrackColor = MaterialTheme.colorScheme.primary,
                     inactiveTrackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
                 )
-            )
-            Text(
-                text = hintText,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

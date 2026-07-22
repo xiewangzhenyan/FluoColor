@@ -428,7 +428,11 @@ class ExperimentTemplateViewModel @Inject constructor(
                             "曲线模型ID: ${template.fkCurveModelId}")
 
                     // 加载分析物
-                    val analyte = analyteRepository.getAnalyteById(template.analyteId)
+                    // Room 11 后新多分析物模板不再强制填写主表兼容分析物；旧页面只有在
+                    // 该字段存在时才加载单分析物详情，正式向导会读取子表配置。
+                    val analyte = template.analyteId?.let { analyteId ->
+                        analyteRepository.getAnalyteById(analyteId)
+                    }
                     println("加载分析物: ${analyte?.name ?: "未找到"}")
 
                     // 加载试剂和曲线模型
@@ -444,7 +448,10 @@ class ExperimentTemplateViewModel @Inject constructor(
                         reagent
                     }
 
-                    val curveModel = curveModelRepository.getCurveModelById(template.fkCurveModelId)
+                    // 新模板使用统一 AnalysisModel，旧曲线字段为空时不制造占位数据。
+                    val curveModel = template.fkCurveModelId?.let { curveModelId ->
+                        curveModelRepository.getCurveModelById(curveModelId)
+                    }
                     println("加载曲线模型: ${curveModel?.name ?: "未找到"}")
 
                     // 解析默认布局JSON

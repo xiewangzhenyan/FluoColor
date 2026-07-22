@@ -4,7 +4,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import com.muc.fluocolorquant.data.enums.ResourceStatus
+import com.muc.fluocolorquant.data.enums.AnalysisModelLifecycleStatus
 import java.util.Date
 import java.util.UUID
 
@@ -47,7 +47,7 @@ data class AnalysisModel(
     val reliableRangeMin: Double,
     val reliableRangeMax: Double,
     val validationMetricsJson: String? = null,
-    val status: String = ResourceStatus.ACTIVE.code,
+    val status: String = AnalysisModelLifecycleStatus.DRAFT.code,
     val version: Int = 1,
     val createdAt: Date = Date(),
     val updatedAt: Date = Date()

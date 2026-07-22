@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,6 +59,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.CarrierType
+import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.model.AcquisitionProfile
 import com.muc.fluocolorquant.ui.viewmodels.AcquisitionProfileUiState
@@ -106,8 +109,6 @@ fun AcquisitionProfileManagementScreen(
         ) {
             item {
                 ResourceLibraryHeader(
-                    title = stringResource(R.string.acquisition_library_title),
-                    subtitle = stringResource(R.string.acquisition_library_subtitle),
                     accentColor = MaterialTheme.colorScheme.secondary,
                     metrics = listOf(
                         ResourceSummaryMetric(
@@ -186,6 +187,7 @@ fun AcquisitionProfileManagementScreen(
 }
 
 /** 设备卡片把 JSON 集合转换为普通用户可读的本地化摘要。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AcquisitionProfileCard(
     profile: AcquisitionProfile,
@@ -249,9 +251,10 @@ private fun AcquisitionProfileCard(
                 )
             }
 
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 ResourceMetadataPill(opticalModule, Icons.Default.CameraAlt)
                 ResourceMetadataPill(fixture, Icons.Default.Lock)

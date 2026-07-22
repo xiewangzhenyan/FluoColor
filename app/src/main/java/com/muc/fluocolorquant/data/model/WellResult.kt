@@ -42,7 +42,7 @@ data class WellResult(
     val resultId: Long = 0,               // 结果ID
     val runId: String?,                   // 关联的运行ID
     val projectId: String,                // 关联的项目ID
-    val wellIndex: Int,                   // 孔位索引 (0-95)
+    val wellIndex: Int,                   // 行优先位点索引，不再限制为 0-95
     val predictedConcentration: Double?,  // 预测的浓度值
     val trueConcentration: Double?,       // 用户输入的真实浓度值
     val isStandard: Boolean = false,      // 是否为标准品 (已废弃，请使用roleType字段)
@@ -68,4 +68,4 @@ data class WellResult(
     // 新增字段 - 4.0.0版本
     val virtualRow: Int? = null,           // 虚拟布局中的行索引
     val virtualCol: Int? = null            // 虚拟布局中的列索引
-) 
+)

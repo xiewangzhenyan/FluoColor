@@ -290,18 +290,21 @@ fun SpectrumCalibrationScreen(
 
     // 自动标定失败重试建议对话框
     if (state.showRetryDialog) {
+        val retryGuidance = stringResource(R.string.auto_calibration_retry_message)
+        // errorMessage 可能为空，旧实现会在为空时把同一段建议渲染两遍。这里只在
+        // 存在独立错误原因时额外展示，通用排查建议始终只保留一份。
+        val detailedError = state.errorMessage
+            ?.asString(context)
+            ?.takeIf { it.isNotBlank() && it != retryGuidance }
         AlertDialog(
             onDismissRequest = { viewModel.dismissRetryDialog() },
             icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFE68A00)) },
             title = { Text(stringResource(R.string.auto_calibration_retry_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    detailedError?.let { error -> Text(text = error) }
                     Text(
-                        text = state.errorMessage?.asString(context)
-                            ?: stringResource(R.string.auto_calibration_retry_message)
-                    )
-                    Text(
-                        text = stringResource(R.string.auto_calibration_retry_message),
+                        text = retryGuidance,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

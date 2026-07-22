@@ -94,5 +94,13 @@ data class SiteMeasurement(
     val qualityReliable: Boolean,
     val qcJson: String? = null,
     val processorName: String,
-    val processorVersion: String
+    val processorVersion: String,
+
+    // Room 12 新增：浓度反算结果与模型快照独立于原始/校正信号保存。
+    // 模型不可执行或不兼容时这些字段保持 null，结果页明确显示“仅信号”，不得伪造浓度。
+    val concentrationValue: Double? = null,
+    val concentrationUnit: String? = null,
+    val reliableRangeStatus: String? = null,
+    val modelSnapshotJson: String? = null,
+    val quantificationQcJson: String? = null
 )

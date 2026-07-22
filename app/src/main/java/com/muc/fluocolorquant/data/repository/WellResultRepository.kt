@@ -2,7 +2,6 @@ package com.muc.fluocolorquant.data.repository
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.graphics.RectF
 import android.net.Uri
 import android.util.Log
@@ -13,8 +12,11 @@ import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.ui.viewmodels.WellDetection
-import com.muc.fluocolorquant.utils.DetectionModeKind
 import com.muc.fluocolorquant.utils.DetectionModeSupport
+import com.muc.fluocolorquant.utils.math.GridDimensions
+import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
+import com.muc.fluocolorquant.utils.math.GridPointOrdering
+import com.muc.fluocolorquant.utils.math.WellMappingUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -29,8 +31,6 @@ import java.io.FileOutputStream
 import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /**
  * 孔位结果仓库
@@ -44,21 +44,12 @@ class WellResultRepository @Inject constructor(
     private val context: Context
 ) {
     private data class ConcentrationInferenceConfig(
-        val detectionMode: DetectionModeKind,
         val modelAssetPath: String
     )
 
     companion object {
         private const val TAG = "WellResultRepository"
-        private const val CONCENTRATION_MODEL_PATH = "models/improved_concentration_model_lite.ptl"
         private const val CROPPED_WELL_SIZE = 128 // 裁剪后的孔位图像大小
-        
-        // 96孔板的规格：12列 x 8行
-        private const val PLATE_COLUMNS = 12
-        private const val PLATE_ROWS = 8
-        
-        // 每个孔位之间的预期间距（以像素为单位，根据实际情况调整）
-        private const val EXPECTED_GAP = 50f
         
         // 孔位分组的容错距离，小于该值的孔位被认为是在同一行/列
         private const val ROW_COLUMN_TOLERANCE = 30f
@@ -87,6 +78,10 @@ class WellResultRepository @Inject constructor(
         val runId = UUID.randomUUID().toString()
         
         try {
+            val project = projectDao.getProjectById(projectId)
+                ?: throw IllegalArgumentException("找不到项目: $projectId")
+            val dimensions = GridLayoutPolicy.resolveProject(project)
+
             // 创建检测运行记录
             val detectionRun = DetectionRun(
                 runId = runId,
@@ -105,11 +100,15 @@ class WellResultRepository @Inject constructor(
             detectionRunDao.insertDetectionRun(detectionRun)
             
             // 对检测结果进行排序，确保从左到右、从上到下的顺序
-            val sortedDetections = sortDetectionsInPlateOrder(detections)
+            val sortedDetections = sortDetectionsInPlateOrder(detections, dimensions)
             Log.d(TAG, "原始检测数量: ${detections.size}, 排序后: ${sortedDetections.size}")
             
             // 将检测结果转换为孔位结果列表
             val wellResults = sortedDetections.mapIndexed { index, detection ->
+                val (row, column) = WellMappingUtils.mapRealToVirtualCoordinates(
+                    realIndex = index,
+                    columns = dimensions.columns
+                )
                 WellResult(
                     runId = runId,
                     projectId = projectId,
@@ -123,7 +122,9 @@ class WellResultRepository @Inject constructor(
                     detectedRectBottom = detection.rect.bottom,
                     detectionConfidence = detection.confidence,
                     croppedImageIdentifier = null,
-                    roleType = "NONE" // 默认角色类型，未分配
+                    roleType = "NONE", // 默认角色类型，未分配
+                    virtualRow = row,
+                    virtualCol = column
                 )
             }
             
@@ -131,11 +132,7 @@ class WellResultRepository @Inject constructor(
             wellResultDao.insertWellResults(wellResults)
             
             // 更新项目的最后运行时间
-            val project = projectDao.getProjectById(projectId)
-            project?.let {
-                val updatedProject = it.copy(lastRunTimestamp = Date())
-                projectDao.updateProject(updatedProject)
-            }
+            projectDao.updateProject(project.copy(lastRunTimestamp = Date()))
             
             // 返回运行ID
             runId
@@ -161,95 +158,42 @@ class WellResultRepository @Inject constructor(
     }
     
     /**
-     * 对检测结果进行排序，确保从左到右、从上到下的96孔板布局顺序
-     * 使用行列聚类和排序算法
+     * 对旧 YOLO/霍夫圆兼容链的检测结果进行通用行优先排序。
+     * 预期行列来自当前项目，不再在仓库中写死 8×12；旧默认 12×8 项目会由兼容策略
+     * 显式恢复成 8×12。
      */
-    private fun sortDetectionsInPlateOrder(detections: List<WellDetection>): List<WellDetection> {
+    private fun sortDetectionsInPlateOrder(
+        detections: List<WellDetection>,
+        dimensions: GridDimensions
+    ): List<WellDetection> {
         if (detections.size <= 1) return detections
         
-        // 1. 提取所有孔位的中心点
-        val centers = detections.map { detection ->
-            val centerX = (detection.rect.left + detection.rect.right) / 2
-            val centerY = (detection.rect.top + detection.rect.bottom) / 2
-            Pair(centerX, centerY) to detection
-        }
-        
         try {
-            // 2. 按Y坐标（纵向）进行聚类，识别行
-            val rowClusters = clusterByCoordinate(centers, isRow = true)
-            Log.d(TAG, "识别到 ${rowClusters.size} 行")
-            
-            // 3. 按行排序（从上到下）
-            val sortedRows = rowClusters.sortedBy { row -> row.first().first.second }
-            
-            // 4. 对每一行内的点，按X坐标排序（从左到右）
-            val sortedDetections = mutableListOf<WellDetection>()
-            for (row in sortedRows) {
-                // 按X坐标排序当前行
-                val sortedRow = row.sortedBy { it.first.first }
-                sortedRow.forEach { sortedDetections.add(it.second) }
+            val ordering = GridPointOrdering.sortRowMajor(
+                items = detections,
+                xSelector = { detection ->
+                    (detection.rect.left + detection.rect.right) / 2f
+                },
+                ySelector = { detection ->
+                    (detection.rect.top + detection.rect.bottom) / 2f
+                },
+                rowTolerance = ROW_COLUMN_TOLERANCE
+            )
+            Log.d(TAG, "识别到 ${ordering.observedRows} 行")
+            if (ordering.observedRows != dimensions.rows) {
+                Log.w(TAG, "检测到 ${ordering.observedRows} 行，项目预期 ${dimensions.rows} 行")
             }
-            
-            // 5. 确保检测数量一致
-            require(sortedDetections.size == detections.size) {
-                "排序后的检测数量 (${sortedDetections.size}) 与原始检测数量 (${detections.size}) 不一致"
+
+            require(ordering.items.size == detections.size) {
+                "排序后的检测数量 (${ordering.items.size}) 与原始检测数量 (${detections.size}) 不一致"
             }
-            
-            return sortedDetections
+
+            return ordering.items
         } catch (e: Exception) {
             // 排序算法失败时，返回原始列表
             Log.e(TAG, "孔位排序失败: ${e.message}. 使用原始顺序", e)
             return detections
         }
-    }
-    
-    /**
-     * 根据坐标对点进行聚类
-     * @param points 需要聚类的点集，包含中心坐标和对应的检测对象
-     * @param isRow 是否按行聚类（true=行聚类，false=列聚类）
-     * @return 聚类后的点集列表，每个子列表代表一行或一列
-     */
-    private fun clusterByCoordinate(
-        points: List<Pair<Pair<Float, Float>, WellDetection>>,
-        isRow: Boolean
-    ): List<List<Pair<Pair<Float, Float>, WellDetection>>> {
-        val clusters = mutableListOf<MutableList<Pair<Pair<Float, Float>, WellDetection>>>()
-        
-        // 遍历所有点
-        for (point in points) {
-            val coordinate = if (isRow) point.first.second else point.first.first
-            
-            // 尝试将点加入到现有簇
-            var addedToCluster = false
-            for (cluster in clusters) {
-                if (cluster.isEmpty()) continue
-                
-                // 计算当前簇的平均坐标
-                val avgCoord = cluster.map {
-                    if (isRow) it.first.second else it.first.first
-                }.average().toFloat()
-                
-                // 如果点与簇的平均坐标足够近，则加入该簇
-                if (abs(coordinate - avgCoord) < ROW_COLUMN_TOLERANCE) {
-                    cluster.add(point)
-                    addedToCluster = true
-                    break
-                }
-            }
-            
-            // 如果不属于任何现有簇，创建新簇
-            if (!addedToCluster) {
-                clusters.add(mutableListOf(point))
-            }
-        }
-        
-        // 预期行列数校验
-        val expectedCount = if (isRow) PLATE_ROWS else PLATE_COLUMNS
-        if (clusters.size != expectedCount) {
-            Log.w(TAG, "警告: 检测到 ${clusters.size} ${if (isRow) "行" else "列"}, 预期 $expectedCount")
-        }
-        
-        return clusters
     }
     
     /**
@@ -312,8 +256,7 @@ class WellResultRepository @Inject constructor(
                     // 预测浓度
                     val concentration = predictConcentration(
                         croppedBitmap,
-                        concentrationModel,
-                        inferenceConfig.detectionMode
+                        concentrationModel
                     )
                     
                     // 保存裁剪图像（可选）
@@ -394,24 +337,20 @@ class WellResultRepository @Inject constructor(
     }
 
     /**
-     * 解析项目对应的推理配置。
-     * 当前优先尝试模式专用模型，若资源不存在则回退到通用模型。
+     * 解析旧孔板项目对应的推理配置。
+     *
+     * 用户当前确认比色与荧光暂时共用仓库内真实存在的 PTL，因此这里从统一模式工具获取
+     * 同一个资源路径；光谱模式不会返回候选路径，也就不会误用 RGB 图像浓度模型。后续
+     * 专用模型上传与绑定应交给版本化 AnalysisModel 链路，而不是在旧兼容流程里硬编码文件名。
      */
     private suspend fun resolveInferenceConfig(projectId: String): ConcentrationInferenceConfig {
         val project = projectDao.getProjectById(projectId)
         val detectionMode = DetectionModeSupport.fromStorageValue(project?.detectionMode)
         val candidatePaths = DetectionModeSupport.concentrationModelCandidates(detectionMode)
-        val resolvedPath = candidatePaths.firstOrNull(::assetExists) ?: CONCENTRATION_MODEL_PATH
-
-        if (resolvedPath != candidatePaths.first()) {
-            Log.w(
-                TAG,
-                "未找到 ${detectionMode.name} 模式专用浓度模型，已回退到通用模型: $resolvedPath"
-            )
-        }
+        val resolvedPath = candidatePaths.firstOrNull(::assetExists)
+            ?: throw IllegalStateException("未找到可用于 ${detectionMode.name} 模式的共享浓度模型")
 
         return ConcentrationInferenceConfig(
-            detectionMode = detectionMode,
             modelAssetPath = resolvedPath
         )
     }
@@ -437,99 +376,6 @@ class WellResultRepository @Inject constructor(
     }
 
     /**
-     * 根据检测模式对孔位图像做轻量级预处理。
-     * 这里只做温和增强，避免破坏现有模型输入分布。
-     */
-    private fun preprocessBitmapForMode(
-        wellBitmap: Bitmap,
-        detectionMode: DetectionModeKind
-    ): Bitmap {
-        return when (detectionMode) {
-            DetectionModeKind.FLUORESCENCE -> preprocessFluorescenceBitmap(wellBitmap)
-            DetectionModeKind.COLORIMETRIC -> preprocessColorimetricBitmap(wellBitmap)
-            DetectionModeKind.SPECTRUM -> wellBitmap
-        }
-    }
-
-    /**
-     * 荧光模式：轻微压暗背景并增强亮信号，强调亮点与暗背景的对比。
-     */
-    private fun preprocessFluorescenceBitmap(bitmap: Bitmap): Bitmap {
-        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val width = mutableBitmap.width
-        val height = mutableBitmap.height
-        val blackLevel = 10
-
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val pixel = mutableBitmap.getPixel(x, y)
-                val alpha = Color.alpha(pixel)
-                val red = ((Color.red(pixel) - blackLevel).coerceAtLeast(0) * 1.05f).roundToInt()
-                val green = ((Color.green(pixel) - blackLevel).coerceAtLeast(0) * 1.15f).roundToInt()
-                val blue = ((Color.blue(pixel) - blackLevel).coerceAtLeast(0) * 1.05f).roundToInt()
-                mutableBitmap.setPixel(
-                    x,
-                    y,
-                    Color.argb(alpha, clampChannel(red), clampChannel(green), clampChannel(blue))
-                )
-            }
-        }
-
-        return mutableBitmap
-    }
-
-    /**
-     * 比色模式：做温和的灰世界白平衡，降低环境光偏色对颜色特征的影响。
-     */
-    private fun preprocessColorimetricBitmap(bitmap: Bitmap): Bitmap {
-        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val width = mutableBitmap.width
-        val height = mutableBitmap.height
-        val totalPixels = (width * height).coerceAtLeast(1)
-
-        var totalRed = 0L
-        var totalGreen = 0L
-        var totalBlue = 0L
-
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val pixel = mutableBitmap.getPixel(x, y)
-                totalRed += Color.red(pixel)
-                totalGreen += Color.green(pixel)
-                totalBlue += Color.blue(pixel)
-            }
-        }
-
-        val avgRed = totalRed.toFloat() / totalPixels
-        val avgGreen = totalGreen.toFloat() / totalPixels
-        val avgBlue = totalBlue.toFloat() / totalPixels
-        val grayAverage = (avgRed + avgGreen + avgBlue) / 3f
-
-        val redScale = (grayAverage / avgRed.coerceAtLeast(1f)).coerceIn(0.85f, 1.15f)
-        val greenScale = (grayAverage / avgGreen.coerceAtLeast(1f)).coerceIn(0.85f, 1.15f)
-        val blueScale = (grayAverage / avgBlue.coerceAtLeast(1f)).coerceIn(0.85f, 1.15f)
-
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val pixel = mutableBitmap.getPixel(x, y)
-                val alpha = Color.alpha(pixel)
-                val red = (Color.red(pixel) * redScale).roundToInt()
-                val green = (Color.green(pixel) * greenScale).roundToInt()
-                val blue = (Color.blue(pixel) * blueScale).roundToInt()
-                mutableBitmap.setPixel(
-                    x,
-                    y,
-                    Color.argb(alpha, clampChannel(red), clampChannel(green), clampChannel(blue))
-                )
-            }
-        }
-
-        return mutableBitmap
-    }
-
-    private fun clampChannel(value: Int): Int = value.coerceIn(0, 255)
-    
-    /**
      * 预测浓度
      * @param wellBitmap 孔位图像
      * @param model 浓度预测模型
@@ -537,15 +383,19 @@ class WellResultRepository @Inject constructor(
      */
     private fun predictConcentration(
         wellBitmap: Bitmap,
-        model: Module,
-        detectionMode: DetectionModeKind
+        model: Module
     ): Double {
-        val preparedBitmap = preprocessBitmapForMode(wellBitmap, detectionMode)
-
-        // 准备输入
+        /*
+         * 共享模型必须使用与原始训练/旧版推理一致的统一输入契约：128×128 RGB 裁切图，随后
+         * 执行 ImageNet mean/std 归一化。这里禁止再按模式逐孔修改颜色，否则比色灰世界会
+         * 抹平真实显色差异，固定绿色增益也会让荧光推理分布偏离训练数据。
+         *
+         * 比色与荧光的科学差异由各自的光度处理器、参考校正、背景扣除和 QC 负责；在当前
+         * 共用 PTL 的过渡阶段，模型输入本身保持完全一致。
+         */
         val mean = floatArrayOf(0.485f, 0.456f, 0.406f)
         val std = floatArrayOf(0.229f, 0.224f, 0.225f)
-        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(preparedBitmap, mean, std)
+        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(wellBitmap, mean, std)
         
         // 执行推理
         val outputTensor = model.forward(IValue.from(inputTensor)).toTensor()
@@ -683,8 +533,7 @@ class WellResultRepository @Inject constructor(
             // 预测浓度
             val concentration = predictConcentration(
                 resizedBitmap,
-                concentrationModel,
-                inferenceConfig.detectionMode
+                concentrationModel
             )
             
             // 保存到数据库
@@ -749,7 +598,7 @@ class WellResultRepository @Inject constructor(
             detectionRunDao.updateDetectionRun(
                 detectionRun.copy(
                     status = "Processing", 
-                    concentrationModelUsed = CONCENTRATION_MODEL_PATH
+                    concentrationModelUsed = DetectionModeSupport.SHARED_CONCENTRATION_MODEL_ASSET
                 )
             )
             
@@ -859,8 +708,7 @@ class WellResultRepository @Inject constructor(
                                 // 预测浓度
                                 val concentration = predictConcentration(
                                     wellBitmap,
-                                    concentrationModel,
-                                    inferenceConfig.detectionMode
+                                    concentrationModel
                                 )
                                 
                                 // 更新孔位结果
@@ -957,7 +805,7 @@ class WellResultRepository @Inject constructor(
             detectionRunDao.updateDetectionRun(
                 detectionRun.copy(
                     status = "Processing", 
-                    concentrationModelUsed = CONCENTRATION_MODEL_PATH
+                    concentrationModelUsed = DetectionModeSupport.SHARED_CONCENTRATION_MODEL_ASSET
                 )
             )
             

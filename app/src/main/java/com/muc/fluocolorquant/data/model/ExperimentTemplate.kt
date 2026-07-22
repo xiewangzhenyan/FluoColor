@@ -18,10 +18,10 @@ import java.util.UUID
 @Entity(
     tableName = "experiment_templates",
     foreignKeys = [
-        ForeignKey(entity = Analyte::class, parentColumns = ["id"], childColumns = ["analyteId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = Analyte::class, parentColumns = ["id"], childColumns = ["analyteId"], onDelete = ForeignKey.SET_NULL),
         ForeignKey(entity = Reagent::class, parentColumns = ["id"], childColumns = ["reagentAntigenId"], onDelete = ForeignKey.SET_NULL),
         ForeignKey(entity = Reagent::class, parentColumns = ["id"], childColumns = ["reagentAntibodyId"], onDelete = ForeignKey.SET_NULL),
-        ForeignKey(entity = CurveModel::class, parentColumns = ["id"], childColumns = ["fkCurveModelId"], onDelete = ForeignKey.CASCADE)
+        ForeignKey(entity = CurveModel::class, parentColumns = ["id"], childColumns = ["fkCurveModelId"], onDelete = ForeignKey.SET_NULL)
     ],
     indices = [
         Index(value = ["analyteId"]),
@@ -34,10 +34,10 @@ data class ExperimentTemplate(
     @PrimaryKey
     val id: String = UUID.randomUUID().toString(), // 使用UUID作为主键
     val templateName: String,       // 模板名称, e.g., "Linc-Bio CEA 试剂盒 - 荧光法"
-    val analyteId: String,          // [外键] 关联到 Analyte 表
+    val analyteId: String?,         // [兼容外键] 新多分析物模板以子表为准
     val reagentAntigenId: String?,  // [外键] 关联到 Reagents 表 (抗原)
     val reagentAntibodyId: String?, // [外键] 关联到 Reagents 表 (抗体)
-    val fkCurveModelId: String,     // [外键] 关联到 CurveModels 表
+    val fkCurveModelId: String?,    // [兼容外键] 新模板使用 TemplateAnalyteConfig.analysisModelId
     val reliableRangeMin: Double,   // 可靠浓度范围下限
     val reliableRangeMax: Double,   // 可靠浓度范围上限
     val concentrationUnit: String,  // 该实验方案的浓度单位
@@ -57,5 +57,8 @@ data class ExperimentTemplate(
     @ColumnInfo(defaultValue = "'ENDPOINT_ONLY'")
     val inputProtocol: String = InputProtocol.ENDPOINT_ONLY.code,
     val qcProfileJson: String? = null,
-    val publishedAt: Date? = null
+    val publishedAt: Date? = null,
+    // Room 11 新增的向导基本信息，不再塞入布局或 QC JSON。
+    val purpose: String? = null,
+    val versionNote: String? = null
 )

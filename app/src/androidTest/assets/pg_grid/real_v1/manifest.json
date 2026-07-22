@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "pg-grid-real-v1",
+  "sourceRepository": "D:/A-lunwen/8多模态手机方案/pg_grid_github_realcheck_20260722",
+  "description": "用户提供的短塔 EL 背光实拍芯片回归集。图片保持原始 JPEG 字节不变，仅改为 ASCII 文件名以避免 Android 测试资产路径编码差异。",
+  "cases": [
+    {
+      "id": "real_10x10_01",
+      "image": "images/real_10x10_01.jpg",
+      "sourceName": "手机通过短塔正式拍摄-EL板发光(10×10芯片).jpg",
+      "sha256": "D9CFF7BEA7A383EDA58EEB5498BAA0C0FC66382489B7AEE2413682E62F586192",
+      "gridSize": 10,
+      "pythonUnitPolarity": "dark",
+      "pythonCandidateSupportRatio": 0.91,
+      "pythonQualityStatus": "pass"
+    },
+    {
+      "id": "real_10x10_02",
+      "image": "images/real_10x10_02.jpg",
+      "sourceName": "手机通过短塔正式拍摄-EL板发光(10×10芯片)02.jpg",
+      "sha256": "B67606EF66D7878BD451AEFD021F04D0F7BBDF90A1DF37262B66DEB01B214DAB",
+      "gridSize": 10,
+      "pythonUnitPolarity": "dark",
+      "pythonCandidateSupportRatio": 0.75,
+      "pythonQualityStatus": "pass"
+    },
+    {
+      "id": "real_15x15_01",
+      "image": "images/real_15x15_01.jpg",
+      "sourceName": "手机通过短塔正式拍摄-EL板发光(15×15芯片).jpg",
+      "sha256": "CBB421E2E2AB60A098A50E89B94609E83747668AEB45894BEB92F787A1BF2CE1",
+      "gridSize": 15,
+      "pythonUnitPolarity": "dark",
+      "pythonCandidateSupportRatio": 1.0,
+      "pythonQualityStatus": "fail"
+    },
+    {
+      "id": "real_15x15_02",
+      "image": "images/real_15x15_02.jpg",
+      "sourceName": "手机通过短塔正式拍摄-EL板发光(15×15芯片)02.jpg",
+      "sha256": "87622B0ADD29268542529B85924F551F79E66E50E285493C8660FE670D78694B",
+      "gridSize": 15,
+      "pythonUnitPolarity": "dark",
+      "pythonCandidateSupportRatio": 1.0,
+      "pythonQualityStatus": "warn"
+    },
+    {
+      "id": "real_15x15_03",
+      "image": "images/real_15x15_03.jpg",
+      "sourceName": "手机通过短塔正式拍摄-EL板发光(15×15芯片)03.jpg",
+      "sha256": "5E52F023D4E8AAAD7335635571C8C530F15FC83447F487ED6B37589B69FCF788",
+      "gridSize": 15,
+      "pythonUnitPolarity": "dark",
+      "pythonCandidateSupportRatio": 1.0,
+      "pythonQualityStatus": "warn"
+    },
+    {
+      "id": "real_15x15_04",
+      "image": "images/real_15x15_04.jpg",
+      "sourceName": "手机通过短塔正式拍摄-EL板发光(15×15芯片)04.jpg",
+      "sha256": "303EBCEBE54C85A2DFF175AFA4CDCC44795D74527EDAA2FE4AF4B97410BF3B84",
+      "gridSize": 15,
+      "pythonUnitPolarity": "dark",
+      "pythonCandidateSupportRatio": 0.924444,
+      "pythonQualityStatus": "warn"
+    }
+  ]
+}

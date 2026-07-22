@@ -3,6 +3,7 @@ package com.muc.fluocolorquant.ui.viewmodels
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.PixelType
 import com.muc.fluocolorquant.data.model.CurveModel
@@ -11,7 +12,10 @@ import com.muc.fluocolorquant.utils.math.FittingEngine
 import com.muc.fluocolorquant.utils.math.FittingResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Date
@@ -37,8 +41,16 @@ sealed class CreationFlowState {
     data class ManualDataInput(
         val dataTable: List<List<Double>> = listOf(emptyList()),
         val columnTypes: List<ColumnType> = listOf(ColumnType.NONE),
-        val fittingResult: FittingResult? = null
+        val fittingResult: FittingResult? = null,
+        // null 表示“自动推荐”，由拟合引擎比较全部适用函数并选择 R² 最高者。
+        val selectedFunction: FittingFunction? = null,
+        val selectedPixelType: PixelType = PixelType.GRAY_LUMINOSITY
     ) : CreationFlowState()
+}
+
+/** 曲线模型页面的一次性事件，避免页面在保存协程尚未完成时提前退出。 */
+sealed interface CurveModelEvent {
+    data object ModelSaved : CurveModelEvent
 }
 
 /**
@@ -77,6 +89,13 @@ class CurveModelViewModel @Inject constructor(
     // 错误信息
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    // 新标准曲线页面使用资源 ID，确保新增的用户可见错误具备完整中英文版本。
+    private val _errorResourceId = MutableStateFlow<Int?>(null)
+    val errorResourceId: StateFlow<Int?> = _errorResourceId.asStateFlow()
+
+    private val _events = MutableSharedFlow<CurveModelEvent>(extraBufferCapacity = 1)
+    val events: SharedFlow<CurveModelEvent> = _events.asSharedFlow()
     
     init {
         loadCurveModels()
@@ -155,9 +174,68 @@ class CurveModelViewModel @Inject constructor(
      */
     fun startManualDataInput() {
         _activeCreationFlow.value = CreationFlowState.ManualDataInput(
-            dataTable = listOf(listOf(0.0, 0.0)),
-            columnTypes = listOf(ColumnType.CONCENTRATION, ColumnType.NONE)
+            dataTable = List(4) { listOf(0.0, 0.0) },
+            columnTypes = listOf(ColumnType.CONCENTRATION, ColumnType.PIXEL_VALUE)
         )
+    }
+
+    /** 更新标准曲线使用的信号特征，不要求用户理解底层处理器名称。 */
+    fun updateDataPixelType(pixelType: PixelType) {
+        val currentState = _activeCreationFlow.value as? CreationFlowState.ManualDataInput ?: return
+        _activeCreationFlow.value = currentState.copy(
+            selectedPixelType = pixelType,
+            fittingResult = null
+        )
+    }
+
+    /** null 表示自动比较加权线性、4PL、5PL；指定函数时只拟合用户明确选择的类型。 */
+    fun updateDataFittingFunction(function: FittingFunction?) {
+        val currentState = _activeCreationFlow.value as? CreationFlowState.ManualDataInput ?: return
+        _activeCreationFlow.value = currentState.copy(
+            selectedFunction = function,
+            fittingResult = null
+        )
+    }
+
+    /**
+     * 使用页面已经完成格式校验的两列标定点执行拟合。
+     *
+     * 参数由 [FittingEngine] 自动计算，页面只展示只读结果；用户不会接触参数 JSON。
+     */
+    fun performFitFromPoints(dataPoints: List<Pair<Double, Double>>) {
+        val currentState = _activeCreationFlow.value as? CreationFlowState.ManualDataInput ?: return
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorResourceId.value = null
+            try {
+                val normalizedPoints = dataPoints
+                    .filter { (concentration, signal) ->
+                        concentration.isFinite() && concentration >= 0.0 && signal.isFinite()
+                    }
+                    .sortedBy { it.first }
+                if (normalizedPoints.size < 2 || normalizedPoints.map { it.first }
+                        .distinct().size < 2
+                ) {
+                    _errorResourceId.value = R.string.standard_curve_points_invalid
+                    return@launch
+                }
+
+                val result = currentState.selectedFunction?.let { function ->
+                    FittingEngine.fitSingle(normalizedPoints, function)
+                } ?: FittingEngine.fit(normalizedPoints)
+                if (!result.isSuccess) {
+                    _errorResourceId.value = R.string.standard_curve_fit_failed
+                    return@launch
+                }
+                _activeCreationFlow.value = currentState.copy(
+                    fittingResult = result.copy(pixelType = currentState.selectedPixelType)
+                )
+            } catch (error: Exception) {
+                _errorResourceId.value = R.string.standard_curve_fit_failed
+            } finally {
+                _isLoading.value = false
+            }
+        }
     }
     
     /**
@@ -445,6 +523,7 @@ class CurveModelViewModel @Inject constructor(
     fun saveModel(name: String) {
         viewModelScope.launch {
             _isLoading.value = true
+            _errorResourceId.value = null
             
             try {
                 when (val state = _activeCreationFlow.value) {
@@ -477,19 +556,16 @@ class CurveModelViewModel @Inject constructor(
                         val result = state.fittingResult
                         
                         if (result == null || !result.isSuccess) {
-                            _errorMessage.value = "请先执行拟合"
+                            _errorResourceId.value = R.string.standard_curve_fit_first
                             _isLoading.value = false
                             return@launch
                         }
-                        
-                        // 确定像素类型（需要从UI获取）
-                        val pixelType = PixelType.GRAY_LUMINOSITY // 这里需要实际获取用户选择
                         
                         val model = CurveModel(
                             id = UUID.randomUUID().toString(),
                             name = name,
                             function = result.function,
-                            pixelType = pixelType,
+                            pixelType = state.selectedPixelType,
                             parameters = result.params,
                             metrics = result.metrics,
                             dataPoints = result.dataPoints,
@@ -499,6 +575,7 @@ class CurveModelViewModel @Inject constructor(
                         
                         curveModelRepository.saveCurveModel(model)
                         _activeCreationFlow.value = null // 关闭创建流程
+                        _events.emit(CurveModelEvent.ModelSaved)
                     }
                     
                     else -> {
@@ -506,7 +583,11 @@ class CurveModelViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "保存模型失败: ${e.message}"
+                if (_activeCreationFlow.value is CreationFlowState.ManualDataInput) {
+                    _errorResourceId.value = R.string.standard_curve_save_failed
+                } else {
+                    _errorMessage.value = "保存模型失败: ${e.message}"
+                }
             } finally {
                 _isLoading.value = false
             }
@@ -518,6 +599,7 @@ class CurveModelViewModel @Inject constructor(
      */
     fun clearErrorMessage() {
         _errorMessage.value = null
+        _errorResourceId.value = null
     }
     
     /**
@@ -544,4 +626,4 @@ class CurveModelViewModel @Inject constructor(
             }
         }
     }
-} 
+}

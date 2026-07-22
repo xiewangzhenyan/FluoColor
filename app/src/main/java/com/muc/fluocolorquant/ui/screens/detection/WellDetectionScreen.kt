@@ -37,6 +37,8 @@ import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
 import com.muc.fluocolorquant.ui.viewmodels.DetectionViewModel
 import com.muc.fluocolorquant.ui.viewmodels.EnhancedWellDetection
+import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiState
+import com.muc.fluocolorquant.ui.viewmodels.GridDetectionViewModel
 import com.muc.fluocolorquant.ui.navigation.Screen
 import kotlinx.coroutines.launch
 import android.net.Uri
@@ -46,6 +48,44 @@ import android.graphics.Bitmap
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WellDetectionScreen(
+    navController: NavController,
+    imageUri: String? = null,
+    projectId: String? = null,
+    gridViewModel: GridDetectionViewModel = hiltViewModel()
+) {
+    val gridState by gridViewModel.uiState.collectAsState()
+    val decodedImageUri = remember(imageUri) {
+        runCatching { imageUri?.let { java.net.URLDecoder.decode(it, "UTF-8") } }
+            .getOrDefault(imageUri)
+    }
+
+    LaunchedEffect(projectId, decodedImageUri) {
+        gridViewModel.start(projectId, decodedImageUri)
+    }
+
+    if (gridState == GridDetectionUiState.LegacyPlate) {
+        // 只有确认是孔板后才创建旧 ViewModel，因此微流控不会预加载 YOLO/PyTorch。
+        LegacyWellDetectionScreen(
+            navController = navController,
+            imageUri = imageUri,
+            projectId = projectId
+        )
+    } else {
+        GridDetectionGatewayContent(
+            state = gridState,
+            onBack = { navController.popBackStack() },
+            onRetry = gridViewModel::retry,
+            onViewResults = { runId ->
+                navController.navigate(Screen.NewResult.createRoute(runId))
+            }
+        )
+    }
+}
+
+/** 旧孔板检测页面，只有检测网关确认载体为 PLATE 后才进入。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LegacyWellDetectionScreen(
     navController: NavController,
     imageUri: String? = null,
     projectId: String? = null,

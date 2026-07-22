@@ -196,7 +196,10 @@ class CameraXCameraEngine @Inject constructor(
                             CameraCaptureMetadataStore.writeCaptureMetadata(
                                 imageFile = outputFile,
                                 request = requestSnapshot,
-                                capabilities = capabilitiesSnapshot
+                                capabilities = capabilitiesSnapshot,
+                                zoomSnapshot = camera?.let { boundCamera ->
+                                    extractZoomSnapshot(boundCamera)
+                                }
                             )
                         }.onFailure { error ->
                             Log.w("CameraEngine", "保存相机元数据失败", error)
@@ -318,6 +321,22 @@ private fun extractCapabilities(
     val exposureTimeRange = characteristics.get(
         CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE
     )?.toLongRange()
+    val lensFacingLabel = when (characteristics.get(CameraCharacteristics.LENS_FACING)) {
+        CameraCharacteristics.LENS_FACING_BACK -> "BACK"
+        CameraCharacteristics.LENS_FACING_FRONT -> "FRONT"
+        CameraCharacteristics.LENS_FACING_EXTERNAL -> "EXTERNAL"
+        else -> "UNKNOWN"
+    }
+    val focalLengths = characteristics.get(
+        CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS
+    )?.toList().orEmpty()
+    val apertures = characteristics.get(
+        CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES
+    )?.toList().orEmpty()
+    val minimumFocusDistance = characteristics.get(
+        CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE
+    )
+    val pixelArraySize = characteristics.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE)
 
     return CameraCaptureCapabilitiesSnapshot(
         cameraId = cameraId,
@@ -334,7 +353,12 @@ private fun extractCapabilities(
         sensorExposureTimeRangeLabel = exposureTimeRange?.let { "${it.first}..${it.last}" },
         exposureCompensationRange = exposureCompensationRange,
         sensorIsoRange = isoRange,
-        sensorExposureTimeRangeNs = exposureTimeRange
+        sensorExposureTimeRangeNs = exposureTimeRange,
+        lensFacingLabel = lensFacingLabel,
+        availableFocalLengthsMm = focalLengths,
+        availableApertures = apertures,
+        minimumFocusDistanceDiopters = minimumFocusDistance,
+        sensorPixelArraySizeLabel = pixelArraySize?.let { "${it.width}x${it.height}" }
     )
 }
 

@@ -21,10 +21,22 @@ import javax.inject.Singleton
 private val Context.languageDataStore by preferencesDataStore(name = "language_settings")
 private val Context.appSettingsDataStore by preferencesDataStore(name = "app_settings")
 
+/**
+ * 只暴露浓度单位相关设置的轻量接口。
+ *
+ * 模板和曲线编辑器只需要读取单位列表与默认单位，不应依赖整个应用设置仓库。拆出该接口
+ * 后，页面业务既能与“检测设置”使用同一份 DataStore 数据，也能在 JVM 单元测试中使用
+ * 简单的内存实现，避免为了读取一个下拉列表而引入 Android Context。
+ */
+interface ConcentrationUnitPreferences {
+    val defaultConcentrationUnitFlow: Flow<String>
+    val concentrationUnitsFlow: Flow<Set<String>>
+}
+
 @Singleton
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context
-) {
+) : ConcentrationUnitPreferences {
     // 语言相关的DataStore实例
     private val languageDataStore: DataStore<Preferences> = context.languageDataStore
     
@@ -93,7 +105,7 @@ class SettingsRepository @Inject constructor(
     }
     
     // 获取默认浓度单位，默认为ng/ml
-    val defaultConcentrationUnitFlow: Flow<String> = appSettingsDataStore.data.map { preferences ->
+    override val defaultConcentrationUnitFlow: Flow<String> = appSettingsDataStore.data.map { preferences ->
         preferences[DEFAULT_CONCENTRATION_UNIT_KEY] ?: "ng/ml"
     }
     
@@ -113,7 +125,7 @@ class SettingsRepository @Inject constructor(
     }
     
     // 获取所有可用浓度单位
-    val concentrationUnitsFlow: Flow<Set<String>> = appSettingsDataStore.data.map { preferences ->
+    override val concentrationUnitsFlow: Flow<Set<String>> = appSettingsDataStore.data.map { preferences ->
         preferences[CONCENTRATION_UNITS_KEY] ?: DEFAULT_CONCENTRATION_UNITS
     }
 
@@ -299,10 +311,10 @@ class SettingsRepository @Inject constructor(
         const val DEFAULT_THEME_MODE = THEME_MODE_SYSTEM
         // 默认浓度单位集合
         val DEFAULT_CONCENTRATION_UNITS = setOf("ng/ml", "μg/ml", "mg/ml", "g/ml", "mol/L", "mmol/L", "μmol/L", "nmol/L")
-        // 默认行数
-        val DEFAULT_ROWS = 12
-        // 默认列数
-        val DEFAULT_COLUMNS = 8
+        // 新安装默认使用标准 96 孔板方向：8 行 × 12 列。
+        // 已安装用户的 DataStore 值保持不变，由旧项目兼容策略解释历史 12×8 记录。
+        const val DEFAULT_ROWS = 8
+        const val DEFAULT_COLUMNS = 12
         // 光谱默认配置
         const val DEFAULT_SPECTRUM_MIN_WAVELENGTH = 400.0f
         const val DEFAULT_SPECTRUM_MAX_WAVELENGTH = 800.0f

@@ -43,78 +43,56 @@ data class ResourceSummaryMetric(
 )
 
 /**
- * 资源库统一标题与统计面板。
+ * 资源库统一紧凑统计条。
  *
- * 面板使用水平统计而不是复杂仪表盘，突出实验室资源数量和状态，同时保持小屏设备上
- * 的可扫描性；三个指标在同一行中等权展示。
+ * 页面标题已经由 TopAppBar 提供，因此这里不再重复标题和长副标题。三项统计压缩在
+ * 同一行中，实验员打开页面后能够立即浏览资源列表，而不是先越过网页式 Hero 区域。
  */
 @Composable
 fun ResourceLibraryHeader(
-    title: String,
-    subtitle: String,
     metrics: List<ResourceSummaryMetric>,
     accentColor: Color,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = accentColor.copy(alpha = 0.10f)),
+        shape = RoundedCornerShape(16.dp),
+        color = accentColor.copy(alpha = 0.07f),
         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.18f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                metrics.take(3).forEach { metric ->
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(15.dp),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = metric.icon,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = accentColor
-                            )
-                            Text(
-                                text = metric.value,
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = metric.label,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
-                        }
+            metrics.take(3).forEach { metric ->
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 5.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = metric.icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = accentColor
+                    )
+                    Box {
+                        Text(
+                            text = metric.value,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
+                    Text(
+                        text = metric.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
                 }
             }
         }
@@ -260,6 +238,9 @@ fun ResourceProfileEventEffect(events: Flow<ResourceProfileEvent>) {
         ResourceFormError.NAME_REQUIRED to stringResource(R.string.resource_validation_name),
         ResourceFormError.ROWS_OUT_OF_RANGE to stringResource(R.string.resource_validation_rows),
         ResourceFormError.COLUMNS_OUT_OF_RANGE to stringResource(R.string.resource_validation_columns),
+        ResourceFormError.TARGET_POLARITY_REQUIRED to stringResource(
+            R.string.resource_validation_target_polarity
+        ),
         ResourceFormError.DETECTION_MODE_REQUIRED to stringResource(R.string.resource_validation_mode),
         ResourceFormError.COMPATIBLE_CARRIER_REQUIRED to stringResource(
             R.string.resource_validation_carrier

@@ -15,7 +15,6 @@ import android.os.Environment
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.Log
-import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -27,6 +26,7 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.AnalyteResultDetails
 import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.data.model.SpectrumExportData
 import com.muc.fluocolorquant.data.model.SpectrumChannelExportModel
 import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
@@ -34,7 +34,10 @@ import com.muc.fluocolorquant.utils.HeatmapColorUtil
 import com.muc.fluocolorquant.utils.ResultTraceabilityUtils
 import com.muc.fluocolorquant.utils.camera.CameraCaptureMetadataStore
 import com.muc.fluocolorquant.utils.math.FittingEngine
+import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import com.muc.fluocolorquant.utils.math.WellMappingUtils
+import com.muc.fluocolorquant.utils.pdf.PdfCoverPageContent
+import com.muc.fluocolorquant.utils.pdf.PdfCoverPageRenderer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -111,6 +114,20 @@ class ExportViewModel @Inject constructor(
         val analyteDetails: List<AnalyteResultDetails>,
         val detectionRun: DetectionRun? = null
     )
+
+    /**
+     * 使用项目真实列数生成导出标签。
+     *
+     * 历史 `virtualRow/virtualCol` 可能由固定 12 列算法写入，不能继续作为导出的科学
+     * 坐标来源；线性 `wellIndex` 与项目兼容尺寸才是稳定依据。
+     */
+    private fun resolveWellLabel(wellResult: WellResult, project: Project): String {
+        val dimensions = GridLayoutPolicy.resolveProject(project)
+        return WellMappingUtils.getWellLabelForIndex(
+            index = wellResult.wellIndex,
+            columns = dimensions.columns
+        )
+    }
 
     /**
      * 开始导出PDF报告
@@ -475,12 +492,7 @@ class ExportViewModel @Inject constructor(
                     val unit = analyteDetail.concentrationUnit
 
                     for (wellResult in analyteDetail.wellResults) {
-                        val wellLabel = if(wellResult.virtualRow != null && wellResult.virtualCol != null) {
-                            WellMappingUtils.getWellLabel(wellResult.virtualRow!!, wellResult.virtualCol!!)
-                        } else {
-                            val (vRow, vCol) = WellMappingUtils.mapRealToVirtualCoordinates(wellResult.wellIndex)
-                            WellMappingUtils.getWellLabel(vRow, vCol)
-                        }
+                        val wellLabel = resolveWellLabel(wellResult, reportData.project)
 
                         val predictedConcentration = wellResult.predictedConcentration?.let { String.format(Locale.US, "%.4f", it) } ?: "-"
                         val trueConcentration = wellResult.trueConcentration?.let { String.format(Locale.US, "%.4f", it) } ?: "-"
@@ -989,12 +1001,14 @@ class ExportViewModel @Inject constructor(
             val title = "${analyteDetail.analyte.name} ${context.getString(R.string.concentration_heatmap)}"
             canvas.drawText(title, 600f, 80f, titlePaint)
 
-            val rows = 8
-            val cols = 12
+            val dimensions = GridLayoutPolicy.resolveProject(analyteDetail.project)
+            val rows = dimensions.rows
+            val cols = dimensions.columns
             val startX = 120f
             val startY = 160f  // 增加上方空间，避免与标题重叠
-            val cellWidth = 80f
-            val cellHeight = 60f
+            // 固定导出画布，通过真实行列动态计算格子大小，15×15 和非方阵不会被裁掉。
+            val cellWidth = (1200f - startX - 60f) / cols
+            val cellHeight = (900f - startY - 80f) / rows
             val maxConcentration = analyteDetail.wellResults.mapNotNull { it.predictedConcentration }.filter { it.isFinite() }.maxOrNull() ?: 100.0
 
             val textPaint = TextPaint().apply {
@@ -1010,14 +1024,16 @@ class ExportViewModel @Inject constructor(
             }
             // 绘制行标签
             for (row in 0 until rows) {
-                canvas.drawText(('A' + row).toString(), startX - 40f, startY + row * cellHeight + cellHeight / 2 + 10f, labelPaint)
+                canvas.drawText(WellMappingUtils.getRowLabel(row), startX - 40f, startY + row * cellHeight + cellHeight / 2 + 10f, labelPaint)
             }
 
             // 绘制热力图
             analyteDetail.wellResults.forEach { wellResult ->
-                if(wellResult.virtualRow != null && wellResult.virtualCol != null) {
-                    val row = wellResult.virtualRow!!
-                    val col = wellResult.virtualCol!!
+                val (row, col) = WellMappingUtils.mapRealToVirtualCoordinates(
+                    realIndex = wellResult.wellIndex,
+                    columns = cols
+                )
+                if (row in 0 until rows && col in 0 until cols) {
                     val left = startX + col * cellWidth
                     val top = startY + row * cellHeight
                     val right = left + cellWidth
@@ -1158,12 +1174,7 @@ class ExportViewModel @Inject constructor(
                     if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                     canvas.drawCircle(x, y, 8f, pointPaint)
 
-                    val wellLabel = if(wellResult.virtualRow != null && wellResult.virtualCol != null) {
-                        WellMappingUtils.getWellLabel(wellResult.virtualRow!!, wellResult.virtualCol!!)
-                    } else {
-                        val (vRow, vCol) = WellMappingUtils.mapRealToVirtualCoordinates(wellResult.wellIndex)
-                        WellMappingUtils.getWellLabel(vRow, vCol)
-                    }
+                    val wellLabel = resolveWellLabel(wellResult, analyteDetail.project)
 
                     // 在数据点下方添加孔位标签
                     canvas.drawText(wellLabel, x, y - 15, pointLabelPaint)
@@ -1465,129 +1476,46 @@ class ExportViewModel @Inject constructor(
     }
 
     /**
-     * 【重构】创建PDF封面页，使用预设XML布局文件转换为Bitmap
+     * 使用项目既有的 pdf_cover_page.xml 生成96孔板/传统结果报告封面。
+     *
+     * 这里与规则阵列导出共享同一个渲染器，避免注释声称使用模板、实际却手工绘制的漂移。
      */
-    @SuppressLint("InflateParams")
-    private suspend fun createCoverPage(canvas: Canvas, reportData: ReportData) = withContext(Dispatchers.IO) {
-        Log.d("ExportViewModel", "使用直接绘制方式创建封面页")
-
-        // 绘制页眉
-        val headerBgPaint = Paint().apply { color = android.graphics.Color.parseColor("#006E1C") }
-        canvas.drawRect(0f, 0f, PDF_PAGE_WIDTH.toFloat(), PDF_HEADER_HEIGHT, headerBgPaint)
-        
-        // 绘制Logo
-        val logoImage = BitmapFactory.decodeResource(context.resources, R.drawable.icon2)
-        val logoScale = 48f / logoImage.height
-        val scaledLogoWidth = logoImage.width * logoScale
-        
-        val logoRect = Rect(
-            PDF_MARGIN.toInt(), 
-            ((PDF_HEADER_HEIGHT - 48f) / 2).toInt(), 
-            (PDF_MARGIN + scaledLogoWidth).toInt(), 
-            ((PDF_HEADER_HEIGHT + 48f) / 2).toInt()
-        )
-        
-        canvas.drawBitmap(logoImage, null, logoRect, null)
-        
-        // 绘制应用名称
-        val headerTextPaint = createTextPaint(20f, android.graphics.Color.WHITE)
-        canvas.drawText("FluoColorQuant", PDF_MARGIN + scaledLogoWidth + 16f, PDF_HEADER_HEIGHT / 2 + 8f, headerTextPaint)
-
-        // 绘制主标题
-        var yOffset = PDF_CONTENT_START_Y + 40f // 为标题留出空间
-        val titlePaint = createTextPaint(24f, isBold = true, align = Paint.Align.CENTER)
-        canvas.drawText(context.getString(R.string.pdf_title_fluocolorquant_report), PDF_PAGE_WIDTH / 2f, yOffset, titlePaint)
-        yOffset += 80f
-        
-        // 创建项目信息卡片
-        val cardPaint = Paint().apply { color = android.graphics.Color.parseColor("#F5F5F5"); style = Paint.Style.FILL }
-        val cardBorderPaint = Paint().apply { color = android.graphics.Color.LTGRAY; style = Paint.Style.STROKE; strokeWidth = 2f }
-        val cardLeft = PDF_MARGIN + 20f
-        val cardRight = PDF_PAGE_WIDTH - PDF_MARGIN - 20f
-        val cardTop = yOffset
-        val cardHeight = 120f
-        
-        // 绘制项目信息卡片背景
-        canvas.drawRect(cardLeft, cardTop, cardRight, cardTop + cardHeight, cardPaint)
-        canvas.drawRect(cardLeft, cardTop, cardRight, cardTop + cardHeight, cardBorderPaint)
-        
-        // 绘制项目信息
-        val textPaint = createTextPaint(14f)
+    private fun createCoverPage(canvas: Canvas, reportData: ReportData) {
         val project = reportData.project
-        val padding = 16f
-        
-        yOffset = cardTop + padding
-        yOffset = drawFormattedText(canvas, 
-            context.getString(R.string.pdf_label_project_name_format, project.name), 
-            cardLeft + padding, yOffset, textPaint, cardRight - cardLeft - 2 * padding) + 8f
-            
-        yOffset = drawFormattedText(canvas, 
-            context.getString(R.string.pdf_label_creation_date, SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(project.createTime)), 
-            cardLeft + padding, yOffset, textPaint, cardRight - cardLeft - 2 * padding) + 8f
-            
-        val detectionModeText = when(project.detectionMode) {
+        val totalPages = countTotalPages(reportData)
+        val detectionModeText = when (project.detectionMode) {
             "FLUORESCENCE" -> context.getString(R.string.fluorescence_detection)
             "COLORIMETRIC" -> context.getString(R.string.colorimetric_detection)
             else -> project.detectionMode
         }
-        
-        drawFormattedText(canvas, 
-            context.getString(R.string.pdf_label_detection_mode_format, detectionModeText), 
-            cardLeft + padding, yOffset, textPaint, cardRight - cardLeft - 2 * padding)
-
-        buildTraceabilityPdfLines(reportData).forEach { line ->
-            yOffset = drawFormattedText(
-                canvas,
-                line,
-                cardLeft + padding,
-                yOffset + 10f,
-                textPaint,
-                cardRight - cardLeft - 2 * padding
+        val chapterLines = reportData.analyteDetails.mapIndexed { index, detail ->
+            context.getString(R.string.pdf_chapter_title_format, index + 1, detail.analyte.name)
+        }
+        PdfCoverPageRenderer.draw(
+            context = context,
+            targetCanvas = canvas,
+            pageWidth = PDF_PAGE_WIDTH,
+            pageHeight = PDF_PAGE_HEIGHT,
+            content = PdfCoverPageContent(
+                title = context.getString(R.string.pdf_title_fluocolorquant_report),
+                projectLine = context.getString(R.string.pdf_label_project_name_format, project.name),
+                dateLine = context.getString(
+                    R.string.pdf_label_creation_date,
+                    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(project.createTime)
+                ),
+                detectionModeLine = context.getString(
+                    R.string.pdf_label_detection_mode_format,
+                    detectionModeText
+                ),
+                overviewLines = chapterLines,
+                generatedAtLine = context.getString(
+                    R.string.pdf_generated_on,
+                    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+                ),
+                pageNumberLine = context.getString(R.string.pdf_page_number, 1, totalPages)
             )
-        }
-        
-        // 绘制内容总览卡片
-        yOffset = cardTop + cardHeight + 24f
-        val overviewCardTop = yOffset
-        val overviewCardHeight = 200f
-        
-        // 绘制内容总览卡片背景
-        canvas.drawRect(cardLeft, overviewCardTop, cardRight, overviewCardTop + overviewCardHeight, cardPaint)
-        canvas.drawRect(cardLeft, overviewCardTop, cardRight, overviewCardTop + overviewCardHeight, cardBorderPaint)
-        
-        // 绘制内容总览标题
-        val overviewTitlePaint = createTextPaint(16f, isBold = true)
-        yOffset = overviewCardTop + padding
-        yOffset = drawFormattedText(canvas, 
-            context.getString(R.string.pdf_report_content_overview), 
-            cardLeft + padding, yOffset, overviewTitlePaint, cardRight - cardLeft - 2 * padding) + 16f
-            
-        // 绘制章节列表
-        val chapterPaint = createTextPaint(14f)
-        reportData.analyteDetails.forEachIndexed { index, detail ->
-            val chapterTitle = context.getString(R.string.pdf_chapter_title_format, index + 1, detail.analyte.name)
-            yOffset = drawFormattedText(canvas, chapterTitle, 
-                cardLeft + padding, yOffset, chapterPaint, cardRight - cardLeft - 2 * padding) + 8f
-        }
-        
-        // 绘制页脚信息
-        val footerPaint = createTextPaint(10f, android.graphics.Color.GRAY)
-        canvas.drawText(
-            context.getString(R.string.pdf_generated_on, SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())),
-            PDF_MARGIN,
-            PDF_PAGE_HEIGHT - 40f,
-            footerPaint
         )
-        
-        footerPaint.textAlign = Paint.Align.RIGHT
-        canvas.drawText(
-            context.getString(R.string.pdf_page_number, 1, countTotalPages(reportData)),
-            PDF_PAGE_WIDTH - PDF_MARGIN,
-            PDF_PAGE_HEIGHT - 40f,
-            footerPaint
-        )
-        
-        Log.d("ExportViewModel", "封面页创建成功")
+        Log.d("ExportViewModel", "已使用 pdf_cover_page.xml 创建封面页")
     }
 
     private fun buildTraceabilityPdfLines(reportData: ReportData): List<String> {
@@ -1960,12 +1888,7 @@ class ExportViewModel @Inject constructor(
                 context.getString(R.string.pdf_analysis_dl_model)
 
             for (wellResult in analyteDetail.wellResults) {
-                val wellLabel = if(wellResult.virtualRow != null && wellResult.virtualCol != null) {
-                    WellMappingUtils.getWellLabel(wellResult.virtualRow!!, wellResult.virtualCol!!)
-                } else {
-                    val (vRow, vCol) = WellMappingUtils.mapRealToVirtualCoordinates(wellResult.wellIndex)
-                    WellMappingUtils.getWellLabel(vRow, vCol)
-                }
+                val wellLabel = resolveWellLabel(wellResult, reportData.project)
 
                 // 确保通过wellResult访问wellType属性
                 val wellTypeValue = try {
@@ -2546,12 +2469,7 @@ class ExportViewModel @Inject constructor(
             val analyteName = analyteDetail.analyte.name
 
             for (wellResult in analyteDetail.wellResults) {
-                val wellLabel = if(wellResult.virtualRow != null && wellResult.virtualCol != null) {
-                    WellMappingUtils.getWellLabel(wellResult.virtualRow!!, wellResult.virtualCol!!)
-                } else {
-                    val (vRow, vCol) = WellMappingUtils.mapRealToVirtualCoordinates(wellResult.wellIndex)
-                    WellMappingUtils.getWellLabel(vRow, vCol)
-                }
+                val wellLabel = resolveWellLabel(wellResult, reportData.project)
 
                 // 获取角色类型
                 val roleType = try {

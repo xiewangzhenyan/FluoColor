@@ -129,6 +129,8 @@ dependencies {
     implementation("ru.noties:jlatexmath-android:0.2.0")
 
     testImplementation(libs.junit)
+    // ViewModel 单元测试需要可控的 Main 调度器，保证 Flow 收集和一次性事件可确定执行。
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

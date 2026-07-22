@@ -32,6 +32,7 @@ import com.muc.fluocolorquant.utils.PixelExtractionUtils
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import com.muc.fluocolorquant.utils.math.FittingResult
 import com.muc.fluocolorquant.utils.math.WellMappingUtils
+import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -118,8 +119,6 @@ class WellLayoutViewModel @Inject constructor(
     // 【新增】用一个Map来跟踪每个分析物ID对应的、已确认的拟合结果
     private val _analyteFittingStatus = MutableStateFlow<Map<String, FittingResult>>(emptyMap())
     val analyteFittingStatus: StateFlow<Map<String, FittingResult>> = _analyteFittingStatus.asStateFlow()
-    //保存当前浓度预测模型存储的位置
-    private  val CONCENTRATION_MODEL_PATH = "models/improved_concentration_model_lite.ptl"
     // 【新增】一个计算属性，用于判断是否所有分析物都已配置完毕
     val allAnalytesConfigured: StateFlow<Boolean> =
         combine(_availableAnalytes, _analyteFittingStatus) { analytes, status ->
@@ -368,6 +367,7 @@ class WellLayoutViewModel @Inject constructor(
         try {
             val wellResults = _wellResults.value
             val analytes = _availableAnalytes.value
+            val dimensions = GridLayoutPolicy.resolveProject(_currentProject.value)
             val layouts = mutableMapOf<String, AnalyteWellLayout>()
 
             analytes.forEach { analyte ->
@@ -375,12 +375,17 @@ class WellLayoutViewModel @Inject constructor(
 
                 if (analyteWells.isNotEmpty()) {
                     val wellAssignments = analyteWells.map { well ->
+                        // 历史 virtualRow/virtualCol 可能来自固定 12 列映射，统一由真实列数重算。
+                        val (row, column) = WellMappingUtils.mapRealToVirtualCoordinates(
+                            realIndex = well.wellIndex,
+                            columns = dimensions.columns
+                        )
                         WellAssignment(
                             wellIndex = well.wellIndex,
                             roleType = well.roleType ?: WellRoleType.NONE.code,
                             concentration = well.trueConcentration,
-                            virtualRow = well.virtualRow,
-                            virtualCol = well.virtualCol
+                            virtualRow = row,
+                            virtualCol = column
                         )
                     }
 
@@ -479,8 +484,12 @@ class WellLayoutViewModel @Inject constructor(
 
             try {
                 // 1. 加载曲线模型
-                val curveModel = withContext(Dispatchers.IO) {
-                    curveModelRepository.getCurveModelById(template.fkCurveModelId)
+                // 这是旧孔板模板应用链路。Room 11 的新多分析物模板不再强制绑定旧
+                // CurveModel，因此只有兼容字段存在时才尝试加载，空值沿用下方错误处理。
+                val curveModel = template.fkCurveModelId?.let { curveModelId ->
+                    withContext(Dispatchers.IO) {
+                        curveModelRepository.getCurveModelById(curveModelId)
+                    }
                 }
                 if (curveModel == null) {
                     _layoutState.value = LayoutState.Error("模板关联的曲线模型未找到")
@@ -558,6 +567,7 @@ class WellLayoutViewModel @Inject constructor(
         template: ExperimentTemplate
     ): List<WellResult> {
         val layoutJson = template.defaultLayoutJson ?: return emptyList()
+        val dimensions = GridLayoutPolicy.resolveProject(_currentProject.value)
         val type = object : TypeToken<Map<String, String>>() {}.type
         val layoutMap: Map<Int, String> = try {
             Gson().fromJson<Map<String, String>>(layoutJson, type).mapKeys { it.key.toInt() }
@@ -590,7 +600,10 @@ class WellLayoutViewModel @Inject constructor(
             val listIndex = currentResults.indexOfFirst { it.wellIndex == wellIndex }
             if (listIndex != -1) {
                 // 使用新的映射工具获取虚拟坐标
-                val virtualCoords = WellMappingUtils.mapRealToVirtualCoordinates(wellIndex)
+                val virtualCoords = WellMappingUtils.mapRealToVirtualCoordinates(
+                    realIndex = wellIndex,
+                    columns = dimensions.columns
+                )
 
                 var updatedWell = currentResults[listIndex].copy(
                     fkAnalyteId = analyteId,
@@ -648,17 +661,19 @@ class WellLayoutViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val project = _currentProject.value ?: return@launch
+                val dimensions = GridLayoutPolicy.resolveProject(project)
                 val selectedAnalyte = _selectedAnalyte.value ?: return@launch
                 val roleType = _selectedRoleType.value
 
                 // 【核心修正】使用新的、更简单的映射工具
                 val wellIndex = WellMappingUtils.mapVirtualToRealIndex(
                     virtualRow,
-                    virtualCol
+                    virtualCol,
+                    dimensions.columns
                 )
 
                 // 确保wellIndex在有效范围内
-                val totalCells = project.rows * project.columns
+                val totalCells = dimensions.siteCount
                 if (wellIndex >= totalCells) {
                     Log.w(TAG, "无效的孔位索引: $wellIndex (虚拟坐标: $virtualRow, $virtualCol)")
                     return@launch
@@ -1155,7 +1170,7 @@ class WellLayoutViewModel @Inject constructor(
                     return@launch
                 }
 
-                // 5. 遍历所有选择的算法组合进行拟合
+                // 5. 遍历像素特征；成熟自动函数使用反算验收排序，专家函数保留手动拟合能力。
                 val results = mutableListOf<FittingResult>()
 
                 withContext(Dispatchers.Default) {
@@ -1172,7 +1187,21 @@ class WellLayoutViewModel @Inject constructor(
                             continue
                         }
 
-                        for (function in functions) {
+                        val automaticFunctions = functions.intersect(
+                            FittingEngine.automaticCalibrationFunctions()
+                        )
+                        if (automaticFunctions.isNotEmpty()) {
+                            val calibrationResults = FittingEngine.fitCalibrationCandidates(
+                                dataPoints = dataPoints,
+                                allowedFunctions = automaticFunctions
+                            ).map { result -> result.copy(pixelType = pixelType) }
+                            results.addAll(calibrationResults)
+                        }
+
+                        // 用户明确勾选的其他函数属于专家路径，不参与默认自动推荐函数集合；这些
+                        // 结果仍保留，方便历史项目或特殊实验手动比较，但排序时不会只靠R²置顶。
+                        val expertFunctions = functions - automaticFunctions - FittingFunction.INTERPOLATION
+                        for (function in expertFunctions) {
                             try {
                                 val result = FittingEngine.fitCurve(
                                     dataPoints = dataPoints,
@@ -1180,8 +1209,7 @@ class WellLayoutViewModel @Inject constructor(
                                     pixelType = pixelType
                                 )
 
-                                // 检查拟合结果是否有效
-                                if (result != null && result.rSquared > 0.5) { // 设置一个最低R²阈值
+                                if (result != null && result.rSquared.isFinite()) {
                                     results.add(result)
                                 }
                             } catch (e: Exception) {
@@ -1191,8 +1219,20 @@ class WellLayoutViewModel @Inject constructor(
                     }
                 }
 
-                // 6. 按R²值排序结果
-                val sortedResults = results.sortedByDescending { it.rSquared }
+                // 6. 优先使用 ICH 风格标准点反算诊断；旧专家函数缺少诊断时才退回 R² 排序。
+                val sortedResults = results.sortedWith(
+                    compareByDescending<FittingResult> {
+                        it.allMetrics["ICH M10 Accepted"] ?: 0.0
+                    }.thenByDescending {
+                        it.allMetrics["Endpoint Pass Count"] ?: 0.0
+                    }.thenByDescending {
+                        it.allMetrics["Accepted Standard Ratio"] ?: 0.0
+                    }.thenBy {
+                        it.allMetrics["Back-calculated RMSE (%)"] ?: Double.POSITIVE_INFINITY
+                    }.thenByDescending {
+                        it.rSquared
+                    }
+                )
                 _fittingResults.value = sortedResults
 
                 if (sortedResults.isEmpty()) {
@@ -1763,7 +1803,10 @@ class WellLayoutViewModel @Inject constructor(
                     
                     // 需要在此处创建此函数或实现逻辑。
                     // 直接模拟预测逻辑。
-                    val modelPath = wellResultRepository.assetFilePath(context, CONCENTRATION_MODEL_PATH)
+                    val modelPath = wellResultRepository.assetFilePath(
+                        context,
+                        DetectionModeSupport.SHARED_CONCENTRATION_MODEL_ASSET
+                    )
                         ?: throw IOException(context.getString(R.string.model_file_not_found, modelName))
                     val concentrationModel = LiteModuleLoader.load(modelPath)
 
@@ -1910,11 +1953,15 @@ class WellLayoutViewModel @Inject constructor(
                     60
                 )
                 val analyteId = analytes.first().id
+                val dimensions = GridLayoutPolicy.resolveProject(project)
 
                 // 自动标记所有孔位为样本
                 val wellsToUpdate = wellResultsWithPixels.map {
                     // 使用新的映射工具获取虚拟坐标
-                    val virtualCoords = WellMappingUtils.mapRealToVirtualCoordinates(it.wellIndex)
+                    val virtualCoords = WellMappingUtils.mapRealToVirtualCoordinates(
+                        realIndex = it.wellIndex,
+                        columns = dimensions.columns
+                    )
                     it.copy(
                         fkAnalyteId = analyteId,
                         roleType = WellRoleType.SAMPLE.code,

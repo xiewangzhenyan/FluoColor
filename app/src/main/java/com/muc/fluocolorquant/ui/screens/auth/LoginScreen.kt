@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
@@ -27,6 +28,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -66,6 +70,21 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val passwordFocusRequester = remember { FocusRequester() }
+    val emailFocusRequester = remember { FocusRequester() }
+
+    // 按钮和软键盘完成键共用同一提交入口，避免用户填完密码后还必须先收起键盘，
+    // 再寻找被键盘遮挡的登录按钮。
+    val submitCredentials: () -> Unit = {
+        if (username.isNotBlank() && password.isNotBlank()) {
+            if (isLoginMode) {
+                viewModel.login(username, password)
+            } else {
+                viewModel.register(username, password, email.takeIf { it.isNotBlank() })
+            }
+        }
+    }
 
     Scaffold { paddingValues ->
         Column(
@@ -139,6 +158,9 @@ fun LoginScreen(
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Text,
                             imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { passwordFocusRequester.requestFocus() }
                         )
                     )
                     
@@ -161,10 +183,19 @@ fun LoginScreen(
                             }
                         },
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(passwordFocusRequester),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Done
+                            imeAction = if (isLoginMode) ImeAction.Done else ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { emailFocusRequester.requestFocus() },
+                            onDone = {
+                                focusManager.clearFocus()
+                                submitCredentials()
+                            }
                         )
                     )
                     
@@ -177,10 +208,18 @@ fun LoginScreen(
                             label = { Text(stringResource(R.string.email)) },
                             singleLine = true,
                             leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(emailFocusRequester),
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Email,
                                 imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = {
+                                    focusManager.clearFocus()
+                                    submitCredentials()
+                                }
                             )
                         )
                     }
@@ -201,13 +240,7 @@ fun LoginScreen(
                     // 登录/注册按钮
                     PrimaryButton(
                         text = stringResource(id = if (isLoginMode) R.string.login else R.string.register),
-                        onClick = {
-                            if (isLoginMode) {
-                                viewModel.login(username, password)
-                            } else {
-                                viewModel.register(username, password, email.takeIf { it.isNotBlank() })
-                            }
-                        },
+                        onClick = submitCredentials,
                         modifier = Modifier.fillMaxWidth(),
                         enabled = username.isNotBlank() && password.isNotBlank() && 
                                 loginState != UserViewModel.LoginState.Loading
@@ -236,4 +269,4 @@ fun LoginScreen(
             }
         }
     }
-} 
+}

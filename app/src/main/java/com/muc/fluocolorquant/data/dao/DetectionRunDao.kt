@@ -30,6 +30,18 @@ interface DetectionRunDao {
      */
     @Query("SELECT * FROM detection_runs WHERE projectId = :projectId ORDER BY timestamp DESC")
     suspend fun getDetectionRunsByProjectId(projectId: String): List<DetectionRun>
+
+    /** 新结果网关只按真实位点测量存在性分流，不根据10×10/15×15行列猜测载体。 */
+    @Query(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM site_measurements
+            WHERE runId = :runId
+            LIMIT 1
+        )
+        """
+    )
+    suspend fun hasSiteMeasurements(runId: String): Boolean
     
     /**
      * 获取指定项目的最新检测运行记录
@@ -60,4 +72,4 @@ interface DetectionRunDao {
      */
     @Query("DELETE FROM detection_runs WHERE projectId = :projectId")
     suspend fun deleteDetectionRunsByProjectId(projectId: String)
-} 
+}

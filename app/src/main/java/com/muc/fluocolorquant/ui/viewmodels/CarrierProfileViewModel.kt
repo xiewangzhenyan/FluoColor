@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.model.CarrierProfile
 import com.muc.fluocolorquant.data.repository.CarrierProfileRepository
+import com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec
 import com.muc.fluocolorquant.ui.screens.settings.resources.CarrierPreset
 import com.muc.fluocolorquant.ui.screens.settings.resources.CarrierProfileDraft
 import com.muc.fluocolorquant.ui.screens.settings.resources.ResourceProfileEvent
@@ -89,7 +90,11 @@ class CarrierProfileViewModel @Inject constructor(
                 rowsInput = profile.rows.toString(),
                 columnsInput = profile.columns.toString(),
                 siteShape = com.muc.fluocolorquant.data.enums.SiteShape.fromCode(profile.siteShape)
-                    ?: com.muc.fluocolorquant.data.enums.SiteShape.CUSTOM
+                    ?: com.muc.fluocolorquant.data.enums.SiteShape.CUSTOM,
+                // 旧版或损坏定位配置保持 null，保存校验会要求用户明确选择，不能静默回退。
+                targetPolarity = ScientificDetectionConfigCodec.decodeCarrierPolarity(
+                    profile.locatorConfigJson
+                )
             ),
             editingSourceId = profile.id
         )
@@ -127,7 +132,19 @@ class CarrierProfileViewModel @Inject constructor(
                     siteShape = state.draft.siteShape.code,
                     orientationMarkerJson = source?.orientationMarkerJson,
                     roiConfigJson = source?.roiConfigJson,
-                    locatorConfigJson = source?.locatorConfigJson,
+                    locatorConfigJson = if (
+                        state.draft.carrierType ==
+                        com.muc.fluocolorquant.data.enums.CarrierType.MICROFLUIDIC_CHIP
+                    ) {
+                        ScientificDetectionConfigCodec.encodeCarrierLocator(
+                            requireNotNull(state.draft.targetPolarity) {
+                                "微流控载体必须明确目标极性"
+                            }
+                        )
+                    } else {
+                        // 孔板定位由旧兼容链管理，禁止把 PG-Grid 配置误写到孔板载体。
+                        null
+                    },
                     createdAt = now,
                     updatedAt = now
                 )

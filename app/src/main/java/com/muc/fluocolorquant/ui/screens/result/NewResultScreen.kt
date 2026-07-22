@@ -115,16 +115,16 @@ fun NewResultScreen(
                         Icon(
                             painter = painterResource(id = R.drawable.export),
                             contentDescription = stringResource(R.string.export),
-                            tint = MaterialTheme.colorScheme.onPrimary,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(8.dp)
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
-                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
         },
@@ -211,20 +211,22 @@ fun NewResultScreen(
                             val currentAnalyteId = selectedAnalyteId ?: ""
                             val currentAnalyteDetails = analyteResultsMap[currentAnalyteId]
                             if (currentAnalyteDetails != null) {
-                                ResultTraceabilityCard(currentAnalyteDetails)
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                AnalysisPlanCard(currentAnalyteDetails)
-                                Spacer(modifier = Modifier.height(16.dp))
-
+                                // 科研结果优先：分析物切换后立即看到热力图和浓度，不再先穿过
+                                // 追溯信息与方案说明。辅助信息保留在结果之后并默认折叠。
                                 ResultsDisplaySection(currentAnalyteDetails)
-                                Spacer(modifier = Modifier.height(16.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
 
                                 ValidationCard(
                                     analyteId = currentAnalyteId,
                                     analyteDetails = currentAnalyteDetails,
                                     viewModel = viewModel
                                 )
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                ResultTraceabilityCard(currentAnalyteDetails)
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                AnalysisPlanCard(currentAnalyteDetails)
                             } else {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),

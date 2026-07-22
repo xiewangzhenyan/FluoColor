@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.opencv.android.OpenCVLoader
 import javax.inject.Inject
 
 // 在 FluoColorApp 无需 Hilt 实例即可访问的级别上定义 DataStore 名称和键
@@ -48,6 +49,23 @@ class FluoColorApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // PG-Grid、孔板校正和光谱处理都会直接创建 OpenCV Mat。必须在任何页面或
+        // ViewModel 启动后台任务之前统一加载本地库，否则测试环境可以通过、正式页面却会
+        // 在首次调用 Mat.n_Mat() 时触发 UnsatisfiedLinkError 并使整个进程崩溃。
+        val openCvReady = runCatching { OpenCVLoader.initDebug() }
+            .onFailure { error ->
+                Log.e("FluoColorApp", "OpenCV 全局初始化异常", error)
+            }
+            .getOrDefault(false)
+        if (openCvReady) {
+            Log.i("FluoColorApp", "OpenCV 全局初始化成功")
+        } else {
+            // 这里不主动结束应用：非图像管理页面仍可打开；实际检测入口会显示执行失败，
+            // 比直接产生 native linkage 崩溃更便于用户恢复和开发阶段定位问题。
+            Log.e("FluoColorApp", "OpenCV 全局初始化失败，图像检测功能暂不可用")
+        }
+
         // Hilt 注入到此完成。settingsRepository 可用。
         // 如果还有其他依赖于 settingsRepository 的应用级初始化，
         // 也可以在此处完成。对于语言，attachBaseContext 已经处理了初始设置。
@@ -61,4 +79,4 @@ class FluoColorApp : Application() {
             Log.i("FluoColorApp", "Default settings: Detection mode: $detectionMode, Concentration unit: $concentrationUnit")
         }
     }
-} 
+}

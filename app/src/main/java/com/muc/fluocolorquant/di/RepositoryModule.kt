@@ -9,6 +9,7 @@ import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepositoryImpl
 import com.muc.fluocolorquant.data.repository.SettingsRepository
+import com.muc.fluocolorquant.data.repository.ConcentrationUnitPreferences
 import com.muc.fluocolorquant.data.repository.UserRepository
 import com.muc.fluocolorquant.data.repository.WellResultRepository
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
@@ -25,10 +26,22 @@ import com.muc.fluocolorquant.data.repository.SpectrumRepository
 import com.muc.fluocolorquant.data.repository.SpectrumRepositoryImpl
 import com.muc.fluocolorquant.data.repository.AcquisitionProfileRepository
 import com.muc.fluocolorquant.data.repository.AcquisitionProfileRepositoryImpl
+import com.muc.fluocolorquant.data.repository.AnalysisModelRepository
+import com.muc.fluocolorquant.data.repository.AnalysisModelRepositoryImpl
 import com.muc.fluocolorquant.data.repository.CarrierProfileRepository
 import com.muc.fluocolorquant.data.repository.CarrierProfileRepositoryImpl
+import com.muc.fluocolorquant.data.repository.GridDetectionRunRepository
+import com.muc.fluocolorquant.data.repository.GridDetectionRunRepositoryImpl
+import com.muc.fluocolorquant.data.repository.ArrayResultRepository
+import com.muc.fluocolorquant.data.repository.ArrayResultRepositoryImpl
 import com.muc.fluocolorquant.utils.camera.CameraEngine
 import com.muc.fluocolorquant.utils.camera.CameraXCameraEngine
+import com.muc.fluocolorquant.domain.project.TemplateProjectCoordinator
+import com.muc.fluocolorquant.domain.project.TemplateProjectCreationCoordinator
+import com.muc.fluocolorquant.domain.detection.grid.OpenCvPgGridLocator
+import com.muc.fluocolorquant.domain.detection.grid.PgGridLocator
+import com.muc.fluocolorquant.domain.detection.evidence.AndroidGridProcessingEvidenceWriter
+import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceWriter
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -44,6 +57,20 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
+
+    /** PG-Grid 处理中间图写入应用私有目录，协调器只依赖可测试接口。 */
+    @Binds
+    @Singleton
+    abstract fun provideGridProcessingEvidenceWriter(
+        writer: AndroidGridProcessingEvidenceWriter
+    ): GridProcessingEvidenceWriter
+
+    /** 模板与曲线编辑器读取和检测设置相同的浓度单位来源。 */
+    @Binds
+    @Singleton
+    abstract fun provideConcentrationUnitPreferences(
+        settingsRepository: SettingsRepository
+    ): ConcentrationUnitPreferences
     
     /**
      * 提供分析物仓库实现
@@ -103,6 +130,41 @@ abstract class RepositoryModule {
     abstract fun provideAcquisitionProfileRepository(
         acquisitionProfileRepositoryImpl: AcquisitionProfileRepositoryImpl
     ): AcquisitionProfileRepository
+
+    /** 提供统一分析模型仓库，集中执行草稿、发布、版本化和归档规则。 */
+    @Binds
+    @Singleton
+    abstract fun provideAnalysisModelRepository(
+        analysisModelRepositoryImpl: AnalysisModelRepositoryImpl
+    ): AnalysisModelRepository
+
+    /** 新规则阵列检测使用数据库级单事务保存运行、附件和逐位点测量。 */
+    @Binds
+    @Singleton
+    abstract fun provideGridDetectionRunRepository(
+        repository: GridDetectionRunRepositoryImpl
+    ): GridDetectionRunRepository
+
+    /** 新阵列结果统一从运行快照重建，禁止页面直接跨 DAO 拼接 JSON。 */
+    @Binds
+    @Singleton
+    abstract fun provideArrayResultRepository(
+        repository: ArrayResultRepositoryImpl
+    ): ArrayResultRepository
+
+    /** 微流控主定位器；学习型定位器仅在离线 A/B 证明收益后替换此绑定。 */
+    @Binds
+    @Singleton
+    abstract fun providePgGridLocator(
+        locator: OpenCvPgGridLocator
+    ): PgGridLocator
+
+    /** 提供模板优先项目协调器，统一执行项目创建前检查和快照冻结。 */
+    @Binds
+    @Singleton
+    abstract fun provideTemplateProjectCoordinator(
+        coordinator: TemplateProjectCreationCoordinator
+    ): TemplateProjectCoordinator
 
     /**
      * 提供光谱仓库实现

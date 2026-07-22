@@ -41,6 +41,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -51,6 +52,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Info // 用于记录总数图标
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Search
@@ -128,7 +130,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun HistoryScreen(
     navController: NavController,
-    viewModel: HistoryViewModel = hiltViewModel()
+    viewModel: HistoryViewModel = hiltViewModel(),
+    showBackNavigation: Boolean = true
 ) {
     // 获取ViewModel状态
     val loadingState by viewModel.loadingState.collectAsState()
@@ -142,13 +145,7 @@ fun HistoryScreen(
     // UI状态
     var showFilterDialog by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
-    var showSearchBar by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var projectToDelete by remember { mutableStateOf<Project?>(null) }
-
-    // 搜索栏动画状态
-    val searchBarVisibleState = remember { MutableTransitionState(false) }
-    searchBarVisibleState.targetState = showSearchBar
 
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -230,74 +227,36 @@ fun HistoryScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        AnimatedVisibility(
-                            visible = !showSearchBar,
-                            enter = fadeIn() + expandHorizontally(),
-                            exit = fadeOut() + shrinkHorizontally()
-                        ) {
-                            // 计算实际选中数量
-                            val actualSelectedCount = selectedProjects.size
-
-                            // 只有在有选择项且处于选择模式时显示计数
-                            if (isSelectionMode && actualSelectedCount > 0) {
-                                Text(stringResource(R.string.history_selected_items_title, actualSelectedCount))
+                    val actualSelectedCount = selectedProjects.size
+                    Text(
+                        text = if (isSelectionMode && actualSelectedCount > 0) {
+                            stringResource(R.string.history_selected_items_title, actualSelectedCount)
+                        } else {
+                            stringResource(R.string.history_records)
+                        },
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                navigationIcon = {
+                    // 作为首页 Pager 子页面时不显示返回按钮；进入多选模式后仍保留退出入口。
+                    if (showBackNavigation || isSelectionMode) {
+                        IconButton(onClick = {
+                            if (isSelectionMode) {
+                                isSelectionMode = false
+                                selectedProjects.clear()
                             } else {
-                                Text(stringResource(R.string.history_records))
+                                navController.popBackStack()
                             }
-                        }
-
-                        AnimatedVisibility(
-                            visibleState = searchBarVisibleState,
-                            enter = fadeIn(animationSpec = tween(300)) +
-                                    expandHorizontally(animationSpec = tween(300)),
-                            exit = fadeOut(animationSpec = tween(300)) +
-                                    shrinkHorizontally(animationSpec = tween(300))
-                        ) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { viewModel.setSearchQuery(it) },
-                                placeholder = { Text(stringResource(R.string.history_search_placeholder)) },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                colors = TextFieldDefaults.colors( // 使用TextFieldDefaults.colors
-                                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                    disabledContainerColor = MaterialTheme.colorScheme.surface,
-                                    focusedIndicatorColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedIndicatorColor = MaterialTheme.colorScheme.outline
-                                ),
-                                trailingIcon = {
-                                    IconButton(onClick = {
-                                        showSearchBar = false
-                                        viewModel.setSearchQuery("")
-                                    }) {
-                                        Icon(Icons.Default.Close, stringResource(R.string.history_clear_search_description))
-                                    }
+                        }) {
+                            Icon(
+                                imageVector = if (isSelectionMode) Icons.Default.Close else Icons.Default.ArrowBack,
+                                contentDescription = if (isSelectionMode) {
+                                    stringResource(R.string.cancel_selection)
+                                } else {
+                                    stringResource(R.string.back)
                                 }
                             )
                         }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        if (isSelectionMode) {
-                            isSelectionMode = false
-                            selectedProjects.clear()
-                        } else if (showSearchBar) {
-                            showSearchBar = false
-                            viewModel.setSearchQuery("")
-                        } else {
-                            navController.popBackStack()
-                        }
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = if (isSelectionMode) stringResource(R.string.cancel_selection) else stringResource(R.string.back)
-                        )
                     }
                 },
                 actions = {
@@ -310,44 +269,16 @@ fun HistoryScreen(
                         }) {
                             Icon(Icons.Default.Delete, stringResource(R.string.delete_selected))
                         }
-                    } else {
-                        // 搜索按钮
-                        AnimatedVisibility(
-                            visible = !showSearchBar,
-                            enter = fadeIn() + scaleIn(),
-                            exit = fadeOut() + scaleOut()
-                        ) {
-                            IconButton(onClick = { showSearchBar = true }) {
-                                Icon(Icons.Default.Search, stringResource(R.string.search))
-                            }
-                        }
-
-                        // 筛选按钮
-                        AnimatedVisibility(
-                            visible = !showSearchBar,
-                            enter = fadeIn() + scaleIn(),
-                            exit = fadeOut() + scaleOut()
-                        ) {
-                            IconButton(onClick = { showFilterDialog = true }) {
-                                Icon(Icons.Default.FilterList, stringResource(R.string.filter))
-                            }
-                        }
-
-                        // 排序按钮
-                        AnimatedVisibility(
-                            visible = !showSearchBar,
-                            enter = fadeIn() + scaleIn(),
-                            exit = fadeOut() + scaleOut()
-                        ) {
-                            IconButton(onClick = { showSortDialog = true }) {
-                                Icon(Icons.Default.Sort, stringResource(R.string.sort))
-                            }
+                    } else if (loadingState != HistoryViewModel.LoadingState.Empty) {
+                        // 搜索和筛选固定放在内容区，标题栏只保留排序，避免操作挤在一行。
+                        IconButton(onClick = { showSortDialog = true }) {
+                            Icon(Icons.Default.Sort, stringResource(R.string.sort))
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
@@ -414,47 +345,69 @@ fun HistoryScreen(
                 EmptyHistoryView(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(paddingValues)
-                )
-            }
-
-            HistoryViewModel.LoadingState.FilteredEmpty -> {
-                NoResultsView(
-                    modifier = Modifier
-                        .fillMaxSize()
                         .padding(paddingValues),
-                    searchQuery = searchQuery,
-                    onClearFilters = {
-                        viewModel.setSearchQuery("")
-                        viewModel.setTimeFilter(HistoryViewModel.TimeRange.ALL)
-                        viewModel.setDetectionModeFilter(emptySet())
-                        viewModel.setAnalysisMethodFilter(emptySet())
-                        viewModel.setAnalyteFilter(emptySet())
+                    onCreateProject = {
+                        navController.navigate(Screen.QuickCreateProject.createRoute())
                     }
                 )
             }
 
-            HistoryViewModel.LoadingState.Success -> {
-                ProjectList(
-                    projects = projects,
-                    onProjectClick = handleProjectClick,
-                    onProjectLongClick = { project ->
-                        if (!isSelectionMode) {
-                            isSelectionMode = true
-                            selectedProjects.add(project.id) // 长按时默认选中当前项
-                        }
-                    },
-                    onDeleteClick = { project ->
-                        projectToDelete = project
-                        showDeleteConfirmDialog = true
-                    },
-                    isSelectionMode = isSelectionMode,
-                    selectedProjects = selectedProjects,
+            HistoryViewModel.LoadingState.FilteredEmpty -> {
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(paddingValues),
-                    totalProjects = projects.size // 传递项目总数
-                )
+                        .padding(paddingValues)
+                ) {
+                    HistorySearchAndFilterBar(
+                        searchQuery = searchQuery,
+                        filterSettings = filterSettings,
+                        onSearchQueryChange = viewModel::setSearchQuery,
+                        onOpenFilters = { showFilterDialog = true }
+                    )
+                    NoResultsView(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        searchQuery = searchQuery,
+                        onClearFilters = {
+                            viewModel.setSearchQuery("")
+                            viewModel.setTimeFilter(HistoryViewModel.TimeRange.ALL)
+                            viewModel.setDetectionModeFilter(emptySet())
+                            viewModel.setAnalysisMethodFilter(emptySet())
+                            viewModel.setAnalyteFilter(emptySet())
+                        }
+                    )
+                }
+            }
+
+            HistoryViewModel.LoadingState.Success -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                ) {
+                    HistorySearchAndFilterBar(
+                        searchQuery = searchQuery,
+                        filterSettings = filterSettings,
+                        onSearchQueryChange = viewModel::setSearchQuery,
+                        onOpenFilters = { showFilterDialog = true }
+                    )
+                    ProjectList(
+                        projects = projects,
+                        onProjectClick = handleProjectClick,
+                        onProjectLongClick = { project ->
+                            if (!isSelectionMode) {
+                                isSelectionMode = true
+                                selectedProjects.add(project.id)
+                            }
+                        },
+                        isSelectionMode = isSelectionMode,
+                        selectedProjects = selectedProjects,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    )
+                }
             }
 
             is HistoryViewModel.LoadingState.Error -> {
@@ -510,19 +463,156 @@ fun HistoryScreen(
 
                         // 然后执行删除
                         viewModel.deleteProjects(projectsToDelete)
-                    } else if (projectToDelete != null) {
-                        viewModel.deleteProject(projectToDelete!!.id)
                     }
                     showDeleteConfirmDialog = false
-                    projectToDelete = null
                 },
                 onDismiss = {
                     showDeleteConfirmDialog = false
-                    projectToDelete = null
                 }
             )
         }
     }
+}
+
+/**
+ * 历史页固定搜索与筛选区。
+ *
+ * 搜索框独占一行，时间、检测模式和分析方法放在下一行，避免将标题、搜索、
+ * 筛选和排序全部挤入 TopAppBar。三个筛选入口继续复用原有完整筛选对话框，
+ * 因此分析物筛选等能力不会因新版布局而丢失。
+ */
+@Composable
+private fun HistorySearchAndFilterBar(
+    searchQuery: String,
+    filterSettings: HistoryViewModel.FilterSettings,
+    onSearchQueryChange: (String) -> Unit,
+    onOpenFilters: () -> Unit
+) {
+    val timeLabel = when (filterSettings.timeRange) {
+        HistoryViewModel.TimeRange.ALL -> stringResource(R.string.history_filter_time)
+        HistoryViewModel.TimeRange.TODAY -> stringResource(R.string.today)
+        HistoryViewModel.TimeRange.LAST_WEEK -> stringResource(R.string.last_7_days)
+        HistoryViewModel.TimeRange.LAST_MONTH -> stringResource(R.string.last_30_days)
+        is HistoryViewModel.TimeRange.CUSTOM -> stringResource(R.string.history_filter_custom_time)
+    }
+
+    val detectionModeLabel = when (filterSettings.detectionModes.size) {
+        0 -> stringResource(R.string.detection_mode)
+        1 -> when (filterSettings.detectionModes.first()) {
+            "FLUORESCENCE" -> stringResource(R.string.history_fluorescence_label)
+            "COLORIMETRIC" -> stringResource(R.string.history_colorimetric_label)
+            "SPECTRUM" -> stringResource(R.string.spectrum_detection)
+            else -> stringResource(R.string.detection_mode)
+        }
+        else -> stringResource(
+            R.string.history_filter_selected_count,
+            filterSettings.detectionModes.size
+        )
+    }
+
+    val analysisMethodLabel = when (filterSettings.analysisMethods.size) {
+        0 -> stringResource(R.string.analysis_method)
+        1 -> when (filterSettings.analysisMethods.first()) {
+            "DL_MODEL" -> stringResource(R.string.dl_model_option)
+            "CURVE_FIT" -> stringResource(R.string.curve_fit_option)
+            else -> stringResource(R.string.analysis_method)
+        }
+        else -> stringResource(
+            R.string.history_filter_selected_count,
+            filterSettings.analysisMethods.size
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    ) {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            placeholder = { Text(stringResource(R.string.history_search_project_name)) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null
+                )
+            },
+            trailingIcon = if (searchQuery.isNotBlank()) {
+                {
+                    IconButton(onClick = { onSearchQueryChange("") }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.history_clear_search_description)
+                        )
+                    }
+                }
+            } else {
+                null
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            HistorySummaryFilterChip(
+                label = timeLabel,
+                selected = filterSettings.timeRange != HistoryViewModel.TimeRange.ALL,
+                onClick = onOpenFilters,
+                modifier = Modifier.weight(1f)
+            )
+            HistorySummaryFilterChip(
+                label = detectionModeLabel,
+                selected = filterSettings.detectionModes.isNotEmpty(),
+                onClick = onOpenFilters,
+                modifier = Modifier.weight(1f)
+            )
+            HistorySummaryFilterChip(
+                label = analysisMethodLabel,
+                selected = filterSettings.analysisMethods.isNotEmpty() ||
+                    filterSettings.analyteIds.isNotEmpty(),
+                onClick = onOpenFilters,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+/** 统一三个筛选摘要 Chip 的高度与文字截断策略，保证 360dp 宽度可完整操作。 */
+@Composable
+private fun HistorySummaryFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = {
+            Text(
+                text = label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        trailingIcon = {
+            Icon(
+                imageVector = Icons.Default.FilterList,
+                contentDescription = null,
+                modifier = Modifier.size(15.dp)
+            )
+        },
+        modifier = modifier.height(40.dp)
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -531,48 +621,18 @@ fun ProjectList(
     projects: List<Project>,
     onProjectClick: (Project) -> Unit,
     onProjectLongClick: (Project) -> Unit,
-    onDeleteClick: (Project) -> Unit,
     isSelectionMode: Boolean,
     selectedProjects: List<String>,
-    modifier: Modifier = Modifier,
-    totalProjects: Int // 新增参数：项目总数
+    modifier: Modifier = Modifier
 ) {
     LazyColumn(
         modifier = modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp) // 增加项目间距
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            top = 6.dp,
+            bottom = 88.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // 固定头部，显示项目总数
-        stickyHeader {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                shape = RoundedCornerShape(12.dp), // 增加圆角
-                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f), // 调整颜色和透明度
-                tonalElevation = 3.dp // 增加一点阴影
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp), // 调整内边距
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Info, // 更换为Info图标
-                        contentDescription = stringResource(R.string.history_total_records_icon_description),
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer // 适配颜色
-                    )
-                    Spacer(modifier = Modifier.width(12.dp)) // 调整间距
-                    Text(
-                        text = stringResource(R.string.history_total_records, totalProjects),
-                        style = MaterialTheme.typography.titleSmall, // 调整字体大小
-                        fontWeight = FontWeight.SemiBold, // 调整字重
-                        color = MaterialTheme.colorScheme.onSecondaryContainer // 适配颜色
-                    )
-                }
-            }
-        }
-
         items(
             items = projects,
             key = { it.id }
@@ -581,7 +641,6 @@ fun ProjectList(
                 project = project,
                 onClick = { onProjectClick(project) },
                 onLongClick = { onProjectLongClick(project) },
-                onDeleteClick = { onDeleteClick(project) },
                 isSelected = project.id in selectedProjects,
                 isSelectionMode = isSelectionMode,
                 modifier = Modifier
@@ -590,10 +649,6 @@ fun ProjectList(
             )
         }
 
-        // 底部间距
-        item {
-            Spacer(modifier = Modifier.height(80.dp))
-        }
     }
 }
 
@@ -603,7 +658,6 @@ fun ProjectItem(
     project: Project,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onDeleteClick: () -> Unit,
     isSelected: Boolean,
     isSelectionMode: Boolean,
     modifier: Modifier = Modifier
@@ -614,21 +668,28 @@ fun ProjectItem(
                 onClick = onClick,
                 onLongClick = onLongClick
             ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp,
-            pressedElevation = 6.dp, // 增加按下时的阴影
-            focusedElevation = 4.dp
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isSelected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+            }
         ),
-        shape = RoundedCornerShape(12.dp), // 增加卡片圆角
-        colors = if (isSelected)
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-        else
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
+            }
+        )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 勾选框（选择模式下）
@@ -646,8 +707,8 @@ fun ProjectItem(
             // 项目缩略图
             Box(
                 modifier = Modifier
-                    .size(84.dp) // 稍微增大图片大小
-                    .clip(RoundedCornerShape(10.dp)) // 增加图片圆角
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
@@ -669,7 +730,7 @@ fun ProjectItem(
                         imageVector = Icons.Default.Search, // 后备图标
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
             }
@@ -678,19 +739,26 @@ fun ProjectItem(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 16.dp)
+                    .padding(start = 12.dp)
             ) {
-                // 项目名称
-                Text(
-                    text = project.name,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.ExtraBold // 加粗字体
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = project.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = formatCompactDate(project.createTime),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
-                Spacer(modifier = Modifier.height(6.dp)) // 增大间距
+                Spacer(modifier = Modifier.height(7.dp))
 
                 // 检测模式
                 val detectionModeText = when (project.detectionMode) {
@@ -700,95 +768,47 @@ fun ProjectItem(
                     else -> project.detectionMode
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 添加一个小图标
-                    Icon(
-                        imageVector = Icons.Default.Check, // 示例图标
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    Text(
-                        text = detectionModeText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // 【已修改】识别类型 -> 分析方法
                 val analysisMethodText = when (project.analysisMethod) {
-                    "DL_MODEL" -> stringResource(R.string.deep_learning_analysis)
-                    "CURVE_FIT" -> stringResource(R.string.curve_fitting_analysis)
+                    "DL_MODEL" -> stringResource(R.string.dl_model_option)
+                    "CURVE_FIT" -> stringResource(R.string.curve_fit_option)
                     "LSPR_SPECTRUM" -> stringResource(R.string.lspr_spectrum_analysis)
                     else -> project.analysisMethod
                 }
 
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 添加一个小图标
-                    Icon(
-                        imageVector = Icons.Default.Search, // 示例图标
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(16.dp)
-                    )
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    Text(
-                        text = analysisMethodText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // 创建时间
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.DateRange,
+                        imageVector = Icons.Default.Science,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp)
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp)
                     )
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
                     Text(
-                        text = formatDate(project.createTime),
+                        text = stringResource(
+                            R.string.history_project_summary,
+                            detectionModeText,
+                            project.rows,
+                            project.columns,
+                            analysisMethodText
+                        ),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            // 删除按钮 (非选择模式下)
+            // 正常状态只显示进入详情箭头；删除通过长按进入多选模式完成。
             if (!isSelectionMode) {
-                IconButton(
-                    onClick = onDeleteClick,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = stringResource(R.string.history_delete_icon_description),
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
@@ -1348,25 +1368,32 @@ fun DeleteConfirmDialog(
 
 @Composable
 fun EmptyHistoryView(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onCreateProject: () -> Unit = {}
 ) {
     Column(
         modifier = modifier.padding(16.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            imageVector = Icons.Default.Search,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-            modifier = Modifier.size(100.dp)
-        )
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(18.dp).size(40.dp)
+            )
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
             text = stringResource(R.string.no_history),
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center
         )
 
@@ -1374,10 +1401,18 @@ fun EmptyHistoryView(
 
         Text(
             text = stringResource(R.string.history_will_appear),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Button(onClick = onCreateProject) {
+            Icon(Icons.Default.Add, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(stringResource(R.string.new_project))
+        }
     }
 }
 
@@ -1476,8 +1511,8 @@ fun ErrorView(
     }
 }
 
-// 工具函数：格式化日期
-private fun formatDate(date: Date): String {
-    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+// 历史卡片使用更紧凑的日期格式，把更多横向空间留给项目名称和科学摘要。
+private fun formatCompactDate(date: Date): String {
+    val formatter = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
     return formatter.format(date)
 }

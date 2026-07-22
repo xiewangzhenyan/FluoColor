@@ -3,18 +3,8 @@ package com.muc.fluocolorquant.ui.screens.settings.resources
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.enums.SiteShape
-
-/**
- * 应用当前支持的检测模态稳定编码。
- *
- * 这里不复用 `NewProjectScreen` 内部的界面枚举，因为资源档案属于跨页面领域数据，
- * 其编码会写入数据库 JSON，必须与具体 Compose 页面解耦。
- */
-enum class DetectionModality(val code: String) {
-    COLORIMETRIC("COLORIMETRIC"),
-    FLUORESCENCE("FLUORESCENCE"),
-    SPECTRUM("SPECTRUM")
-}
+import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
+import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 
 /**
  * 采集设备对相机参数的控制策略。
@@ -32,6 +22,7 @@ enum class ResourceFormError {
     NAME_REQUIRED,
     ROWS_OUT_OF_RANGE,
     COLUMNS_OUT_OF_RANGE,
+    TARGET_POLARITY_REQUIRED,
     DETECTION_MODE_REQUIRED,
     COMPATIBLE_CARRIER_REQUIRED
 }
@@ -79,28 +70,34 @@ data class CarrierProfileDraft(
     val carrierType: CarrierType = CarrierType.MICROFLUIDIC_CHIP,
     val rowsInput: String = "10",
     val columnsInput: String = "10",
-    val siteShape: SiteShape = SiteShape.SQUARE
+    val siteShape: SiteShape = SiteShape.SQUARE,
+    /**
+     * 微流控目标相对背景的亮暗关系。
+     *
+     * 新草稿默认暗结构以减少常见 10×10 载体的操作步骤；恢复旧版损坏配置时允许为
+     * `null`，此时保存校验必须阻止用户继续，不能把缺失历史配置静默解释成默认值。
+     */
+    val targetPolarity: GridTargetPolarity? = GridTargetPolarity.DARK
 ) {
     /** 返回全部校验错误，页面可以一次性高亮所有问题。 */
     fun validate(): Set<ResourceFormError> = buildSet {
         if (name.isBlank()) add(ResourceFormError.NAME_REQUIRED)
-        if (rowsInput.toIntOrNull() !in VALID_DIMENSION_RANGE) {
+        if (rowsInput.toIntOrNull()?.let(GridLayoutPolicy::isValidDimension) != true) {
             add(ResourceFormError.ROWS_OUT_OF_RANGE)
         }
-        if (columnsInput.toIntOrNull() !in VALID_DIMENSION_RANGE) {
+        if (columnsInput.toIntOrNull()?.let(GridLayoutPolicy::isValidDimension) != true) {
             add(ResourceFormError.COLUMNS_OUT_OF_RANGE)
+        }
+        if (carrierType == CarrierType.MICROFLUIDIC_CHIP && targetPolarity == null) {
+            add(ResourceFormError.TARGET_POLARITY_REQUIRED)
         }
     }
 
     /** 只有行列均合法时才计算位点数，防止无效输入参与后续数据库写入。 */
     fun siteCountOrNull(): Int? {
-        val rows = rowsInput.toIntOrNull()?.takeIf { it in VALID_DIMENSION_RANGE } ?: return null
-        val columns = columnsInput.toIntOrNull()?.takeIf { it in VALID_DIMENSION_RANGE } ?: return null
+        val rows = rowsInput.toIntOrNull()?.takeIf(GridLayoutPolicy::isValidDimension) ?: return null
+        val columns = columnsInput.toIntOrNull()?.takeIf(GridLayoutPolicy::isValidDimension) ?: return null
         return rows * columns
-    }
-
-    companion object {
-        private val VALID_DIMENSION_RANGE = 1..99
     }
 }
 
@@ -123,35 +120,40 @@ enum class CarrierPreset(val isPrimary: Boolean) {
             carrierType = CarrierType.MICROFLUIDIC_CHIP,
             rowsInput = "10",
             columnsInput = "10",
-            siteShape = SiteShape.SQUARE
+            siteShape = SiteShape.SQUARE,
+            targetPolarity = GridTargetPolarity.DARK
         )
         MICROFLUIDIC_15_X_15 -> CarrierProfileDraft(
             name = name,
             carrierType = CarrierType.MICROFLUIDIC_CHIP,
             rowsInput = "15",
             columnsInput = "15",
-            siteShape = SiteShape.SQUARE
+            siteShape = SiteShape.SQUARE,
+            targetPolarity = GridTargetPolarity.BRIGHT
         )
         PLATE_96 -> CarrierProfileDraft(
             name = name,
             carrierType = CarrierType.PLATE,
             rowsInput = "8",
             columnsInput = "12",
-            siteShape = SiteShape.CIRCLE
+            siteShape = SiteShape.CIRCLE,
+            targetPolarity = null
         )
         LEGACY_4_X_4 -> CarrierProfileDraft(
             name = name,
             carrierType = CarrierType.MICROFLUIDIC_CHIP,
             rowsInput = "4",
             columnsInput = "4",
-            siteShape = SiteShape.SQUARE
+            siteShape = SiteShape.SQUARE,
+            targetPolarity = GridTargetPolarity.DARK
         )
         CUSTOM -> CarrierProfileDraft(
             name = name,
             carrierType = CarrierType.CUSTOM,
             rowsInput = "",
             columnsInput = "",
-            siteShape = SiteShape.CUSTOM
+            siteShape = SiteShape.CUSTOM,
+            targetPolarity = null
         )
     }
 }
@@ -186,8 +188,11 @@ data class AcquisitionProfileDraft(
  */
 object ResourceProfileJsonCodec {
     private val quotedValueRegex = Regex("\\\"([^\\\"]*)\\\"")
+
+    // Android 使用 ICU 正则引擎，字符类中的双引号不需要也不能写成 \"；
+    // 这里保留对 JSON 转义序列 `\\任意字符` 的识别，同时让桌面 JVM 与 Android 行为一致。
     private val noteObjectRegex = Regex(
-        """^\s*\{\s*"note"\s*:\s*"((?:\\.|[^"])*)"\s*}\s*$"""
+        """^\s*\{\s*"note"\s*:\s*"((?:\\.|[^"])*)"\s*\}\s*$"""
     )
 
     fun encodeCodes(codes: Set<String>): String {

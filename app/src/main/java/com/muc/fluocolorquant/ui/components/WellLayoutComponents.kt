@@ -39,14 +39,17 @@ import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.utils.math.WellMappingUtils
+import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import java.io.File
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 
 /**
- * 真实孔位预览网格 (最终修正版 2.0)
- * - 增加了对竖向孔板的转置显示逻辑
+ * 真实位点预览网格。
+ *
+ * 项目行列就是界面的真实行列，不再根据“行数是否大于 8”自动转置。旧 12×8 默认
+ * 孔板只通过 [GridLayoutPolicy] 的显式历史兼容规则恢复为 8×12。
  */
 @Composable
 fun RealWellPreviewGrid(
@@ -62,40 +65,17 @@ fun RealWellPreviewGrid(
             modifier = Modifier.padding(bottom = 8.dp)
         )
 
-        // 【核心修正】创建一个用于显示的列表 (displayList)
-        // 如果是竖向板，则对 wellResults 进行转置
-        val displayList = remember(wellResults, project.rows, project.columns) {
-            // 标准布局，直接使用
-            if (project.rows <= 8) {
-                wellResults
-            }
-            // 竖向布局，需要转置
-            else {
-                val transposedList = mutableListOf<WellResult?>()
-                val wellMap = wellResults.associateBy { it.wellIndex }
-
-                // 遍历物理网格的行列
-                for (r in 0 until project.rows) {
-                    for (c in 0 until project.columns) {
-                        // 计算转置后对应的 wellIndex
-                        // 物理位置(r, c) 应该显示的数据来自虚拟位置(c, r)
-                        // 虚拟位置(c, r) 对应的 wellIndex 是 c * 12 + r
-                        val targetWellIndex = c * 12 + r
-                        transposedList.add(wellMap[targetWellIndex])
-                    }
-                }
-                transposedList.filterNotNull() // 过滤掉可能不存在的孔位
-            }
-        }
+        val dimensions = remember(project) { GridLayoutPolicy.resolveProject(project) }
+        val wellsByIndex = remember(wellResults) { wellResults.associateBy { it.wellIndex } }
 
         // 计算网格所需的高度
         val screenWidth = LocalConfiguration.current.screenWidthDp.dp
         val availableWidth = screenWidth - 32.dp
-        val itemSize = (availableWidth / project.columns) - 2.dp
-        val gridHeight = (itemSize * project.rows) + (2.dp * (project.rows - 1)) + 16.dp
+        val itemSize = (availableWidth / dimensions.columns) - 2.dp
+        val gridHeight = (itemSize * dimensions.rows) + (2.dp * (dimensions.rows - 1)) + 16.dp
 
         LazyVerticalGrid(
-            columns = GridCells.Fixed(project.columns), // 严格使用项目的物理列数
+            columns = GridCells.Fixed(dimensions.columns),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
             modifier = Modifier
@@ -105,25 +85,10 @@ fun RealWellPreviewGrid(
             userScrollEnabled = false,
             contentPadding = PaddingValues(bottom = 8.dp)
         ) {
-            // 使用新创建的 displayList 进行渲染
-            items(displayList.size) { index ->
-                val wellResult = displayList[index]
-
-                // 为每一个孔位生成其在虚拟8x12布局中的标签
-                val virtualCoords = if(wellResult != null) {
-                    WellMappingUtils.mapRealToVirtualCoordinates(wellResult.wellIndex)
-                } else {
-                    // 对于转置后可能出现的空位，需要反向计算其虚拟坐标
-                    val physicalRow = index / project.columns
-                    val physicalCol = index % project.columns
-                    val transposedVirtualRow = physicalCol
-                    val transposedVirtualCol = physicalRow
-                    Pair(transposedVirtualRow, transposedVirtualCol)
-                }
-
+            items(dimensions.siteCount) { index ->
                 RealWellItem(
-                    wellResult = wellResult,
-                    label = WellMappingUtils.getWellLabel(virtualCoords.first, virtualCoords.second)
+                    wellResult = wellsByIndex[index],
+                    label = WellMappingUtils.getWellLabelForIndex(index, dimensions.columns)
                 )
             }
         }
@@ -538,16 +503,16 @@ fun VirtualGrid(
     onWellClicked: (Int, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 虚拟布局固定为8行 x 12列
-    val virtualRows = 8
-    val virtualCols = 12
+    val dimensions = remember(project) { GridLayoutPolicy.resolveProject(project) }
+    val virtualRows = dimensions.rows
+    val virtualCols = dimensions.columns
     var layoutSize by remember { mutableStateOf(IntSize.Zero) }
 
     // --- 创建一个以虚拟坐标为Key的Map，用于快速查找 ---
-    val wellsByVirtualCoord = remember(wellResults, selectedAnalyte) {
-        wellResults
-            .filter { it.virtualRow != null && it.virtualCol != null }
-            .associateBy { Pair(it.virtualRow!!, it.virtualCol!!) }
+    val wellsByVirtualCoord = remember(wellResults, selectedAnalyte, virtualCols) {
+        wellResults.associateBy { well ->
+            WellMappingUtils.mapRealToVirtualCoordinates(well.wellIndex, virtualCols)
+        }
     }
 
     // 用于跟踪拖动过程中已标记的孔位，防止重复调用
@@ -623,7 +588,7 @@ fun VirtualGrid(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = ('A' + row).toString(),
+                        text = WellMappingUtils.getRowLabel(row),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold
                     )
@@ -635,8 +600,8 @@ fun VirtualGrid(
                     val wellResult = wellsByVirtualCoord[Pair(row, col)]
 
                     // 检查是否超出实际范围
-                    val realIndex = WellMappingUtils.mapVirtualToRealIndex(row, col)
-                    val isOutOfBounds = realIndex >= project.rows * project.columns
+                    val realIndex = WellMappingUtils.mapVirtualToRealIndex(row, col, virtualCols)
+                    val isOutOfBounds = realIndex >= dimensions.siteCount
 
                     VirtualWellItem(
                         wellResult = wellResult,
