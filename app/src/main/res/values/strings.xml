@@ -2773,6 +2773,8 @@
     <string name="plate96_process_locator_summary">%1$s %2$s · %3$d observed · %4$d grid-filled</string>
     <string name="plate96_process_recorded">Recorded</string>
     <string name="plate96_process_not_recorded">Not recorded</string>
+    <string name="plate96_process_legacy_notice_title">Legacy result</string>
+    <string name="plate96_process_legacy_notice_description">Displayed with the historical 8 × 12 layout. Missing orientation and processing evidence is not reconstructed.</string>
     <string name="plate96_process_original">Original image</string>
     <string name="plate96_process_original_desc">Frozen endpoint image used by this run.</string>
     <string name="plate96_process_orientation">Orientation normalization</string>

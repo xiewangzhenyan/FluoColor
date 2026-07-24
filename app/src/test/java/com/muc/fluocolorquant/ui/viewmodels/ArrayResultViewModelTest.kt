@@ -2,6 +2,7 @@ package com.muc.fluocolorquant.ui.viewmodels
 
 import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.repository.ArrayResultRepository
+import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepository
 import com.muc.fluocolorquant.domain.detection.grid.GridGeometryDiagnostics
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
@@ -13,6 +14,9 @@ import com.muc.fluocolorquant.domain.result.ArrayResultErrorCode
 import com.muc.fluocolorquant.domain.result.ArrayResultLoadResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.ArraySiteGeometry
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultErrorCode
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultLoadResult
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshotMapper
 import java.util.Date
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -30,17 +34,19 @@ class ArrayResultViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private lateinit var repository: FakeArrayResultRepository
+    private lateinit var legacyPlateRepository: FakeLegacyPlateResultRepository
 
     @Before
     fun setUp() {
         repository = FakeArrayResultRepository()
+        legacyPlateRepository = FakeLegacyPlateResultRepository()
     }
 
     @Test
     fun `存在SiteMeasurement时网关进入新阵列结果`() =
         runTest(mainDispatcherRule.testDispatcher) {
             repository.hasNew = true
-            val viewModel = ResultGatewayViewModel(repository)
+            val viewModel = ResultGatewayViewModel(repository, legacyPlateRepository)
 
             viewModel.load("run-new")
             advanceUntilIdle()
@@ -52,7 +58,7 @@ class ArrayResultViewModelTest {
     fun `没有SiteMeasurement时网关保留旧结果页`() =
         runTest(mainDispatcherRule.testDispatcher) {
             repository.hasNew = false
-            val viewModel = ResultGatewayViewModel(repository)
+            val viewModel = ResultGatewayViewModel(repository, legacyPlateRepository)
 
             viewModel.load("run-legacy")
             advanceUntilIdle()
@@ -65,12 +71,25 @@ class ArrayResultViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             repository.hasNew = true
             repository.loadResult = ArrayResultLoadResult.Success(plateSnapshot())
-            val viewModel = ResultGatewayViewModel(repository)
+            val viewModel = ResultGatewayViewModel(repository, legacyPlateRepository)
 
             viewModel.load("run-plate96")
             advanceUntilIdle()
 
             assertEquals(ResultGatewayUiState.NewPlate96Result, viewModel.uiState.value)
+        }
+
+    @Test
+    fun `旧96孔板运行经只读适配进入独立结果页`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            repository.hasNew = false
+            legacyPlateRepository.loadResult = Plate96ResultSnapshotMapper.map(plateSnapshot())
+            val viewModel = ResultGatewayViewModel(repository, legacyPlateRepository)
+
+            viewModel.load("run-legacy-plate96")
+            advanceUntilIdle()
+
+            assertEquals(ResultGatewayUiState.LegacyPlate96Result, viewModel.uiState.value)
         }
 
     @Test
@@ -300,4 +319,13 @@ private class FakeArrayResultRepository : ArrayResultRepository {
             )
         ) }
     }
+}
+
+/** 网关测试只控制旧96孔板是否可适配，不访问Room或重新构造历史结果。 */
+private class FakeLegacyPlateResultRepository : LegacyPlateResultRepository {
+    var loadResult: Plate96ResultLoadResult = Plate96ResultLoadResult.Failure(
+        Plate96ResultErrorCode.SOURCE_NOT_AVAILABLE
+    )
+
+    override suspend fun loadSnapshot(runId: String): Plate96ResultLoadResult = loadResult
 }

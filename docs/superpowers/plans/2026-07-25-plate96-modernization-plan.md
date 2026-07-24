@@ -852,7 +852,7 @@ ui/viewmodels/Plate96ResultViewModel.kt
 - [x] 实现孔板分析页。
 - [x] 实现96孔板过程页。
 - [x] 实现单孔详情。
-- [ ] 完成PDF、CSV和历史恢复（PDF/CSV已完成，历史生产分流随P6/P7接通）。
+- [x] 完成PDF、CSV和历史恢复。
 - [x] 保持微流控 `ArrayResultScreen` 行为不变。
 
 ### P6 新运行持久化
@@ -864,11 +864,11 @@ ui/viewmodels/Plate96ResultViewModel.kt
 
 ### P7 旧历史适配与退役
 
-- [ ] 实现 `LegacyPlateRunAdapter`。
-- [ ] 验证旧运行不漂移。
-- [ ] 删除旧生产导航入口。
-- [ ] 清理无调用方旧UI和旧写入代码。
-- [ ] 更新README和最终架构文档。
+- [x] 实现 `LegacyPlateRunAdapter`。
+- [x] 验证旧运行不漂移。
+- [x] 删除旧生产导航入口。
+- [x] 清理无调用方旧UI和旧写入生产链。
+- [x] 更新README和最终架构文档。
 
 ---
 
@@ -1019,3 +1019,10 @@ ui/viewmodels/Plate96ResultViewModel.kt
 - 已接通新96孔板生产入口：`WellDetectionScreen` 对冻结 `PLATE` 载体进入新的方向确认与圆孔定位页，确认后使用通用布局/模板/逐分析物定量工作台；新运行原子写入 `DetectionRun + CaptureArtifact + SiteMeasurement`，不再调用旧 `WellResult` 新写入链。
 - 已扩展结果仓库和结果网关：结果仓库按冻结载体类型读取 `plate96Geometry` 或 `pgGrid`，新96孔板运行进入独立 `Plate96ResultScreen`；应用重启后只读取运行快照，不重新定位、裁切、拟合或计算。
 - P6回归通过：全量JVM测试、96孔板几何编解码/采样适配测试、真实Room仓库5项设备测试（含保存后重新创建仓库恢复96孔板结果）、结果网关与96孔板结果页设备测试全部通过。旧历史只读适配与旧UI清理继续在P7完成。
+- 已完成P7旧历史只读适配：新增 `LegacyPlateRunAdapter` 和 `LegacyPlateResultRepository`，将旧 `DetectionRun + WellResult` 映射为标准A1～H12的 `Plate96ResultSnapshot`。适配过程沿用旧版8×12行优先语义，不重新判断12×8方向，不重新定位、裁切、拟合或计算；旧 `isOutOfRange` 没有高低方向证据，因此只保留越界事实，不伪造低于或高于量程。
+- 已将结果网关扩展为现代96孔板、旧96孔板、现代微流控阵列和其他旧结果四类分流。现代与旧96孔板均进入独立 `Plate96ResultScreen`；旧历史过程页只展示数据库真实存在的附件，并用轻量卡片说明缺失方向和过程证据不会补算。
+- 已修复“孔位布局→复核定位”的返回链：96孔板回到同一运行的 `Plate96LocalizationScreen`，保留运行ID、采集时间、布局画笔、模板来源、逐分析物定量草稿、现场曲线和标准浓度。用户微调圆心或半径后重建圆形裁切与科学采样，但不会重复执行YOLO或霍夫圆。
+- 已退役旧96孔板生产界面和路由：删除旧 `CurveFittingScreen`、`CurveFittingResultScreen`、`WellLayoutComponents`、`WellLayoutViewModel`、`CurveFittingViewModel` 及对应导航；新96孔板不会再进入旧 `WellResult` 写入链。旧表、DAO、历史读取仓库以及仍服务其他兼容入口的代码继续保留，避免破坏旧项目。
+- P7回归通过：全量JVM测试、Debug/AndroidTest编译、真实Room旧历史恢复、结果网关和96孔板结果页定向设备测试均通过；本轮P7定向设备共执行19项，0失败，3项仅用于视觉保留的测试按预期跳过。新增旧历史过程说明Compose断言，并通过专属保留用例完成ADB截图自审：页面无截断、重叠或伪造的现代处理步骤。
+- 已完成第二轮完整设备回归，最终执行123项、0失败、10项按设计跳过。首轮全量运行暴露的两项失败均为历史测试基线过时：过程附件角色已扩展但断言仍写死“终点图+九张证据”，角色工具栏已使用窄屏短标签但断言仍查找旧长文案；两项断言改为跟随稳定枚举和真实UI后，定向9/9与完整套件均通过。
+- P7安全检查完成：`git diff --check`通过；旧页面、旧ViewModel和旧路由没有生产调用方。首页、历史列表、关于页、Pager、底部导航及微流控结果页均未修改。

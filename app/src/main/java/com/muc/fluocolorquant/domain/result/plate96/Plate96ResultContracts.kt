@@ -15,11 +15,24 @@ const val PLATE96_RESULT_SITE_COUNT: Int = PLATE96_RESULT_ROWS * PLATE96_RESULT_
  */
 enum class Plate96ResultErrorCode {
     SOURCE_NOT_AVAILABLE,
+    NOT_A_LEGACY_PLATE96_RUN,
+    INVALID_LEGACY_WELL_INDEX,
     NOT_A_PLATE_CARRIER,
     NOT_A_CIRCULAR_CARRIER,
     INVALID_STANDARD_LAYOUT,
     INCOMPLETE_WELL_INDEX,
     INCONSISTENT_WELL_COORDINATE
+}
+
+/**
+ * 96孔板结果的数据来源。
+ *
+ * 新运行拥有完整冻结几何和过程附件；旧运行只保存 `WellResult`，适配时必须显式标记，
+ * 这样结果页不会把逻辑8×12坐标误称为重新定位得到的图像证据。
+ */
+enum class Plate96ResultSource {
+    MODERN_SNAPSHOT,
+    LEGACY_WELL_RESULT
 }
 
 sealed interface Plate96ResultLoadResult {
@@ -59,7 +72,8 @@ data class Plate96OrientationEvidence(
 data class Plate96ResultSnapshot(
     val arraySnapshot: ArrayResultSnapshot,
     val wells: List<Plate96WellResult>,
-    val orientation: Plate96OrientationEvidence
+    val orientation: Plate96OrientationEvidence,
+    val source: Plate96ResultSource = Plate96ResultSource.MODERN_SNAPSHOT
 ) {
     val runId: String get() = arraySnapshot.runId
     val projectId: String get() = arraySnapshot.projectId

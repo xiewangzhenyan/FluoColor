@@ -10,8 +10,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.muc.fluocolorquant.ui.screens.auth.LoginScreen
 import com.muc.fluocolorquant.ui.screens.auth.RegisterScreen
-import com.muc.fluocolorquant.ui.screens.curvefitting.CurveFittingResultScreen
-import com.muc.fluocolorquant.ui.screens.curvefitting.CurveFittingScreen
 import com.muc.fluocolorquant.ui.screens.detection.WellDetectionScreen
 import com.muc.fluocolorquant.ui.screens.home.HomeScreen
 import com.muc.fluocolorquant.ui.screens.image.CameraCaptureScreen
@@ -170,46 +168,6 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
                 navController = navController,
                 imageUri = imageUriString,
                 projectId = projectId
-            )
-        }
-
-        // 曲线拟合/浓度预测页面
-        composable(
-            // 1. 更新路由格式，imageUri现在是路径的一部分
-            route = Screen.CurveFitting.route + "/{projectId}/{runId}/{imageUri}",
-            arguments = listOf(
-                navArgument("projectId") { type = NavType.StringType },
-                navArgument("runId") { type = NavType.StringType },
-                // 2. imageUri不再是可空的查询参数
-                navArgument("imageUri") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val projectId = backStackEntry.arguments?.getString("projectId")
-            val runId = backStackEntry.arguments?.getString("runId")
-            // 3. 直接获取 imageUri，它现在是必需的
-            val imageUri = backStackEntry.arguments?.getString("imageUri")
-            CurveFittingScreen(
-                navController = navController,
-                projectId = projectId,
-                runId = runId,
-                imageUri = imageUri // 将获取到的（编码的）URI传递下去
-            )
-        }
-
-        // 曲线拟合结果页面
-        composable(
-            route = Screen.CurveFittingResult.route + "/{projectId}/{analyteId}",
-            arguments = listOf(
-                navArgument("projectId") { type = NavType.StringType },
-                navArgument("analyteId") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val projectId = backStackEntry.arguments?.getString("projectId")
-            val analyteId = backStackEntry.arguments?.getString("analyteId")
-            CurveFittingResultScreen(
-                navController = navController,
-                projectId = projectId ?: "",
-                analyteId = analyteId ?: ""
             )
         }
 

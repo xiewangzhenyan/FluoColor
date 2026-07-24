@@ -102,6 +102,11 @@ fun ResultGatewayContent(
                 .fillMaxSize()
                 .testTag(RESULT_GATEWAY_PLATE96_TAG)
         ) { plate96Content() }
+        ResultGatewayUiState.LegacyPlate96Result -> Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag(RESULT_GATEWAY_PLATE96_TAG)
+        ) { plate96Content() }
         ResultGatewayUiState.LegacyResult -> Box(
             modifier = Modifier
                 .fillMaxSize()

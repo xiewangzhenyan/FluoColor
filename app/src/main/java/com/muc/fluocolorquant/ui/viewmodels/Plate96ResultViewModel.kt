@@ -3,6 +3,7 @@ package com.muc.fluocolorquant.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.repository.ArrayResultRepository
+import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepository
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultErrorCode
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultLoadResult
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshot
@@ -27,7 +28,8 @@ sealed interface Plate96ResultUiState {
 /** 96孔板结果只读状态机；页面切换和重试不会触发定位、拟合或浓度重算。 */
 @HiltViewModel
 class Plate96ResultViewModel @Inject constructor(
-    private val repository: ArrayResultRepository
+    private val repository: ArrayResultRepository,
+    private val legacyPlateRepository: LegacyPlateResultRepository
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<Plate96ResultUiState>(Plate96ResultUiState.Loading)
     val uiState: StateFlow<Plate96ResultUiState> = _uiState.asStateFlow()
@@ -47,9 +49,13 @@ class Plate96ResultViewModel @Inject constructor(
         _uiState.value = Plate96ResultUiState.Loading
         loadJob = viewModelScope.launch {
             try {
-                _uiState.value = when (val mapped = Plate96ResultSnapshotMapper.map(
-                    repository.loadSnapshot(runId)
-                )) {
+                val mapped = if (repository.hasNewArrayResult(runId)) {
+                    Plate96ResultSnapshotMapper.map(repository.loadSnapshot(runId))
+                } else {
+                    // 旧历史只读恢复已保存的浓度和布局，不触发任何现代算法。
+                    legacyPlateRepository.loadSnapshot(runId)
+                }
+                _uiState.value = when (mapped) {
                     is Plate96ResultLoadResult.Success -> Plate96ResultUiState.Success(mapped.snapshot)
                     is Plate96ResultLoadResult.Failure -> Plate96ResultUiState.InvalidSnapshot(
                         mapped.errorCode

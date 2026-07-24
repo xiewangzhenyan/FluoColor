@@ -334,8 +334,25 @@ class GridDetectionViewModel @Inject constructor(
     /** 返回查看定位证据，但不清空用户已经完成的孔位布局。 */
     fun showLocalizationPreview() {
         val current = _uiState.value as? GridDetectionUiState.LocalizationReady ?: return
-        _uiState.value = current.copy(editingLayout = false)
+        val session = localizationSession ?: return
+        _uiState.value = if (session.presentation == GridLocalizationPresentation.PLATE96) {
+            // 96孔板必须返回可微调圆心和半径的专属定位页，不能降级成通用证据预览。
+            GridDetectionUiState.Plate96Localization
+        } else {
+            current.copy(editingLayout = false)
+        }
     }
+
+    /** 定位页左上角返回布局时，仅结束复核，不退出整个新建项目流程。 */
+    fun cancelPlate96LocalizationReview() {
+        val session = localizationSession ?: return
+        if (session.presentation != GridLocalizationPresentation.PLATE96) return
+        publishPreview(editingLayout = true)
+    }
+
+    /** Compose根据该值区分首次定位和从布局返回复核，两种返回行为不能混用。 */
+    fun hasActivePlate96LayoutSession(): Boolean =
+        localizationSession?.presentation == GridLocalizationPresentation.PLATE96
 
     /**
      * 接收96孔板定位页已经确认的同一份原图、标准方向图和圆孔会话。
@@ -350,6 +367,9 @@ class GridDetectionViewModel @Inject constructor(
         viewModelScope.launch {
             running = true
             try {
+                val previousSession = localizationSession?.takeIf {
+                    it.presentation == GridLocalizationPresentation.PLATE96
+                }
                 val project = projectRepository.getProjectById(projectId)
                     ?: run {
                         _uiState.value = GridDetectionUiState.Error(
@@ -357,9 +377,10 @@ class GridDetectionViewModel @Inject constructor(
                         )
                         return@launch
                     }
-                val snapshot = project.templateSnapshotJson?.let { json ->
-                    runCatching { TemplateProjectSnapshotCodec.decode(json) }.getOrNull()
-                } ?: run {
+                val snapshot = previousSession?.request?.snapshot
+                    ?: project.templateSnapshotJson?.let { json ->
+                        runCatching { TemplateProjectSnapshotCodec.decode(json) }.getOrNull()
+                    } ?: run {
                     _uiState.value = GridDetectionUiState.Error(
                         GridDetectionUiError.SNAPSHOT_MISSING_OR_INVALID
                     )
@@ -372,6 +393,10 @@ class GridDetectionViewModel @Inject constructor(
                         endpointBitmap = selection.sourceBitmap,
                         endpointPath = imageUri,
                         operatorId = project.userId,
+                        // 复核定位属于同一次尚未完成的运行，不能生成新的运行ID或采集时间。
+                        runId = previousSession?.request?.runId ?: java.util.UUID.randomUUID().toString(),
+                        capturedAt = previousSession?.request?.capturedAt ?: java.util.Date(),
+                        acquisitionMetadataJson = previousSession?.request?.acquisitionMetadataJson,
                         onStageChanged = { stage ->
                             _uiState.value = GridDetectionUiState.Processing(
                                 stage = stage,
@@ -389,10 +414,14 @@ class GridDetectionViewModel @Inject constructor(
                         GridDetectionUiState.Plate96Localization
                     is GridLocalizationOutcome.Blocked ->
                         GridDetectionUiState.Blocked(outcome.reasons)
-                    is GridLocalizationOutcome.Ready -> initializeLocalizationSession(
-                        session = outcome.session,
-                        openLayoutImmediately = true
-                    )
+                    is GridLocalizationOutcome.Ready -> if (previousSession == null) {
+                        initializeLocalizationSession(
+                            session = outcome.session,
+                            openLayoutImmediately = true
+                        )
+                    } else {
+                        refreshPlate96LocalizationSession(outcome.session)
+                    }
                 }
             } catch (_: Exception) {
                 _uiState.value = GridDetectionUiState.Error(GridDetectionUiError.EXECUTION_FAILED)
@@ -402,6 +431,23 @@ class GridDetectionViewModel @Inject constructor(
                 running = false
             }
         }
+    }
+
+    /**
+     * 使用用户微调后的圆孔几何替换科学采样，同时保留全部布局和逐分析物定量草稿。
+     *
+     * 新会话沿用原运行ID和当前冻结快照；只更新圆心、半径、裁切、光度和过程证据，绝不
+     * 重置模板来源、现场曲线选择或用户已经输入的标准浓度。
+     */
+    private fun refreshPlate96LocalizationSession(
+        refreshed: GridLocalizationSession
+    ): GridDetectionUiState.LocalizationReady {
+        localizationSession = refreshed
+        val assignments = layoutDraftStore.current()
+        return GridDetectionUiState.LocalizationReady(
+            preview = refreshed.toPreview(assignments),
+            editingLayout = true
+        )
     }
 
     /**

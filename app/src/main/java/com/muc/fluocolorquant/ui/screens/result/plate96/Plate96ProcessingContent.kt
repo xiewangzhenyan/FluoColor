@@ -32,21 +32,29 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.domain.result.ArrayCaptureEvidence
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshot
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSource
 
 const val PLATE96_PROCESSING_TAG: String = "plate96_processing"
 const val PLATE96_PROCESSING_IMAGE_TAG_PREFIX: String = "plate96_processing_image_"
+const val PLATE96_LEGACY_HISTORY_NOTICE_TAG: String = "plate96_legacy_history_notice"
 
 /** 96孔板过程页按实验顺序展示证据，不把内部JSON或质控长文案堆给普通用户。 */
 @Composable
 fun Plate96ProcessingContent(snapshot: Plate96ResultSnapshot) {
     val artifactsByRole = snapshot.arraySnapshot.artifacts.groupBy { it.captureRole }
-    val stages = plate96ProcessingStages(snapshot)
+    val legacy = snapshot.source == Plate96ResultSource.LEGACY_WELL_RESULT
+    val stages = plate96ProcessingStages(snapshot).filter { stage ->
+        !legacy || stage.roles.any { role -> artifactsByRole[role.code].orEmpty().isNotEmpty() }
+    }
     LazyColumn(
         modifier = Modifier.testTag(PLATE96_PROCESSING_TAG),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
+        if (legacy) {
+            item { Plate96LegacyHistoryNotice() }
+        } else {
+            item {
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(
@@ -81,10 +89,43 @@ fun Plate96ProcessingContent(snapshot: Plate96ResultSnapshot) {
                 }
             }
         }
+        }
         items(stages, key = Plate96ProcessingStage::code) { stage ->
             Plate96ProcessingStageCard(
                 stage = stage,
                 artifacts = stage.roles.flatMap { role -> artifactsByRole[role.code].orEmpty() }
+            )
+        }
+    }
+}
+
+/**
+ * 旧运行没有冻结方向矩阵和处理中间图。
+ *
+ * 页面明确说明兼容边界，并只显示数据库中真实存在的附件，避免用今天的算法补画历史证据。
+ */
+@Composable
+private fun Plate96LegacyHistoryNotice() {
+    Card(
+        modifier = Modifier.testTag(PLATE96_LEGACY_HISTORY_NOTICE_TAG),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.plate96_process_legacy_notice_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = stringResource(R.string.plate96_process_legacy_notice_description),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

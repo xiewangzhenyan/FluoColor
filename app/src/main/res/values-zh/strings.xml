@@ -2776,6 +2776,8 @@
     <string name="plate96_process_locator_summary">%1$s %2$s · %3$d个观测孔 · %4$d个晶格补位</string>
     <string name="plate96_process_recorded">已记录</string>
     <string name="plate96_process_not_recorded">未记录</string>
+    <string name="plate96_process_legacy_notice_title">旧版历史结果</string>
+    <string name="plate96_process_legacy_notice_description">按旧版本当时的 8 × 12 布局显示；缺失的图片方向和处理过程不会重新推断或补算。</string>
     <string name="plate96_process_original">原图</string>
     <string name="plate96_process_original_desc">本次运行冻结使用的终点原图。</string>
     <string name="plate96_process_orientation">方向标准化</string>

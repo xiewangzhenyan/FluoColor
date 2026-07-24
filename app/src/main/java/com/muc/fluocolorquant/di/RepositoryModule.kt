@@ -36,6 +36,8 @@ import com.muc.fluocolorquant.data.repository.GridDetectionRunRepository
 import com.muc.fluocolorquant.data.repository.GridDetectionRunRepositoryImpl
 import com.muc.fluocolorquant.data.repository.ArrayResultRepository
 import com.muc.fluocolorquant.data.repository.ArrayResultRepositoryImpl
+import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepository
+import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepositoryImpl
 import com.muc.fluocolorquant.utils.camera.CameraEngine
 import com.muc.fluocolorquant.utils.camera.CameraXCameraEngine
 import com.muc.fluocolorquant.domain.project.TemplateProjectCoordinator
@@ -169,6 +171,13 @@ abstract class RepositoryModule {
     abstract fun provideArrayResultRepository(
         repository: ArrayResultRepositoryImpl
     ): ArrayResultRepository
+
+    /** 旧96孔板只读适配，不向旧表暴露任何新的生产写入入口。 */
+    @Binds
+    @Singleton
+    abstract fun provideLegacyPlateResultRepository(
+        repository: LegacyPlateResultRepositoryImpl
+    ): LegacyPlateResultRepository
 
     /** 微流控主定位器；学习型定位器仅在离线 A/B 证明收益后替换此绑定。 */
     @Binds

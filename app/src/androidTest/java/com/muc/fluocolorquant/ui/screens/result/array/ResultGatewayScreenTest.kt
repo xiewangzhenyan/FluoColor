@@ -78,6 +78,24 @@ class ResultGatewayScreenTest {
     }
 
     @Test
+    fun `旧96孔板历史也渲染独立孔板结果分支`() {
+        composeRule.setContent {
+            FluoColorTheme {
+                ResultGatewayContent(
+                    state = ResultGatewayUiState.LegacyPlate96Result,
+                    onRetry = {},
+                    arrayContent = { Text("array-test-content") },
+                    plate96Content = { Text("legacy-plate96-content") },
+                    legacyContent = { Text("legacy-test-content") }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(RESULT_GATEWAY_PLATE96_TAG).assertIsDisplayed()
+        composeRule.onAllNodesWithTag(RESULT_GATEWAY_LEGACY_TAG).assertCountEquals(0)
+    }
+
+    @Test
     fun `加载状态不会提前创建任一结果页面`() {
         composeRule.setContent {
             FluoColorTheme {

@@ -64,7 +64,7 @@ class GridDetectionDatabaseTest {
     }
 
     @Test
-    fun `终点图与九张处理证据在同一事务保存`() = runBlocking {
+    fun `终点图与全部处理证据在同一事务保存`() = runBlocking {
         database.projectDao().insertProject(project("project-evidence"))
         val diagnostics = CaptureRole.entries
             .filter(CaptureRole::isProcessingEvidence)
@@ -90,8 +90,13 @@ class GridDetectionDatabaseTest {
         )
 
         val artifacts = database.captureArtifactDao().getByRun("run-evidence")
-        assertEquals(10, artifacts.size)
-        assertEquals(9, artifacts.count { CaptureRole.fromCode(it.captureRole)?.isProcessingEvidence == true })
+        // 处理证据角色会随定位、裁切和定量能力扩展，不能继续把历史上的九张图写死在测试里。
+        // 这里验证本次传入的全部证据与终点图处于同一事务，同时确保没有遗漏或重复角色。
+        assertEquals(diagnostics.size + 1, artifacts.size)
+        assertEquals(
+            diagnostics.size,
+            artifacts.count { CaptureRole.fromCode(it.captureRole)?.isProcessingEvidence == true }
+        )
     }
 
     @Test

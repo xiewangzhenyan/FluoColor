@@ -105,11 +105,12 @@ class GridDetectionScreenTest {
         composeRule.onNodeWithText(string(R.string.template_array_role_sample)).assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.template_array_role_standard)).assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.template_array_role_blank)).assertIsDisplayed()
-        composeRule.onNodeWithText(string(R.string.grid_layout_clear_mode)).assertIsDisplayed()
+        // 一级工具栏使用短标签以保证英文和360dp窄屏不截断；长文案只用于说明区域。
+        composeRule.onNodeWithText(string(R.string.grid_layout_clear_short)).assertIsDisplayed()
         composeRule.onAllNodesWithText(string(R.string.template_array_role_negative_control))
             .assertCountEquals(0)
 
-        composeRule.onNodeWithText(string(R.string.grid_layout_more_roles)).performClick()
+        composeRule.onNodeWithText(string(R.string.grid_layout_more_short)).performClick()
         composeRule.onNodeWithText(string(R.string.template_array_role_negative_control))
             .assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.template_array_role_positive_control))

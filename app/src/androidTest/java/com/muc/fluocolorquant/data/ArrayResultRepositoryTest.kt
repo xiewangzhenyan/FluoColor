@@ -10,15 +10,21 @@ import com.muc.fluocolorquant.data.model.AnalysisModel
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.CaptureArtifact
 import com.muc.fluocolorquant.data.model.CarrierProfile
+import com.muc.fluocolorquant.data.model.CurveModel
 import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.data.model.ProjectAnalyteJoin
 import com.muc.fluocolorquant.data.model.SiteMeasurement
 import com.muc.fluocolorquant.data.model.StandardCurveDefinition
 import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
+import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.data.repository.ArrayResultRepositoryImpl
+import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepositoryImpl
+import com.muc.fluocolorquant.data.enums.FittingFunction
+import com.muc.fluocolorquant.data.enums.PixelType
 import com.muc.fluocolorquant.domain.detection.grid.GridGeometryDiagnostics
 import com.muc.fluocolorquant.domain.detection.grid.GridHomography
 import com.muc.fluocolorquant.domain.detection.grid.GridLocalizedSite
@@ -50,6 +56,7 @@ import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshotCodec
 import com.muc.fluocolorquant.domain.result.ArrayResultErrorCode
 import com.muc.fluocolorquant.domain.result.ArrayResultLoadResult
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultLoadResult
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSource
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshotMapper
 import java.util.Date
 import kotlinx.coroutines.runBlocking
@@ -245,6 +252,89 @@ class ArrayResultRepositoryTest {
         assertEquals(95.0, restored.wells.last().site.measurements.single().concentrationValue)
         assertEquals(0, restored.orientation.quarterTurnsClockwise)
         assertTrue(restored.orientation.userConfirmed == true)
+    }
+
+    @Test
+    fun `旧WellResult运行重启后只读恢复到圆孔结果页且浓度不漂移`() = runBlocking {
+        val analyte = Analyte("legacy-cea", "CEA")
+        val curve = CurveModel(
+            id = "legacy-curve",
+            name = "旧CEA曲线",
+            function = FittingFunction.LINEAR,
+            pixelType = PixelType.GREEN,
+            parameters = mapOf("a" to 1.5, "b" to 2.0),
+            dataPoints = listOf(0.0 to 2.0, 100.0 to 152.0)
+        )
+        val project = Project(
+            id = "legacy-plate-project",
+            name = "旧96孔板历史",
+            detectionMode = "COLORIMETRIC",
+            recognitionType = "AUTO",
+            imageUri = "content://legacy-plate-source",
+            rows = 8,
+            columns = 12,
+            createTime = Date(1_000L),
+            userId = "legacy-user",
+            lastRunTimestamp = Date(2_000L),
+            analysisMethod = "CURVE_FIT"
+        )
+        val run = DetectionRun(
+            runId = "legacy-plate-run",
+            projectId = project.id,
+            timestamp = Date(2_000L),
+            detectionModelUsed = "legacy-yolo",
+            concentrationModelUsed = null,
+            status = "Completed",
+            errorMessage = null,
+            confThreshold = 0.25f,
+            iouThreshold = 0.45f,
+            wellsDetected = 96
+        )
+        val join = ProjectAnalyteJoin(
+            projectId = project.id,
+            analyteId = analyte.id,
+            maxConcentration = 100.0,
+            concentrationUnit = "ng/mL",
+            fkTemplateId = null,
+            fkCurveModelId = curve.id
+        )
+        val wells = List(96) { index ->
+            WellResult(
+                runId = run.runId,
+                projectId = project.id,
+                wellIndex = index,
+                predictedConcentration = index * 0.5,
+                trueConcentration = null,
+                detectedRectLeft = (index % 12 * 10).toFloat(),
+                detectedRectTop = (index / 12 * 10).toFloat(),
+                detectedRectRight = (index % 12 * 10 + 8).toFloat(),
+                detectedRectBottom = (index / 12 * 10 + 8).toFloat(),
+                detectionConfidence = 0.9f,
+                croppedImageIdentifier = null,
+                pixelValueJson = "{\"channel_g\":${index + 10.0}}",
+                fkAnalyteId = analyte.id,
+                roleType = "SAMPLE"
+            )
+        }
+
+        database.analyteDao().insertAnalyte(analyte)
+        database.curveModelDao().insertCurveModel(curve)
+        database.projectDao().insertProject(project)
+        database.projectAnalyteJoinDao().insert(join)
+        database.detectionRunDao().insertDetectionRun(run)
+        database.wellResultDao().insertWellResults(wells)
+
+        // 重新创建只读仓库模拟应用重启；适配器不得回写SiteMeasurement或修改WellResult。
+        val restored = LegacyPlateResultRepositoryImpl(database).loadSnapshot(run.runId)
+
+        assertTrue(restored is Plate96ResultLoadResult.Success)
+        val snapshot = (restored as Plate96ResultLoadResult.Success).snapshot
+        assertEquals(Plate96ResultSource.LEGACY_WELL_RESULT, snapshot.source)
+        assertEquals("A1", snapshot.wells.first().wellLabel)
+        assertEquals("H12", snapshot.wells.last().wellLabel)
+        assertEquals(47.5, snapshot.wells.last().site.measurements.single().concentrationValue)
+        assertEquals(0, database.siteMeasurementDao().getByRun(run.runId).size)
+        assertEquals(96, database.wellResultDao().getWellResultsByRunId(run.runId).size)
     }
 
     private fun fixture(): Fixture {

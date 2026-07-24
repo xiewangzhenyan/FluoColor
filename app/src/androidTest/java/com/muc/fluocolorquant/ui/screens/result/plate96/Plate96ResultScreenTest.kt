@@ -23,6 +23,7 @@ import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.ArraySiteGeometry
 import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultLoadResult
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSource
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshot
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshotMapper
 import com.muc.fluocolorquant.ui.theme.FluoColorTheme
@@ -61,6 +62,18 @@ class Plate96ResultScreenTest {
         composeRule.onNodeWithText(string(R.string.plate96_analysis_curve)).assertExists()
         composeRule.onNodeWithTag(PLATE96_RESULT_PROCESS_TAB_TAG).performClick()
         composeRule.onNodeWithTag(PLATE96_PROCESSING_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun `旧96孔板历史明确提示缺失过程不会重新推断`() {
+        // 旧版WellResult只保存最终孔位数据，没有现代方向矩阵和处理中间图。
+        // 此断言用于防止后续重构时误把今天的算法结果补画到历史记录中。
+        setResultContent(snapshot().copy(source = Plate96ResultSource.LEGACY_WELL_RESULT))
+
+        composeRule.onNodeWithTag(PLATE96_RESULT_PROCESS_TAB_TAG).performClick()
+        composeRule.onNodeWithTag(PLATE96_PROCESSING_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(PLATE96_LEGACY_HISTORY_NOTICE_TAG).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.plate96_process_legacy_notice_title)).assertIsDisplayed()
     }
 
     /** 显式开启后保留页面，供ADB在360dp下截图检查圆孔密度与中英文排版。 */
@@ -104,11 +117,25 @@ class Plate96ResultScreenTest {
         Thread.sleep(SCREENSHOT_HOLD_MILLIS)
     }
 
-    private fun setResultContent() {
+    /** 保留旧历史过程页，供ADB确认兼容提示清晰且不会补画不存在的现代步骤。 */
+    @Test
+    fun visualLegacyPlate96Process_holdsForAdbReview() {
+        val shouldHold = InstrumentationRegistry.getArguments()
+            .getString(ARGUMENT_HOLD_LEGACY_PROCESS_SCREENSHOT)
+            ?.toBooleanStrictOrNull()
+            ?: false
+        assumeTrue("未请求旧96孔板过程页ADB视觉自审，跳过保留页面", shouldHold)
+        setResultContent(snapshot().copy(source = Plate96ResultSource.LEGACY_WELL_RESULT))
+        composeRule.onNodeWithTag(PLATE96_RESULT_PROCESS_TAB_TAG).performClick()
+        composeRule.waitForIdle()
+        Thread.sleep(SCREENSHOT_HOLD_MILLIS)
+    }
+
+    private fun setResultContent(snapshot: Plate96ResultSnapshot = snapshot()) {
         composeRule.setContent {
             FluoColorTheme {
                 Plate96ResultContent(
-                    state = Plate96ResultUiState.Success(snapshot()),
+                    state = Plate96ResultUiState.Success(snapshot),
                     onBack = {},
                     onRetry = {}
                 )
@@ -284,6 +311,7 @@ class Plate96ResultScreenTest {
         private const val ARGUMENT_HOLD_SCREENSHOT = "plate96ResultHoldScreenshot"
         private const val ARGUMENT_HOLD_ANALYSIS_SCREENSHOT = "plate96AnalysisHoldScreenshot"
         private const val ARGUMENT_HOLD_PROCESS_SCREENSHOT = "plate96ProcessHoldScreenshot"
+        private const val ARGUMENT_HOLD_LEGACY_PROCESS_SCREENSHOT = "plate96LegacyProcessHoldScreenshot"
         private const val SCREENSHOT_HOLD_MILLIS = 55_000L
     }
 }

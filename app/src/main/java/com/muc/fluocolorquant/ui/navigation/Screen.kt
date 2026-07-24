@@ -44,19 +44,6 @@ sealed class Screen(open val route: String) {
             return "$route/$imageUri/$projectId"
         }
     }
-    object CurveFitting : Screen("curve_fitting") {
-        // projectId, runId, imageUri 现在都是路由路径的一部分
-        fun createRoute(projectId: String, runId: String, imageUri: String): String {
-            return "$route/$projectId/$runId/$imageUri"
-        }
-    }
-    // 添加了 CurveFittingResult 屏幕对象
-    object CurveFittingResult : Screen("curve_fitting_result") {
-        fun createRoute(projectId: String, analyteId: String): String {
-            return "$route/$projectId/$analyteId"
-        }
-    }
-
     object Result : Screen("result") {
         fun createRoute(runId: String): String {
             return "$route/$runId"
