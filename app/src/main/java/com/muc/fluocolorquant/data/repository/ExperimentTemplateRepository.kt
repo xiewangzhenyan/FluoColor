@@ -3,13 +3,15 @@ package com.muc.fluocolorquant.data.repository
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
+import com.muc.fluocolorquant.data.model.TemplateQuantitationBinding
 import kotlinx.coroutines.flow.Flow
 
 /** 模板主档与多分析物、通用阵列位点配置的原子数据包。 */
 data class ExperimentTemplateBundle(
     val template: ExperimentTemplate,
     val analyteConfigs: List<TemplateAnalyteConfig> = emptyList(),
-    val siteAssignments: List<TemplateSiteAssignment> = emptyList()
+    val siteAssignments: List<TemplateSiteAssignment> = emptyList(),
+    val quantitationBindings: List<TemplateQuantitationBinding> = emptyList()
 )
 
 /**

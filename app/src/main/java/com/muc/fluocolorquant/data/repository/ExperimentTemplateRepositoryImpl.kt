@@ -71,7 +71,8 @@ class ExperimentTemplateRepositoryImpl @Inject constructor(
         return ExperimentTemplateBundle(
             template = template,
             analyteConfigs = experimentTemplateDao.getAnalyteConfigs(id),
-            siteAssignments = experimentTemplateDao.getSiteAssignments(id)
+            siteAssignments = experimentTemplateDao.getSiteAssignments(id),
+            quantitationBindings = experimentTemplateDao.getQuantitationBindings(id)
         )
     }
 
@@ -94,7 +95,8 @@ class ExperimentTemplateRepositoryImpl @Inject constructor(
         experimentTemplateDao.insertBundle(
             template = normalized.template,
             analyteConfigs = normalized.analyteConfigs,
-            siteAssignments = normalized.siteAssignments
+            siteAssignments = normalized.siteAssignments,
+            quantitationBindings = normalized.quantitationBindings
         )
         return normalized
     }
@@ -117,7 +119,8 @@ class ExperimentTemplateRepositoryImpl @Inject constructor(
         experimentTemplateDao.replaceDraftBundle(
             template = normalized.template,
             analyteConfigs = normalized.analyteConfigs,
-            siteAssignments = normalized.siteAssignments
+            siteAssignments = normalized.siteAssignments,
+            quantitationBindings = normalized.quantitationBindings
         )
     }
 
@@ -171,6 +174,12 @@ class ExperimentTemplateRepositoryImpl @Inject constructor(
             siteAssignments = siteAssignments.map { assignment ->
                 assignment.copy(
                     id = if (regenerateChildIds) UUID.randomUUID().toString() else assignment.id,
+                    templateId = template.id
+                )
+            },
+            quantitationBindings = quantitationBindings.map { binding ->
+                binding.copy(
+                    id = if (regenerateChildIds) UUID.randomUUID().toString() else binding.id,
                     templateId = template.id
                 )
             }

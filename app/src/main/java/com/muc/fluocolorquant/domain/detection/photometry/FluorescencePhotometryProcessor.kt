@@ -98,7 +98,15 @@ object FluorescencePhotometryProcessor {
                 addAll(base.qc.flags)
                 if (base.hotPixelRatio > config.hotPixelRatioLimit) add(PhotometryFlag.HOT_PIXEL)
             }
-            val qc = SitePhotometryQc.from(flags, snr, config.snrMinimum)
+            val qc = SitePhotometryQc.from(
+                flags = flags,
+                snr = snr,
+                snrMinimum = config.snrMinimum,
+                hardFailure = !base.qc.qualityReliable ||
+                    base.saturationRatio >= quant.config.severeSaturationRatioLimit ||
+                    base.roiClipRatio >= quant.config.severeBorderClipRatioLimit ||
+                    base.annulusClipRatio >= quant.config.severeBorderClipRatioLimit
+            )
             val primaryValue = when (config.primaryFeature) {
                 AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY -> netIntensity
                 AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY -> integratedIntensity

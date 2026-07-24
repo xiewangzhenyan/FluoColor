@@ -30,6 +30,13 @@ class AnalysisModelRepositoryImpl @Inject constructor(
         )
     }
 
+    override suspend fun getReusableBundleByContentFingerprint(
+        fingerprint: String
+    ): AnalysisModelBundle? {
+        val model = analysisModelDao.getReusableByContentFingerprint(fingerprint) ?: return null
+        return getBundle(model.id)
+    }
+
     override suspend fun createDraft(bundle: AnalysisModelBundle): AnalysisModelBundle {
         val normalizedName = bundle.model.name.trim()
         require(normalizedName.isNotEmpty()) { "分析模型名称不能为空" }

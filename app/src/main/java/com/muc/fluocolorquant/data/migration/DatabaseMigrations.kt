@@ -54,6 +54,64 @@ object DatabaseMigrations {
     }
 
     /**
+     * 版本 12 → 13：增加标准曲线内容指纹和实验模板冻结定量绑定。
+     *
+     * 旧模板没有绑定记录时继续沿用原有 analysisModelId 兼容读取；新模板会同时保存资源
+     * 关联和完整摘要，因此曲线资源删除后仍可复现实验方案。旧 CurveModel 同时增加两个
+     * 可空字段，用于让新建 96 孔板曲线冻结 V2 信号编码，而历史曲线继续读取 Legacy 键。
+     */
+    val MIGRATION_12_13: Migration = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `analysis_models` ADD COLUMN `contentFingerprint` TEXT")
+            db.execSQL("ALTER TABLE `curve_models` ADD COLUMN `signalFeatureCode` TEXT")
+            db.execSQL("ALTER TABLE `curve_models` ADD COLUMN `processorVersion` TEXT")
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_analysis_models_contentFingerprint` " +
+                    "ON `analysis_models` (`contentFingerprint`)"
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `template_quantitation_bindings` (
+                    `id` TEXT NOT NULL,
+                    `templateId` TEXT NOT NULL,
+                    `analyteId` TEXT NOT NULL,
+                    `method` TEXT NOT NULL,
+                    `sourceResourceId` TEXT,
+                    `resourceSnapshotJson` TEXT NOT NULL,
+                    `contentFingerprint` TEXT NOT NULL,
+                    `processorName` TEXT NOT NULL,
+                    `processorVersion` TEXT NOT NULL,
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`templateId`) REFERENCES `experiment_templates`(`id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`)
+                        ON UPDATE NO ACTION ON DELETE NO ACTION,
+                    FOREIGN KEY(`sourceResourceId`) REFERENCES `analysis_models`(`id`)
+                        ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_template_quantitation_bindings_templateId` " +
+                    "ON `template_quantitation_bindings` (`templateId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_template_quantitation_bindings_analyteId` " +
+                    "ON `template_quantitation_bindings` (`analyteId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_template_quantitation_bindings_sourceResourceId` " +
+                    "ON `template_quantitation_bindings` (`sourceResourceId`)"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                    "`index_template_quantitation_bindings_templateId_analyteId` " +
+                    "ON `template_quantitation_bindings` (`templateId`, `analyteId`)"
+            )
+        }
+    }
+
+    /**
      * 重建模板主表并保持所有外部引用仍指向 `experiment_templates`。
      *
      * `legacy_alter_table` 防止 SQLite 在旧表改名时把子表外键同步改到临时表名；新表

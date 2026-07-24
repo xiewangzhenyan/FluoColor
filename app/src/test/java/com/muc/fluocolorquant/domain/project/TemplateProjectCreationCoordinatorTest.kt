@@ -20,6 +20,7 @@ import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.ProjectAnalyteJoin
 import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
+import com.muc.fluocolorquant.data.model.TemplateQuantitationBinding
 import com.muc.fluocolorquant.data.repository.AcquisitionProfileRepository
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.data.repository.AnalysisModelRepository
@@ -28,6 +29,13 @@ import com.muc.fluocolorquant.data.repository.CarrierProfileRepository
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateBundle
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationMethod
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationSnapshot
+import com.muc.fluocolorquant.domain.calibration.AppliedCalibrationSnapshot
+import com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
+import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationBindingFingerprint
+import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationResourceSnapshot
+import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationResourceSnapshotCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -86,6 +94,34 @@ class TemplateProjectCreationCoordinatorTest {
         assertEquals("carrier-10x10", ready.configuration.snapshot.carrierProfile.id)
         assertEquals("device-v1", ready.configuration.snapshot.acquisitionProfile.id)
         assertEquals(ProjectDetectionDestination.GRID_ENDPOINT, ready.configuration.destination)
+    }
+
+    @Test
+    fun `标准曲线项目量程可以宽于现场标定范围`() = runTest {
+        seedReadyTemplate()
+        val currentTemplate = templateRepository.bundles.getValue("template-v1")
+        templateRepository.bundles["template-v1"] = currentTemplate.copy(
+            analyteConfigs = currentTemplate.analyteConfigs.map { config ->
+                config.copy(reliableRangeMin = 0.0, reliableRangeMax = 100.0)
+            }
+        )
+        val currentModel = analysisModelRepository.bundles.getValue("model-cea")
+        analysisModelRepository.bundles["model-cea"] = currentModel.copy(
+            model = currentModel.model.copy(
+                reliableRangeMin = 28.0,
+                reliableRangeMax = 34.0
+            )
+        )
+
+        val result = coordinator.resolveTemplate("template-v1")
+
+        assertTrue(result is TemplateResolution.Ready)
+        val analyte = (result as TemplateResolution.Ready)
+            .configuration.snapshot.analytes.single()
+        assertEquals(0.0, analyte.templateConfig.reliableRangeMin ?: Double.NaN, 0.0)
+        assertEquals(100.0, analyte.templateConfig.reliableRangeMax ?: Double.NaN, 0.0)
+        assertEquals(28.0, analyte.analysisModel.model.reliableRangeMin, 0.0)
+        assertEquals(34.0, analyte.analysisModel.model.reliableRangeMax, 0.0)
     }
 
     @Test
@@ -163,6 +199,80 @@ class TemplateProjectCreationCoordinatorTest {
         assertTrue(created.project.templateSnapshotJson.orEmpty().contains("\"model-cea\""))
         assertEquals("template-v1", projectRepository.savedJoins.single().fkTemplateId)
         assertEquals(created.project.id, projectRepository.savedProject?.id)
+    }
+
+    @Test
+    fun `源曲线资源删除后模板仍使用冻结摘要恢复定量方案`() = runTest {
+        seedReadyTemplate()
+        val original = templateRepository.bundles.getValue("template-v1")
+        val frozenModel = modelBundle().copy(
+            model = modelBundle().model.copy(id = "deleted-onsite-resource")
+        )
+        val quantitation = AnalyteQuantitationSnapshot(
+            analyteId = "cea",
+            method = AnalyteQuantitationMethod.ONSITE_CALIBRATION,
+            concentrationUnit = "ng/mL",
+            sourceResourceId = "deleted-onsite-resource",
+            calibration = AppliedCalibrationSnapshot(
+                primaryFeature = AnalysisPrimaryFeature.DELTA_E_2000.code,
+                fittingFunction = "linear",
+                parameters = mapOf("a" to 2.0, "b" to 1.0),
+                standardPoints = listOf(0.1 to 1.2, 100.0 to 201.0),
+                latexFormula = "y=2x+1",
+                reliableRangeMin = 0.1,
+                reliableRangeMax = 100.0,
+                rSquared = 0.999,
+                rmse = 0.1,
+                normalizedRmse = 0.001,
+                mae = 0.08,
+                backCalculatedRmsePercent = 2.0,
+                acceptedStandardRatio = 1.0,
+                weightingCode = 0,
+                accepted = true,
+                policySnapshot = CalibrationPolicy.DEFAULT,
+                processorVersion = "ColorimetricProcessor-v2",
+                engineVersion = "ArrayCalibration-v1",
+                inputFingerprint = "onsite-input"
+            ),
+            processorVersion = "ColorimetricProcessor-v2",
+            inputFingerprint = "onsite-input"
+        )
+        val resourceSnapshot = TemplateQuantitationResourceSnapshot(
+            quantitation = quantitation,
+            analysisModel = frozenModel
+        )
+        val binding = TemplateQuantitationBinding(
+            id = "binding-cea",
+            templateId = "template-v1",
+            analyteId = "cea",
+            method = AnalyteQuantitationMethod.ONSITE_CALIBRATION.name,
+            sourceResourceId = null,
+            resourceSnapshotJson = TemplateQuantitationResourceSnapshotCodec.encode(
+                resourceSnapshot
+            ),
+            contentFingerprint = TemplateQuantitationBindingFingerprint.create(resourceSnapshot),
+            processorName = "ColorimetricProcessor",
+            processorVersion = "ColorimetricProcessor-v2"
+        )
+        templateRepository.bundles["template-v1"] = original.copy(
+            analyteConfigs = original.analyteConfigs.map { config ->
+                config.copy(analysisModelId = null)
+            },
+            quantitationBindings = listOf(binding)
+        )
+        analysisModelRepository.bundles.clear()
+
+        val result = coordinator.resolveTemplate("template-v1")
+
+        assertTrue(result is TemplateResolution.Ready)
+        val analyteSnapshot = (result as TemplateResolution.Ready)
+            .configuration.snapshot.analytes.single()
+        assertEquals("deleted-onsite-resource", analyteSnapshot.analysisModel.model.id)
+        assertEquals(null, analyteSnapshot.analyteQuantitationSnapshot?.sourceResourceId)
+        assertEquals(
+            mapOf("a" to 2.0, "b" to 1.0),
+            analyteSnapshot.analyteQuantitationSnapshot?.calibration?.parameters
+        )
     }
 
     private fun seedReadyTemplate(
@@ -313,6 +423,11 @@ class TemplateProjectCreationCoordinatorTest {
         override fun observeAll(): Flow<List<AnalysisModel>> =
             MutableStateFlow(bundles.values.map(AnalysisModelBundle::model))
         override suspend fun getBundle(id: String): AnalysisModelBundle? = bundles[id]
+        override suspend fun getReusableBundleByContentFingerprint(
+            fingerprint: String
+        ): AnalysisModelBundle? = bundles.values.firstOrNull { bundle ->
+            bundle.model.contentFingerprint == fingerprint
+        }
         override suspend fun createDraft(bundle: AnalysisModelBundle): AnalysisModelBundle = unsupported()
         override suspend fun updateDraft(bundle: AnalysisModelBundle) = unsupported()
         override suspend fun replace(bundle: AnalysisModelBundle) = unsupported()

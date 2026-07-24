@@ -112,3 +112,52 @@ data class TemplateSiteAssignment(
     val referenceScope: String? = null,
     val enabled: Boolean = true
 )
+
+/**
+ * 实验模板中单个分析物的冻结定量绑定。
+ *
+ * [sourceResourceId] 只用于追溯，可因资源删除被置空；[resourceSnapshotJson] 保存创建模板
+ * 当时的完整曲线/模型摘要和定量快照，因此资源库后续编辑或删除不会改变模板科学含义。
+ * 深度学习只保存文件校验和、输入协议等元数据，不复制 PTL 二进制文件。
+ */
+@Entity(
+    tableName = "template_quantitation_bindings",
+    foreignKeys = [
+        ForeignKey(
+            entity = ExperimentTemplate::class,
+            parentColumns = ["id"],
+            childColumns = ["templateId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = Analyte::class,
+            parentColumns = ["id"],
+            childColumns = ["analyteId"],
+            onDelete = ForeignKey.NO_ACTION
+        ),
+        ForeignKey(
+            entity = AnalysisModel::class,
+            parentColumns = ["id"],
+            childColumns = ["sourceResourceId"],
+            onDelete = ForeignKey.SET_NULL
+        )
+    ],
+    indices = [
+        Index("templateId"),
+        Index("analyteId"),
+        Index("sourceResourceId"),
+        Index(value = ["templateId", "analyteId"], unique = true)
+    ]
+)
+data class TemplateQuantitationBinding(
+    @PrimaryKey
+    val id: String = UUID.randomUUID().toString(),
+    val templateId: String,
+    val analyteId: String,
+    val method: String,
+    val sourceResourceId: String? = null,
+    val resourceSnapshotJson: String,
+    val contentFingerprint: String,
+    val processorName: String,
+    val processorVersion: String
+)

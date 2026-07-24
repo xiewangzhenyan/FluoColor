@@ -19,6 +19,8 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationMethod
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationSnapshot
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationDraft
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
 import com.muc.fluocolorquant.domain.detection.GridDetectionStage
@@ -137,7 +139,6 @@ class GridDetectionScreenTest {
                         onSelectAnalysisModel = { _, _ -> },
                         onUpdateOnsiteAdvanced = { _, _, _ -> },
                         onPreviewOnsiteFit = {},
-                        onSaveOnsiteCurve = { _, _ -> },
                         onSaveTemplate = {}
                     )
                 }
@@ -179,7 +180,6 @@ class GridDetectionScreenTest {
                     onSelectAnalysisModel = { _, _ -> },
                     onUpdateOnsiteAdvanced = { _, _, _ -> },
                     onPreviewOnsiteFit = {},
-                    onSaveOnsiteCurve = { _, _ -> },
                     onSaveTemplate = {}
                 )
             }
@@ -215,7 +215,6 @@ class GridDetectionScreenTest {
                     onSelectAnalysisModel = { _, _ -> },
                     onUpdateOnsiteAdvanced = { _, _, _ -> },
                     onPreviewOnsiteFit = {},
-                    onSaveOnsiteCurve = { _, _ -> },
                     onSaveTemplate = {}
                 )
             }
@@ -268,7 +267,13 @@ class GridDetectionScreenTest {
                     mode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT,
                     selectedFeature = AnalysisPrimaryFeature.FLUORESCENCE_SNR,
                     // 已确认后才展示“保存为实验模板”，与真实页面门控保持一致。
-                    configurationConfirmed = true
+                    appliedSnapshot = AnalyteQuantitationSnapshot(
+                        analyteId = "cea",
+                        method = AnalyteQuantitationMethod.ONSITE_CALIBRATION,
+                        concentrationUnit = "ng/mL",
+                        processorVersion = "test",
+                        inputFingerprint = "test"
+                    )
                 )
             )
         )

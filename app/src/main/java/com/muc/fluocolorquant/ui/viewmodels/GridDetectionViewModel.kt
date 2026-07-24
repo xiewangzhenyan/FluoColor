@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.AnalysisModelLifecycleStatus
@@ -17,6 +18,7 @@ import com.muc.fluocolorquant.data.enums.TemplateLifecycleStatus
 import com.muc.fluocolorquant.data.enums.TemplateReferenceScope
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
+import com.muc.fluocolorquant.data.model.TemplateQuantitationBinding
 import com.muc.fluocolorquant.data.model.CalibrationPoint
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.StandardCurveDefinition
@@ -24,9 +26,21 @@ import com.muc.fluocolorquant.data.repository.AcquisitionProfileRepository
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.data.repository.AnalysisModelRepository
 import com.muc.fluocolorquant.data.repository.CarrierProfileRepository
+import com.muc.fluocolorquant.data.repository.CalibrationPolicyPreferences
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateBundle
 import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationMethod
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationSnapshot
+import com.muc.fluocolorquant.domain.calibration.CalibrationApplicationDecision
+import com.muc.fluocolorquant.domain.calibration.CalibrationCandidate
+import com.muc.fluocolorquant.domain.calibration.CalibrationResourceFingerprint
+import com.muc.fluocolorquant.domain.calibration.CalibrationResultSet
+import com.muc.fluocolorquant.domain.calibration.OnsiteCalibrationState
+import com.muc.fluocolorquant.domain.calibration.applicationDecision
+import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationBindingFingerprint
+import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationResourceSnapshot
+import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationResourceSnapshotCodec
 import com.muc.fluocolorquant.domain.detection.GridAnalysisModelOption
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationDraft
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
@@ -41,9 +55,10 @@ import com.muc.fluocolorquant.domain.detection.GridExperimentTemplateOption
 import com.muc.fluocolorquant.domain.detection.GridLayoutConfigurationSource
 import com.muc.fluocolorquant.domain.detection.GridLocalizationOutcome
 import com.muc.fluocolorquant.domain.detection.GridLocalizationSession
-import com.muc.fluocolorquant.domain.detection.GridOnsiteFitPreview
+import com.muc.fluocolorquant.domain.detection.isConfigurationComplete
 import com.muc.fluocolorquant.domain.detection.isReadyForConfirmation
 import com.muc.fluocolorquant.domain.detection.resolvedGridQuantitationMode
+import com.muc.fluocolorquant.domain.detection.withPersistedOnsiteCurveResource
 import com.muc.fluocolorquant.domain.detection.quantification.BuiltInSharedConcentrationModel
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitRegion
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
@@ -52,6 +67,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.net.URLDecoder
+import java.text.DateFormat
 import java.util.Date
 import java.util.UUID
 import javax.inject.Inject
@@ -130,13 +146,14 @@ sealed interface GridConfigurationEvent {
     data object ModelIncompatible : GridConfigurationEvent
     data object FitReady : GridConfigurationEvent
     data object FitUnavailable : GridConfigurationEvent
-    data class CurveSaved(val name: String) : GridConfigurationEvent
-    data object CurveNameConflict : GridConfigurationEvent
     data object CurveSaveFailed : GridConfigurationEvent
     data class TemplateSaved(val name: String) : GridConfigurationEvent
     data object TemplateNameConflict : GridConfigurationEvent
     data object TemplateSaveIncomplete : GridConfigurationEvent
     data object TemplateSaveFailed : GridConfigurationEvent
+    data object LowQualityCalibrationBlocked : GridConfigurationEvent
+    data object LowQualityCalibrationConfirmationRequired : GridConfigurationEvent
+    data object LowQualityCalibrationApplied : GridConfigurationEvent
     data object OperationFailed : GridConfigurationEvent
 }
 
@@ -229,7 +246,8 @@ class GridDetectionViewModel @Inject constructor(
     private val templateRepository: ExperimentTemplateRepository,
     private val carrierProfileRepository: CarrierProfileRepository,
     private val acquisitionProfileRepository: AcquisitionProfileRepository,
-    private val analysisModelRepository: AnalysisModelRepository
+    private val analysisModelRepository: AnalysisModelRepository,
+    private val calibrationPolicyPreferences: CalibrationPolicyPreferences
 ) : ViewModel() {
 
     private val gson = Gson()
@@ -332,17 +350,62 @@ class GridDetectionViewModel @Inject constructor(
      * “仅信号”无需额外资源；曲线/模型必须已经选择；现场拟合必须已经生成有效预览。
      * UI 会同步禁用不满足条件的按钮，这里仍做第二层校验，避免测试或未来调用方绕过门控。
      */
-    fun confirmQuantitationAnalyte(analyteId: String) {
+    fun confirmQuantitationAnalyte(
+        analyteId: String,
+        lowQualityConfirmed: Boolean = false
+    ) {
         val current = quantitationDrafts[analyteId] ?: return
         if (!current.isReadyForConfirmation()) return
+        if (current.mode == GridAnalyteQuantitationMode.ONSITE_AUTO_FIT) {
+            applyOnsiteCalibration(analyteId, lowQualityConfirmed)
+            return
+        }
+        val session = localizationSession ?: return
+        val analyteSnapshot = session.request.snapshot.analytes.firstOrNull {
+            it.analyte.id == analyteId
+        } ?: return
+        val method = when (current.mode) {
+            GridAnalyteQuantitationMode.EXISTING_STANDARD_CURVE ->
+                AnalyteQuantitationMethod.STANDARD_CURVE_RESOURCE
+            GridAnalyteQuantitationMode.DEEP_LEARNING_MODEL ->
+                AnalyteQuantitationMethod.DEEP_LEARNING_MODEL
+            GridAnalyteQuantitationMode.SIGNAL_ONLY -> AnalyteQuantitationMethod.SIGNAL_ONLY
+            GridAnalyteQuantitationMode.ONSITE_AUTO_FIT -> return
+        }
+        val model = analyteSnapshot.analysisModel.model
+        val applied = AnalyteQuantitationSnapshot(
+            analyteId = analyteId,
+            method = method,
+            concentrationUnit = analyteSnapshot.templateConfig.concentrationUnit,
+            sourceResourceId = current.selectedAnalysisModelId,
+            processorVersion = model.processorVersion,
+            inputFingerprint = listOf(
+                analyteId,
+                method.name,
+                current.selectedAnalysisModelId.orEmpty(),
+                model.processorVersion,
+                analyteSnapshot.templateConfig.concentrationUnit
+            ).joinToString(":")
+        )
         quantitationDrafts = quantitationDrafts + (
-            analyteId to current.copy(configurationConfirmed = true)
+            analyteId to current.copy(appliedSnapshot = applied)
+        )
+        replaceSessionSnapshot(
+            session.request.snapshot.copy(
+                analytes = session.request.snapshot.analytes.map { analyte ->
+                    if (analyte.analyte.id == analyteId) {
+                        analyte.copy(analyteQuantitationSnapshot = applied)
+                    } else {
+                        analyte
+                    }
+                }
+            )
         )
         selectedQuantitationAnalyteId = quantitationDrafts.values
             .sortedByAnalyteOrder(
                 localizationSession?.request?.snapshot?.analytes?.map { it.analyte.id }.orEmpty()
             )
-            .firstOrNull { !it.configurationConfirmed }
+            .firstOrNull { !it.isConfigurationComplete() }
             ?.analyteId
             ?: analyteId
         rememberManualQuantitationIfNeeded()
@@ -387,11 +450,26 @@ class GridDetectionViewModel @Inject constructor(
         quantitationDrafts = quantitationDrafts.mapValues { (analyteId, draft) ->
             if (analyteId !in changedAnalyteIds) return@mapValues draft
             draft.copy(
-                onsitePreview = draft.onsitePreview.takeUnless {
-                    draft.mode == GridAnalyteQuantitationMode.ONSITE_AUTO_FIT
+                onsiteState = if (draft.mode == GridAnalyteQuantitationMode.ONSITE_AUTO_FIT) {
+                    OnsiteCalibrationState.Editing
+                } else {
+                    draft.onsiteState
                 },
-                fittingInProgress = false,
-                configurationConfirmed = false
+                appliedSnapshot = null
+            )
+        }
+        if (changedAnalyteIds.isNotEmpty()) {
+            val latestSnapshot = requireNotNull(localizationSession).request.snapshot
+            replaceSessionSnapshot(
+                latestSnapshot.copy(
+                    analytes = latestSnapshot.analytes.map { analyte ->
+                        if (analyte.analyte.id in changedAnalyteIds) {
+                            analyte.copy(analyteQuantitationSnapshot = null)
+                        } else {
+                            analyte
+                        }
+                    }
+                )
             )
         }
         val current = _uiState.value as? GridDetectionUiState.LocalizationReady ?: return
@@ -498,6 +576,7 @@ class GridDetectionViewModel @Inject constructor(
                 val currentSnapshot = session.request.snapshot
                 val currentAnalytes = currentSnapshot.analytes.associateBy { it.analyte.id }
                 val templateAnalyteIds = bundle.analyteConfigs.map { it.analyteId }.toSet()
+                val bindingsByAnalyte = bundle.quantitationBindings.associateBy { it.analyteId }
                 require(template.detectionMode == currentSnapshot.template.detectionMode)
                 require(carrier.rows == session.grid.rows && carrier.columns == session.grid.columns)
                 require(templateAnalyteIds == currentAnalytes.keys)
@@ -509,18 +588,54 @@ class GridDetectionViewModel @Inject constructor(
                 }
                 val adaptedAnalytes = bundle.analyteConfigs.sortedBy { it.displayOrder }.map { config ->
                     val current = currentAnalytes.getValue(config.analyteId)
+                    val binding = bindingsByAnalyte[config.analyteId]
+                    val frozenBinding = binding
+                        ?.let { binding ->
+                            TemplateQuantitationResourceSnapshotCodec.decode(
+                                binding.resourceSnapshotJson
+                            )
+                        }
+                    if (frozenBinding != null) {
+                        val frozenQuantitation = frozenBinding.quantitation.copy(
+                            // 外键被 SET_NULL 表示资源已删除；JSON中的旧ID不能再次当真实外键使用。
+                            sourceResourceId = binding?.sourceResourceId
+                        )
+                        require(frozenQuantitation.analyteId == config.analyteId)
+                        val frozenMode = frozenQuantitation.method.toGridQuantitationMode()
+                        return@map current.copy(
+                            templateConfig = config.copy(
+                                templateId = currentSnapshot.template.id,
+                                analysisModelId = frozenQuantitation.sourceResourceId
+                            ),
+                            analysisModel = frozenBinding.analysisModel,
+                            quantitationMode = frozenMode.code,
+                            onsiteSelectedFeature = frozenQuantitation.calibration
+                                ?.primaryFeature,
+                            onsiteSelectedFunction = frozenQuantitation.calibration
+                                ?.fittingFunction,
+                            analyteQuantitationSnapshot = frozenQuantitation
+                        )
+                    }
+
+                    // Room 12及更早模板没有冻结绑定，只能按旧 analysisModelId 兼容读取。
+                    // 新保存模板一律走上面的摘要路径，不再依赖资源库实时内容。
                     val selectedBundle = config.analysisModelId
                         ?.let { analysisModelRepository.getBundle(it) }
                     val effectiveBundle = selectedBundle ?: current.toSignalOnlyBundle()
+                    val effectiveMode = effectiveBundle.toQuantitationMode()
                     current.copy(
                         templateConfig = config.copy(
                             templateId = currentSnapshot.template.id,
                             analysisModelId = effectiveBundle.model.id
                         ),
                         analysisModel = effectiveBundle,
-                        quantitationMode = effectiveBundle.toQuantitationMode().code,
+                        quantitationMode = effectiveMode.code,
                         onsiteSelectedFeature = null,
-                        onsiteSelectedFunction = null
+                        onsiteSelectedFunction = null,
+                        analyteQuantitationSnapshot = current.buildResourceQuantitationSnapshot(
+                            mode = effectiveMode,
+                            bundle = effectiveBundle
+                        )
                     )
                 }
                 val adaptedAssignments = bundle.siteAssignments.map { assignment ->
@@ -539,10 +654,8 @@ class GridDetectionViewModel @Inject constructor(
                 configurationSource = GridLayoutConfigurationSource.EXPERIMENT_TEMPLATE
                 selectedTemplateId = template.id
                 quantitationDrafts = adaptedAnalytes.associate { analyte ->
-                    analyte.analyte.id to analyte.toQuantitationDraft().copy(
-                        // 已发布实验模板本身就是完整方案，应用后无需用户重复逐项确认。
-                        configurationConfirmed = true
-                    )
+                    // 已发布实验模板应用后已经拥有冻结方案，无需用户重复逐项确认。
+                    analyte.analyte.id to analyte.toQuantitationDraft()
                 }
                 selectedQuantitationAnalyteId = adaptedAnalytes.firstOrNull()?.analyte?.id
                 val restored = layoutDraftStore.update(
@@ -574,12 +687,14 @@ class GridDetectionViewModel @Inject constructor(
                     ),
                     quantitationMode = mode.code,
                     onsiteSelectedFeature = null,
-                    onsiteSelectedFunction = null
+                    onsiteSelectedFunction = null,
+                    analyteQuantitationSnapshot = null
                 )
 
                 GridAnalyteQuantitationMode.EXISTING_STANDARD_CURVE,
                 GridAnalyteQuantitationMode.DEEP_LEARNING_MODEL -> analyte.copy(
-                    quantitationMode = mode.code
+                    quantitationMode = mode.code,
+                    analyteQuantitationSnapshot = null
                 )
             }
         }
@@ -592,9 +707,8 @@ class GridDetectionViewModel @Inject constructor(
                 selectedAnalysisModelId = null,
                 selectedFeature = null,
                 selectedFunction = null,
-                onsitePreview = null,
-                fittingInProgress = false,
-                configurationConfirmed = false
+                onsiteState = OnsiteCalibrationState.Editing,
+                appliedSnapshot = null
             )
         )
         rememberManualQuantitationIfNeeded()
@@ -620,14 +734,13 @@ class GridDetectionViewModel @Inject constructor(
                     if (analyte.analyte.id != analyteId) analyte else analyte.copy(
                         templateConfig = analyte.templateConfig.copy(
                             analysisModelId = bundle.model.id,
-                            concentrationUnit = bundle.model.concentrationUnit,
-                            reliableRangeMin = bundle.model.reliableRangeMin,
-                            reliableRangeMax = bundle.model.reliableRangeMax
+                            concentrationUnit = bundle.model.concentrationUnit
                         ),
                         analysisModel = bundle,
                         quantitationMode = actualMode.code,
                         onsiteSelectedFeature = null,
-                        onsiteSelectedFunction = null
+                        onsiteSelectedFunction = null,
+                        analyteQuantitationSnapshot = null
                     )
                 }
                 replaceSessionSnapshot(snapshot.copy(analytes = analytes))
@@ -635,8 +748,8 @@ class GridDetectionViewModel @Inject constructor(
                     analyteId to requireNotNull(quantitationDrafts[analyteId]).copy(
                         selectedAnalysisModelId = bundle.model.id,
                         selectedFeature = AnalysisPrimaryFeature.fromCode(bundle.model.primaryFeature),
-                        onsitePreview = null,
-                        configurationConfirmed = false
+                        onsiteState = OnsiteCalibrationState.Editing,
+                        appliedSnapshot = null
                     )
                 )
                 // 首次选择内置共享模型会把冻结定义持久化成发布资源；刷新选择器后模板
@@ -664,7 +777,8 @@ class GridDetectionViewModel @Inject constructor(
             if (analyte.analyte.id != analyteId) analyte else analyte.copy(
                 onsiteSelectedFeature = feature?.code,
                 onsiteSelectedFunction = function?.identifier,
-                quantitationMode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code
+                quantitationMode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code,
+                analyteQuantitationSnapshot = null
             )
         }
         replaceSessionSnapshot(snapshot.copy(analytes = analytes))
@@ -673,8 +787,8 @@ class GridDetectionViewModel @Inject constructor(
             analyteId to current.copy(
                 selectedFeature = feature,
                 selectedFunction = function,
-                onsitePreview = null,
-                configurationConfirmed = false
+                onsiteState = OnsiteCalibrationState.Editing,
+                appliedSnapshot = null
             )
         )
         rememberManualQuantitationIfNeeded()
@@ -685,73 +799,251 @@ class GridDetectionViewModel @Inject constructor(
     fun previewOnsiteFit(analyteId: String) {
         val session = localizationSession ?: return
         val current = quantitationDrafts[analyteId] ?: return
+        val requestId = UUID.randomUUID().toString()
         quantitationDrafts = quantitationDrafts + (
             analyteId to current.copy(
-                fittingInProgress = true,
-                onsitePreview = null,
-                configurationConfirmed = false
+                onsiteState = OnsiteCalibrationState.Fitting(
+                    requestId = requestId,
+                    inputFingerprint = "pending:$requestId"
+                ),
+                appliedSnapshot = null
             )
         )
         publishPreview(editingLayout = true)
         viewModelScope.launch(Dispatchers.Default) {
-            val preview = coordinator.previewOnsiteCalibration(
-                snapshot = requireNotNull(localizationSession).request.snapshot,
-                quant = session.quant,
-                analyteId = analyteId
-            )
-            val latest = quantitationDrafts[analyteId] ?: return@launch
-            quantitationDrafts = quantitationDrafts + (
-                analyteId to latest.copy(fittingInProgress = false, onsitePreview = preview)
-            )
-            rememberManualQuantitationIfNeeded()
-            publishPreview(editingLayout = true)
-            _configurationEvents.emit(
-                if (preview == null) GridConfigurationEvent.FitUnavailable
-                else GridConfigurationEvent.FitReady
-            )
+            runCatching {
+                // 开始拟合时只读取一次系统默认策略，并把它完整冻结到结果集。设置页面后续
+                // 的修改只影响下一次新拟合，不会让当前弹窗候选在后台悄悄重新排序。
+                val policySnapshot = calibrationPolicyPreferences.policyFlow.first()
+                coordinator.previewOnsiteCalibration(
+                    snapshot = requireNotNull(localizationSession).request.snapshot,
+                    quant = session.quant,
+                    analyteId = analyteId,
+                    policy = policySnapshot
+                )
+            }.onSuccess { resultSet ->
+                val latest = quantitationDrafts[analyteId] ?: return@onSuccess
+                val fitting = latest.onsiteState as? OnsiteCalibrationState.Fitting
+                    ?: return@onSuccess
+                if (fitting.requestId != requestId) return@onSuccess
+                quantitationDrafts = quantitationDrafts + (
+                    analyteId to latest.copy(
+                        onsiteState = OnsiteCalibrationState.Reviewing(
+                            resultSet = resultSet,
+                            saveToLibrary = resultSet.policySnapshot.saveToLibraryByDefault
+                        ),
+                        appliedSnapshot = null
+                    )
+                )
+                rememberManualQuantitationIfNeeded()
+                publishPreview(editingLayout = true)
+                _configurationEvents.emit(GridConfigurationEvent.FitReady)
+            }.onFailure {
+                val latest = quantitationDrafts[analyteId] ?: return@onFailure
+                val fitting = latest.onsiteState as? OnsiteCalibrationState.Fitting
+                    ?: return@onFailure
+                if (fitting.requestId != requestId) return@onFailure
+                quantitationDrafts = quantitationDrafts + (
+                    analyteId to latest.copy(
+                        onsiteState = OnsiteCalibrationState.TechnicalFailure(
+                            requestId = requestId,
+                            inputFingerprint = fitting.inputFingerprint
+                        ),
+                        appliedSnapshot = null
+                    )
+                )
+                publishPreview(editingLayout = true)
+                _configurationEvents.emit(GridConfigurationEvent.FitUnavailable)
+            }
         }
     }
 
-    /** 将当前分析物已经审阅的现场拟合结果保存到标准曲线库，并直接应用于本次运行。 */
-    fun saveOnsiteCurve(analyteId: String, requestedName: String) {
-        val normalizedName = requestedName.trim()
+    /** 在拟合结果阶段切换线性、4PL或5PL候选；不可用函数没有候选ID，不能被选择。 */
+    fun selectOnsiteCandidate(analyteId: String, candidateId: String) {
+        val current = quantitationDrafts[analyteId] ?: return
+        val reviewing = current.onsiteState as? OnsiteCalibrationState.Reviewing ?: return
+        if (reviewing.resultSet.candidate(candidateId) == null) return
+        quantitationDrafts = quantitationDrafts + (
+            analyteId to current.copy(
+                onsiteState = reviewing.copy(selectedCandidateId = candidateId),
+                appliedSnapshot = null
+            )
+        )
+        publishPreview(editingLayout = true)
+    }
+
+    /** 保存开关只决定是否创建可复用资源，不改变本次运行最终冻结的曲线内容。 */
+    fun setOnsiteSaveToLibrary(analyteId: String, saveToLibrary: Boolean) {
+        val current = quantitationDrafts[analyteId] ?: return
+        val reviewing = current.onsiteState as? OnsiteCalibrationState.Reviewing ?: return
+        quantitationDrafts = quantitationDrafts + (
+            analyteId to current.copy(
+                onsiteState = reviewing.copy(saveToLibrary = saveToLibrary)
+            )
+        )
+        publishPreview(editingLayout = true)
+    }
+
+    /** 从结果阶段返回浓度录入；旧候选和已应用快照立即失效，防止修改后继续执行旧参数。 */
+    fun editOnsiteCalibration(analyteId: String) {
         val session = localizationSession ?: return
-        val preview = quantitationDrafts[analyteId]?.onsitePreview
-        if (normalizedName.isEmpty() || preview == null || savingReusableResource) {
-            _configurationEvents.tryEmit(GridConfigurationEvent.CurveSaveFailed)
-            return
+        val current = quantitationDrafts[analyteId] ?: return
+        quantitationDrafts = quantitationDrafts + (
+            analyteId to current.copy(
+                onsiteState = OnsiteCalibrationState.Editing,
+                appliedSnapshot = null
+            )
+        )
+        val updatedAnalytes = session.request.snapshot.analytes.map { analyte ->
+            if (analyte.analyte.id != analyteId) analyte else analyte.copy(
+                analysisModel = analyte.toSignalOnlyBundle(),
+                analyteQuantitationSnapshot = null,
+                quantitationMode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code
+            )
         }
-        viewModelScope.launch {
-            savingReusableResource = true
-            try {
-                val nameExists = analysisModelRepository.observeAll().first().any { model ->
-                    model.name.equals(normalizedName, ignoreCase = true)
-                }
-                if (nameExists) {
-                    _configurationEvents.emit(GridConfigurationEvent.CurveNameConflict)
-                    return@launch
-                }
-                val snapshot = requireNotNull(localizationSession).request.snapshot
-                val analyteSnapshot = snapshot.analytes.firstOrNull {
-                    it.analyte.id == analyteId
-                } ?: error("分析物不存在")
-                val saved = createAndPublishOnsiteCurve(
-                    snapshot = snapshot,
-                    analyteSnapshot = analyteSnapshot,
-                    preview = preview,
-                    name = normalizedName
+        replaceSessionSnapshot(session.request.snapshot.copy(analytes = updatedAnalytes))
+        rememberManualQuantitationIfNeeded()
+        publishPreview(editingLayout = true)
+    }
+
+    /**
+     * 应用用户已经审阅的候选并立即冻结分析物定量快照。
+     *
+     * 最终“计算结果”只执行这里冻结的参数，不再读取标准孔重新拟合。资源保存后续与该
+     * 快照使用相同候选，失败时不会偷偷换用另一条曲线。
+     */
+    fun applyOnsiteCalibration(
+        analyteId: String,
+        lowQualityConfirmed: Boolean = false
+    ) {
+        val session = localizationSession ?: return
+        val current = quantitationDrafts[analyteId] ?: return
+        val reviewing = current.onsiteState as? OnsiteCalibrationState.Reviewing ?: return
+        val selectedCandidateId = reviewing.selectedCandidateId ?: return
+        val selectedCandidate = reviewing.resultSet.candidate(selectedCandidateId) ?: return
+        val applicationDecision = reviewing.resultSet.policySnapshot.applicationDecision(
+            candidateAccepted = selectedCandidate.accepted,
+            userConfirmed = lowQualityConfirmed
+        )
+        when (applicationDecision) {
+            CalibrationApplicationDecision.BLOCK -> {
+                _configurationEvents.tryEmit(GridConfigurationEvent.LowQualityCalibrationBlocked)
+                return
+            }
+            CalibrationApplicationDecision.REQUIRE_CONFIRMATION -> {
+                _configurationEvents.tryEmit(
+                    GridConfigurationEvent.LowQualityCalibrationConfirmationRequired
                 )
-                applySavedCurveToSession(analyteId, saved)
-                loadConfigurationResources(requireNotNull(localizationSession))
+                return
+            }
+            CalibrationApplicationDecision.APPLY -> Unit
+        }
+        if (!selectedCandidate.accepted) {
+            // 只显示轻量自定义Toast；完整质量指标继续留在候选卡和运行快照中。
+            _configurationEvents.tryEmit(GridConfigurationEvent.LowQualityCalibrationApplied)
+        }
+        quantitationDrafts = quantitationDrafts + (
+            analyteId to current.copy(
+                onsiteState = OnsiteCalibrationState.Applying(
+                    resultSet = reviewing.resultSet,
+                    selectedCandidateId = selectedCandidateId,
+                    saveToLibrary = reviewing.saveToLibrary
+                )
+            )
+        )
+        publishPreview(editingLayout = true)
+
+        viewModelScope.launch {
+            runCatching {
+                var sourceResourceId: String? = null
+                var sourceBundle: AnalysisModelBundle? = null
+                if (reviewing.saveToLibrary) {
+                    val analyteSnapshot = requireNotNull(localizationSession).request.snapshot
+                        .analytes.first { it.analyte.id == analyteId }
+                    val generatedName = generateOnsiteCurveName(analyteSnapshot.analyte.name)
+                    sourceBundle = createAndPublishOnsiteCurve(
+                        snapshot = requireNotNull(localizationSession).request.snapshot,
+                        analyteSnapshot = analyteSnapshot,
+                        resultSet = reviewing.resultSet,
+                        selectedCandidateId = selectedCandidateId,
+                        name = generatedName
+                    )
+                    sourceResourceId = sourceBundle.model.id
+                }
+                var updatedSnapshot = coordinator.applyOnsiteCalibrationSelection(
+                    snapshot = requireNotNull(localizationSession).request.snapshot,
+                    resultSet = reviewing.resultSet,
+                    selectedCandidateId = selectedCandidateId,
+                    runId = session.request.runId,
+                    sourceResourceId = sourceResourceId
+                )
+                val persistedSourceBundle = sourceBundle
+                if (persistedSourceBundle != null) {
+                    updatedSnapshot = updatedSnapshot.copy(
+                        analytes = updatedSnapshot.analytes.map { analyte ->
+                            if (analyte.analyte.id == analyteId) {
+                                // 保存到曲线库会生成新的模型ID，必须同步模板配置、模型数据包
+                                // 和运行定量快照；只替换 analysisModel 会被预检判定为关系错配。
+                                analyte.withPersistedOnsiteCurveResource(persistedSourceBundle)
+                            } else {
+                                analyte
+                            }
+                        }
+                    )
+                }
+                replaceSessionSnapshot(updatedSnapshot)
+                val applied = requireNotNull(
+                    updatedSnapshot.analytes.first { it.analyte.id == analyteId }
+                        .analyteQuantitationSnapshot
+                )
+                val latest = requireNotNull(quantitationDrafts[analyteId])
+                quantitationDrafts = quantitationDrafts + (
+                    analyteId to latest.copy(
+                        onsiteState = OnsiteCalibrationState.Applied(
+                            snapshot = applied,
+                            resultSet = reviewing.resultSet,
+                            selectedCandidateId = selectedCandidateId
+                        ),
+                        appliedSnapshot = applied
+                    )
+                )
+                advanceToNextIncompleteAnalyte(analyteId)
                 rememberManualQuantitationIfNeeded()
+                loadConfigurationResources(requireNotNull(localizationSession))
                 publishPreview(editingLayout = true)
-                _configurationEvents.emit(GridConfigurationEvent.CurveSaved(normalizedName))
-            } catch (_: RuntimeException) {
-                _configurationEvents.emit(GridConfigurationEvent.CurveSaveFailed)
-            } finally {
-                savingReusableResource = false
+            }.onFailure {
+                val latest = quantitationDrafts[analyteId] ?: return@onFailure
+                quantitationDrafts = quantitationDrafts + (
+                    analyteId to latest.copy(
+                        onsiteState = reviewing,
+                        appliedSnapshot = null
+                    )
+                )
+                publishPreview(editingLayout = true)
+                _configurationEvents.emit(
+                    if (reviewing.saveToLibrary) GridConfigurationEvent.CurveSaveFailed
+                    else GridConfigurationEvent.OperationFailed
+                )
             }
         }
+    }
+
+    /** 当前分析物完成后按项目顺序自动跳转到下一项；全部完成时保持当前项供用户复核。 */
+    private fun advanceToNextIncompleteAnalyte(completedAnalyteId: String) {
+        selectedQuantitationAnalyteId = quantitationDrafts.values
+            .sortedByAnalyteOrder(
+                localizationSession?.request?.snapshot?.analytes?.map { it.analyte.id }.orEmpty()
+            )
+            .firstOrNull { !it.isConfigurationComplete() }
+            ?.analyteId
+            ?: completedAnalyteId
+    }
+
+    /** 自动生成不阻塞主流程的曲线名称；用户之后可在曲线库中直接编辑。 */
+    private fun generateOnsiteCurveName(analyteName: String): String {
+        val localTime = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+            .format(Date())
+        return context.getString(R.string.grid_onsite_curve_auto_name, analyteName, localTime)
     }
 
     /**
@@ -780,61 +1072,29 @@ class GridDetectionViewModel @Inject constructor(
                 var snapshot = requireNotNull(localizationSession).request.snapshot
                 if (
                     snapshot.siteAssignments.isEmpty() ||
-                    quantitationDrafts.values.any { !it.configurationConfirmed }
+                    quantitationDrafts.values.any { !it.isConfigurationComplete() }
                 ) {
                     _configurationEvents.emit(GridConfigurationEvent.TemplateSaveIncomplete)
                     return@launch
                 }
 
-                // 模板必须引用可以长期复用的资源。现场拟合预览先保存为分析物专属曲线，
-                // 其余模型则确认数据库中的真实 bundle 仍存在。
-                val preparedAnalytes = mutableListOf<TemplateProjectAnalyteSnapshot>()
-                for (analyteSnapshot in snapshot.analytes) {
+                // 模板保存完整冻结摘要，不再强迫“仅用于本次运行”的现场曲线进入曲线库。
+                // 已有资源仍保留 sourceResourceId 追溯；资源以后被编辑或删除，模板继续执行
+                // 此刻的 AnalysisModelBundle 与 AnalyteQuantitationSnapshot。
+                val preparedAnalytes = snapshot.analytes.map { analyteSnapshot ->
                     val draft = quantitationDrafts[analyteSnapshot.analyte.id]
                         ?: error("定量方案缺失")
-                    val prepared = when (draft.mode) {
-                        GridAnalyteQuantitationMode.ONSITE_AUTO_FIT -> {
-                            val preview = draft.onsitePreview ?: run {
-                                _configurationEvents.emit(
-                                    GridConfigurationEvent.TemplateSaveIncomplete
-                                )
-                                return@launch
-                            }
-                            val curveName = "$normalizedName · ${analyteSnapshot.analyte.name}"
-                            val curveConflict = analysisModelRepository.observeAll().first().any {
-                                model -> model.name.equals(curveName, ignoreCase = true)
-                            }
-                            if (curveConflict) {
-                                _configurationEvents.emit(GridConfigurationEvent.TemplateNameConflict)
-                                return@launch
-                            }
-                            val saved = createAndPublishOnsiteCurve(
-                                snapshot = snapshot,
-                                analyteSnapshot = analyteSnapshot,
-                                preview = preview,
-                                name = curveName
-                            )
-                            analyteSnapshot.withReusableModel(saved)
+                    val applied = draft.appliedSnapshot
+                        ?: analyteSnapshot.analyteQuantitationSnapshot
+                        ?: run {
+                            _configurationEvents.emit(GridConfigurationEvent.TemplateSaveIncomplete)
+                            return@launch
                         }
-
-                        GridAnalyteQuantitationMode.EXISTING_STANDARD_CURVE,
-                        GridAnalyteQuantitationMode.DEEP_LEARNING_MODEL -> {
-                            val persisted = analysisModelRepository.getBundle(
-                                analyteSnapshot.analysisModel.model.id
-                            ) ?: run {
-                                _configurationEvents.emit(
-                                    GridConfigurationEvent.TemplateSaveIncomplete
-                                )
-                                return@launch
-                            }
-                            analyteSnapshot.withReusableModel(persisted)
-                        }
-
-                        GridAnalyteQuantitationMode.SIGNAL_ONLY -> analyteSnapshot.copy(
-                            quantitationMode = GridAnalyteQuantitationMode.SIGNAL_ONLY.code
-                        )
-                    }
-                    preparedAnalytes += prepared
+                    require(applied.analyteId == analyteSnapshot.analyte.id)
+                    analyteSnapshot.copy(
+                        quantitationMode = draft.mode.code,
+                        analyteQuantitationSnapshot = applied
+                    )
                 }
                 snapshot = snapshot.copy(analytes = preparedAnalytes)
 
@@ -864,16 +1124,34 @@ class GridDetectionViewModel @Inject constructor(
                     qcProfileJson = snapshot.template.qcProfileJson,
                     purpose = snapshot.template.purpose ?: "array-quantitation-template"
                 )
+                val quantitationBindings = snapshot.analytes.map { analyte ->
+                    val quantitation = requireNotNull(analyte.analyteQuantitationSnapshot)
+                    val frozen = TemplateQuantitationResourceSnapshot(
+                        quantitation = quantitation,
+                        analysisModel = analyte.analysisModel
+                    )
+                    TemplateQuantitationBinding(
+                        id = "saved-template-quant-${UUID.randomUUID()}",
+                        templateId = temporaryTemplateId,
+                        analyteId = analyte.analyte.id,
+                        method = quantitation.method.name,
+                        sourceResourceId = quantitation.sourceResourceId,
+                        resourceSnapshotJson =
+                            TemplateQuantitationResourceSnapshotCodec.encode(frozen),
+                        contentFingerprint = TemplateQuantitationBindingFingerprint.create(frozen),
+                        processorName = analyte.analysisModel.model.processorName,
+                        processorVersion = quantitation.processorVersion
+                    )
+                }
                 val bundle = ExperimentTemplateBundle(
                     template = template,
                     analyteConfigs = snapshot.analytes.mapIndexed { index, analyte ->
-                        val mode = analyte.resolvedGridQuantitationMode()
+                        val quantitation = requireNotNull(analyte.analyteQuantitationSnapshot)
                         analyte.templateConfig.copy(
                             id = "saved-template-analyte-${UUID.randomUUID()}",
                             templateId = temporaryTemplateId,
-                            analysisModelId = analyte.analysisModel.model.id.takeUnless {
-                                mode == GridAnalyteQuantitationMode.SIGNAL_ONLY
-                            },
+                            // 外键只记录真实资源关联；现场曲线未保存到曲线库时保持 null。
+                            analysisModelId = quantitation.sourceResourceId,
                             displayOrder = index
                         )
                     },
@@ -882,7 +1160,8 @@ class GridDetectionViewModel @Inject constructor(
                             id = "saved-template-site-${UUID.randomUUID()}",
                             templateId = temporaryTemplateId
                         )
-                    }
+                    },
+                    quantitationBindings = quantitationBindings
                 )
                 val created = templateRepository.createDraft(bundle)
                 templateRepository.publish(created.template.id)
@@ -891,10 +1170,11 @@ class GridDetectionViewModel @Inject constructor(
                 // 保存模板是复用动作，不应把用户无提示地切换到模板控制模式。
                 replaceSessionSnapshot(snapshot)
                 quantitationDrafts = snapshot.analytes.associate { analyte ->
-                    val previousConfirmed = quantitationDrafts[analyte.analyte.id]
-                        ?.configurationConfirmed == true
+                    val previous = quantitationDrafts[analyte.analyte.id]
                     analyte.analyte.id to analyte.toQuantitationDraft().copy(
-                        configurationConfirmed = previousConfirmed
+                        onsiteState = previous?.onsiteState ?: OnsiteCalibrationState.Editing,
+                        appliedSnapshot = previous?.appliedSnapshot
+                            ?: analyte.analyteQuantitationSnapshot
                     )
                 }
                 loadConfigurationResources(requireNotNull(localizationSession))
@@ -913,30 +1193,62 @@ class GridDetectionViewModel @Inject constructor(
     private suspend fun createAndPublishOnsiteCurve(
         snapshot: com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot,
         analyteSnapshot: TemplateProjectAnalyteSnapshot,
-        preview: GridOnsiteFitPreview,
+        resultSet: CalibrationResultSet,
+        selectedCandidateId: String,
         name: String
     ): AnalysisModelBundle {
-        val minimum = preview.standardPoints.minOf { point -> point.first }
-        val maximum = preview.standardPoints.maxOf { point -> point.first }
+        val candidate = requireNotNull(resultSet.candidate(selectedCandidateId)) {
+            "选中的现场曲线候选不存在"
+        }
+        val minimum = candidate.standardPoints.minOf { point -> point.first }
+        val maximum = candidate.standardPoints.maxOf { point -> point.first }
+        val contentFingerprint = CalibrationResourceFingerprint.create(
+            analyteId = analyteSnapshot.analyte.id,
+            modalityCode = snapshot.template.detectionMode.orEmpty(),
+            concentrationUnit = analyteSnapshot.templateConfig.concentrationUnit,
+            candidate = candidate,
+            processorVersion = resultSet.processorVersion,
+            engineVersion = resultSet.engineVersion
+        )
+
+        // 同一科学内容直接复用现有资源。名称只是展示属性，不能让重复点击制造多条曲线。
+        analysisModelRepository.getReusableBundleByContentFingerprint(contentFingerprint)
+            ?.let { existing ->
+                if (existing.model.status == AnalysisModelLifecycleStatus.DRAFT.code) {
+                    analysisModelRepository.publish(existing.model.id)
+                }
+                return analysisModelRepository.getBundle(existing.model.id)
+                    ?: error("标准曲线复用失败")
+            }
         val now = Date()
         val model = analyteSnapshot.analysisModel.model.copy(
+            id = UUID.randomUUID().toString(),
             name = name,
             modelType = AnalysisModelType.STANDARD_CURVE.code,
             detectionMode = snapshot.template.detectionMode.orEmpty(),
             inputProtocol = snapshot.template.inputProtocol,
-            primaryFeature = preview.primaryFeature.code,
+            primaryFeature = candidate.primaryFeature.code,
+            processorVersion = resultSet.processorVersion,
             concentrationUnit = analyteSnapshot.templateConfig.concentrationUnit,
             reliableRangeMin = minimum,
             reliableRangeMax = maximum,
             validationMetricsJson = gson.toJson(
                 linkedMapOf(
-                    "R2" to preview.rSquared,
-                    "RMSE" to preview.rmse,
-                    "MAE" to preview.mae,
-                    "ACCEPTED_STANDARD_RATIO" to preview.acceptedStandardRatio,
-                    "ACCEPTED" to preview.accepted
+                    "R2" to candidate.rSquared,
+                    "RMSE" to candidate.rmse,
+                    "NORMALIZED_RMSE" to candidate.normalizedRmse,
+                    "MAE" to candidate.mae,
+                    "BACK_CALCULATED_RMSE_PERCENT" to candidate.backCalculatedRmsePercent,
+                    "ACCEPTED_STANDARD_RATIO" to candidate.acceptedStandardRatio,
+                    "WEIGHTING_CODE" to candidate.weightingCode,
+                    "ACCEPTED" to candidate.accepted,
+                    "INPUT_FINGERPRINT" to resultSet.inputFingerprint,
+                    "CONTENT_FINGERPRINT" to contentFingerprint,
+                    "CALIBRATION_ENGINE_VERSION" to resultSet.engineVersion,
+                    "CALIBRATION_POLICY" to resultSet.policySnapshot
                 )
             ),
+            contentFingerprint = contentFingerprint,
             status = AnalysisModelLifecycleStatus.DRAFT.code,
             createdAt = now,
             updatedAt = now
@@ -946,11 +1258,11 @@ class GridDetectionViewModel @Inject constructor(
                 model = model,
                 standardCurve = StandardCurveDefinition(
                     analysisModelId = model.id,
-                    fittingFunction = preview.function.identifier,
-                    parametersJson = gson.toJson(preview.parameters),
+                    fittingFunction = candidate.function.identifier,
+                    parametersJson = gson.toJson(candidate.parameters),
                     monotonicDirection = "AUTO"
                 ),
-                calibrationPoints = preview.standardPoints.mapIndexed {
+                calibrationPoints = candidate.standardPoints.mapIndexed {
                     index, (concentration, signal) ->
                     CalibrationPoint(
                         id = UUID.randomUUID().toString(),
@@ -989,9 +1301,8 @@ class GridDetectionViewModel @Inject constructor(
     ): TemplateProjectAnalyteSnapshot = copy(
         templateConfig = templateConfig.copy(
             analysisModelId = bundle.model.id,
-            concentrationUnit = bundle.model.concentrationUnit,
-            reliableRangeMin = bundle.model.reliableRangeMin,
-            reliableRangeMax = bundle.model.reliableRangeMax
+            // 选择曲线资源只改变定量工具，不改变用户在新建项目时确定的预期量程。
+            concentrationUnit = bundle.model.concentrationUnit
         ),
         analysisModel = bundle,
         quantitationMode = bundle.toQuantitationMode().code,
@@ -1079,7 +1390,7 @@ class GridDetectionViewModel @Inject constructor(
         if (running) return
         if (
             quantitationDrafts.isEmpty() ||
-            quantitationDrafts.values.any { !it.configurationConfirmed }
+            quantitationDrafts.values.any { !it.isConfigurationComplete() }
         ) {
             // Compose 已经禁用“计算结果”，这里继续保留业务层门控，避免未来入口绕过确认流程。
             _configurationEvents.tryEmit(GridConfigurationEvent.OperationFailed)
@@ -1209,11 +1520,7 @@ class GridDetectionViewModel @Inject constructor(
                         }
                         selectedTemplateId = session.request.snapshot.sourceTemplateId
                         quantitationDrafts = session.request.snapshot.analytes.associate { analyte ->
-                            analyte.analyte.id to analyte.toQuantitationDraft().copy(
-                                // 从已发布模板进入时方案已经完整；直接新建仍要求用户逐项确认。
-                                configurationConfirmed = configurationSource ==
-                                    GridLayoutConfigurationSource.EXPERIMENT_TEMPLATE
-                            )
+                            analyte.analyte.id to analyte.toQuantitationDraft()
                         }
                         selectedQuantitationAnalyteId = session.request.snapshot.analytes
                             .firstOrNull()?.analyte?.id
@@ -1567,9 +1874,64 @@ private fun TemplateProjectAnalyteSnapshot.toQuantitationDraft(): GridAnalyteQua
         selectedFeature = AnalysisPrimaryFeature.fromCode(
             onsiteSelectedFeature ?: analysisModel.model.primaryFeature
         ),
-        selectedFunction = onsiteSelectedFunction?.let(FittingFunction::fromIdentifier)
+        selectedFunction = onsiteSelectedFunction?.let(FittingFunction::fromIdentifier),
+        appliedSnapshot = analyteQuantitationSnapshot,
+        onsiteState = if (
+            mode == GridAnalyteQuantitationMode.ONSITE_AUTO_FIT &&
+            analyteQuantitationSnapshot?.calibration != null
+        ) {
+            // 旧会话恢复时没有完整候选结果集，保留完成快照即可；重新打开现场弹窗会要求
+            // 用户按当前标准孔重新生成候选，不会伪造一个无法审阅的结果集。
+            OnsiteCalibrationState.Editing
+        } else {
+            OnsiteCalibrationState.Editing
+        }
     )
 }
+
+/** 将模板中的资源模型转换为当前项目可执行的分析物快照。 */
+private fun TemplateProjectAnalyteSnapshot.buildResourceQuantitationSnapshot(
+    mode: GridAnalyteQuantitationMode,
+    bundle: AnalysisModelBundle
+): AnalyteQuantitationSnapshot {
+    val method = when (mode) {
+        GridAnalyteQuantitationMode.EXISTING_STANDARD_CURVE ->
+            AnalyteQuantitationMethod.STANDARD_CURVE_RESOURCE
+        GridAnalyteQuantitationMode.DEEP_LEARNING_MODEL ->
+            AnalyteQuantitationMethod.DEEP_LEARNING_MODEL
+        GridAnalyteQuantitationMode.SIGNAL_ONLY -> AnalyteQuantitationMethod.SIGNAL_ONLY
+        GridAnalyteQuantitationMode.ONSITE_AUTO_FIT ->
+            AnalyteQuantitationMethod.ONSITE_CALIBRATION
+    }
+    return AnalyteQuantitationSnapshot(
+        analyteId = analyte.id,
+        method = method,
+        concentrationUnit = bundle.model.concentrationUnit,
+        sourceResourceId = bundle.model.id.takeUnless {
+            mode == GridAnalyteQuantitationMode.SIGNAL_ONLY
+        },
+        processorVersion = bundle.model.processorVersion,
+        inputFingerprint = listOf(
+            analyte.id,
+            method.name,
+            bundle.model.id,
+            bundle.model.version,
+            bundle.model.processorVersion
+        ).joinToString(":")
+    )
+}
+
+/** 模板冻结方法恢复为布局页使用的四种短模式，不依赖实时资源类型推断。 */
+private fun AnalyteQuantitationMethod.toGridQuantitationMode(): GridAnalyteQuantitationMode =
+    when (this) {
+        AnalyteQuantitationMethod.ONSITE_CALIBRATION ->
+            GridAnalyteQuantitationMode.ONSITE_AUTO_FIT
+        AnalyteQuantitationMethod.STANDARD_CURVE_RESOURCE ->
+            GridAnalyteQuantitationMode.EXISTING_STANDARD_CURVE
+        AnalyteQuantitationMethod.DEEP_LEARNING_MODEL ->
+            GridAnalyteQuantitationMode.DEEP_LEARNING_MODEL
+        AnalyteQuantitationMethod.SIGNAL_ONLY -> GridAnalyteQuantitationMode.SIGNAL_ONLY
+    }
 
 /** 按项目分析物顺序稳定展示定量卡片，避免 Map 顺序随页面重建变化。 */
 private fun Collection<GridAnalyteQuantitationDraft>.sortedByAnalyteOrder(

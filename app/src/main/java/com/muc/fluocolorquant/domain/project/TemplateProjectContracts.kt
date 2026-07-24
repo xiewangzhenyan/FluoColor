@@ -14,6 +14,7 @@ import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationSnapshot
 import java.util.Locale
 
 /**
@@ -41,7 +42,7 @@ data class TemplateProjectSnapshot(
 ) {
     companion object {
         /** 当前快照 JSON 的稳定结构版本。 */
-        const val CURRENT_SCHEMA_VERSION: Int = 1
+        const val CURRENT_SCHEMA_VERSION: Int = 2
     }
 }
 
@@ -60,7 +61,14 @@ data class TemplateProjectAnalyteSnapshot(
     /** 现场拟合高级设置；为空时后台自动比较当前模态允许的全部候选信号。 */
     val onsiteSelectedFeature: String? = null,
     /** 现场拟合高级设置；为空时后台自动比较线性、4PL 和 5PL。 */
-    val onsiteSelectedFunction: String? = null
+    val onsiteSelectedFunction: String? = null,
+    /**
+     * 当前分析物已经由用户确认并冻结的定量方案。
+     *
+     * 旧版本快照没有该字段时仍可通过冻结的 analysisModel 安全执行；新现场拟合必须写入
+     * 该快照，最终定量禁止再次根据标准孔重新拟合。
+     */
+    val analyteQuantitationSnapshot: AnalyteQuantitationSnapshot? = null
 )
 
 /**
@@ -184,10 +192,13 @@ object TemplateProjectSnapshotCodec {
     fun decode(json: String): TemplateProjectSnapshot {
         require(json.isNotBlank()) { "模板项目快照不能为空" }
         val snapshot = parse(json, TemplateProjectSnapshot::class.java, "模板项目快照")
-        require(snapshot.schemaVersion == TemplateProjectSnapshot.CURRENT_SCHEMA_VERSION) {
-            "不支持的模板项目快照版本：${snapshot.schemaVersion}"
+        return when (snapshot.schemaVersion) {
+            TemplateProjectSnapshot.CURRENT_SCHEMA_VERSION -> snapshot
+            1 -> snapshot.copy(schemaVersion = TemplateProjectSnapshot.CURRENT_SCHEMA_VERSION)
+            else -> throw IllegalArgumentException(
+                "不支持的模板项目快照版本：${snapshot.schemaVersion}"
+            )
         }
-        return snapshot
     }
 }
 

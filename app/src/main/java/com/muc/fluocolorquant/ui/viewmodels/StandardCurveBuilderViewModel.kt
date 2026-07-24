@@ -21,6 +21,9 @@ import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.data.repository.AnalysisModelRepository
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
 import com.muc.fluocolorquant.data.repository.ConcentrationUnitPreferences
+import com.muc.fluocolorquant.data.repository.CalibrationPolicyPreferences
+import com.muc.fluocolorquant.domain.calibration.CalibrationRankingMetrics
+import com.muc.fluocolorquant.domain.calibration.CalibrationRecommendationEngine
 import com.muc.fluocolorquant.domain.detection.AnalysisFeaturePolicy
 import com.muc.fluocolorquant.utils.math.CalibrationDataParser
 import com.muc.fluocolorquant.utils.math.CalibrationTableParseResult
@@ -28,7 +31,6 @@ import com.muc.fluocolorquant.utils.math.FittingEngine
 import com.muc.fluocolorquant.utils.math.FittingResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Date
-import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -141,6 +143,7 @@ class StandardCurveBuilderViewModel @Inject constructor(
     private val analysisModelRepository: AnalysisModelRepository,
     private val analyteRepository: AnalyteRepository,
     private val concentrationUnitPreferences: ConcentrationUnitPreferences,
+    private val calibrationPolicyPreferences: CalibrationPolicyPreferences,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val gson = Gson()
@@ -402,22 +405,61 @@ class StandardCurveBuilderViewModel @Inject constructor(
         val sources = buildFitSources(state) ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isFitting = true, candidates = emptyList()) }
-            val candidates = sources.mapNotNull { source ->
-                val result = runCatching {
-                    state.selectedFunction?.let { function ->
-                        FittingEngine.fitSingle(source.points, function)
-                    } ?: FittingEngine.fit(source.points)
-                }.getOrNull()
-                result?.takeIf(FittingResult::isSuccess)?.let {
+            // 一次拟合开始后冻结系统策略；页面后续修改设置不会重排当前结果。
+            val policy = calibrationPolicyPreferences.policyFlow.first()
+            val generated = sources.flatMap { source ->
+                val uniqueLevels = source.points.map { it.first }.distinct().size
+                val requestedFunction = state.selectedFunction
+                val results = if (requestedFunction != null &&
+                    requestedFunction !in FittingEngine.automaticCalibrationFunctions()
+                ) {
+                    listOfNotNull(
+                        runCatching {
+                            FittingEngine.fitSingle(source.points, requestedFunction)
+                        }.getOrNull()?.takeIf(FittingResult::isSuccess)
+                    )
+                } else {
+                    val requested = requestedFunction?.let(::setOf) ?: policy.allowedFunctions
+                    val allowed = requested.filterTo(linkedSetOf()) { function ->
+                        when (function) {
+                            FittingFunction.RODBARD ->
+                                uniqueLevels >= policy.minimumFourParameterLevels
+                            FittingFunction.LOGISTIC ->
+                                uniqueLevels >= policy.minimumFiveParameterLevels
+                            else -> true
+                        }
+                    }
+                    FittingEngine.fitCalibrationCandidates(source.points, allowed)
+                        .filter { result ->
+                            (result.metrics["Weighting Scheme"]?.toInt() ?: 0) in
+                                policy.enabledWeightingCodes
+                        }
+                }
+                results.map { result ->
+                    val weighting = result.metrics["Weighting Scheme"]?.toInt() ?: 0
                     StandardCurveFitCandidate(
-                        id = source.id,
+                        id = "${source.id}:${result.function.identifier}:$weighting",
                         feature = source.feature,
                         sourceLabel = source.label,
                         points = source.points,
-                        result = it
+                        result = result
                     )
                 }
-            }.sortedWith(candidateComparator)
+            }
+
+            // 普通页面每个函数只保留最佳“信号+权重”组合，最多展示线性、4PL、5PL三项。
+            val bestPerFunction = generated.groupBy { it.result.function }.mapNotNull { (_, group) ->
+                CalibrationRecommendationEngine.rankByMetrics(
+                    candidates = group,
+                    policy = policy,
+                    metricsOf = ::rankingMetrics
+                ).firstOrNull()
+            }
+            val candidates = CalibrationRecommendationEngine.rankByMetrics(
+                candidates = bestPerFunction,
+                policy = policy,
+                metricsOf = ::rankingMetrics
+            )
             _uiState.update {
                 it.copy(
                     candidates = candidates,
@@ -705,15 +747,27 @@ class StandardCurveBuilderViewModel @Inject constructor(
             FittingFunction.LOGISTIC
         )
 
-        /** 多列信号先比较反算验收，再比较误差和 R²，绝不只凭 R² 选像素类型。 */
-        private val candidateComparator = compareByDescending<StandardCurveFitCandidate> {
-            it.result.metrics["ICH M10 Accepted"] ?: 0.0
-        }.thenByDescending {
-            it.result.metrics["Accepted Standard Ratio"] ?: 0.0
-        }.thenBy {
-            it.result.metrics["Back-calculated RMSE (%)"] ?: Double.POSITIVE_INFINITY
-        }.thenByDescending {
-            it.result.metrics["R²"] ?: it.result.rSquared
-        }.thenBy { it.sourceLabel.lowercase(Locale.ROOT) }
+        /** 将旧 FittingResult 适配到全应用统一推荐引擎。 */
+        private fun rankingMetrics(candidate: StandardCurveFitCandidate): CalibrationRankingMetrics {
+            val result = candidate.result
+            val signalMinimum = candidate.points.minOfOrNull { it.second }
+            val signalMaximum = candidate.points.maxOfOrNull { it.second }
+            val signalRange = if (signalMinimum != null && signalMaximum != null) {
+                kotlin.math.abs(signalMaximum - signalMinimum)
+            } else {
+                0.0
+            }
+            val rmse = result.metrics["RMSE"]
+            return CalibrationRankingMetrics(
+                function = result.function,
+                rSquared = result.rSquared,
+                accepted = (result.metrics["ICH M10 Accepted"] ?: 0.0) >= 1.0,
+                backCalculatedRmsePercent = result.metrics["Back-calculated RMSE (%)"],
+                acceptedStandardRatio = result.metrics["Accepted Standard Ratio"],
+                normalizedRmse = rmse?.takeIf { signalRange > 1e-12 }?.div(signalRange),
+                mae = result.metrics["MAE"],
+                weightingCode = result.metrics["Weighting Scheme"]?.toInt() ?: 0
+            )
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.muc.fluocolorquant.ui.screens.result.array
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -25,6 +26,7 @@ import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
 import com.muc.fluocolorquant.ui.theme.FluoColorTheme
 import com.muc.fluocolorquant.ui.viewmodels.ArrayResultUiState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -73,7 +75,7 @@ class ArrayHeatmapTest {
     }
 
     @Test
-    fun `十五乘十五阵列提供缩放平移容器并保持初始完整显示`() {
+    fun `十五乘十五阵列点击缩放按钮会立即放大并可恢复完整显示`() {
         val model = buildAnalyteHeatmapModel(
             rows = 15,
             columns = 15,
@@ -89,8 +91,117 @@ class ArrayHeatmapTest {
 
         composeRule.onNodeWithTag(ARRAY_HEATMAP_TRANSFORM_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag(ARRAY_HEATMAP_ZOOM_TOGGLE_TAG).assertIsDisplayed()
+        composeRule.onAllNodes(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.TestTag,
+                ARRAY_HEATMAP_ZOOMED_CONTENT_TAG
+            ),
+            useUnmergedTree = true
+        ).assertCountEquals(0)
         composeRule.onNodeWithTag("${ARRAY_HEATMAP_CELL_TAG_PREFIX}224", useUnmergedTree = true)
             .assertIsDisplayed()
+
+        composeRule.onNodeWithTag(ARRAY_HEATMAP_ZOOM_TOGGLE_TAG).performClick()
+        composeRule.onNodeWithTag(ARRAY_HEATMAP_ZOOMED_CONTENT_TAG).assertIsDisplayed()
+
+        composeRule.onNodeWithTag(ARRAY_HEATMAP_ZOOM_TOGGLE_TAG).performClick()
+        composeRule.onAllNodes(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.TestTag,
+                ARRAY_HEATMAP_ZOOMED_CONTENT_TAG
+            ),
+            useUnmergedTree = true
+        ).assertCountEquals(0)
+    }
+
+    @Test
+    fun `范围状态使用弱标记且不丢失浓度端点颜色`() {
+        val analyte = analyte().copy(
+            reliableRangeMax = 100.0,
+            projectRangeMax = 100.0
+        )
+        val model = buildAnalyteHeatmapModel(
+            rows = 15,
+            columns = 15,
+            analyte = analyte,
+            inputs = List(15 * 15) { siteIndex ->
+                when (siteIndex) {
+                    0 -> heatmapInput(
+                        siteIndex = siteIndex,
+                        concentration = 20.0,
+                        primaryFeature = 20.0,
+                        rangeStatus = "ABOVE_RANGE",
+                        quantificationStatus = "EXTRAPOLATED"
+                    )
+                    1 -> heatmapInput(
+                        siteIndex = siteIndex,
+                        concentration = null,
+                        primaryFeature = 1.0,
+                        rangeStatus = "BELOW_PROJECT_RANGE",
+                        quantificationStatus = "OUTSIDE_PROJECT_RANGE"
+                    )
+                    2 -> heatmapInput(
+                        siteIndex = siteIndex,
+                        concentration = null,
+                        primaryFeature = 200.0,
+                        rangeStatus = "ABOVE_PROJECT_RANGE",
+                        quantificationStatus = "OUTSIDE_PROJECT_RANGE"
+                    )
+                    else -> {
+                        val concentration = siteIndex.toDouble() / (15 * 15 - 1) * 100.0
+                        heatmapInput(
+                            siteIndex = siteIndex,
+                            concentration = concentration,
+                            primaryFeature = concentration,
+                            rangeStatus = "WITHIN_RANGE",
+                            quantificationStatus = "QUANTIFIED"
+                        )
+                    }
+                }
+            }
+        )
+
+        assertEquals(0.0f, model.cells[1].normalizedValue)
+        assertEquals(1.0f, model.cells[2].normalizedValue)
+        assertFalse(model.cells[1].qc.failure)
+        assertFalse(model.cells[2].qc.failure)
+
+        composeRule.setContent {
+            FluoColorTheme {
+                Column {
+                    ArrayHeatmap(model = model, onSiteClick = {})
+                    // 将真实结果页图例与热力图一起渲染，直接验证三类范围状态的同排布局。
+                    ArrayHeatmapQcLegend(model)
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(
+            "$ARRAY_HEATMAP_EXTRAPOLATED_MARKER_TAG_PREFIX${0}",
+            useUnmergedTree = true
+        ).assertIsDisplayed()
+        composeRule.onNodeWithTag(
+            "$ARRAY_HEATMAP_BELOW_RANGE_MARKER_TAG_PREFIX${1}",
+            useUnmergedTree = true
+        ).assertIsDisplayed()
+        composeRule.onNodeWithTag(
+            "$ARRAY_HEATMAP_ABOVE_RANGE_MARKER_TAG_PREFIX${2}",
+            useUnmergedTree = true
+        ).assertIsDisplayed()
+
+        // 三类范围状态必须保持在同一行，防止短文案修改后布局再次回退为两行。
+        val rangeLegendTopPositions = listOf(
+            ArrayHeatmapLegendKindForTest.EXTRAPOLATED,
+            ArrayHeatmapLegendKindForTest.BELOW_PROJECT_RANGE,
+            ArrayHeatmapLegendKindForTest.ABOVE_PROJECT_RANGE
+        ).map { kind ->
+            composeRule.onNodeWithTag(
+                "$ARRAY_HEATMAP_LEGEND_TAG_PREFIX${kind.name}",
+                useUnmergedTree = true
+            ).fetchSemanticsNode().boundsInRoot.top
+        }
+        assertEquals(rangeLegendTopPositions[0], rangeLegendTopPositions[1], 1f)
+        assertEquals(rangeLegendTopPositions[0], rangeLegendTopPositions[2], 1f)
     }
 
     @Test
@@ -106,9 +217,8 @@ class ArrayHeatmapTest {
             }
         }
 
-        composeRule.onNodeWithTag(ARRAY_RESULT_ANALYTE_TAB_TAG).performClick()
         composeRule.onNodeWithTag("${ARRAY_HEATMAP_CARD_TAG_PREFIX}analyte-1").assertIsDisplayed()
-        composeRule.onNodeWithTag("${ARRAY_ANALYTE_CHIP_TAG_PREFIX}analyte-2").performClick()
+        composeRule.onNodeWithTag("array_overview_analyte_chip_analyte-2").performClick()
             .assertIsSelected()
         composeRule.onNodeWithTag("${ARRAY_HEATMAP_CARD_TAG_PREFIX}analyte-2").assertIsDisplayed()
     }
@@ -131,12 +241,46 @@ class ArrayHeatmapTest {
         )
     }
 
+    /** 与生产图例枚举名称保持一致，测试无需暴露页面内部的私有实现类型。 */
+    private enum class ArrayHeatmapLegendKindForTest {
+        EXTRAPOLATED,
+        BELOW_PROJECT_RANGE,
+        ABOVE_PROJECT_RANGE
+    }
+
     private fun model(rows: Int, columns: Int): ArrayHeatmapModel {
         return buildAnalyteHeatmapModel(
             rows = rows,
             columns = columns,
             analyte = analyte(),
             inputs = emptyList()
+        )
+    }
+
+    /** 构造单个冻结位点输入，专门验证范围状态不会改变浓度归一化结果。 */
+    private fun heatmapInput(
+        siteIndex: Int,
+        concentration: Double?,
+        primaryFeature: Double?,
+        rangeStatus: String,
+        quantificationStatus: String
+    ): ArrayHeatmapValueInput {
+        val columns = 15
+        return ArrayHeatmapValueInput(
+            siteIndex = siteIndex,
+            rowIndex = siteIndex / columns,
+            columnIndex = siteIndex % columns,
+            siteKey = "R${(siteIndex / columns + 1).toString().padStart(2, '0')}C${(siteIndex % columns + 1).toString().padStart(2, '0')}",
+            enabled = true,
+            roleCode = "SAMPLE",
+            concentrationValue = concentration,
+            primaryFeatureValue = primaryFeature,
+            reliableRangeStatus = rangeStatus,
+            signalDetectable = true,
+            qualityReliable = true,
+            geometryFlags = emptySet(),
+            photometryFlags = emptySet(),
+            quantificationStatus = quantificationStatus
         )
     }
 

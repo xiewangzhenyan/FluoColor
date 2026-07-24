@@ -44,6 +44,11 @@ class ArrayResultExporterTest {
         assertTrue(rawSignalColumn >= 0)
         assertEquals("{\"note\":\"a,b\\\"c\"}", rows[1][rawSignalColumn])
         assertEquals("{\"note\":\"line1\nline2\"}", rows[2][rawSignalColumn])
+        assertEquals("0.0", rows[1][rows.first().indexOf("project_range_min")])
+        assertEquals("100.0", rows[1][rows.first().indexOf("project_range_max")])
+        assertEquals("10.0", rows[1][rows.first().indexOf("calibration_range_min")])
+        assertEquals("90.0", rows[1][rows.first().indexOf("calibration_range_max")])
+        assertEquals("VALID", rows[1][rows.first().indexOf("measurement_quality_level")])
     }
 
     @Test
@@ -120,7 +125,11 @@ class ArrayResultExporterTest {
             modelVersion = 2,
             primaryFeature = "DELTA_E_2000",
             processorName = "colorimetric-photometry",
-            processorVersion = "v1"
+            processorVersion = "v1",
+            projectRangeMin = 0.0,
+            projectRangeMax = 100.0,
+            calibrationRangeMin = 10.0,
+            calibrationRangeMax = 90.0
         )
         val first = measurement(
             id = 1L,

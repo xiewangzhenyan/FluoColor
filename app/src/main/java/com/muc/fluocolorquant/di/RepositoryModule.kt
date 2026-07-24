@@ -10,6 +10,8 @@ import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepositoryImpl
 import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.data.repository.ConcentrationUnitPreferences
+import com.muc.fluocolorquant.data.repository.CalibrationPolicyPreferences
+import com.muc.fluocolorquant.data.repository.CalibrationSettingsRepository
 import com.muc.fluocolorquant.data.repository.UserRepository
 import com.muc.fluocolorquant.data.repository.WellResultRepository
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
@@ -71,6 +73,13 @@ abstract class RepositoryModule {
     abstract fun provideConcentrationUnitPreferences(
         settingsRepository: SettingsRepository
     ): ConcentrationUnitPreferences
+
+    /** 曲线拟合默认策略使用独立 DataStore，检测入口只读取不可变策略快照。 */
+    @Binds
+    @Singleton
+    abstract fun provideCalibrationPolicyPreferences(
+        repository: CalibrationSettingsRepository
+    ): CalibrationPolicyPreferences
     
     /**
      * 提供分析物仓库实现

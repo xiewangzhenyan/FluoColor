@@ -529,6 +529,9 @@ class ExperimentTemplateWizardViewModelTest {
         val models = MutableStateFlow<List<AnalysisModel>>(emptyList())
         override fun observeAll(): Flow<List<AnalysisModel>> = models
         override suspend fun getBundle(id: String): AnalysisModelBundle? = null
+        override suspend fun getReusableBundleByContentFingerprint(
+            fingerprint: String
+        ): AnalysisModelBundle? = null
         override suspend fun createDraft(bundle: AnalysisModelBundle) = bundle
         override suspend fun updateDraft(bundle: AnalysisModelBundle) = Unit
         override suspend fun replace(bundle: AnalysisModelBundle) = Unit

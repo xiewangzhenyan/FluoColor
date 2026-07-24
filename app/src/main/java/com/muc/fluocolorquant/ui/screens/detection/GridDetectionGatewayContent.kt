@@ -61,6 +61,7 @@ import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
+import com.muc.fluocolorquant.domain.detection.isConfigurationComplete
 import com.muc.fluocolorquant.domain.detection.GridDetectionBlockReason
 import com.muc.fluocolorquant.domain.detection.GridDetectionStage
 import com.muc.fluocolorquant.ui.components.LocalToastManager
@@ -99,8 +100,10 @@ fun GridDetectionGatewayContent(
         { _, _, _ -> },
     onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit = { _, _ -> },
     onPreviewOnsiteFit: (String) -> Unit = {},
-    onConfirmQuantitationAnalyte: (String) -> Unit = {},
-    onSaveOnsiteCurve: (String, String) -> Unit = { _, _ -> },
+    onSelectOnsiteCandidate: (String, String) -> Unit = { _, _ -> },
+    onSetOnsiteSaveToLibrary: (String, Boolean) -> Unit = { _, _ -> },
+    onEditOnsiteCalibration: (String) -> Unit = {},
+    onConfirmQuantitationAnalyte: (String, Boolean) -> Unit = { _, _ -> },
     onSaveTemplate: (String) -> Unit = {}
 ) {
     Scaffold(
@@ -152,8 +155,10 @@ fun GridDetectionGatewayContent(
                     onUpdateOnsiteAdvanced = onUpdateOnsiteAdvanced,
                     onUpdateStandardConcentrations = onUpdateStandardConcentrations,
                     onPreviewOnsiteFit = onPreviewOnsiteFit,
+                    onSelectOnsiteCandidate = onSelectOnsiteCandidate,
+                    onSetOnsiteSaveToLibrary = onSetOnsiteSaveToLibrary,
+                    onEditOnsiteCalibration = onEditOnsiteCalibration,
                     onConfirmQuantitationAnalyte = onConfirmQuantitationAnalyte,
-                    onSaveOnsiteCurve = onSaveOnsiteCurve,
                     onSaveTemplate = onSaveTemplate
                 )
 
@@ -205,8 +210,10 @@ private fun LocalizationWorkflow(
     onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit,
     onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit,
     onPreviewOnsiteFit: (String) -> Unit,
-    onConfirmQuantitationAnalyte: (String) -> Unit,
-    onSaveOnsiteCurve: (String, String) -> Unit,
+    onSelectOnsiteCandidate: (String, String) -> Unit,
+    onSetOnsiteSaveToLibrary: (String, Boolean) -> Unit,
+    onEditOnsiteCalibration: (String) -> Unit,
+    onConfirmQuantitationAnalyte: (String, Boolean) -> Unit,
     onSaveTemplate: (String) -> Unit
 ) {
     val preview = state.preview
@@ -232,8 +239,10 @@ private fun LocalizationWorkflow(
             onUpdateOnsiteAdvanced = onUpdateOnsiteAdvanced,
             onUpdateStandardConcentrations = onUpdateStandardConcentrations,
             onPreviewOnsiteFit = onPreviewOnsiteFit,
+            onSelectOnsiteCandidate = onSelectOnsiteCandidate,
+            onSetOnsiteSaveToLibrary = onSetOnsiteSaveToLibrary,
+            onEditOnsiteCalibration = onEditOnsiteCalibration,
             onConfirmQuantitationAnalyte = onConfirmQuantitationAnalyte,
-            onSaveOnsiteCurve = onSaveOnsiteCurve,
             onSaveTemplate = onSaveTemplate
         )
     } else {
@@ -367,8 +376,10 @@ private fun GridLayoutEditor(
     onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit,
     onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit,
     onPreviewOnsiteFit: (String) -> Unit,
-    onConfirmQuantitationAnalyte: (String) -> Unit,
-    onSaveOnsiteCurve: (String, String) -> Unit,
+    onSelectOnsiteCandidate: (String, String) -> Unit,
+    onSetOnsiteSaveToLibrary: (String, Boolean) -> Unit,
+    onEditOnsiteCalibration: (String) -> Unit,
+    onConfirmQuantitationAnalyte: (String, Boolean) -> Unit,
     onSaveTemplate: (String) -> Unit
 ) {
     var selectedAnalyteId by rememberSaveable(preview.runId) {
@@ -527,8 +538,10 @@ private fun GridLayoutEditor(
             onUpdateOnsiteAdvanced = onUpdateOnsiteAdvanced,
             onUpdateStandardConcentrations = onUpdateStandardConcentrations,
             onPreviewOnsiteFit = onPreviewOnsiteFit,
+            onSelectOnsiteCandidate = onSelectOnsiteCandidate,
+            onSetOnsiteSaveToLibrary = onSetOnsiteSaveToLibrary,
+            onEditOnsiteCalibration = onEditOnsiteCalibration,
             onConfirmQuantitationAnalyte = onConfirmQuantitationAnalyte,
-            onSaveOnsiteCurve = onSaveOnsiteCurve,
             onSaveTemplate = onSaveTemplate
         )
 
@@ -556,7 +569,7 @@ private fun GridLocalizationPreview.hasCompleteQuantitationConfiguration(
 ): Boolean {
     return assignments.isNotEmpty() &&
         quantitationDrafts.isNotEmpty() &&
-        quantitationDrafts.all { draft -> draft.configurationConfirmed }
+        quantitationDrafts.all { draft -> draft.isConfigurationComplete() }
 }
 
 /** 把行列草稿转换为虚拟布局板使用的行优先索引，避免各调用方重复坐标公式。 */

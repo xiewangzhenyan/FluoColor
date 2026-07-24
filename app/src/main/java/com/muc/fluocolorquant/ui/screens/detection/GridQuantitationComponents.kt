@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -52,6 +53,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -69,6 +71,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -79,13 +82,21 @@ import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
+import com.muc.fluocolorquant.domain.calibration.CalibrationCandidate
+import com.muc.fluocolorquant.domain.calibration.CalibrationCandidateStatus
+import com.muc.fluocolorquant.domain.calibration.CalibrationApplicationDecision
+import com.muc.fluocolorquant.domain.calibration.CalibrationFailureReason
+import com.muc.fluocolorquant.domain.calibration.CalibrationFunctionResult
+import com.muc.fluocolorquant.domain.calibration.CalibrationResultSet
+import com.muc.fluocolorquant.domain.calibration.OnsiteCalibrationState
+import com.muc.fluocolorquant.domain.calibration.applicationDecision
 import com.muc.fluocolorquant.domain.detection.AnalysisFeaturePolicy
 import com.muc.fluocolorquant.domain.detection.GridAnalysisModelOption
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationDraft
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
 import com.muc.fluocolorquant.domain.detection.GridExperimentTemplateOption
 import com.muc.fluocolorquant.domain.detection.GridLayoutConfigurationSource
-import com.muc.fluocolorquant.domain.detection.GridOnsiteFitPreview
+import com.muc.fluocolorquant.domain.detection.isConfigurationComplete
 import com.muc.fluocolorquant.domain.detection.isReadyForConfirmation
 import com.muc.fluocolorquant.ui.components.LatexAlignment
 import com.muc.fluocolorquant.ui.components.LatexView
@@ -114,12 +125,13 @@ internal fun GridExperimentConfigurationSection(
     onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit,
     onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit = { _, _ -> },
     onPreviewOnsiteFit: (String) -> Unit,
-    onConfirmQuantitationAnalyte: (String) -> Unit = {},
-    onSaveOnsiteCurve: (String, String) -> Unit,
+    onSelectOnsiteCandidate: (String, String) -> Unit = { _, _ -> },
+    onSetOnsiteSaveToLibrary: (String, Boolean) -> Unit = { _, _ -> },
+    onEditOnsiteCalibration: (String) -> Unit = {},
+    onConfirmQuantitationAnalyte: (String, Boolean) -> Unit = { _, _ -> },
     onSaveTemplate: (String) -> Unit
 ) {
     var showTemplateDialog by rememberSaveable(preview.runId) { mutableStateOf(false) }
-    var curveNameAnalyteId by rememberSaveable(preview.runId) { mutableStateOf<String?>(null) }
     var showTemplateNameDialog by rememberSaveable(preview.runId) { mutableStateOf(false) }
     var onsiteEditorAnalyteId by rememberSaveable(preview.runId) { mutableStateOf<String?>(null) }
     var modeInfo by rememberSaveable(preview.runId) {
@@ -128,7 +140,7 @@ internal fun GridExperimentConfigurationSection(
     val selectedTemplate = preview.availableTemplates.firstOrNull {
         it.id == preview.selectedTemplateId
     }
-    val completedCount = preview.quantitationDrafts.count { it.configurationConfirmed }
+    val completedCount = preview.quantitationDrafts.count { it.isConfigurationComplete() }
     val allCompleted = preview.quantitationDrafts.isNotEmpty() &&
         completedCount == preview.quantitationDrafts.size
     val selectedAnalyteId = preview.selectedQuantitationAnalyteId
@@ -240,8 +252,7 @@ internal fun GridExperimentConfigurationSection(
                             standardCount = standards.size,
                             concentrationLevelCount = levels.size,
                             draft = selectedDraft,
-                            onOpen = { onsiteEditorAnalyteId = selectedAnalyte.id },
-                            onSaveCurve = { curveNameAnalyteId = selectedAnalyte.id }
+                            onOpen = { onsiteEditorAnalyteId = selectedAnalyte.id }
                         )
                     }
 
@@ -263,30 +274,37 @@ internal fun GridExperimentConfigurationSection(
                     GridAnalyteQuantitationMode.SIGNAL_ONLY -> Unit
                 }
 
-                Button(
-                    onClick = { onConfirmQuantitationAnalyte(selectedAnalyte.id) },
-                    enabled = selectedDraft.isReadyForConfirmation() &&
-                        !selectedDraft.configurationConfirmed,
-                    modifier = Modifier.fillMaxWidth()
+                if (
+                    selectedDraft.mode != GridAnalyteQuantitationMode.ONSITE_AUTO_FIT ||
+                    selectedDraft.isConfigurationComplete()
                 ) {
-                    Icon(
-                        imageVector = if (selectedDraft.configurationConfirmed) {
-                            Icons.Default.CheckCircle
-                        } else {
-                            Icons.AutoMirrored.Filled.ArrowForward
+                    Button(
+                        onClick = {
+                            onConfirmQuantitationAnalyte(selectedAnalyte.id, false)
                         },
-                        contentDescription = null
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        stringResource(
-                            if (selectedDraft.configurationConfirmed) {
-                                R.string.grid_quant_current_completed
+                        enabled = selectedDraft.isReadyForConfirmation() &&
+                            !selectedDraft.isConfigurationComplete(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = if (selectedDraft.isConfigurationComplete()) {
+                                Icons.Default.CheckCircle
                             } else {
-                                R.string.grid_quant_complete_current
-                            }
+                                Icons.AutoMirrored.Filled.ArrowForward
+                            },
+                            contentDescription = null
                         )
-                    )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(
+                                if (selectedDraft.isConfigurationComplete()) {
+                                    R.string.grid_quant_current_completed
+                                } else {
+                                    R.string.grid_quant_complete_current
+                                }
+                            )
+                        )
+                    }
                 }
             }
 
@@ -333,8 +351,15 @@ internal fun GridExperimentConfigurationSection(
                     onUpdateStandardConcentrations(analyteId, values)
                 },
                 onPreviewFit = { onPreviewOnsiteFit(analyteId) },
-                onApply = {
-                    onConfirmQuantitationAnalyte(analyteId)
+                onSelectCandidate = { candidateId ->
+                    onSelectOnsiteCandidate(analyteId, candidateId)
+                },
+                onSetSaveToLibrary = { save ->
+                    onSetOnsiteSaveToLibrary(analyteId, save)
+                },
+                onBackToEditing = { onEditOnsiteCalibration(analyteId) },
+                onApply = { lowQualityConfirmed ->
+                    onConfirmQuantitationAnalyte(analyteId, lowQualityConfirmed)
                     onsiteEditorAnalyteId = null
                 },
                 onDismiss = { onsiteEditorAnalyteId = null }
@@ -351,17 +376,6 @@ internal fun GridExperimentConfigurationSection(
                     Text(stringResource(R.string.confirm))
                 }
             }
-        )
-    }
-    curveNameAnalyteId?.let { analyteId ->
-        ResourceNameDialog(
-            title = stringResource(R.string.grid_save_curve_dialog_title),
-            label = stringResource(R.string.grid_save_curve_name_label),
-            onConfirm = { name ->
-                curveNameAnalyteId = null
-                onSaveOnsiteCurve(analyteId, name)
-            },
-            onDismiss = { curveNameAnalyteId = null }
         )
     }
     if (showTemplateNameDialog) {
@@ -550,7 +564,7 @@ private fun AnalyteConfigurationDropdown(
                             Text(
                                 text = stringResource(
                                     when {
-                                        draft?.configurationConfirmed == true ->
+                                        draft?.isConfigurationComplete() == true ->
                                             R.string.grid_quant_status_completed
                                         analyte.id == selectedAnalyteId ->
                                             R.string.grid_quant_status_editing
@@ -564,13 +578,13 @@ private fun AnalyteConfigurationDropdown(
                     },
                     leadingIcon = {
                         Icon(
-                            imageVector = if (draft?.configurationConfirmed == true) {
+                            imageVector = if (draft?.isConfigurationComplete() == true) {
                                 Icons.Default.CheckCircle
                             } else {
                                 Icons.Default.Science
                             },
                             contentDescription = null,
-                            tint = if (draft?.configurationConfirmed == true) {
+                            tint = if (draft?.isConfigurationComplete() == true) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -670,8 +684,7 @@ private fun CompactOnsiteFitControl(
     standardCount: Int,
     concentrationLevelCount: Int,
     draft: GridAnalyteQuantitationDraft,
-    onOpen: () -> Unit,
-    onSaveCurve: () -> Unit
+    onOpen: () -> Unit
 ) {
     Surface(
         shape = RoundedCornerShape(14.dp),
@@ -697,7 +710,10 @@ private fun CompactOnsiteFitControl(
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelLarge
                 )
-                draft.onsitePreview?.let {
+                if (
+                    draft.onsiteState is OnsiteCalibrationState.Reviewing ||
+                    draft.onsiteState is OnsiteCalibrationState.Applied
+                ) {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
@@ -710,17 +726,13 @@ private fun CompactOnsiteFitControl(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     stringResource(
-                        if (draft.onsitePreview == null) R.string.grid_quant_enter_standards
-                        else R.string.grid_quant_review_fit
+                        if (
+                            draft.onsiteState is OnsiteCalibrationState.Reviewing ||
+                            draft.onsiteState is OnsiteCalibrationState.Applied
+                        ) R.string.grid_quant_review_fit
+                        else R.string.grid_quant_enter_standards
                     )
                 )
-            }
-            if (draft.onsitePreview != null) {
-                TextButton(onClick = onSaveCurve, modifier = Modifier.align(Alignment.End)) {
-                    Icon(Icons.Default.Dataset, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.grid_save_curve_to_library))
-                }
             }
         }
     }
@@ -835,7 +847,10 @@ private fun OnsiteCalibrationDialog(
     onUpdateAdvanced: (AnalysisPrimaryFeature?, FittingFunction?) -> Unit,
     onUpdateConcentrations: (Map<Int, Double?>) -> Unit,
     onPreviewFit: () -> Unit,
-    onApply: () -> Unit,
+    onSelectCandidate: (String) -> Unit,
+    onSetSaveToLibrary: (Boolean) -> Unit,
+    onBackToEditing: () -> Unit,
+    onApply: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     val standards = assignments.entries
@@ -873,6 +888,26 @@ private fun OnsiteCalibrationDialog(
     }
     val validConcentrations = parsedValues.values.filterNotNull()
     val concentrationLevelCount = validConcentrations.distinct().size
+    val fittingInProgress = draft.onsiteState is OnsiteCalibrationState.Fitting
+    val resultSet = when (val state = draft.onsiteState) {
+        is OnsiteCalibrationState.Reviewing -> state.resultSet
+        is OnsiteCalibrationState.Applying -> state.resultSet
+        is OnsiteCalibrationState.Applied -> state.resultSet
+        else -> null
+    }
+    val selectedCandidateId = when (val state = draft.onsiteState) {
+        is OnsiteCalibrationState.Reviewing -> state.selectedCandidateId
+        is OnsiteCalibrationState.Applying -> state.selectedCandidateId
+        is OnsiteCalibrationState.Applied -> state.selectedCandidateId
+        else -> null
+    }
+    val saveToLibrary = when (val state = draft.onsiteState) {
+        is OnsiteCalibrationState.Reviewing -> state.saveToLibrary
+        is OnsiteCalibrationState.Applying -> state.saveToLibrary
+        is OnsiteCalibrationState.Applied -> state.snapshot.sourceResourceId != null
+        else -> false
+    }
+    val applying = draft.onsiteState is OnsiteCalibrationState.Applying
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -914,6 +949,19 @@ private fun OnsiteCalibrationDialog(
                     }
                 }
 
+                if (resultSet != null) {
+                    OnsiteCalibrationResultStage(
+                        resultSet = resultSet,
+                        selectedCandidateId = selectedCandidateId,
+                        saveToLibrary = saveToLibrary,
+                        applying = applying,
+                        alreadyApplied = draft.onsiteState is OnsiteCalibrationState.Applied,
+                        onSelectCandidate = onSelectCandidate,
+                        onSetSaveToLibrary = onSetSaveToLibrary,
+                        onBackToEditing = onBackToEditing,
+                        onApply = onApply
+                    )
+                } else {
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
@@ -1073,8 +1121,19 @@ private fun OnsiteCalibrationDialog(
                         }
                     }
 
-                    draft.onsitePreview?.let { fitPreview ->
-                        item { OnsiteFitPreviewCard(fitPreview) }
+                    if (draft.onsiteState is OnsiteCalibrationState.TechnicalFailure) {
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.errorContainer
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.grid_quant_fit_technical_failure),
+                                    modifier = Modifier.padding(14.dp),
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -1092,11 +1151,11 @@ private fun OnsiteCalibrationDialog(
                             onUpdateConcentrations(parsedValues)
                             onPreviewFit()
                         },
-                        enabled = !draft.fittingInProgress && invalidCount == 0 &&
+                        enabled = !fittingInProgress && invalidCount == 0 &&
                             concentrationLevelCount >= 2,
                         modifier = Modifier.weight(1f)
                     ) {
-                        if (draft.fittingInProgress) {
+                        if (fittingInProgress) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp
@@ -1108,18 +1167,12 @@ private fun OnsiteCalibrationDialog(
                         }
                         Text(
                             stringResource(
-                                if (draft.fittingInProgress) R.string.grid_quant_fitting
+                                if (fittingInProgress) R.string.grid_quant_fitting
                                 else R.string.grid_quant_start_fit
                             )
                         )
                     }
-                    if (draft.onsitePreview != null) {
-                        Button(onClick = onApply) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.grid_quant_apply_fit))
-                        }
-                    }
+                }
                 }
             }
         }
@@ -1217,12 +1270,12 @@ private fun FittingFunctionDropdown(
     onSelected: (FittingFunction?) -> Unit
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    val options = listOf<FittingFunction?>(
-        null,
-        FittingFunction.LINEAR,
-        FittingFunction.RODBARD,
-        FittingFunction.LOGISTIC
-    )
+    // 自动推荐保持线性、4PL、5PL的稳健集合；用户主动选择时开放项目已有的全部
+    // 可拟合方程。插值依赖专门的分段点定义，不属于现场参数拟合，因此不在此处展示。
+    val options = remember {
+        listOf<FittingFunction?>(null) +
+            FittingFunction.entries.filter { it != FittingFunction.INTERPOLATION }
+    }
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
             value = selectedFunction?.let { fittingFunctionLabel(it) }
@@ -1348,7 +1401,305 @@ private fun ResourceNameDialog(
 private const val MAXIMUM_RESOURCE_NAME_LENGTH = 80
 
 @Composable
-private fun OnsiteFitPreviewCard(preview: GridOnsiteFitPreview) {
+private fun ColumnScope.OnsiteCalibrationResultStage(
+    resultSet: CalibrationResultSet,
+    selectedCandidateId: String?,
+    saveToLibrary: Boolean,
+    applying: Boolean,
+    alreadyApplied: Boolean,
+    onSelectCandidate: (String) -> Unit,
+    onSetSaveToLibrary: (Boolean) -> Unit,
+    onBackToEditing: () -> Unit,
+    onApply: (Boolean) -> Unit
+) {
+    val selectedCandidate = resultSet.candidate(selectedCandidateId)
+    val applicationDecision = selectedCandidate?.let { candidate ->
+        resultSet.policySnapshot.applicationDecision(candidate.accepted)
+    }
+    var showLowQualityConfirmation by remember(
+        resultSet.inputFingerprint,
+        selectedCandidateId
+    ) { mutableStateOf(false) }
+    LazyColumn(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text(
+                text = stringResource(R.string.grid_quant_fit_result_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                resultSet.functionResults.forEach { functionResult ->
+                    CalibrationFunctionOption(
+                        result = functionResult,
+                        selected = functionResult.candidate?.id == selectedCandidateId,
+                        recommended = functionResult.candidate?.id ==
+                            resultSet.recommendedCandidateId,
+                        onClick = {
+                            functionResult.candidate?.id?.let(onSelectCandidate)
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+        if (selectedCandidate != null) {
+            item { OnsiteFitCandidateCard(selectedCandidate) }
+            if (!selectedCandidate.accepted) {
+                item {
+                    Text(
+                        text = stringResource(
+                            when (applicationDecision) {
+                                CalibrationApplicationDecision.BLOCK ->
+                                    R.string.grid_quant_low_quality_view_only_hint
+                                CalibrationApplicationDecision.REQUIRE_CONFIRMATION ->
+                                    R.string.grid_quant_low_quality_confirm_hint
+                                else -> R.string.grid_quant_low_quality_allow_hint
+                            }
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            item {
+                CalibrationUnavailableSummary(resultSet.functionResults)
+            }
+        }
+    }
+    HorizontalDivider()
+    Column(
+        modifier = Modifier.padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.grid_quant_save_curve_switch),
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    text = stringResource(R.string.grid_quant_save_curve_switch_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = saveToLibrary,
+                onCheckedChange = onSetSaveToLibrary,
+                enabled = selectedCandidate != null && !applying && !alreadyApplied
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TextButton(
+                onClick = onBackToEditing,
+                enabled = !applying,
+                modifier = Modifier.weight(0.8f)
+            ) {
+                Text(stringResource(R.string.grid_quant_back_to_edit))
+            }
+            Button(
+                onClick = {
+                    when (applicationDecision) {
+                        CalibrationApplicationDecision.REQUIRE_CONFIRMATION ->
+                            showLowQualityConfirmation = true
+                        CalibrationApplicationDecision.BLOCK, null -> Unit
+                        CalibrationApplicationDecision.APPLY -> onApply(false)
+                    }
+                },
+                enabled = selectedCandidate != null &&
+                    applicationDecision != CalibrationApplicationDecision.BLOCK &&
+                    !applying && !alreadyApplied,
+                modifier = Modifier.weight(1.4f)
+            ) {
+                if (applying) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(
+                        when {
+                            alreadyApplied -> R.string.grid_quant_curve_applied
+                            applicationDecision == CalibrationApplicationDecision.BLOCK ->
+                                R.string.grid_quant_curve_view_only
+                            saveToLibrary -> R.string.grid_quant_save_and_apply
+                            else -> R.string.grid_quant_apply_fit
+                        }
+                    )
+                )
+            }
+        }
+    }
+    if (showLowQualityConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showLowQualityConfirmation = false },
+            title = { Text(stringResource(R.string.grid_quant_low_quality_confirm_title)) },
+            text = { Text(stringResource(R.string.grid_quant_low_quality_confirm_message)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLowQualityConfirmation = false
+                        onApply(true)
+                    }
+                ) {
+                    Text(stringResource(R.string.grid_quant_low_quality_confirm_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLowQualityConfirmation = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun CalibrationFunctionOption(
+    result: CalibrationFunctionResult,
+    selected: Boolean,
+    recommended: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val available = result.candidate != null
+    Surface(
+        modifier = modifier.clickable(enabled = available, onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = when {
+            selected -> MaterialTheme.colorScheme.primaryContainer
+            available -> MaterialTheme.colorScheme.surfaceContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        border = if (selected) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        }
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = fittingFunctionLabel(result.function),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+            Text(
+                text = when {
+                    recommended -> stringResource(R.string.grid_quant_fit_recommended_short)
+                    result.status == CalibrationCandidateStatus.AVAILABLE ->
+                        stringResource(R.string.grid_quant_fit_accepted)
+                    result.status == CalibrationCandidateStatus.LOW_QUALITY ->
+                        stringResource(R.string.grid_quant_fit_review)
+                    else -> stringResource(R.string.grid_quant_fit_unavailable)
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = if (available) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.outline
+                },
+                maxLines = 1
+            )
+            if (!available) {
+                val reason = result.failureReasons.firstOrNull()
+                    ?: CalibrationFailureReason.FIT_DID_NOT_CONVERGE
+                Text(
+                    text = stringResource(calibrationFailureReasonResource(reason)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalibrationUnavailableSummary(results: List<CalibrationFunctionResult>) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.grid_quant_no_applicable_curve),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            results.forEach { result ->
+                val reasonValues = result.failureReasons.ifEmpty {
+                    setOf(CalibrationFailureReason.FIT_DID_NOT_CONVERGE)
+                }
+                val localizedReasons = mutableListOf<String>()
+                reasonValues.forEach { reason ->
+                    localizedReasons += stringResource(calibrationFailureReasonResource(reason))
+                }
+                val reasons = localizedReasons.joinToString(
+                    stringResource(R.string.list_separator)
+                )
+                Text(
+                    text = stringResource(
+                        R.string.grid_quant_function_failure,
+                        fittingFunctionLabel(result.function),
+                        reasons
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+private fun calibrationFailureReasonResource(reason: CalibrationFailureReason): Int =
+    when (reason) {
+        CalibrationFailureReason.INSUFFICIENT_STANDARD_LEVELS ->
+            R.string.grid_quant_failure_levels
+        CalibrationFailureReason.NO_VALID_SIGNAL -> R.string.grid_quant_failure_signal
+        CalibrationFailureReason.FIT_DID_NOT_CONVERGE -> R.string.grid_quant_failure_convergence
+        CalibrationFailureReason.PARAMETERS_NOT_FINITE -> R.string.grid_quant_failure_parameters
+        CalibrationFailureReason.CURVE_NOT_MONOTONIC -> R.string.grid_quant_failure_monotonic
+        CalibrationFailureReason.CONCENTRATION_NOT_INVERTIBLE ->
+            R.string.grid_quant_failure_inverse
+        CalibrationFailureReason.SLOPE_TOO_SMALL -> R.string.grid_quant_failure_slope
+    }
+
+@Composable
+private fun OnsiteFitCandidateCard(preview: CalibrationCandidate) {
     val fittedCurve = remember(preview.function, preview.parameters) {
         FittingEngine.createFunctionFromParameters(preview.function, preview.parameters)
     }
@@ -1593,8 +1944,24 @@ private fun primaryFeatureLabel(feature: AnalysisPrimaryFeature): String = strin
 private fun fittingFunctionLabel(function: FittingFunction): String = stringResource(
     when (function) {
         FittingFunction.LINEAR -> R.string.fitting_function_linear
+        FittingFunction.QUADRATIC -> R.string.fitting_function_quadratic
+        FittingFunction.CUBIC -> R.string.fitting_function_cubic
+        FittingFunction.QUARTIC -> R.string.fitting_function_quartic
+        FittingFunction.EXPONENTIAL -> R.string.fitting_function_exponential
+        FittingFunction.POWER -> R.string.fitting_function_power
+        FittingFunction.LOG -> R.string.fitting_function_log
         FittingFunction.RODBARD -> R.string.fitting_function_rodbard_4pl
+        FittingFunction.GAMMA_VARIATE -> R.string.fitting_function_gamma_variate
+        FittingFunction.CUSTOM_LOG -> R.string.fitting_function_custom_log
+        FittingFunction.RODBARD_NIH -> R.string.fitting_function_rodbard_nih
+        FittingFunction.EXPONENTIAL_WITH_OFFSET -> R.string.fitting_function_exponential_offset
+        FittingFunction.GAUSSIAN -> R.string.fitting_function_gaussian
+        FittingFunction.EXPONENTIAL_RECOVERY -> R.string.fitting_function_exponential_recovery
         FittingFunction.LOGISTIC -> R.string.fitting_function_logistic_5pl
-        else -> R.string.fitting_function_linear
+        FittingFunction.GOMPERTZ -> R.string.fitting_function_gompertz
+        FittingFunction.HILL -> R.string.fitting_function_hill
+        FittingFunction.GENERAL_GOMPERTZ -> R.string.fitting_function_general_gompertz
+        FittingFunction.RICHARDS -> R.string.fitting_function_richards
+        FittingFunction.INTERPOLATION -> R.string.fitting_function_interpolation
     }
 )

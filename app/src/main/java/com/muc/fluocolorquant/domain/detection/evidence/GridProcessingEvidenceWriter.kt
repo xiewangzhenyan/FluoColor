@@ -44,8 +44,31 @@ data class GridProcessingEvidenceRecord(
     val metadataJson: String
 )
 
+/**
+ * 一次检测真正参与定位与定量的未增强输入图。
+ *
+ * 该对象与九张处理过程图严格分离：处理过程图用于解释算法，原始输入用于历史恢复、
+ * 科研归档和重新核对。不能使用带定位标记的派生图替代原始输入。
+ */
+data class GridPersistedSourceInput(
+    val path: String,
+    val checksumSha256: String,
+    val metadataJson: String
+)
+
 /** 检测协调器依赖的处理证据写入边界；测试可使用 [NoOpGridProcessingEvidenceWriter]。 */
 interface GridProcessingEvidenceWriter {
+    /**
+     * 将本次实际分析的 Bitmap 无损保存到长期目录。
+     *
+     * 默认实现返回 null，确保纯 JVM 协调器测试和旧注入实现无需访问 Android 文件系统；
+     * 生产实现会返回可长期读取的应用私有文件路径。
+     */
+    fun writeSourceInput(
+        runId: String,
+        sourceBitmap: Bitmap
+    ): GridPersistedSourceInput? = null
+
     fun write(
         runId: String,
         sourceBitmap: Bitmap,
@@ -76,6 +99,41 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
 ) : GridProcessingEvidenceWriter {
 
     private val gson = Gson()
+
+    override fun writeSourceInput(
+        runId: String,
+        sourceBitmap: Bitmap
+    ): GridPersistedSourceInput {
+        require(runId.isNotBlank()) { "原始输入 runId 不能为空" }
+        require(!sourceBitmap.isRecycled) { "原始输入 Bitmap 已被回收" }
+
+        // 原始输入单独放入 run_inputs，避免与 diagnostic_only 的处理过程图混淆。
+        // PNG 无损编码保证这里冻结的像素与定位、裁切和光度计算实际消费的 Bitmap 一致。
+        val outputDirectory = File(context.filesDir, "run_inputs/$runId")
+        check(outputDirectory.exists() || outputDirectory.mkdirs()) {
+            "无法创建运行输入目录：${outputDirectory.absolutePath}"
+        }
+        val file = File(outputDirectory, "endpoint_input.png")
+        FileOutputStream(file, false).use { output ->
+            check(sourceBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                "无法编码运行原始输入：${file.absolutePath}"
+            }
+        }
+        return GridPersistedSourceInput(
+            path = file.absolutePath,
+            checksumSha256 = sha256(file),
+            metadataJson = gson.toJson(
+                linkedMapOf(
+                    "schemaVersion" to GRID_PROCESSING_EVIDENCE_SCHEMA,
+                    "captureRole" to CaptureRole.ENDPOINT.code,
+                    "scientificUse" to "quantitation_input",
+                    "encoding" to "PNG_LOSSLESS",
+                    "width" to sourceBitmap.width,
+                    "height" to sourceBitmap.height
+                )
+            )
+        )
+    }
 
     override fun write(
         runId: String,

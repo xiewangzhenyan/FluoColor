@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.PixelType
+import com.muc.fluocolorquant.domain.signal.SignalFeatureCatalog
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.CurveModel
 import com.muc.fluocolorquant.data.model.WellResult
@@ -228,13 +229,16 @@ class CurveFittingViewModel @Inject constructor(
                     return@launch
                 }
                 
+                // 新拟合统一冻结 V2 编码；无效特征不能静默回退 Legacy 数值。
+                val signalFeatureCode = SignalFeatureCatalog.v2Code(pixelType)
+
                 // 提取浓度和像素值
                 val concentrationsAndPixels = standards.mapNotNull { well ->
                     val concentration = well.trueConcentration
                     if (concentration != null && well.pixelValueJson != null) {
                         // 从JSON中提取指定像素类型的值
                         val pixelValues = parsePixelValues(well.pixelValueJson)
-                        val pixelValue = getPixelValue(pixelValues, pixelType)
+                        val pixelValue = getSignalValue(pixelValues, signalFeatureCode, pixelType)
                         
                         if (pixelValue != null) {
                             Pair(concentration, pixelValue)
@@ -252,7 +256,7 @@ class CurveFittingViewModel @Inject constructor(
                 val samplePixelValues = samples.mapNotNull { well ->
                     if (well.pixelValueJson != null) {
                         val pixelValues = parsePixelValues(well.pixelValueJson)
-                        getPixelValue(pixelValues, pixelType)
+                        getSignalValue(pixelValues, signalFeatureCode, pixelType)
                     } else null
                 }
                 
@@ -262,6 +266,9 @@ class CurveFittingViewModel @Inject constructor(
                     samplePixelValues = samplePixelValues,
                     function = function,
                     pixelType = pixelType
+                ).copy(
+                    signalFeatureCode = signalFeatureCode,
+                    processorVersion = SignalFeatureCatalog.V2_PROCESSOR_VERSION
                 )
                 
                 // 更新样本孔位的浓度预测结果
@@ -304,13 +311,11 @@ class CurveFittingViewModel @Inject constructor(
         }
     }
 
-    /**
-     * 兼容历史数据中使用枚举名、新数据使用 identifier 存储的像素键。
-     */
-    private fun getPixelValue(
+    private fun getSignalValue(
         pixelValues: Map<String, Double>,
+        signalFeatureCode: String?,
         pixelType: PixelType
-    ): Double? = pixelValues[pixelType.identifier] ?: pixelValues[pixelType.name]
+    ): Double? = SignalFeatureCatalog.resolveValue(pixelValues, signalFeatureCode, pixelType)
     
     /**
      * 获取孔位标签（如A1, B2等）
@@ -364,7 +369,11 @@ class CurveFittingViewModel @Inject constructor(
                         val concentration = well.trueConcentration
                         if (concentration != null && well.pixelValueJson != null) {
                             val pixelValues = parsePixelValues(well.pixelValueJson)
-                            val pixelValue = getPixelValue(pixelValues, model.pixelType)
+                            val pixelValue = getSignalValue(
+                                pixelValues,
+                                model.signalFeatureCode,
+                                model.pixelType
+                            )
                             if (pixelValue != null) {
                                 Pair(concentration, pixelValue)
                             } else null
@@ -375,16 +384,47 @@ class CurveFittingViewModel @Inject constructor(
                     val samplePixelValues = samples.mapNotNull { well ->
                         if (well.pixelValueJson != null) {
                             val pixelValues = parsePixelValues(well.pixelValueJson)
-                            getPixelValue(pixelValues, model.pixelType)
+                            getSignalValue(pixelValues, model.signalFeatureCode, model.pixelType)
                         } else null
                     }
                     
-                    // 使用 FittingEngine 重新构建拟合结果
-                    val result = FittingEngine.fitWithPredictions(
-                        standardPoints = standardPoints,
-                        samplePixelValues = samplePixelValues,
+                    // 曲线库模型已经冻结了函数和参数，加载时绝对不能重新拟合。否则用户
+                    // 保存的是曲线 A，旧页面可能因为当前标准孔变化而实际执行曲线 B。
+                    val frozenStandardPoints = model.dataPoints ?: standardPoints
+                    val parameters = model.function.requiredParams.map { parameterName ->
+                        model.parameters[parameterName] ?: 0.0
+                    }.toDoubleArray()
+                    val predictions = samplePixelValues.mapIndexed { index, pixelValue ->
+                        val concentration = runCatching {
+                            FittingEngine.predictConcentration(
+                                parameters = parameters,
+                                function = model.function,
+                                pixelValue = pixelValue
+                            )
+                        }.getOrNull()
+                        ConcentrationPrediction(
+                            pixelValue = pixelValue,
+                            concentration = concentration ?: Double.NaN,
+                            pixelType = model.pixelType,
+                            sampleIndex = index,
+                            isValid = concentration?.isFinite() == true,
+                            // 失败原因由结果页使用资源字符串统一呈现，这里只保存可执行状态。
+                            errorMessage = null
+                        )
+                    }
+                    val result = FittingResult(
                         function = model.function,
-                        pixelType = model.pixelType
+                        parameters = parameters,
+                        formula = FittingEngine.formatParametersToLatex(model.function, model.parameters),
+                        rSquared = model.metrics?.get("R²") ?: 0.0,
+                        standardPoints = frozenStandardPoints,
+                        curvePoints = buildFrozenCurvePoints(model, frozenStandardPoints),
+                        pixelType = model.pixelType,
+                        signalFeatureCode = model.signalFeatureCode,
+                        processorVersion = model.processorVersion,
+                        predictions = predictions,
+                        allMetrics = model.metrics ?: emptyMap(),
+                        isSuccess = parameters.all { it.isFinite() }
                     )
                     
                     _fittingResults.value = listOf(result)
@@ -414,6 +454,8 @@ class CurveFittingViewModel @Inject constructor(
                     name = "拟合模型-${result.function.displayName}-${result.pixelType?.displayName}",
                     function = result.function,
                     pixelType = result.pixelType ?: PixelType.GRAY_LUMINOSITY,
+                    signalFeatureCode = result.signalFeatureCode,
+                    processorVersion = result.processorVersion,
                     parameters = result.params,
                     metrics = result.allMetrics,
                     dataPoints = result.standardPoints
@@ -453,6 +495,24 @@ class CurveFittingViewModel @Inject constructor(
                 // 处理错误
                 android.util.Log.e("CurveFittingViewModel", "保存拟合结果失败", e)
             }
+        }
+    }
+
+    /** 使用曲线库冻结参数生成展示曲线，不调用任何拟合入口。 */
+    private fun buildFrozenCurvePoints(
+        model: CurveModel,
+        standardPoints: List<Pair<Double, Double>>
+    ): List<Pair<Double, Double>> {
+        val minimum = standardPoints.minOfOrNull(Pair<Double, Double>::first) ?: return emptyList()
+        val maximum = standardPoints.maxOfOrNull(Pair<Double, Double>::first) ?: return emptyList()
+        if (minimum == maximum) {
+            val value = FittingEngine.calculate(model.function, model.parameters, minimum)
+            return if (value.isFinite()) listOf(minimum to value) else emptyList()
+        }
+        return (0..100).mapNotNull { step ->
+            val concentration = minimum + (maximum - minimum) * step / 100.0
+            val signal = FittingEngine.calculate(model.function, model.parameters, concentration)
+            if (signal.isFinite()) concentration to signal else null
         }
     }
     

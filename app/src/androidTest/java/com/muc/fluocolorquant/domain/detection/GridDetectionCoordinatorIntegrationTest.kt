@@ -117,6 +117,15 @@ class GridDetectionCoordinatorIntegrationTest {
 
         assertTrue(outcome is GridDetectionOutcome.Completed)
         val saved = requireNotNull(repository.saved)
+        // 终点附件必须指向应用 files 目录中的未增强无损输入，不能继续引用可能被系统清理的
+        // uCrop/cache 文件；同时与九张带算法标记的处理证据保持独立。
+        val endpointFile = java.io.File(saved.endpointArtifact.originalPath)
+        assertTrue(endpointFile.isFile)
+        assertTrue(endpointFile.absolutePath.contains("run_inputs"))
+        assertEquals(64, saved.endpointArtifact.checksumSha256?.length)
+        assertTrue(
+            saved.endpointArtifact.actualMetadataJson?.contains("quantitation_input") == true
+        )
         assertEquals(9, saved.diagnosticArtifacts.size)
         assertTrue(saved.diagnosticArtifacts.all { artifact ->
             java.io.File(artifact.originalPath).isFile &&

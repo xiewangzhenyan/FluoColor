@@ -69,9 +69,13 @@ data class PgQuantConfig(
     val annulusOuterPitchRatio: Double = 0.44,
     val saturationLevel: Int = 250,
     val saturationRatioLimit: Double = 0.05,
+    /** 少量饱和只提示复核，达到该比例才认为信号主体已经无法可靠恢复。 */
+    val severeSaturationRatioLimit: Double = 0.25,
     val underExposedMedianLevel: Double = 8.0,
     val snrMinimum: Double = 3.0,
     val borderClipRatioLimit: Double = 0.05,
+    /** 轻度边界裁切保留结果，ROI 或背景环丢失达到该比例才判为硬失败。 */
+    val severeBorderClipRatioLimit: Double = 0.20,
     val contaminationRatioLimit: Double = 0.35,
     val backgroundAnomalyRobustZ: Double = 3.5
 ) {
@@ -82,9 +86,15 @@ data class PgQuantConfig(
         require(annulusOuterPitchRatio < 0.5) { "背景环外径必须小于半个 pitch，避免触及相邻位点" }
         require(saturationLevel in 1..255) { "饱和灰度阈值必须位于 1 到 255" }
         require(saturationRatioLimit in 0.0..1.0) { "饱和比例阈值必须位于 0 到 1" }
+        require(severeSaturationRatioLimit in saturationRatioLimit..1.0) {
+            "严重饱和阈值不能低于普通饱和提示阈值"
+        }
         require(underExposedMedianLevel >= 0.0) { "欠曝阈值不能为负数" }
         require(snrMinimum > 0.0) { "SNR 阈值必须大于 0" }
         require(borderClipRatioLimit in 0.0..1.0) { "边界裁切阈值必须位于 0 到 1" }
+        require(severeBorderClipRatioLimit in borderClipRatioLimit..1.0) {
+            "严重边界裁切阈值不能低于普通裁切提示阈值"
+        }
         require(contaminationRatioLimit in 0.0..1.0) { "污染比例阈值必须位于 0 到 1" }
         require(backgroundAnomalyRobustZ > 0.0) { "背景异常 robust z 阈值必须大于 0" }
     }
@@ -102,28 +112,24 @@ data class SitePhotometryQc(
     val qualityReliable: Boolean
 ) {
     companion object {
-        private val reliabilityFailureFlags = setOf(
-            PhotometryFlag.SATURATED,
-            PhotometryFlag.UNDER_EXPOSED,
-            PhotometryFlag.ROI_OUT_OF_BOUNDS,
-            PhotometryFlag.NON_UNIFORM,
-            PhotometryFlag.BACKGROUND_ANOMALY,
-            PhotometryFlag.HOT_PIXEL,
-            PhotometryFlag.SPECULAR_HIGHLIGHT
-        )
-
-        /** 从原始标志和 SNR 生成两个互不替代的质量结论。 */
+        /**
+         * 从原始标志和 SNR 生成两个互不替代的质量结论。
+         *
+         * flags 保存全部复核证据；[hardFailure] 只由具备比例信息的采样器判定严重饱和、
+         * 严重裁切或空 ROI。这样热点、背景不均、轻度高光不会再把有效浓度一票否决。
+         */
         fun from(
             flags: Set<PhotometryFlag>,
             snr: Double,
-            snrMinimum: Double
+            snrMinimum: Double,
+            hardFailure: Boolean = false
         ): SitePhotometryQc {
             require(snr.isFinite() && snr >= 0.0) { "SNR 必须是非负有限数值" }
             require(snrMinimum.isFinite() && snrMinimum > 0.0) { "SNR 阈值必须大于 0" }
             return SitePhotometryQc(
                 flags = flags,
                 signalDetectable = snr >= snrMinimum,
-                qualityReliable = flags.none(reliabilityFailureFlags::contains)
+                qualityReliable = !hardFailure
             )
         }
     }

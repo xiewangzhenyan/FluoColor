@@ -69,6 +69,10 @@ class ArrayResultSnapshotMapperTest {
         assertEquals("linear", analyte.fittingFunction)
         assertEquals(1.0, analyte.fittingParameters["a"] ?: Double.NaN, 1e-9)
         assertEquals(2, analyte.calibrationPoints.size)
+        assertEquals(0.0, analyte.projectRangeMin ?: Double.NaN, 1e-9)
+        assertEquals(100.0, analyte.projectRangeMax ?: Double.NaN, 1e-9)
+        assertEquals(28.0, analyte.calibrationRangeMin ?: Double.NaN, 1e-9)
+        assertEquals(34.0, analyte.calibrationRangeMax ?: Double.NaN, 1e-9)
     }
 
     @Test
@@ -151,7 +155,29 @@ class ArrayResultSnapshotMapperTest {
     }
 
     @Test
-    fun `超可靠范围测量仍携带浓度时拒绝伪结果`() {
+    fun `标定范围外推测量允许携带有限浓度`() {
+        val fixture = fixture(rows = 10, columns = 10)
+        val extrapolated = measurement(
+            siteIndex = 1,
+            correctedSignalJson = null
+        ).copy(
+            concentrationValue = 123.0,
+            concentrationUnit = "ng/mL",
+            reliableRangeStatus = "ABOVE_RANGE"
+        )
+
+        val result = ArrayResultSnapshotMapper.map(
+            fixture.source.copy(measurements = listOf(extrapolated))
+        )
+
+        val mapped = (result as ArrayResultLoadResult.Success)
+            .snapshot.sites[1].measurements.single()
+        assertEquals(123.0, mapped.concentrationValue ?: Double.NaN, 0.0)
+        assertEquals("ABOVE_RANGE", mapped.reliableRangeStatus)
+    }
+
+    @Test
+    fun `超项目量程测量仍携带浓度时拒绝伪结果`() {
         val fixture = fixture(rows = 10, columns = 10)
         val inconsistent = measurement(
             siteIndex = 1,
@@ -159,7 +185,7 @@ class ArrayResultSnapshotMapperTest {
         ).copy(
             concentrationValue = 123.0,
             concentrationUnit = "ng/mL",
-            reliableRangeStatus = "ABOVE_RANGE"
+            reliableRangeStatus = "ABOVE_PROJECT_RANGE"
         )
 
         val result = ArrayResultSnapshotMapper.map(
@@ -425,8 +451,8 @@ class ArrayResultSnapshotMapperTest {
             },
             processorVersion = "v1",
             concentrationUnit = "ng/mL",
-            reliableRangeMin = 0.0,
-            reliableRangeMax = 100.0,
+            reliableRangeMin = 28.0,
+            reliableRangeMax = 34.0,
             status = "PUBLISHED",
             version = 2
         )

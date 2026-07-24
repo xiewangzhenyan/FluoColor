@@ -138,7 +138,15 @@ object PgQuantSampler {
                     add(PhotometryFlag.BACKGROUND_ANOMALY)
                 }
             }
-            val qc = SitePhotometryQc.from(flags, snr, config.snrMinimum)
+            val qc = SitePhotometryQc.from(
+                flags = flags,
+                snr = snr,
+                snrMinimum = config.snrMinimum,
+                hardFailure = raw.saturationRatio >= config.severeSaturationRatioLimit ||
+                    raw.roiClipRatio >= config.severeBorderClipRatioLimit ||
+                    raw.annulusClipRatio >= config.severeBorderClipRatioLimit ||
+                    raw.roiPixelCount == 0 || raw.annulusPixelCount == 0
+            )
             BaseSitePhotometry(
                 siteIndex = localizedSite.siteIndex,
                 rowIndex = localizedSite.key.rowIndex,
@@ -297,7 +305,9 @@ object PgQuantSampler {
             hotPixelRatio = hotPixelRatio,
             roiClipRatio = roiClip,
             annulusClipRatio = annulusClip,
-            outOfBounds = outOfBounds
+            outOfBounds = outOfBounds,
+            roiPixelCount = roiPixels.size,
+            annulusPixelCount = annulusPixels.size
         )
     }
 
@@ -485,7 +495,9 @@ object PgQuantSampler {
         val hotPixelRatio: Double,
         val roiClipRatio: Double,
         val annulusClipRatio: Double,
-        val outOfBounds: Boolean
+        val outOfBounds: Boolean,
+        val roiPixelCount: Int,
+        val annulusPixelCount: Int
     ) {
         companion object {
             fun empty(roiClipRatio: Double, annulusClipRatio: Double): RawUnit {
@@ -504,7 +516,9 @@ object PgQuantSampler {
                     hotPixelRatio = 0.0,
                     roiClipRatio = roiClipRatio,
                     annulusClipRatio = annulusClipRatio,
-                    outOfBounds = true
+                    outOfBounds = true,
+                    roiPixelCount = 0,
+                    annulusPixelCount = 0
                 )
             }
         }

@@ -15,6 +15,7 @@ import com.muc.fluocolorquant.data.model.AnalysisModel
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.CarrierProfile
 import com.muc.fluocolorquant.data.model.CalibrationPoint
+import com.muc.fluocolorquant.domain.calibration.CalibrationFailureReason
 import com.muc.fluocolorquant.data.model.DeepLearningModelDefinition
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.Project
@@ -25,6 +26,8 @@ import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.data.repository.GridDetectionPersistenceBundle
 import com.muc.fluocolorquant.data.repository.GridDetectionRunRepository
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationMethod
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationSnapshot
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.PgGridLocator
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
@@ -552,7 +555,22 @@ class GridDetectionCoordinatorTest {
         )
         val coordinator = coordinator()
 
-        val calibrated = coordinator.applyOnsiteCalibrations(snapshot, quant, "run-onsite")
+        val ceaResult = coordinator.previewOnsiteCalibration(snapshot, quant, "cea")
+        val ceaSelected = requireNotNull(ceaResult.recommendedCandidateId)
+        val withCea = coordinator.applyOnsiteCalibrationSelection(
+            snapshot = snapshot,
+            resultSet = ceaResult,
+            selectedCandidateId = ceaSelected,
+            runId = "run-onsite"
+        )
+        val afpResult = coordinator.previewOnsiteCalibration(withCea, quant, "afp")
+        val afpSelected = requireNotNull(afpResult.recommendedCandidateId)
+        val calibrated = coordinator.applyOnsiteCalibrationSelection(
+            snapshot = withCea,
+            resultSet = afpResult,
+            selectedCandidateId = afpSelected,
+            runId = "run-onsite"
+        )
 
         val cea = calibrated.analytes.first { it.analyte.id == "cea" }
         val afp = calibrated.analytes.first { it.analyte.id == "afp" }
@@ -562,6 +580,15 @@ class GridDetectionCoordinatorTest {
         assertTrue(requireNotNull(afp.analysisModel.standardCurve).parametersJson != "{}")
         assertEquals("ng/mL", cea.analysisModel.model.concentrationUnit)
         assertEquals("IU/mL", afp.analysisModel.model.concentrationUnit)
+        // 现场标准点只更新曲线模型的标定范围，不能覆盖新建项目时冻结的预期量程。
+        assertEquals(0.0, requireNotNull(cea.templateConfig.reliableRangeMin), 0.0)
+        assertEquals(100.0, requireNotNull(cea.templateConfig.reliableRangeMax), 0.0)
+        assertEquals(10.0, cea.analysisModel.model.reliableRangeMin, 0.0)
+        assertEquals(110.0, cea.analysisModel.model.reliableRangeMax, 0.0)
+        assertEquals(0.0, requireNotNull(afp.templateConfig.reliableRangeMin), 0.0)
+        assertEquals(10.0, requireNotNull(afp.templateConfig.reliableRangeMax), 0.0)
+        assertEquals(1.0, afp.analysisModel.model.reliableRangeMin, 0.0)
+        assertEquals(11.0, afp.analysisModel.model.reliableRangeMax, 0.0)
 
         val ceaBatch = coordinator.applyQuantification(
             measurements = listOf(measurement(2, 60.0).copy(analyteId = "cea")),
@@ -583,7 +610,7 @@ class GridDetectionCoordinatorTest {
     }
 
     @Test
-    fun `现场标准浓度不足两个水平时保留不可执行曲线并继续仅信号`() {
+    fun `现场标准浓度不足两个水平时返回结构化失败而不是空结果`() {
         val base = validSnapshot()
         val signalOnlyAnalyte = base.analytes.single().let { source ->
             source.copy(
@@ -604,23 +631,70 @@ class GridDetectionCoordinatorTest {
         )
         val coordinator = coordinator()
 
-        val calibrated = coordinator.applyOnsiteCalibrations(
+        val resultSet = coordinator.previewOnsiteCalibration(
             snapshot = snapshot,
             quant = quantResult(2, 2, listOf(20.0, 30.0, 40.0, 50.0)),
-            runId = "run-insufficient"
-        )
-        val analyte = calibrated.analytes.single()
-        val batch = coordinator.applyQuantification(
-            measurements = listOf(measurement(1, 30.0)),
-            analyteSnapshot = analyte,
-            compatibility = ModelCompatibilityResult.Compatible
+            analyteId = "cea"
         )
 
-        assertEquals("{}", requireNotNull(analyte.analysisModel.standardCurve).parametersJson)
-        assertTrue(analyte.analysisModel.calibrationPoints.isEmpty())
-        assertFalse(batch.modelExecutable)
-        assertNull(batch.measurements.single().concentrationValue)
-        assertEquals("signal_only", batch.execution)
+        assertNull(resultSet.recommendedCandidateId)
+        assertTrue(resultSet.candidates.isEmpty())
+        assertEquals(3, resultSet.functionResults.size)
+        assertTrue(resultSet.functionResults.all { result ->
+            CalibrationFailureReason.INSUFFICIENT_STANDARD_LEVELS in result.failureReasons
+        })
+    }
+
+    @Test
+    fun `保存现场曲线资源后模型ID完整同步且预检继续通过`() {
+        val base = validSnapshot()
+        val source = base.analytes.single().copy(
+            quantitationMode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code,
+            analyteQuantitationSnapshot = AnalyteQuantitationSnapshot(
+                analyteId = base.analytes.single().analyte.id,
+                method = AnalyteQuantitationMethod.ONSITE_CALIBRATION,
+                concentrationUnit = base.analytes.single().templateConfig.concentrationUnit,
+                processorVersion = base.analytes.single().analysisModel.model.processorVersion,
+                inputFingerprint = "onsite-before-save"
+            )
+        )
+        val savedModelId = "saved-onsite-curve"
+        val savedModel = source.analysisModel.model.copy(
+            id = savedModelId,
+            name = "saved onsite curve",
+            // 曲线资源只覆盖28～34，项目配置仍应保持用户创建项目时声明的0～100。
+            reliableRangeMin = 28.0,
+            reliableRangeMax = 34.0
+        )
+        val savedBundle = source.analysisModel.copy(
+            model = savedModel,
+            standardCurve = requireNotNull(source.analysisModel.standardCurve).copy(
+                analysisModelId = savedModelId
+            ),
+            calibrationPoints = source.analysisModel.calibrationPoints.map { point ->
+                point.copy(analysisModelId = savedModelId)
+            }
+        )
+
+        val synchronized = source.withPersistedOnsiteCurveResource(savedBundle)
+        val snapshot = base.copy(analytes = listOf(synchronized))
+        val preflight = GridDetectionPreflightValidator.validate(projectFor(snapshot), snapshot)
+
+        assertEquals(savedModelId, synchronized.templateConfig.analysisModelId)
+        assertEquals(savedModelId, synchronized.analysisModel.model.id)
+        assertEquals(savedModelId, synchronized.analysisModel.standardCurve?.analysisModelId)
+        assertEquals(savedModelId, synchronized.analyteQuantitationSnapshot?.sourceResourceId)
+        assertEquals(0.0, synchronized.templateConfig.reliableRangeMin ?: Double.NaN, 0.0)
+        assertEquals(100.0, synchronized.templateConfig.reliableRangeMax ?: Double.NaN, 0.0)
+        assertEquals(28.0, synchronized.analysisModel.model.reliableRangeMin, 0.0)
+        assertEquals(34.0, synchronized.analysisModel.model.reliableRangeMax, 0.0)
+        assertEquals(
+            GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code,
+            synchronized.quantitationMode
+        )
+        assertFalse(
+            GridDetectionBlockReason.INCONSISTENT_ANALYTE_SNAPSHOT in preflight.reasons
+        )
     }
 
     private fun coordinator(): GridDetectionCoordinator {

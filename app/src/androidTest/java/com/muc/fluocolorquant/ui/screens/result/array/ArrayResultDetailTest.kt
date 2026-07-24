@@ -56,6 +56,17 @@ class ArrayResultDetailTest {
         return ApplicationProvider.getApplicationContext<android.content.Context>().getString(id)
     }
 
+    /**
+     * 读取包含格式参数的本地化字符串。
+     *
+     * 结果页顶部把阵列规格和运行状态组合成一条完整摘要，因此测试必须校验用户实际看到的
+     * 完整文案，不能只匹配语义树中可能处于屏幕外的独立状态词。
+     */
+    private fun string(id: Int, vararg formatArgs: Any): String {
+        return ApplicationProvider.getApplicationContext<android.content.Context>()
+            .getString(id, *formatArgs)
+    }
+
     @Test
     fun `点击比色位点只显示比色专用科学字段`() {
         composeRule.setContent {
@@ -68,7 +79,6 @@ class ArrayResultDetailTest {
             }
         }
 
-        composeRule.onNodeWithTag(ARRAY_RESULT_ANALYTE_TAB_TAG).performClick()
         composeRule.onNodeWithTag("${ARRAY_HEATMAP_CELL_TAG_PREFIX}0", useUnmergedTree = true)
             .performClick()
         composeRule.onNodeWithTag(ARRAY_SITE_DETAIL_SHEET_TAG).assertIsDisplayed()
@@ -88,12 +98,52 @@ class ArrayResultDetailTest {
             }
         }
 
-        composeRule.onNodeWithTag(ARRAY_RESULT_ANALYTE_TAB_TAG).performClick()
         composeRule.onNodeWithTag("${ARRAY_HEATMAP_CELL_TAG_PREFIX}0", useUnmergedTree = true)
             .performClick()
         composeRule.onNodeWithTag(ARRAY_SITE_DETAIL_SHEET_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag(ARRAY_SITE_DETAIL_FLUORESCENCE_TAG).assertExists()
         composeRule.onAllNodesWithTag(ARRAY_SITE_DETAIL_COLORIMETRIC_TAG).assertCountEquals(0)
+    }
+
+    @Test
+    fun `曲线外推位点保持有效质量并单独显示范围状态`() {
+        val baseSnapshot = fluorescenceSnapshot()
+        val baseSite = baseSnapshot.sites.single()
+        val baseMeasurement = baseSite.measurements.single()
+        val extrapolatedSnapshot = baseSnapshot.copy(
+            sites = listOf(
+                baseSite.copy(
+                    measurements = listOf(
+                        baseMeasurement.copy(
+                            concentrationValue = 12.0,
+                            reliableRangeStatus = "ABOVE_RANGE",
+                            // 普通光度提示必须保留为审计证据，但不能把有限、可靠的外推结果
+                            // 错误升级为“建议复核”。
+                            qc = baseMeasurement.qc.copy(
+                                photometryFlags = setOf("non_uniform"),
+                                quantificationStatus = "EXTRAPOLATED"
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        composeRule.setContent {
+            FluoColorTheme {
+                ArrayResultContent(
+                    state = ArrayResultUiState.Success(extrapolatedSnapshot),
+                    onBack = {},
+                    onRetry = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("${ARRAY_HEATMAP_CELL_TAG_PREFIX}0", useUnmergedTree = true)
+            .performClick()
+        composeRule.onNodeWithText(string(R.string.array_heatmap_reliable)).assertIsDisplayed()
+        composeRule.onNodeWithTag(ARRAY_SITE_DETAIL_LIST_TAG).performScrollToIndex(1)
+        composeRule.onNodeWithText(string(R.string.array_site_range_above)).assertIsDisplayed()
+        composeRule.onAllNodesWithText(string(R.string.array_heatmap_warning)).assertCountEquals(0)
     }
 
     @Test
@@ -179,7 +229,7 @@ class ArrayResultDetailTest {
 
         composeRule.onNodeWithTag("${ARRAY_HEATMAP_CARD_TAG_PREFIX}color-analyte")
             .assertIsDisplayed()
-        composeRule.onNodeWithTag("array_result_tab_qc").performClick()
+        composeRule.onAllNodesWithTag("array_result_tab_qc").assertCountEquals(0)
         composeRule.onAllNodesWithText(string(R.string.array_qc_frame_failure_title))
             .assertCountEquals(0)
     }
@@ -203,6 +253,47 @@ class ArrayResultDetailTest {
         composeRule.onNodeWithTag("array_result_tab_process").performClick()
         composeRule.onNodeWithTag(ARRAY_PROCESSING_TAB_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag(ARRAY_PROCESSING_IMAGE_TAG).assertExists()
+    }
+
+    @Test
+    fun `旧完成态没有任何浓度时顶部按真实数据显示仅信号`() {
+        val quantified = fluorescenceSnapshot()
+        val signalOnly = quantified.copy(
+            runStatus = "Completed",
+            sites = quantified.sites.map { site ->
+                site.copy(
+                    measurements = site.measurements.map { measurement ->
+                        measurement.copy(
+                            concentrationValue = null,
+                            reliableRangeStatus = null,
+                            qc = measurement.qc.copy(quantificationStatus = "SIGNAL_ONLY")
+                        )
+                    }
+                )
+            }
+        )
+        composeRule.setContent {
+            FluoColorTheme {
+                ArrayResultContent(
+                    state = ArrayResultUiState.Success(signalOnly),
+                    onBack = {},
+                    onRetry = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(
+            string(
+                R.string.array_result_carrier_summary,
+                signalOnly.rows,
+                signalOnly.columns,
+                string(R.string.array_run_status_signal_only)
+            )
+        ).assertIsDisplayed()
+        composeRule.onAllNodesWithText(
+            string(R.string.array_run_status_completed),
+            substring = true
+        ).assertCountEquals(0)
     }
 
     private fun colorimetricSnapshot(): ArrayResultSnapshot {

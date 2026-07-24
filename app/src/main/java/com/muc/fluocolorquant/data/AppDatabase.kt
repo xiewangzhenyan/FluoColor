@@ -38,6 +38,7 @@ import com.muc.fluocolorquant.data.model.SiteMeasurement
 import com.muc.fluocolorquant.data.model.StandardCurveDefinition
 import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
+import com.muc.fluocolorquant.data.model.TemplateQuantitationBinding
 import com.muc.fluocolorquant.data.model.User
 import com.muc.fluocolorquant.data.model.WellResult
 
@@ -61,6 +62,7 @@ import com.muc.fluocolorquant.data.model.WellResult
         AcquisitionProfile::class,
         TemplateAnalyteConfig::class,
         TemplateSiteAssignment::class,
+        TemplateQuantitationBinding::class,
         AnalysisModel::class,
         StandardCurveDefinition::class,
         CalibrationPoint::class,
@@ -68,7 +70,7 @@ import com.muc.fluocolorquant.data.model.WellResult
         CaptureArtifact::class,
         SiteMeasurement::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

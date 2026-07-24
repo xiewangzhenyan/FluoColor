@@ -14,6 +14,8 @@ data class FittingResult(
     val standardPoints: List<Pair<Double, Double>>, // 标准点(浓度, 像素值)
     val curvePoints: List<Pair<Double, Double>>,    // 曲线点(浓度, 像素值)
     val pixelType: PixelType? = null,      // 像素类型
+    val signalFeatureCode: String? = null, // 新曲线使用的稳定信号编码；为空表示Legacy结果
+    val processorVersion: String? = null,  // 信号处理器版本，用于运行和历史复现
     val predictions: List<ConcentrationPrediction> = emptyList(), // 浓度预测结果
     val isSuccess: Boolean = true,         // 拟合是否成功
     val errorMessage: String? = null,      // 错误信息
@@ -43,6 +45,8 @@ data class FittingResult(
         if (standardPoints != other.standardPoints) return false
         if (curvePoints != other.curvePoints) return false
         if (pixelType != other.pixelType) return false
+        if (signalFeatureCode != other.signalFeatureCode) return false
+        if (processorVersion != other.processorVersion) return false
         if (predictions != other.predictions) return false
         if (isSuccess != other.isSuccess) return false
         if (errorMessage != other.errorMessage) return false
@@ -59,6 +63,8 @@ data class FittingResult(
         result = 31 * result + standardPoints.hashCode()
         result = 31 * result + curvePoints.hashCode()
         result = 31 * result + (pixelType?.hashCode() ?: 0)
+        result = 31 * result + (signalFeatureCode?.hashCode() ?: 0)
+        result = 31 * result + (processorVersion?.hashCode() ?: 0)
         result = 31 * result + predictions.hashCode()
         result = 31 * result + isSuccess.hashCode()
         result = 31 * result + (errorMessage?.hashCode() ?: 0)
@@ -82,4 +88,4 @@ data class ConcentrationPrediction(
 ) {
     // 为了兼容性，提供 predictedConcentration 别名
     val predictedConcentration: Double get() = concentration
-} 
+}

@@ -19,6 +19,33 @@ import org.junit.Test
 class StandardCurveQuantifierTest {
 
     @Test
+    fun `项目量程宽于标定范围时保留有界外推浓度和范围状态`() {
+        val bundle = linearBundle(
+            parametersJson = """{"a":2.0,"b":1.0}""",
+            reliableRangeMin = 28.0,
+            reliableRangeMax = 34.0
+        )
+        val ready = StandardCurveQuantifier.prepare(
+            bundle = bundle,
+            projectRangeMin = 0.0,
+            projectRangeMax = 100.0
+        ) as PreparedStandardCurveQuantifier.Ready
+
+        val belowCalibration = ready.quantify(41.0) as PreparedEndpointQuantificationResult.Quantified
+        val withinCalibration = ready.quantify(61.0) as PreparedEndpointQuantificationResult.Quantified
+        val aboveCalibration = ready.quantify(101.0) as PreparedEndpointQuantificationResult.Quantified
+        val outsideProject = ready.quantify(251.0) as PreparedEndpointQuantificationResult.OutOfRange
+
+        assertEquals(20.0, belowCalibration.concentration, 1e-6)
+        assertEquals(ReliableRangeStatus.BELOW_RANGE, belowCalibration.rangeStatus)
+        assertEquals(30.0, withinCalibration.concentration, 1e-6)
+        assertEquals(ReliableRangeStatus.WITHIN_RANGE, withinCalibration.rangeStatus)
+        assertEquals(50.0, aboveCalibration.concentration, 1e-6)
+        assertEquals(ReliableRangeStatus.ABOVE_RANGE, aboveCalibration.rangeStatus)
+        assertEquals(ReliableRangeStatus.ABOVE_PROJECT_RANGE, outsideProject.rangeStatus)
+    }
+
+    @Test
     fun `线性曲线y等于2x加1时信号21反算浓度10`() {
         val result = StandardCurveQuantifier.quantify(
             bundle = linearBundle(parametersJson = """{"a":2.0,"b":1.0}"""),

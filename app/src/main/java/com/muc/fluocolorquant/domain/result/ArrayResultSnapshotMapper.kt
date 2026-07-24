@@ -323,10 +323,11 @@ object ArrayResultSnapshotMapper {
     }
 
     /**
-     * 拒绝非有限数值和“超范围却仍携带浓度”等自相矛盾记录。
+     * 拒绝非有限数值以及“超项目量程却仍携带浓度”等自相矛盾记录。
      *
-     * Room 可以保存任意 Double，历史导入也可能绕过当前协调器；结果层必须再次防守，
-     * 否则热力图颜色、统计范围和 PDF 导出会被 NaN/伪浓度污染。
+     * `BELOW_RANGE` / `ABOVE_RANGE` 从当前版本起表示“已得到有限浓度，但属于标定范围外推”，
+     * 因而允许携带浓度；旧运行曾在这两个状态下抑制浓度，空值也必须继续兼容。
+     * `BELOW_PROJECT_RANGE` / `ABOVE_PROJECT_RANGE` 才表示超过用户声明的项目量程，不能携带浓度。
      */
     private fun hasValidMeasurementValues(measurement: SiteMeasurement): Boolean {
         if (measurement.primaryFeatureValue?.isFinite() == false) return false
@@ -334,10 +335,10 @@ object ArrayResultSnapshotMapper {
         if (measurement.signalToNoiseRatio?.let { !it.isFinite() || it < 0.0 } == true) return false
         if (measurement.confidence?.let { !it.isFinite() || it !in 0.0..1.0 } == true) return false
         if (measurement.concentrationValue?.isFinite() == false) return false
-        return when (measurement.reliableRangeStatus) {
-            "BELOW_RANGE", "ABOVE_RANGE" -> measurement.concentrationValue == null
-            "WITHIN_RANGE" -> measurement.concentrationValue == null ||
+        return when (measurement.reliableRangeStatus?.uppercase()) {
+            "BELOW_RANGE", "ABOVE_RANGE", "WITHIN_RANGE" -> measurement.concentrationValue == null ||
                 !measurement.concentrationUnit.isNullOrBlank()
+            "BELOW_PROJECT_RANGE", "ABOVE_PROJECT_RANGE" -> measurement.concentrationValue == null
             null -> measurement.concentrationValue == null ||
                 !measurement.concentrationUnit.isNullOrBlank()
             else -> false
@@ -535,7 +536,11 @@ object ArrayResultSnapshotMapper {
                     )
                 }
                 .toList(),
-            validationMetrics = parseFiniteDoubleMap(model.validationMetricsJson)
+            validationMetrics = parseFiniteDoubleMap(model.validationMetricsJson),
+            projectRangeMin = templateConfig.reliableRangeMin,
+            projectRangeMax = templateConfig.reliableRangeMax,
+            calibrationRangeMin = model.reliableRangeMin.takeIf(Double::isFinite),
+            calibrationRangeMax = model.reliableRangeMax.takeIf(Double::isFinite)
         )
     }
 

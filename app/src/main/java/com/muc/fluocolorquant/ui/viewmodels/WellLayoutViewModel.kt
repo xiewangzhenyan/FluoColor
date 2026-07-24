@@ -22,6 +22,7 @@ import com.muc.fluocolorquant.data.model.TemplateLayout
 import com.muc.fluocolorquant.data.model.WellAssignment
 import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
+import com.muc.fluocolorquant.data.repository.CalibrationPolicyPreferences
 import com.muc.fluocolorquant.data.repository.CurveModelRepository
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
 import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
@@ -29,6 +30,9 @@ import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.WellResultRepository
 import com.muc.fluocolorquant.utils.DetectionModeSupport
 import com.muc.fluocolorquant.utils.PixelExtractionUtils
+import com.muc.fluocolorquant.domain.calibration.CalibrationRankingMetrics
+import com.muc.fluocolorquant.domain.calibration.CalibrationRecommendationEngine
+import com.muc.fluocolorquant.domain.signal.SignalFeatureCatalog
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import com.muc.fluocolorquant.utils.math.FittingResult
 import com.muc.fluocolorquant.utils.math.WellMappingUtils
@@ -68,7 +72,8 @@ class WellLayoutViewModel @Inject constructor(
     private val projectAnalyteJoinRepository: ProjectAnalyteJoinRepository,
     private val experimentTemplateRepository: ExperimentTemplateRepository,
     private val curveModelRepository: CurveModelRepository,
-    private val wellResultDao: WellResultDao
+    private val wellResultDao: WellResultDao,
+    private val calibrationPolicyPreferences: CalibrationPolicyPreferences
 ) : ViewModel() {
 
     // 在类内部定义TAG常量
@@ -149,12 +154,24 @@ class WellLayoutViewModel @Inject constructor(
         DetectionModeSupport.recommendedPixelTypes(currentDetectionMode())
 
     /**
-     * 兼容历史数据中同时存在 identifier 和枚举名两种存储键。
+     * 按拟合结果冻结的版本化编码读取信号。
+     *
+     * 新结果一旦声明 V2 编码，缺失值表示该特征在当前孔位无效，不能回退旧键；只有历史
+     * 结果没有编码时才继续读取 [PixelType] Legacy 值。
      */
-    private fun getPixelValue(
+    private fun getSignalValue(
         pixelValues: Map<String, Double>,
+        signalFeatureCode: String?,
         pixelType: PixelType
-    ): Double? = pixelValues[pixelType.identifier] ?: pixelValues[pixelType.name]
+    ): Double? = SignalFeatureCatalog.resolveValue(pixelValues, signalFeatureCode, pixelType)
+
+    /** 旧孔位 JSON 没有 V2 键时，需要从原始无损裁切图重新提取，不能伪装成新处理器结果。 */
+    private fun hasVersionedPixelSignals(pixelValueJson: String?): Boolean {
+        if (pixelValueJson.isNullOrBlank()) return false
+        return PixelExtractionUtils.jsonToMap(pixelValueJson).keys.any { code ->
+            SignalFeatureCatalog.definitionForCode(code) != null
+        }
+    }
 
     private val _originalBitmap = MutableStateFlow<Bitmap?>(null)
     val originalBitmap: StateFlow<Bitmap?> = _originalBitmap.asStateFlow()
@@ -506,6 +523,8 @@ class WellLayoutViewModel @Inject constructor(
                     standardPoints = curveModel.dataPoints ?: emptyList(),
                     curvePoints = emptyList(),
                     pixelType = curveModel.pixelType,
+                    signalFeatureCode = curveModel.signalFeatureCode,
+                    processorVersion = curveModel.processorVersion,
                     isSuccess = true
                 )
 
@@ -617,7 +636,11 @@ class WellLayoutViewModel @Inject constructor(
                     try {
                         val pixelValues = parsePixelValues(json)
                         val pixelType = fittingResult.pixelType ?: defaultPixelTypeForCurrentProject()
-                        val pixelValue = getPixelValue(pixelValues, pixelType)
+                        val pixelValue = getSignalValue(
+                            pixelValues = pixelValues,
+                            signalFeatureCode = fittingResult.signalFeatureCode,
+                            pixelType = pixelType
+                        )
                         if (pixelValue != null) {
                             val predictedConc = FittingEngine.predictConcentration(
                                 fittingResult.parameters,
@@ -864,13 +887,18 @@ class WellLayoutViewModel @Inject constructor(
                 // 提取标准品的浓度和像素值
                 val standardPoints = mutableListOf<Pair<Double, Double>>()
                 val pixelType = defaultPixelTypeForCurrentProject()
+                val signalFeatureCode = SignalFeatureCatalog.v2Code(pixelType)
 
                 standardWells.forEach { well ->
                     val concentration = well.trueConcentration
                     if (concentration != null && well.pixelValueJson != null) {
                         try {
                             val pixelValues = parsePixelValues(well.pixelValueJson!!)
-                            val pixelValue = getPixelValue(pixelValues, pixelType) ?: return@forEach
+                            val pixelValue = getSignalValue(
+                                pixelValues = pixelValues,
+                                signalFeatureCode = signalFeatureCode,
+                                pixelType = pixelType
+                            ) ?: return@forEach
                             standardPoints.add(Pair(concentration, pixelValue))
                         } catch (e: Exception) {
                             Log.e(TAG, "解析像素值失败: ${e.message}")
@@ -888,7 +916,11 @@ class WellLayoutViewModel @Inject constructor(
                 _layoutState.value = LayoutState.Processing("正在为 ${analyte.name} 执行曲线拟合...", 40)
 
                 // 执行拟合
-                val fittingResult = FittingEngine.fit(standardPoints)
+                val fittingResult = FittingEngine.fit(standardPoints).copy(
+                    pixelType = pixelType,
+                    signalFeatureCode = signalFeatureCode,
+                    processorVersion = SignalFeatureCatalog.V2_PROCESSOR_VERSION
+                )
                 if (!fittingResult.isSuccess) {
                     Log.e(TAG, "分析物 ${analyte.name} 拟合失败: ${fittingResult.errorMessage}")
                     _layoutState.value = LayoutState.Error("${analyte.name} 拟合失败: ${fittingResult.errorMessage}")
@@ -994,6 +1026,8 @@ class WellLayoutViewModel @Inject constructor(
                     name = "${_selectedAnalyte.value?.name ?: "Unknown"}_Manual_${System.currentTimeMillis()}",
                     function = result.function,
                     pixelType = result.pixelType ?: defaultPixelTypeForCurrentProject(),
+                    signalFeatureCode = result.signalFeatureCode,
+                    processorVersion = result.processorVersion,
                     parameters = result.params,
                     metrics = result.allMetrics,
                     dataPoints = result.standardPoints,
@@ -1047,7 +1081,11 @@ class WellLayoutViewModel @Inject constructor(
                             try {
                                 val pixelValues = parsePixelValues(json)
                                 val pixelType = result.pixelType ?: defaultPixelTypeForCurrentProject()
-                                val pixelValue = getPixelValue(pixelValues, pixelType)
+                                val pixelValue = getSignalValue(
+                                    pixelValues = pixelValues,
+                                    signalFeatureCode = result.signalFeatureCode,
+                                    pixelType = pixelType
+                                )
                                 if (pixelValue != null) {
                                     val concentration = FittingEngine.predictConcentration(
                                         result.parameters,
@@ -1114,6 +1152,10 @@ class WellLayoutViewModel @Inject constructor(
             try {
                 _isFittingLoading.value = true
 
+                // 拟合启动时只读取一次全局策略。后续即使用户在设置页修改规则，已经启动的
+                // 本次拟合仍使用这份冻结快照，保证用户看到的推荐结果在当前会话内不会漂移。
+                val policy = calibrationPolicyPreferences.policyFlow.first()
+
                 // 1. 获取标准品和空白对照孔
                 val allStandards = getStandardWells()
                 val blanks = getBlankWells()
@@ -1153,9 +1195,7 @@ class WellLayoutViewModel @Inject constructor(
                             // 背景扣除
                             val pixelMap = PixelExtractionUtils.jsonToMap(json)
                             val correctedPixelMap = if (backgroundPixelValues != null) {
-                                pixelMap.mapValues { (key, value) ->
-                                    value - (backgroundPixelValues[key] ?: 0.0)
-                                }
+                                PixelExtractionUtils.applyBlankCorrection(pixelMap, backgroundPixelValues)
                             } else {
                                 pixelMap
                             }
@@ -1171,12 +1211,18 @@ class WellLayoutViewModel @Inject constructor(
                 }
 
                 // 5. 遍历像素特征；成熟自动函数使用反算验收排序，专家函数保留手动拟合能力。
-                val results = mutableListOf<FittingResult>()
+                val automaticResults = mutableListOf<FittingResult>()
+                val expertResults = mutableListOf<FittingResult>()
 
                 withContext(Dispatchers.Default) {
                     for (pixelType in pixelTypes) {
+                        val signalFeatureCode = SignalFeatureCatalog.v2Code(pixelType)
                         val dataPoints = fittingData.mapNotNull { (conc, pixelMap) ->
-                            val pixelValue = pixelMap[pixelType.identifier]
+                            val pixelValue = getSignalValue(
+                                pixelValues = pixelMap,
+                                signalFeatureCode = signalFeatureCode,
+                                pixelType = pixelType
+                            )
                             if (pixelValue != null) {
                                 Pair(conc, pixelValue)
                             } else null
@@ -1187,15 +1233,40 @@ class WellLayoutViewModel @Inject constructor(
                             continue
                         }
 
-                        val automaticFunctions = functions.intersect(
-                            FittingEngine.automaticCalibrationFunctions()
-                        )
+                        val uniqueConcentrationLevels = dataPoints
+                            .map(Pair<Double, Double>::first)
+                            .distinct()
+                            .size
+                        val automaticFunctions = functions
+                            .intersect(FittingEngine.automaticCalibrationFunctions())
+                            .intersect(policy.allowedFunctions)
+                            .filterTo(linkedSetOf()) { function ->
+                                // 数学最低要求不能由页面绕过；全局设置只能提高门槛。
+                                when (function) {
+                                    FittingFunction.RODBARD ->
+                                        uniqueConcentrationLevels >= policy.minimumFourParameterLevels
+
+                                    FittingFunction.LOGISTIC ->
+                                        uniqueConcentrationLevels >= policy.minimumFiveParameterLevels
+
+                                    else -> true
+                                }
+                            }
                         if (automaticFunctions.isNotEmpty()) {
                             val calibrationResults = FittingEngine.fitCalibrationCandidates(
                                 dataPoints = dataPoints,
                                 allowedFunctions = automaticFunctions
-                            ).map { result -> result.copy(pixelType = pixelType) }
-                            results.addAll(calibrationResults)
+                            ).filter { result ->
+                                (result.allMetrics["Weighting Scheme"]?.toInt() ?: 0) in
+                                    policy.enabledWeightingCodes
+                            }.map { result ->
+                                result.copy(
+                                    pixelType = pixelType,
+                                    signalFeatureCode = signalFeatureCode,
+                                    processorVersion = SignalFeatureCatalog.V2_PROCESSOR_VERSION
+                                )
+                            }
+                            automaticResults.addAll(calibrationResults)
                         }
 
                         // 用户明确勾选的其他函数属于专家路径，不参与默认自动推荐函数集合；这些
@@ -1210,7 +1281,12 @@ class WellLayoutViewModel @Inject constructor(
                                 )
 
                                 if (result != null && result.rSquared.isFinite()) {
-                                    results.add(result)
+                                    expertResults.add(
+                                        result.copy(
+                                            signalFeatureCode = signalFeatureCode,
+                                            processorVersion = SignalFeatureCatalog.V2_PROCESSOR_VERSION
+                                        )
+                                    )
                                 }
                             } catch (e: Exception) {
                                 Log.e(TAG, "拟合失败: ${function.displayName} 和 ${pixelType.displayName}", e)
@@ -1219,20 +1295,32 @@ class WellLayoutViewModel @Inject constructor(
                     }
                 }
 
-                // 6. 优先使用 ICH 风格标准点反算诊断；旧专家函数缺少诊断时才退回 R² 排序。
-                val sortedResults = results.sortedWith(
-                    compareByDescending<FittingResult> {
-                        it.allMetrics["ICH M10 Accepted"] ?: 0.0
-                    }.thenByDescending {
-                        it.allMetrics["Endpoint Pass Count"] ?: 0.0
-                    }.thenByDescending {
-                        it.allMetrics["Accepted Standard Ratio"] ?: 0.0
-                    }.thenBy {
-                        it.allMetrics["Back-calculated RMSE (%)"] ?: Double.POSITIVE_INFINITY
-                    }.thenByDescending {
-                        it.rSquared
+                // 6. 普通自动模式每个函数只保留最佳“信号特征 + 权重”组合，因此首屏最多
+                // 展示线性、4PL、5PL三条候选。最终推荐统一交给全应用推荐引擎，避免孔板、
+                // 微流控与标准曲线库各自维护一套相互矛盾的排序规则。
+                val bestAutomaticPerFunction = automaticResults
+                    .groupBy(FittingResult::function)
+                    .mapNotNull { (_, group) ->
+                        CalibrationRecommendationEngine.rankByMetrics(
+                            candidates = group,
+                            policy = policy,
+                            metricsOf = ::rankingMetrics
+                        ).firstOrNull()
                     }
+                val rankedAutomatic = CalibrationRecommendationEngine.rankByMetrics(
+                    candidates = bestAutomaticPerFunction,
+                    policy = policy,
+                    metricsOf = ::rankingMetrics
                 )
+
+                // 专家函数属于用户显式选择的兼容能力，不参与普通自动推荐函数池；它们仍保留
+                // 在结果列表尾部，并使用同一质量指标稳定排序，方便旧项目继续人工比较。
+                val rankedExperts = CalibrationRecommendationEngine.rankByMetrics(
+                    candidates = expertResults,
+                    policy = policy,
+                    metricsOf = ::rankingMetrics
+                )
+                val sortedResults = rankedAutomatic + rankedExperts
                 _fittingResults.value = sortedResults
 
                 if (sortedResults.isEmpty()) {
@@ -1260,6 +1348,28 @@ class WellLayoutViewModel @Inject constructor(
         }
     }
 
+    /** 将旧96孔板的 [FittingResult] 适配到全应用统一推荐引擎。 */
+    private fun rankingMetrics(result: FittingResult): CalibrationRankingMetrics {
+        val signalMinimum = result.standardPoints.minOfOrNull(Pair<Double, Double>::second)
+        val signalMaximum = result.standardPoints.maxOfOrNull(Pair<Double, Double>::second)
+        val signalRange = if (signalMinimum != null && signalMaximum != null) {
+            kotlin.math.abs(signalMaximum - signalMinimum)
+        } else {
+            0.0
+        }
+        val rmse = result.allMetrics["RMSE"]
+        return CalibrationRankingMetrics(
+            function = result.function,
+            rSquared = result.rSquared,
+            accepted = (result.allMetrics["ICH M10 Accepted"] ?: 0.0) >= 1.0,
+            backCalculatedRmsePercent = result.allMetrics["Back-calculated RMSE (%)"],
+            acceptedStandardRatio = result.allMetrics["Accepted Standard Ratio"],
+            normalizedRmse = rmse?.takeIf { signalRange > 1e-12 }?.div(signalRange),
+            mae = result.allMetrics["MAE"],
+            weightingCode = result.allMetrics["Weighting Scheme"]?.toInt() ?: 0
+        )
+    }
+
     /**
      * 保存拟合结果为模板
      * @param result 要保存的拟合结果
@@ -1276,6 +1386,8 @@ class WellLayoutViewModel @Inject constructor(
                 name = "${analyte.name}-${result.function.displayName}-${result.pixelType?.displayName}",
                 function = result.function,
                 pixelType = result.pixelType ?: PixelType.GRAY_LUMINOSITY,
+                signalFeatureCode = result.signalFeatureCode,
+                processorVersion = result.processorVersion,
                 parameters = result.params,  // 使用FittingResult中的params计算属性，它返回Map<String, Double>
                 metrics = result.allMetrics,
                 dataPoints = result.standardPoints
@@ -1360,13 +1472,18 @@ class WellLayoutViewModel @Inject constructor(
             }
 
             // 提取标准品的浓度和像素值
+            val selectedPixelType = defaultPixelTypeForCurrentProject()
+            val selectedSignalFeatureCode = SignalFeatureCatalog.v2Code(selectedPixelType)
             val standardPoints = standardWells.mapNotNull { well ->
                 val concentration = well.trueConcentration
                 if (concentration != null && well.pixelValueJson != null) {
                     try {
                         val pixelValues = parsePixelValues(well.pixelValueJson!!)
-                        // 默认使用GREEN通道
-                        val pixelValue = getPixelValue(pixelValues, defaultPixelTypeForCurrentProject())
+                        val pixelValue = getSignalValue(
+                            pixelValues = pixelValues,
+                            signalFeatureCode = selectedSignalFeatureCode,
+                            pixelType = selectedPixelType
+                        )
                             ?: return@mapNotNull null
                         Pair(concentration, pixelValue)
                     } catch (e: Exception) {
@@ -1385,7 +1502,11 @@ class WellLayoutViewModel @Inject constructor(
             _layoutState.value = LayoutState.Processing("正在进行曲线拟合...", 30)
 
             // 使用FittingEngine进行曲线拟合
-            val fittingResult = FittingEngine.fit(standardPoints)
+            val fittingResult = FittingEngine.fit(standardPoints).copy(
+                pixelType = selectedPixelType,
+                signalFeatureCode = selectedSignalFeatureCode,
+                processorVersion = SignalFeatureCatalog.V2_PROCESSOR_VERSION
+            )
             if (!fittingResult.isSuccess) {
                 _layoutState.value = LayoutState.Error("曲线拟合失败: ${fittingResult.errorMessage}")
                 return null
@@ -1398,8 +1519,11 @@ class WellLayoutViewModel @Inject constructor(
                 if (well.pixelValueJson != null) {
                     try {
                         val pixelValues = parsePixelValues(well.pixelValueJson!!)
-                        // 默认使用GREEN通道
-                        val pixelValue = getPixelValue(pixelValues, defaultPixelTypeForCurrentProject())
+                        val pixelValue = getSignalValue(
+                            pixelValues = pixelValues,
+                            signalFeatureCode = fittingResult.signalFeatureCode,
+                            pixelType = selectedPixelType
+                        )
                             ?: return@mapNotNull null
 
                         // 使用拟合结果预测浓度
@@ -1433,6 +1557,8 @@ class WellLayoutViewModel @Inject constructor(
                 name = "${currentAnalyte.name}_${System.currentTimeMillis()}",
                 function = fittingResult.function,
                 pixelType = fittingResult.pixelType ?: defaultPixelTypeForCurrentProject(),
+                signalFeatureCode = fittingResult.signalFeatureCode,
+                processorVersion = fittingResult.processorVersion,
                 parameters = fittingResult.params,  // 使用FittingResult中的params计算属性，它返回Map<String, Double>
                 metrics = fittingResult.metrics,
                 createdAt = Date()
@@ -1511,7 +1637,11 @@ class WellLayoutViewModel @Inject constructor(
                                 val resolvedPixelType =
                                     if (fittingResult.pixelType == null) defaultPixelTypeForCurrentProject() else pixelType
                                 val pixelMap = PixelExtractionUtils.jsonToMap(json)
-                                val pixelValue = getPixelValue(pixelMap, resolvedPixelType)
+                                val pixelValue = getSignalValue(
+                                    pixelValues = pixelMap,
+                                    signalFeatureCode = fittingResult.signalFeatureCode,
+                                    pixelType = resolvedPixelType
+                                )
                                 if (pixelValue != null) {
                                     val concentration = FittingEngine.predictConcentration(
                                         fittingResult.parameters,
@@ -1681,7 +1811,7 @@ class WellLayoutViewModel @Inject constructor(
 
             // 检查是否需要提取像素值
             val wellsToCheck = _wellResults.value
-            val needsPixelExtraction = wellsToCheck.any { it.pixelValueJson == null }
+            val needsPixelExtraction = wellsToCheck.any { !hasVersionedPixelSignals(it.pixelValueJson) }
 
             if (needsPixelExtraction) {
                 _layoutState.value = LayoutState.Processing(
@@ -1700,7 +1830,7 @@ class WellLayoutViewModel @Inject constructor(
                 _wellResults.value = updatedResults
                 Log.d(TAG, "像素提取完成，已更新孔位结果")
             } else {
-                Log.d(TAG, "所有孔位已有像素值，跳过提取")
+                Log.d(TAG, "所有孔位已有版本化像素值，跳过提取")
             }
 
             // 加载项目相关的分析物
@@ -2026,7 +2156,7 @@ class WellLayoutViewModel @Inject constructor(
         }
 
         // 检查是否需要提取像素值
-        val needsPixelExtraction = currentResults.any { it.pixelValueJson == null }
+        val needsPixelExtraction = currentResults.any { !hasVersionedPixelSignals(it.pixelValueJson) }
 
         if (needsPixelExtraction) {
             _layoutState.value = LayoutState.AutoProcessing(

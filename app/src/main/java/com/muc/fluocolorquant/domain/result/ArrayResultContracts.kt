@@ -89,12 +89,21 @@ data class ArrayCarrierResult(
     val orientationMarkerJson: String?
 )
 
-/** 单个分析物的冻结显示身份、模型身份和可靠范围。 */
+/**
+ * 单个分析物的冻结显示身份、模型身份和两类浓度范围。
+ *
+ * 项目量程描述用户创建项目时声明的业务范围；曲线标定范围只描述本次曲线真实覆盖的标准点区间。
+ * 二者必须独立保存，否则现场标准点较窄时会把项目最大浓度错误缩小，并导致大量位点被误判为失败。
+ */
 data class ArrayAnalyteResult(
     val analyteId: String,
     val name: String,
     val displayOrder: Int,
     val concentrationUnit: String,
+    /**
+     * 旧字段保留给现有导出和历史测试兼容；其语义从本版本起固定为“项目量程”。
+     * 新代码应优先读取 [projectRangeMin] 与 [projectRangeMax]，避免再次把它理解为曲线标定范围。
+     */
     val reliableRangeMin: Double?,
     val reliableRangeMax: Double?,
     val modelId: String,
@@ -111,7 +120,15 @@ data class ArrayAnalyteResult(
     /** 本次运行冻结的真实标准点，用于结果页重建拟合曲线。 */
     val calibrationPoints: List<ArrayCalibrationPointResult> = emptyList(),
     /** 拟合时冻结的有限验证指标，例如 R²、RMSE、MAE 和标准点接受率。 */
-    val validationMetrics: Map<String, Double> = emptyMap()
+    val validationMetrics: Map<String, Double> = emptyMap(),
+    /** 用户在项目或模板中声明的最低浓度；旧调用方未提供时兼容映射自旧字段。 */
+    val projectRangeMin: Double? = reliableRangeMin,
+    /** 用户在项目或模板中声明的最高浓度；热力图色带和项目边界判断使用该值。 */
+    val projectRangeMax: Double? = reliableRangeMax,
+    /** 标准曲线真实参与拟合的最低浓度；仅用于解释插值区间和外推状态。 */
+    val calibrationRangeMin: Double? = null,
+    /** 标准曲线真实参与拟合的最高浓度；不得覆盖项目量程。 */
+    val calibrationRangeMax: Double? = null
 )
 
 /** 结果页绘图需要的最小标准点契约，避免 UI 依赖 Room 实体。 */

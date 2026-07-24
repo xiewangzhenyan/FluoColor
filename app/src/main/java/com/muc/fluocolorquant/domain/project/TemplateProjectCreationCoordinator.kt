@@ -15,6 +15,8 @@ import com.muc.fluocolorquant.data.repository.AnalyteRepository
 import com.muc.fluocolorquant.data.repository.CarrierProfileRepository
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationMethod
+import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationResourceSnapshotCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.Date
@@ -217,6 +219,7 @@ class TemplateProjectCreationCoordinator @Inject constructor(
             )
         }
 
+        val bindingsByAnalyte = bundle.quantitationBindings.associateBy { it.analyteId }
         val resolvedAnalytes = bundle.analyteConfigs.mapNotNull { config ->
             val analyte = analyteRepository.getAnalyteById(config.analyteId)
             if (analyte == null) {
@@ -227,8 +230,15 @@ class TemplateProjectCreationCoordinator @Inject constructor(
                 return@mapNotNull null
             }
 
+            val binding = bindingsByAnalyte[config.analyteId]
+            val frozenResource = binding?.let { stored ->
+                runCatching {
+                    TemplateQuantitationResourceSnapshotCodec.decode(stored.resourceSnapshotJson)
+                }.getOrNull()
+            }
             val modelId = config.analysisModelId
-            val modelBundle = modelId?.takeIf(String::isNotBlank)
+            val modelBundle = frozenResource?.analysisModel ?: modelId
+                ?.takeIf(String::isNotBlank)
                 ?.let { analysisModelRepository.getBundle(it) }
             if (modelBundle == null) {
                 issues += TemplatePreflightIssue(
@@ -239,7 +249,9 @@ class TemplateProjectCreationCoordinator @Inject constructor(
             }
 
             val model = modelBundle.model
-            if (model.status != AnalysisModelLifecycleStatus.PUBLISHED.code) {
+            if (frozenResource == null &&
+                model.status != AnalysisModelLifecycleStatus.PUBLISHED.code
+            ) {
                 issues += TemplatePreflightIssue(
                     TemplatePreflightCode.ANALYSIS_MODEL_NOT_PUBLISHED,
                     model.id
@@ -290,9 +302,15 @@ class TemplateProjectCreationCoordinator @Inject constructor(
             }
             val configMin = config.reliableRangeMin
             val configMax = config.reliableRangeMax
-            if (configMin == null || configMax == null || configMin < model.reliableRangeMin ||
-                configMax > model.reliableRangeMax || configMin >= configMax
-            ) {
+            val invalidProjectRange = configMin == null || configMax == null ||
+                !configMin.isFinite() || !configMax.isFinite() || configMin >= configMax
+            val modelType = AnalysisModelType.fromCode(model.modelType)
+            val outsideDeepLearningRange = modelType == AnalysisModelType.DEEP_LEARNING &&
+                configMin != null && configMax != null &&
+                (configMin < model.reliableRangeMin || configMax > model.reliableRangeMax)
+            // 标准曲线的模型范围是“标定范围”，项目量程允许更宽，范围外部分由执行器明确标记外推。
+            // 深度学习模型没有可审计的数学外推函数，仍要求项目量程落在模型验证范围内。
+            if (invalidProjectRange || outsideDeepLearningRange) {
                 issues += TemplatePreflightIssue(
                     TemplatePreflightCode.MODEL_RELIABLE_RANGE_MISMATCH,
                     model.id
@@ -301,8 +319,15 @@ class TemplateProjectCreationCoordinator @Inject constructor(
 
             TemplateProjectAnalyteSnapshot(
                 analyte = analyte,
-                templateConfig = config,
-                analysisModel = modelBundle
+                templateConfig = config.copy(analysisModelId = binding?.sourceResourceId ?: modelId),
+                analysisModel = modelBundle,
+                quantitationMode = frozenResource?.quantitation?.method?.toGridModeCode(),
+                onsiteSelectedFeature = frozenResource?.quantitation?.calibration?.primaryFeature,
+                onsiteSelectedFunction = frozenResource?.quantitation?.calibration?.fittingFunction,
+                analyteQuantitationSnapshot = frozenResource?.quantitation?.copy(
+                    // 若资源被删除，外键列已经SET_NULL，项目快照不能继续声称实时资源存在。
+                    sourceResourceId = binding?.sourceResourceId
+                )
             )
         }
 
@@ -493,6 +518,14 @@ class TemplateProjectCreationCoordinator @Inject constructor(
             }
         }
     }
+}
+
+/** 领域层映射到项目快照的稳定定量模式编码，避免项目创建依赖UI枚举。 */
+private fun AnalyteQuantitationMethod.toGridModeCode(): String = when (this) {
+    AnalyteQuantitationMethod.ONSITE_CALIBRATION -> "ONSITE_AUTO_FIT"
+    AnalyteQuantitationMethod.STANDARD_CURVE_RESOURCE -> "EXISTING_STANDARD_CURVE"
+    AnalyteQuantitationMethod.DEEP_LEARNING_MODEL -> "DEEP_LEARNING_MODEL"
+    AnalyteQuantitationMethod.SIGNAL_ONLY -> "SIGNAL_ONLY"
 }
 
 /**

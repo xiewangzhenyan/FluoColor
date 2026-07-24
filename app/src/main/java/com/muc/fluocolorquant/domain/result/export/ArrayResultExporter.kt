@@ -3,6 +3,7 @@ package com.muc.fluocolorquant.domain.result.export
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
+import com.muc.fluocolorquant.domain.result.resolveQualityLevel
 import java.io.ByteArrayOutputStream
 import java.io.FilterOutputStream
 import java.io.OutputStream
@@ -19,9 +20,9 @@ import java.util.zip.ZipOutputStream
  * 光度或浓度模型。这样历史运行导出与屏幕显示使用完全相同的数据来源。
  */
 object ArrayResultExporter {
-    const val CSV_SCHEMA_VERSION: String = "array-measurements-csv-v1"
+    const val CSV_SCHEMA_VERSION: String = "array-measurements-csv-v2"
     const val ARCHIVE_SCHEMA_VERSION: String = "array-result-archive-v1"
-    const val EXPORTER_VERSION: String = "array-result-exporter-v1"
+    const val EXPORTER_VERSION: String = "array-result-exporter-v2"
 
     private val gson: Gson = GsonBuilder()
         .disableHtmlEscaping()
@@ -59,12 +60,19 @@ object ArrayResultExporter {
         "primary_feature_value",
         "concentration",
         "concentration_unit",
+        // 项目量程和曲线标定范围具有不同科学语义，必须分别输出，不能再用一个
+        // reliable_range 字段让下游软件猜测。
+        "project_range_min",
+        "project_range_max",
+        "calibration_range_min",
+        "calibration_range_max",
         "reliable_range_status",
         "background",
         "snr",
         "measurement_confidence",
         "signal_detectable",
         "quality_reliable",
+        "measurement_quality_level",
         "geometry_source",
         "geometry_confidence",
         "geometry_flags",
@@ -123,12 +131,17 @@ object ArrayResultExporter {
                     measurement.primaryFeatureValue.csvNumber(),
                     measurement.concentrationValue.csvNumber(),
                     measurement.concentrationUnit.orEmpty(),
+                    analyte?.projectRangeMin.csvNumber(),
+                    analyte?.projectRangeMax.csvNumber(),
+                    analyte?.calibrationRangeMin.csvNumber(),
+                    analyte?.calibrationRangeMax.csvNumber(),
                     measurement.reliableRangeStatus.orEmpty(),
                     measurement.backgroundValue.csvNumber(),
                     measurement.signalToNoiseRatio.csvNumber(),
                     measurement.confidence.csvNumber(),
                     measurement.signalDetectable.toString(),
                     measurement.qualityReliable.toString(),
+                    measurement.resolveQualityLevel(site).name,
                     site.geometry.source.name,
                     site.geometry.confidence.csvNumber(),
                     site.geometry.flags.map(Enum<*>::name).sorted().joinToString("|"),

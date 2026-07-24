@@ -17,7 +17,8 @@ import org.apache.commons.math3.analysis.solvers.LaguerreSolver
  *
  * 曲线实体保存的是“浓度 x → 科学信号 y”的正向拟合。量化器先通过 [prepare]
  * 一次性冻结并校验模型，再复用 [PreparedStandardCurveQuantifier.Ready] 处理同一分析物的
- * 多个位点。整个执行过程禁止在可靠浓度范围之外外推。
+ * 多个位点。曲线主档中的范围表示标定范围；调用方可额外传入项目预期量程，量化器会
+ * 在数学定义和单调性允许时，在项目量程内执行有界外推并返回明确的范围状态。
  */
 object StandardCurveQuantifier {
     private val gson = Gson()
@@ -29,7 +30,11 @@ object StandardCurveQuantifier {
      * 单调性和插值可靠域检查。任何模型级问题都返回 [PreparedStandardCurveQuantifier.SignalOnly]，
      * 避免每个阵列位点重复解析 JSON、序列化快照和扫描曲线。
      */
-    fun prepare(bundle: AnalysisModelBundle): PreparedStandardCurveQuantifier {
+    fun prepare(
+        bundle: AnalysisModelBundle,
+        projectRangeMin: Double? = null,
+        projectRangeMax: Double? = null
+    ): PreparedStandardCurveQuantifier {
         if (bundle.model.modelType != AnalysisModelType.STANDARD_CURVE.code) {
             return modelSignalOnly(EndpointQuantificationReason.UNSUPPORTED_MODEL_TYPE)
         }
@@ -45,17 +50,23 @@ object StandardCurveQuantifier {
             return invalidPreparedDefinition()
         }
 
-        val minimum = bundle.model.reliableRangeMin
-        val maximum = bundle.model.reliableRangeMax
-        val concentrationSpan = maximum - minimum
+        val calibrationMinimum = bundle.model.reliableRangeMin
+        val calibrationMaximum = bundle.model.reliableRangeMax
+        val concentrationSpan = calibrationMaximum - calibrationMinimum
         if (
-            !minimum.isFinite() ||
-            !maximum.isFinite() ||
-            maximum <= minimum ||
+            !calibrationMinimum.isFinite() ||
+            !calibrationMaximum.isFinite() ||
+            calibrationMaximum <= calibrationMinimum ||
             !concentrationSpan.isFinite()
         ) {
             return invalidPreparedDefinition()
         }
+        val domain = resolveQuantificationDomain(
+            calibrationMinimum = calibrationMinimum,
+            calibrationMaximum = calibrationMaximum,
+            projectMinimum = projectRangeMin,
+            projectMaximum = projectRangeMax
+        ) ?: return invalidPreparedDefinition()
 
         // 调用方可能传入 MutableList。准备阶段必须复制标定点，确保同一 Ready 在后续
         // 多位点执行中不受外部集合增删影响，也不会悄然重新准备模型。
@@ -68,7 +79,10 @@ object StandardCurveQuantifier {
             return invalidPreparedDefinition()
         }
         val snapshotJson = modelSnapshot(frozenBundle) ?: return invalidPreparedDefinition()
-        val concentrationTolerance = scaledTolerance(minimum, maximum)
+        val concentrationTolerance = scaledTolerance(
+            domain.executionMinimum,
+            domain.executionMaximum
+        )
             ?: return invalidPreparedDefinition()
 
         val function = FittingFunction.fromIdentifier(definition.fittingFunction)
@@ -77,14 +91,16 @@ object StandardCurveQuantifier {
             prepareInterpolation(
                 bundle = frozenBundle,
                 snapshotJson = snapshotJson,
-                concentrationTolerance = concentrationTolerance
+                concentrationTolerance = concentrationTolerance,
+                domain = domain
             )
         } else {
             prepareFittedCurve(
                 bundle = frozenBundle,
                 function = function,
                 snapshotJson = snapshotJson,
-                concentrationTolerance = concentrationTolerance
+                concentrationTolerance = concentrationTolerance,
+                domain = domain
             )
         }
     }
@@ -132,24 +148,25 @@ object StandardCurveQuantifier {
         bundle: AnalysisModelBundle,
         function: FittingFunction,
         snapshotJson: String,
-        concentrationTolerance: Double
+        concentrationTolerance: Double,
+        domain: QuantificationDomain
     ): PreparedStandardCurveQuantifier {
         val definition = requireNotNull(bundle.standardCurve)
         val parameters = parseParameters(definition.parametersJson, function)
             ?: return invalidPreparedDefinition()
-        val minimum = bundle.model.reliableRangeMin
-        val maximum = bundle.model.reliableRangeMax
+        val proofMinimum = minOf(domain.calibrationMinimum, domain.executionMinimum)
+        val proofMaximum = maxOf(domain.calibrationMaximum, domain.executionMaximum)
 
         // 旧拟合页面为保证绘图连续，会对部分非法参数返回替代值。科研定量必须在调用
         // 共享公式前先拒绝这些无定义域或不可辨识参数。
-        if (!hasStrictDefinition(function, parameters, minimum, maximum)) {
+        if (!hasStrictDefinition(function, parameters, proofMinimum, proofMaximum)) {
             return invalidPreparedDefinition()
         }
         val provenDirection = proveMonotonicDirection(
             function = function,
             parameters = parameters,
-            minimum = minimum,
-            maximum = maximum
+            minimum = proofMinimum,
+            maximum = proofMaximum
         ) ?: return nonMonotonicPreparedModel()
         val direction = matchDeclaredDirection(
             declared = definition.monotonicDirection,
@@ -161,8 +178,8 @@ object StandardCurveQuantifier {
         val sampledSignals = sampleReliableCurve(
             function = function,
             parameters = parameters,
-            minimum = minimum,
-            maximum = maximum
+            minimum = domain.executionMinimum,
+            maximum = domain.executionMaximum
         ) ?: return invalidPreparedDefinition()
         val minimumSignal = sampledSignals.first()
         val maximumSignal = sampledSignals.last()
@@ -183,8 +200,7 @@ object StandardCurveQuantifier {
                 signalValue = signalValue,
                 function = function,
                 parameters = immutableParameters,
-                minimum = minimum,
-                maximum = maximum,
+                domain = domain,
                 minimumSignal = minimumSignal,
                 maximumSignal = maximumSignal,
                 direction = direction,
@@ -200,7 +216,8 @@ object StandardCurveQuantifier {
     private fun prepareInterpolation(
         bundle: AnalysisModelBundle,
         snapshotJson: String,
-        concentrationTolerance: Double
+        concentrationTolerance: Double,
+        domain: QuantificationDomain
     ): PreparedStandardCurveQuantifier {
         val definition = requireNotNull(bundle.standardCurve)
         val allPoints = averagedCalibrationPoints(bundle.calibrationPoints)
@@ -208,8 +225,9 @@ object StandardCurveQuantifier {
             return invalidPreparedDefinition()
         }
 
-        val minimum = bundle.model.reliableRangeMin
-        val maximum = bundle.model.reliableRangeMax
+        // 插值没有可审计的标定域外方程，因此继续严格限制在真实标定范围内。
+        val minimum = domain.calibrationMinimum
+        val maximum = domain.calibrationMaximum
         val calibrationTolerance = scaledTolerance(
             allPoints.first().concentration,
             allPoints.last().concentration
@@ -264,8 +282,7 @@ object StandardCurveQuantifier {
         signalValue: Double,
         function: FittingFunction,
         parameters: Map<String, Double>,
-        minimum: Double,
-        maximum: Double,
+        domain: QuantificationDomain,
         minimumSignal: Double,
         maximumSignal: Double,
         direction: MonotonicDirection,
@@ -280,7 +297,9 @@ object StandardCurveQuantifier {
             minimumConcentrationSignal = minimumSignal,
             maximumConcentrationSignal = maximumSignal,
             direction = direction,
-            tolerance = signalTolerance
+            tolerance = signalTolerance,
+            belowStatus = domain.belowExecutionStatus,
+            aboveStatus = domain.aboveExecutionStatus
         )
         val targetSignal = when (boundaryDecision) {
             is SignalBoundaryDecision.Outside -> {
@@ -294,14 +313,24 @@ object StandardCurveQuantifier {
 
         // 容差内落在信号边界外的输入必须精确夹到浓度端点，不能进入二分后产生负浓度。
         if (targetSignal == minimumSignal) {
-            return quantified(minimum, unit, snapshotJson)
+            return quantified(
+                concentration = domain.executionMinimum,
+                unit = unit,
+                snapshotJson = snapshotJson,
+                rangeStatus = domain.statusOf(domain.executionMinimum)
+            )
         }
         if (targetSignal == maximumSignal) {
-            return quantified(maximum, unit, snapshotJson)
+            return quantified(
+                concentration = domain.executionMaximum,
+                unit = unit,
+                snapshotJson = snapshotJson,
+                rangeStatus = domain.statusOf(domain.executionMaximum)
+            )
         }
 
-        var lower = minimum
-        var upper = maximum
+        var lower = domain.executionMinimum
+        var upper = domain.executionMaximum
         repeat(BISECTION_ITERATIONS) {
             val middle = lower + (upper - lower) / 2.0
             if (middle == lower || middle == upper) return@repeat
@@ -315,11 +344,16 @@ object StandardCurveQuantifier {
         }
         val concentration = normalizeConcentrationToReliableBoundary(
             concentration = lower + (upper - lower) / 2.0,
-            minimum = minimum,
-            maximum = maximum,
+            minimum = domain.executionMinimum,
+            maximum = domain.executionMaximum,
             tolerance = concentrationTolerance
         ) ?: return invalidSiteDefinition()
-        return quantified(concentration, unit, snapshotJson)
+        return quantified(
+            concentration = concentration,
+            unit = unit,
+            snapshotJson = snapshotJson,
+            rangeStatus = domain.statusOf(concentration)
+        )
     }
 
     /** Ready 的插值路径只在预先构造的可靠区间分段中查找，不接触原始标定域外的段。 */
@@ -467,7 +501,9 @@ object StandardCurveQuantifier {
         minimumConcentrationSignal: Double,
         maximumConcentrationSignal: Double,
         direction: MonotonicDirection,
-        tolerance: Double
+        tolerance: Double,
+        belowStatus: ReliableRangeStatus = ReliableRangeStatus.BELOW_RANGE,
+        aboveStatus: ReliableRangeStatus = ReliableRangeStatus.ABOVE_RANGE
     ): SignalBoundaryDecision {
         return when (direction) {
             MonotonicDirection.INCREASING -> when {
@@ -475,14 +511,14 @@ object StandardCurveQuantifier {
                     if (minimumConcentrationSignal - signal <= tolerance) {
                         SignalBoundaryDecision.Within(minimumConcentrationSignal)
                     } else {
-                        SignalBoundaryDecision.Outside(ReliableRangeStatus.BELOW_RANGE)
+                        SignalBoundaryDecision.Outside(belowStatus)
                     }
                 }
                 signal > maximumConcentrationSignal -> {
                     if (signal - maximumConcentrationSignal <= tolerance) {
                         SignalBoundaryDecision.Within(maximumConcentrationSignal)
                     } else {
-                        SignalBoundaryDecision.Outside(ReliableRangeStatus.ABOVE_RANGE)
+                        SignalBoundaryDecision.Outside(aboveStatus)
                     }
                 }
                 else -> SignalBoundaryDecision.Within(signal)
@@ -492,14 +528,14 @@ object StandardCurveQuantifier {
                     if (signal - minimumConcentrationSignal <= tolerance) {
                         SignalBoundaryDecision.Within(minimumConcentrationSignal)
                     } else {
-                        SignalBoundaryDecision.Outside(ReliableRangeStatus.BELOW_RANGE)
+                        SignalBoundaryDecision.Outside(belowStatus)
                     }
                 }
                 signal < maximumConcentrationSignal -> {
                     if (maximumConcentrationSignal - signal <= tolerance) {
                         SignalBoundaryDecision.Within(maximumConcentrationSignal)
                     } else {
-                        SignalBoundaryDecision.Outside(ReliableRangeStatus.ABOVE_RANGE)
+                        SignalBoundaryDecision.Outside(aboveStatus)
                     }
                 }
                 else -> SignalBoundaryDecision.Within(signal)
@@ -910,12 +946,44 @@ object StandardCurveQuantifier {
     private fun quantified(
         concentration: Double,
         unit: String,
-        snapshotJson: String
+        snapshotJson: String,
+        rangeStatus: ReliableRangeStatus = ReliableRangeStatus.WITHIN_RANGE
     ): PreparedEndpointQuantificationResult.Quantified {
         return PreparedEndpointQuantificationResult.Quantified(
             concentration = concentration,
             unit = unit,
+            rangeStatus = rangeStatus,
             modelSnapshotJson = snapshotJson
+        )
+    }
+
+    /**
+     * 将曲线标定范围与项目预期量程组合为一次运行的有界反算域。
+     *
+     * 项目范围缺失时保持历史行为；只提供一个端点、端点非有限或上下限颠倒时拒绝执行，
+     * 避免以隐式默认值污染科研结果。
+     */
+    private fun resolveQuantificationDomain(
+        calibrationMinimum: Double,
+        calibrationMaximum: Double,
+        projectMinimum: Double?,
+        projectMaximum: Double?
+    ): QuantificationDomain? {
+        if ((projectMinimum == null) != (projectMaximum == null)) return null
+        val executionMinimum = projectMinimum ?: calibrationMinimum
+        val executionMaximum = projectMaximum ?: calibrationMaximum
+        if (
+            !executionMinimum.isFinite() ||
+            !executionMaximum.isFinite() ||
+            executionMaximum <= executionMinimum
+        ) {
+            return null
+        }
+        return QuantificationDomain(
+            calibrationMinimum = calibrationMinimum,
+            calibrationMaximum = calibrationMaximum,
+            executionMinimum = executionMinimum,
+            executionMaximum = executionMaximum
         )
     }
 
@@ -962,6 +1030,34 @@ object StandardCurveQuantifier {
     }
 
     private data class AveragedPoint(val concentration: Double, val signal: Double)
+
+    /** 标定域用于判定外推，项目域用于限制本次运行允许的最大反算范围。 */
+    private data class QuantificationDomain(
+        val calibrationMinimum: Double,
+        val calibrationMaximum: Double,
+        val executionMinimum: Double,
+        val executionMaximum: Double
+    ) {
+        val belowExecutionStatus: ReliableRangeStatus
+            get() = if (executionMinimum == calibrationMinimum) {
+                ReliableRangeStatus.BELOW_RANGE
+            } else {
+                ReliableRangeStatus.BELOW_PROJECT_RANGE
+            }
+
+        val aboveExecutionStatus: ReliableRangeStatus
+            get() = if (executionMaximum == calibrationMaximum) {
+                ReliableRangeStatus.ABOVE_RANGE
+            } else {
+                ReliableRangeStatus.ABOVE_PROJECT_RANGE
+            }
+
+        fun statusOf(concentration: Double): ReliableRangeStatus = when {
+            concentration < calibrationMinimum -> ReliableRangeStatus.BELOW_RANGE
+            concentration > calibrationMaximum -> ReliableRangeStatus.ABOVE_RANGE
+            else -> ReliableRangeStatus.WITHIN_RANGE
+        }
+    }
 
     private const val BISECTION_ITERATIONS: Int = 80
     private const val MONOTONIC_SAMPLE_COUNT: Int = 257

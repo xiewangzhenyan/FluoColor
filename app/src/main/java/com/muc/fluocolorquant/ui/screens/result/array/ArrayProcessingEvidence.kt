@@ -52,14 +52,15 @@ const val ARRAY_PROCESSING_IMAGE_TAG: String = "array_processing_image"
 /**
  * 用户可见的 PG-Grid/PG-Quant 处理证据页。
  *
- * 页面只展示已经随运行冻结的 PNG，不在 UI 层重新执行算法。横向步骤条负责快速切换，
- * 主卡片保持单一视觉焦点，避免九张图同时堆叠造成实验人员难以理解先后关系。
+ * 页面按“原始输入 → 算法处理证据”展示随运行冻结的图像，不在 UI 层重新执行算法。
+ * 原始图不再叠加可能产生坐标歧义的临时标签；定位效果直接查看冻结的网格叠加步骤。
  */
 @Composable
 fun ArrayProcessingEvidenceTab(snapshot: ArrayResultSnapshot) {
     val evidence = remember(snapshot.runId, snapshot.artifacts) {
         snapshot.artifacts.filter { artifact ->
-            CaptureRole.fromCode(artifact.captureRole)?.isProcessingEvidence == true
+            val role = CaptureRole.fromCode(artifact.captureRole)
+            role == CaptureRole.ENDPOINT || role?.isProcessingEvidence == true
         }
     }
     var selectedId by remember(snapshot.runId, evidence) {
@@ -240,18 +241,26 @@ private fun ProcessingEvidenceCard(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            if (role?.isProcessingEvidence == true) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = stringResource(R.string.array_processing_diagnostic_only),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
                 Text(
-                    text = stringResource(R.string.array_processing_diagnostic_only),
+                    text = stringResource(R.string.array_processing_original_input_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -299,6 +308,7 @@ private fun ProcessingEmptyCard() {
 
 @Composable
 fun processingEvidenceShortTitle(role: CaptureRole?): String = when (role) {
+    CaptureRole.ENDPOINT -> stringResource(R.string.array_processing_short_input)
     CaptureRole.PROCESS_ORIGINAL_GEOMETRY -> stringResource(R.string.array_processing_short_original)
     CaptureRole.PROCESS_CANDIDATE_RESPONSE -> stringResource(R.string.array_processing_short_candidate)
     CaptureRole.PROCESS_RECTIFIED -> stringResource(R.string.array_processing_short_rectified)
@@ -313,6 +323,7 @@ fun processingEvidenceShortTitle(role: CaptureRole?): String = when (role) {
 
 @Composable
 fun processingEvidenceTitle(role: CaptureRole?): String = when (role) {
+    CaptureRole.ENDPOINT -> stringResource(R.string.array_processing_input_title)
     CaptureRole.PROCESS_ORIGINAL_GEOMETRY -> stringResource(R.string.array_processing_original_title)
     CaptureRole.PROCESS_CANDIDATE_RESPONSE -> stringResource(R.string.array_processing_candidate_title)
     CaptureRole.PROCESS_RECTIFIED -> stringResource(R.string.array_processing_rectified_title)
@@ -327,6 +338,7 @@ fun processingEvidenceTitle(role: CaptureRole?): String = when (role) {
 
 @Composable
 private fun processingEvidenceDescription(role: CaptureRole?): String = when (role) {
+    CaptureRole.ENDPOINT -> stringResource(R.string.array_processing_input_desc)
     CaptureRole.PROCESS_ORIGINAL_GEOMETRY -> stringResource(R.string.array_processing_original_desc)
     CaptureRole.PROCESS_CANDIDATE_RESPONSE -> stringResource(R.string.array_processing_candidate_desc)
     CaptureRole.PROCESS_RECTIFIED -> stringResource(R.string.array_processing_rectified_desc)

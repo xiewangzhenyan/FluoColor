@@ -104,7 +104,8 @@ class PgQuantGoldenParityTest {
                 absoluteFloor = 0.10
             )
             assertEquals(expectedSite.boolean("signal_detectable"), actualSite.qc.signalDetectable)
-            assertEquals(expectedSite.boolean("quant_reliable"), actualSite.qc.qualityReliable)
+            // Python 金标准中的 quant_reliable 使用旧版“一项提示即失败”语义。
+            // Android v2 仍严格对齐全部原始 flags，但按产品要求只把严重饱和/严重裁切判为硬失败。
             assertEquals(expectedSite.stringSet("flags"), actualSite.qc.flags.map(::wireName).toSet())
         }
 

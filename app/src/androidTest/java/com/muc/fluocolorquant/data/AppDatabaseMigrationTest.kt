@@ -138,6 +138,39 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migrate12To13_addsTemplateBindingsCurveFingerprintAndSignalVersion() {
+        migrationHelper.createDatabase(TEMPLATE_BINDING_DATABASE_NAME, 12).close()
+
+        migrationHelper.runMigrationsAndValidate(
+            TEMPLATE_BINDING_DATABASE_NAME,
+            13,
+            true,
+            DatabaseMigrations.MIGRATION_12_13
+        ).use { database ->
+            val tables = mutableSetOf<String>()
+            database.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { cursor ->
+                while (cursor.moveToNext()) tables += cursor.getString(0)
+            }
+            assertTrue("template_quantitation_bindings" in tables)
+
+            val analysisColumns = mutableSetOf<String>()
+            database.query("PRAGMA table_info(`analysis_models`)").use { cursor ->
+                val nameIndex = cursor.getColumnIndexOrThrow("name")
+                while (cursor.moveToNext()) analysisColumns += cursor.getString(nameIndex)
+            }
+            assertTrue("contentFingerprint" in analysisColumns)
+
+            val curveColumns = mutableSetOf<String>()
+            database.query("PRAGMA table_info(`curve_models`)").use { cursor ->
+                val nameIndex = cursor.getColumnIndexOrThrow("name")
+                while (cursor.moveToNext()) curveColumns += cursor.getString(nameIndex)
+            }
+            assertTrue("signalFeatureCode" in curveColumns)
+            assertTrue("processorVersion" in curveColumns)
+        }
+    }
+
     /** 在 Room 11 中写入一条新检测链的真实科学信号，验证迁移不会丢失已有数据。 */
     private fun SupportSQLiteDatabase.insertVersion11SiteMeasurementFixture() {
         execSQL("INSERT INTO analytes (id, name) VALUES ('analyte-v11', 'CEA')")
@@ -354,5 +387,6 @@ class AppDatabaseMigrationTest {
         const val TEST_DATABASE_NAME = "multimodal-migration-test"
         const val TEMPLATE_DATABASE_NAME = "template-v11-migration-test"
         const val RESULT_DATABASE_NAME = "result-v12-migration-test"
+        const val TEMPLATE_BINDING_DATABASE_NAME = "template-binding-v13-migration-test"
     }
 }

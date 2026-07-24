@@ -22,6 +22,18 @@ interface AnalysisModelDao {
     @Query("SELECT * FROM analysis_models WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): AnalysisModel?
 
+    /** 幂等保存只复用仍可使用的发布/草稿资源；删除或归档后允许用户重新创建。 */
+    @Query(
+        """
+        SELECT * FROM analysis_models
+        WHERE contentFingerprint = :fingerprint
+          AND status IN ('PUBLISHED', 'DRAFT')
+        ORDER BY CASE status WHEN 'PUBLISHED' THEN 0 ELSE 1 END, updatedAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getReusableByContentFingerprint(fingerprint: String): AnalysisModel?
+
     @Query(
         """
         SELECT * FROM analysis_models

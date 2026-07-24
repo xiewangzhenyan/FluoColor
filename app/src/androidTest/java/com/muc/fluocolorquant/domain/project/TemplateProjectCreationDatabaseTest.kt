@@ -152,7 +152,8 @@ class TemplateProjectCreationDatabaseTest {
         database.experimentTemplateDao().insertBundle(
             template = template,
             analyteConfigs = listOf(config),
-            siteAssignments = assignments
+            siteAssignments = assignments,
+            quantitationBindings = emptyList()
         )
 
         val coordinator = TemplateProjectCreationCoordinator(

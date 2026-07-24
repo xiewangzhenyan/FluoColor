@@ -257,6 +257,12 @@ class AnalysisModelViewModelTest {
 
         override suspend fun getBundle(id: String): AnalysisModelBundle? = bundles[id]
 
+        override suspend fun getReusableBundleByContentFingerprint(
+            fingerprint: String
+        ): AnalysisModelBundle? = bundles.values.firstOrNull { bundle ->
+            bundle.model.contentFingerprint == fingerprint
+        }
+
         override suspend fun createDraft(bundle: AnalysisModelBundle): AnalysisModelBundle {
             createdBundles += bundle
             val saved = bundle.copy(model = bundle.model.copy(id = "created-${createdBundles.size}"))

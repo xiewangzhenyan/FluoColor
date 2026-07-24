@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Biotech
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -96,6 +97,12 @@ fun SettingsScreen(navController: NavController) {
             R.string.library_curve_model_desc,
             Icons.Default.Analytics,
             Screen.CurveModelLibrary.route
+        ),
+        SettingsEntry(
+            R.string.calibration_settings_title,
+            R.string.calibration_settings_desc,
+            Icons.Default.Functions,
+            Screen.CalibrationSettings.route
         ),
         SettingsEntry(
             R.string.library_template_title,

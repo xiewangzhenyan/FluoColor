@@ -27,7 +27,8 @@ import java.util.UUID
     indices = [
         Index("analyteId"),
         Index(value = ["name", "version"], unique = true),
-        Index(value = ["detectionMode", "inputProtocol", "primaryFeature"])
+        Index(value = ["detectionMode", "inputProtocol", "primaryFeature"]),
+        Index("contentFingerprint")
     ]
 )
 data class AnalysisModel(
@@ -47,6 +48,8 @@ data class AnalysisModel(
     val reliableRangeMin: Double,
     val reliableRangeMax: Double,
     val validationMetricsJson: String? = null,
+    /** 可复用资源的科学内容指纹；旧资源为空，不影响历史兼容。 */
+    val contentFingerprint: String? = null,
     val status: String = AnalysisModelLifecycleStatus.DRAFT.code,
     val version: Int = 1,
     val createdAt: Date = Date(),

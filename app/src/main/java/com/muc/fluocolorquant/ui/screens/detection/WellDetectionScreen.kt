@@ -64,13 +64,16 @@ fun WellDetectionScreen(
     val modelIncompatibleMessage = stringResource(R.string.grid_event_model_incompatible)
     val fitReadyMessage = stringResource(R.string.grid_event_fit_ready)
     val fitUnavailableMessage = stringResource(R.string.grid_event_fit_unavailable)
-    val curveSavedFormat = stringResource(R.string.grid_event_curve_saved)
-    val curveNameConflictMessage = stringResource(R.string.grid_event_curve_name_conflict)
     val curveSaveFailedMessage = stringResource(R.string.grid_event_curve_save_failed)
     val templateSavedFormat = stringResource(R.string.grid_event_template_saved)
     val templateNameConflictMessage = stringResource(R.string.grid_event_template_name_conflict)
     val templateSaveIncompleteMessage = stringResource(R.string.grid_event_template_save_incomplete)
     val templateSaveFailedMessage = stringResource(R.string.grid_event_template_save_failed)
+    val lowQualityBlockedMessage = stringResource(R.string.grid_quant_low_quality_blocked)
+    val lowQualityConfirmationRequiredMessage = stringResource(
+        R.string.grid_quant_low_quality_confirmation_required
+    )
+    val lowQualityAppliedMessage = stringResource(R.string.grid_quant_low_quality_applied)
     val operationFailedMessage = stringResource(R.string.grid_event_operation_failed)
     val decodedImageUri = remember(imageUri) {
         runCatching { imageUri?.let { java.net.URLDecoder.decode(it, "UTF-8") } }
@@ -96,12 +99,6 @@ fun WellDetectionScreen(
                     toastManager.showToast(fitReadyMessage, ToastType.SUCCESS)
                 GridConfigurationEvent.FitUnavailable ->
                     toastManager.showToast(fitUnavailableMessage, ToastType.WARNING)
-                is GridConfigurationEvent.CurveSaved -> toastManager.showToast(
-                    String.format(Locale.getDefault(), curveSavedFormat, event.name),
-                    ToastType.SUCCESS
-                )
-                GridConfigurationEvent.CurveNameConflict ->
-                    toastManager.showToast(curveNameConflictMessage, ToastType.WARNING)
                 GridConfigurationEvent.CurveSaveFailed ->
                     toastManager.showToast(curveSaveFailedMessage, ToastType.ERROR)
                 is GridConfigurationEvent.TemplateSaved -> toastManager.showToast(
@@ -114,6 +111,12 @@ fun WellDetectionScreen(
                     toastManager.showToast(templateSaveIncompleteMessage, ToastType.WARNING)
                 GridConfigurationEvent.TemplateSaveFailed ->
                     toastManager.showToast(templateSaveFailedMessage, ToastType.ERROR)
+                GridConfigurationEvent.LowQualityCalibrationBlocked ->
+                    toastManager.showToast(lowQualityBlockedMessage, ToastType.WARNING)
+                GridConfigurationEvent.LowQualityCalibrationConfirmationRequired ->
+                    toastManager.showToast(lowQualityConfirmationRequiredMessage, ToastType.INFO)
+                GridConfigurationEvent.LowQualityCalibrationApplied ->
+                    toastManager.showToast(lowQualityAppliedMessage, ToastType.WARNING)
                 GridConfigurationEvent.OperationFailed ->
                     toastManager.showToast(operationFailedMessage, ToastType.ERROR)
             }
@@ -153,8 +156,12 @@ fun WellDetectionScreen(
             onUpdateOnsiteAdvanced = gridViewModel::updateOnsiteAdvanced,
             onUpdateStandardConcentrations = gridViewModel::updateStandardConcentrations,
             onPreviewOnsiteFit = gridViewModel::previewOnsiteFit,
-            onConfirmQuantitationAnalyte = gridViewModel::confirmQuantitationAnalyte,
-            onSaveOnsiteCurve = gridViewModel::saveOnsiteCurve,
+            onSelectOnsiteCandidate = gridViewModel::selectOnsiteCandidate,
+            onSetOnsiteSaveToLibrary = gridViewModel::setOnsiteSaveToLibrary,
+            onEditOnsiteCalibration = gridViewModel::editOnsiteCalibration,
+            onConfirmQuantitationAnalyte = { analyteId, lowQualityConfirmed ->
+                gridViewModel.confirmQuantitationAnalyte(analyteId, lowQualityConfirmed)
+            },
             onSaveTemplate = gridViewModel::saveCurrentConfigurationAsTemplate
         )
     }

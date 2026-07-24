@@ -6,11 +6,19 @@ const val ENDPOINT_QUANTIFIER_VERSION: String = "endpoint-quantifier-v2"
 /** 与旧 FittingEngine 共享正向公式时记录的公式引擎版本。 */
 const val FORMULA_ENGINE_VERSION: String = "fitting-engine-v1"
 
-/** 浓度相对模型可靠范围的位置；超范围时不输出伪精确浓度。 */
+/**
+ * 反算浓度相对曲线标定范围和项目预期量程的位置。
+ *
+ * `BELOW_RANGE` / `ABOVE_RANGE` 表示已经得到有限浓度，但该结果属于标定范围外推；
+ * `BELOW_PROJECT_RANGE` / `ABOVE_PROJECT_RANGE` 表示输入信号已经超出本次项目允许的有界
+ * 反算域，量化器无法在不进行无限外推的情况下给出结果。
+ */
 enum class ReliableRangeStatus {
     WITHIN_RANGE,
     BELOW_RANGE,
-    ABOVE_RANGE
+    ABOVE_RANGE,
+    BELOW_PROJECT_RANGE,
+    ABOVE_PROJECT_RANGE
 }
 
 /** 无法输出浓度时保存到运行记录的稳定机器原因。 */
@@ -78,8 +86,10 @@ sealed interface PreparedStandardCurveQuantifier {
 /**
  * 端点图主特征到浓度的反算结果。
  *
- * [OutOfRange] 与 [SignalOnly] 都不携带浓度：前者说明曲线有效但样本落在可靠范围外，
- * 后者说明模型本身不可用于本次执行。两者必须在结果页显示不同的解释和建议。
+ * 标定范围外但仍落在项目量程内的结果使用 [Quantified] 携带浓度，并通过
+ * [ReliableRangeStatus.BELOW_RANGE] 或 [ReliableRangeStatus.ABOVE_RANGE] 标记为外推。
+ * [OutOfRange] 只保留给超出项目有界反算域、无法安全得到浓度的输入；[SignalOnly]
+ * 则表示模型或当前位点信号本身不可执行。三者必须在结果页显示不同的解释和建议。
  */
 sealed interface EndpointQuantificationResult {
     data class Quantified(

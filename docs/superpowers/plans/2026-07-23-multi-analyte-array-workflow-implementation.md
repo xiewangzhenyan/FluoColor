@@ -133,6 +133,52 @@
 
 ## 下一阶段（本轮未冒充完成）
 
-- 补充真实设备端“现场标准品拟合 → 保存标准曲线 → 保存实验模板 → 新项目应用模板 → 历史回看”的完整可复用资源闭环回归，当前各环节已经实现并由 JVM/Compose 专项覆盖，但还需要一套不依赖临时测试数据的固定设备脚本。
-- 增加真实 `AndroidGridDeepLearningExecutor` 仪器测试，固定验证 APK assets 中 PTL 的 225 孔整批推理、输出百分比语义和历史模型快照；当前执行器和原子回退逻辑已经通过 JVM 批次契约测试。
 - 自动识别 10×10/15×15 网格规格以及 C++/JNI parity 迁移仍是独立算法工作包，不属于本轮交互链修复。
+
+## 2026-07-24 定量架构收口实施记录
+
+- [x] 在现有安全检查点 `9fbaac7` 之后继续实现，没有回滚或覆盖用户已有改动。
+- [x] Room 升级到 13，新增模板定量冻结绑定；模板可保存现场曲线完整摘要，不依赖曲线资源后续是否仍存在。
+- [x] 新增独立“曲线拟合设置”，支持稳健推荐、R²优先、简单模型优先、候选函数、浓度水平门槛、权重和低质量处理策略。
+- [x] 微流控现场拟合与标准曲线库在拟合启动时冻结策略快照，最终计算直接使用用户选择的运行曲线快照，不再重新拟合。
+- [x] 标准曲线资源增加科学内容指纹，重复保存同一候选时复用资源，避免页面重建或重复点击生成内容相同的曲线。
+- [x] 标准曲线库已接入统一推荐引擎，普通结果每个函数只保留最佳“信号+权重”组合。
+- [x] 96孔板现场拟合已接入同一推荐引擎，并保留旧 `PixelType` 与专家函数兼容能力；普通自动候选最多展示线性、4PL、5PL三项。
+- [x] 接通低质量曲线的允许、二次确认、仅查看三种应用行为。
+- [x] 补齐模板冻结、资源指纹和 Room 12→13 迁移回归；固定业务闭环的 JVM/Compose 分层测试已完成。
+- [x] 完成版本化信号特征目录与 V2 处理器修正：Legacy 键不变，新键修正 Hue、Lab、YCbCr 和低分母比率，并冻结到新建 96 孔板曲线。
+- [x] 完成 JVM 全量测试、Debug/AndroidTest 构建、设备迁移与像素集成测试，并完成曲线拟合设置页截图自审；实拍 15×15 定位/裁切闭环沿用本日志前述固定回归结果。
+- [x] 统一推荐器不再使用不同量纲的原始 MAE 做跨信号并列裁决；原始 RMSE/MAE 只在单个候选详情中展示。
+- [x] 新增 `ReusableQuantitationWorkflowDatabaseTest` 固定设备闭环，在真实 Room 中验证“保存现场曲线 → 保存模板 → 新项目应用 → 冻结参数定量 → DetectionRun 保存 → 历史重开”，API 35 模拟器 `1/1` 通过。
+- [x] 最终回归：`:app:testDebugUnitTest`、`:app:assembleDebug`、`:app:assembleDebugAndroidTest` 全部通过；迁移、V2 像素、定量界面和固定资源闭环设备专项合计 `12/12` 通过。
+
+### 版本化信号特征与设备验证
+
+- 新增静态 `SignalFeatureCatalog`，将 31 个旧 `PixelType` 分为推荐、扩展、兼容和实验等级，明确值域、聚合方式、空白扣除规则和处理器版本。
+- `PixelExtractionUtils` 现在在同一孔位 JSON 中同时保存 Legacy 键与 `pixel.v2.*` 键；旧曲线读取旧键，新曲线只读取冻结 V2 编码，V2 无效时禁止静默回退。
+- V2 Hue 使用低饱和度过滤和圆周均值；CIE Lab 使用 sRGB/D65 标准显示范围；YCbCr 明确输出 Y/Cb/Cr；通道比率增加分母噪声下限和最大稳定比率。
+- Room 13 的 `curve_models` 新增可空 `signalFeatureCode`、`processorVersion`，旧记录迁移后保持空值并继续使用 Legacy 语义。
+- 旧 96 孔板新拟合、模板应用、样本反算和曲线保存均读取版本化编码；曲线库加载改为直接恢复冻结参数，不再重新拟合。
+- JVM 全量 `:app:testDebugUnitTest` 通过；设备 `AppDatabaseMigrationTest` 与 `PixelExtractionShapeTest` 共 5 项通过。
+- 模拟器截图：`tmp/ui-review/calibration-settings-v2.png`、`tmp/ui-review/calibration-settings-signals.png`。英文长文案下无截断、重叠和底部遮挡，设备最终恢复中文与 `user` 登录状态。
+
+### 实拍现场标定与共享 PTL 设备闭环
+
+- [x] 新增 `RealPhotoOnsiteQuantitationWorkflowTest`，直接使用 `real_15x15_01.jpg` 串联生产定位、225 孔紧致裁切、真实净荧光信号、现场线性拟合、曲线发布、模板保存、新项目应用、冻结曲线定量、运行保存和历史重开。
+- [x] 实拍现场曲线使用覆盖真实动态范围的 6 个标准孔，线性候选 `R² > 0.999999`；历史恢复 225 条测量，至少 220 个位点形成浓度，标准孔反算值与录入浓度一致。
+- [x] 新增 `AndroidGridDeepLearningExecutorDeviceTest`，对同一张实拍 15×15 图执行 225 次真实 `improved_concentration_model_lite.ptl` 前向推理，并校验 128×128 RGB/ImageNet 输入、模型 SHA-256、百分比输出语义和每孔冻结模型快照。
+- [x] 225 孔模型测试在 API 35 模拟器 `1/1` 通过，三次复验耗时约 `37.225～38.888 s`；输出键完整覆盖 `0..224`，没有部分失败、非有限浓度或模型快照漂移，批次映射满足原子契约。
+- [x] 曾验证应用层 16 孔 NCHW 批量推理方案，实测 `38.507 s`，未优于原逐孔执行器；为避免无收益复杂度已完整撤回。后续性能优化应改从模型重新导出动态 batch、模型量化/NNAPI 或更轻量网络入手，并单独建立真机性能门槛。
+- [x] 实拍定位、裁切、现场标定和 PTL 组合设备回归 `4/4` 通过。
+- [x] 旧功能重点设备回归 `6/6` 通过：共享模型单次真实推理、96 孔板圆孔信号提取、旧 96 位布局 UI，以及复用 `pdf_cover_page.xml` 的阵列 PDF 导出均正常。
+- [x] 完整 `:app:testDebugUnitTest`、`:app:assembleDebug`、`:app:assembleDebugAndroidTest` 再次通过。本轮只新增仪表测试和文档，没有新增生产 UI 变更，因此无需重复生成界面截图。
+
+### 现场曲线保存后的冻结关系修复
+
+- [x] 复现并定位阻断文案“冻结快照中的分析物、模板配置、分析模型或类型专用定义关系不一致”：现场曲线保存为资源后获得新模型 ID，但旧实现只替换 `analysisModel`，遗漏 `templateConfig.analysisModelId`，使预检同时看到旧配置 ID 和新模型 ID。
+- [x] 新增 `withPersistedOnsiteCurveResource()` 统一领域入口，一次校验分析物、模型类型、曲线定义、标定点和定量方法，并原子同步模板配置模型 ID、单位、可靠范围、模型数据包及运行快照来源 ID。
+- [x] `GridDetectionViewModel.applyOnsiteCalibration()` 改为调用统一同步入口；保存资源仍保持“现场拟合”语义，不会暗中切换为“已有标准曲线”。
+- [x] `GridDetectionCoordinator.applyOnsiteCalibrationSelection()` 增加防御性同步，使任何调用入口冻结现场曲线时都明确写回实际模型 ID。
+- [x] 新增 JVM 回归“保存现场曲线资源后模型ID完整同步且预检继续通过”，`GridDetectionCoordinatorTest` 共 `20/20` 通过；实拍设备闭环删除测试专用手工补 ID，改为使用生产同步入口并断言三处 ID 完全一致。
+- [x] API 35 模拟器上的 `RealPhotoOnsiteQuantitationWorkflowTest` 再次 `1/1` 通过；随后全量 `:app:testDebugUnitTest`、`:app:assembleDebug`、`:app:assembleDebugAndroidTest` 均成功，并已执行 `:app:installDebug` 安装到 `Medium_Phone_API_35`。
+- [x] 静态审计通过：中英文字符串 ID 一致、没有新增原生 Toast、`git diff --check` 无错误。本次没有生产 UI 变更，因此不新增截图；首页、历史、关于未修改。

@@ -130,6 +130,23 @@ class AnalysisModelRepositoryTest {
         assertEquals(emptyList<CalibrationPoint>(), dao.getCalibrationPoints(created.model.id))
     }
 
+    @Test
+    fun `科学内容指纹可以复用已发布资源`() = runBlocking {
+        val dao = FakeAnalysisModelDao()
+        val repository = AnalysisModelRepositoryImpl(dao)
+        val created = repository.createDraft(
+            standardCurveBundle(name = "CEA 现场曲线").let { bundle ->
+                bundle.copy(model = bundle.model.copy(contentFingerprint = "stable-fingerprint"))
+            }
+        )
+        repository.publish(created.model.id)
+
+        val reusable = repository.getReusableBundleByContentFingerprint("stable-fingerprint")
+
+        assertEquals(created.model.id, reusable?.model?.id)
+        assertEquals(2, reusable?.calibrationPoints?.size)
+    }
+
     private fun standardCurveBundle(name: String): AnalysisModelBundle {
         val model = AnalysisModel(
             id = "temporary-id",
@@ -185,6 +202,21 @@ class AnalysisModelRepositoryTest {
 
         override suspend fun getById(id: String): AnalysisModel? =
             models.value.find { it.id == id }
+
+        override suspend fun getReusableByContentFingerprint(
+            fingerprint: String
+        ): AnalysisModel? = models.value
+            .filter { model ->
+                model.contentFingerprint == fingerprint &&
+                    model.status in setOf(
+                        AnalysisModelLifecycleStatus.PUBLISHED.code,
+                        AnalysisModelLifecycleStatus.DRAFT.code
+                    )
+            }
+            .sortedBy { model ->
+                if (model.status == AnalysisModelLifecycleStatus.PUBLISHED.code) 0 else 1
+            }
+            .firstOrNull()
 
         override suspend fun findCompatibleCandidates(
             analyteId: String,

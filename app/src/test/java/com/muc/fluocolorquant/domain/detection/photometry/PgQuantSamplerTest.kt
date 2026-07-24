@@ -21,11 +21,24 @@ class PgQuantSamplerTest {
     }
 
     @Test
-    fun `饱和属于硬质量失败但不改写信号可检出判断`() {
+    fun `轻度饱和保留结果并作为复核标志`() {
         val qc = SitePhotometryQc.from(
             flags = setOf(PhotometryFlag.SATURATED),
             snr = 25.0,
             snrMinimum = 3.0
+        )
+
+        assertTrue(qc.signalDetectable)
+        assertTrue(qc.qualityReliable)
+    }
+
+    @Test
+    fun `严重饱和由采样器显式判定为硬失败`() {
+        val qc = SitePhotometryQc.from(
+            flags = setOf(PhotometryFlag.SATURATED),
+            snr = 25.0,
+            snrMinimum = 3.0,
+            hardFailure = true
         )
 
         assertTrue(qc.signalDetectable)
@@ -41,6 +54,8 @@ class PgQuantSamplerTest {
         assertEquals(0.44, config.annulusOuterPitchRatio, 1e-12)
         assertEquals(3.0, config.snrMinimum, 1e-12)
         assertEquals(0.35, config.contaminationRatioLimit, 1e-12)
+        assertEquals(0.25, config.severeSaturationRatioLimit, 1e-12)
+        assertEquals(0.20, config.severeBorderClipRatioLimit, 1e-12)
     }
 
     @Test(expected = IllegalArgumentException::class)

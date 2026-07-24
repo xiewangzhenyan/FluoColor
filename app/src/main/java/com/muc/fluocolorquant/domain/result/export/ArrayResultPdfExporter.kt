@@ -8,9 +8,11 @@ import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
+import com.muc.fluocolorquant.domain.result.ArrayMeasurementQualityLevel
 import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
+import com.muc.fluocolorquant.domain.result.resolveQualityLevel
 import com.muc.fluocolorquant.utils.pdf.PdfCoverPageContent
 import com.muc.fluocolorquant.utils.pdf.PdfCoverPageRenderer
 import java.io.ByteArrayOutputStream
@@ -87,7 +89,7 @@ object ArrayResultPdfExporter {
                 context.getString(
                     R.string.pdf_chapter_title_format,
                     sortedAnalytes.size + 2,
-                    labels.qualityControl
+                    labels.qualitySummary
                 )
             )
         }
@@ -168,15 +170,48 @@ object ArrayResultPdfExporter {
             bodyPaint
         )
         y = drawKeyValue(canvas, labels.layout, "${snapshot.rows} × ${snapshot.columns}", y, labelPaint, bodyPaint)
+        y = drawKeyValue(
+            canvas,
+            labels.physicalSites,
+            snapshot.sites.size.toString(),
+            y,
+            labelPaint,
+            bodyPaint
+        )
 
-        val measurementCount = snapshot.sites.sumOf { it.measurements.size }
-        val reliableCount = snapshot.sites.sumOf { site ->
-            site.measurements.count(ArraySiteMeasurementResult::qualityReliable)
+        val measurementRecords = snapshot.sites.flatMap { site ->
+            site.measurements.map { measurement -> site to measurement }
         }
+        val measurementCount = measurementRecords.size
+        val qualityCounts = measurementRecords.groupingBy { (site, measurement) ->
+            measurement.resolveQualityLevel(site)
+        }.eachCount()
         y += 5f
-        drawSummaryMetric(canvas, labels.physicalSites, snapshot.sites.size.toString(), PAGE_MARGIN, y)
-        drawSummaryMetric(canvas, labels.measurements, measurementCount.toString(), 215f, y)
-        drawSummaryMetric(canvas, labels.reliableMeasurements, reliableCount.toString(), 390f, y)
+        drawSummaryMetric(canvas, labels.measurements, measurementCount.toString(), PAGE_MARGIN, y, 116f)
+        drawSummaryMetric(
+            canvas,
+            labels.validMeasurements,
+            qualityCounts[ArrayMeasurementQualityLevel.VALID].orZero().toString(),
+            169f,
+            y,
+            116f
+        )
+        drawSummaryMetric(
+            canvas,
+            labels.reviewMeasurements,
+            qualityCounts[ArrayMeasurementQualityLevel.REVIEW].orZero().toString(),
+            298f,
+            y,
+            116f
+        )
+        drawSummaryMetric(
+            canvas,
+            labels.unavailableMeasurements,
+            qualityCounts[ArrayMeasurementQualityLevel.UNAVAILABLE].orZero().toString(),
+            427f,
+            y,
+            116f
+        )
         y += 64f
 
         canvas.drawText(labels.overviewHeatmap, PAGE_MARGIN, y, textPaint(14f, Color.rgb(31, 41, 55), true))
@@ -218,8 +253,26 @@ object ArrayResultPdfExporter {
         y = drawKeyValue(canvas, labels.primaryFeature, analyte.primaryFeature, y, labelPaint, bodyPaint)
         y = drawKeyValue(
             canvas,
-            labels.reliableRange,
-            reliableRangeText(analyte, labels.noValue),
+            labels.projectRange,
+            rangeText(
+                analyte.projectRangeMin,
+                analyte.projectRangeMax,
+                analyte.concentrationUnit,
+                labels.noValue
+            ),
+            y,
+            labelPaint,
+            bodyPaint
+        )
+        y = drawKeyValue(
+            canvas,
+            labels.calibrationRange,
+            rangeText(
+                analyte.calibrationRangeMin,
+                analyte.calibrationRangeMax,
+                analyte.concentrationUnit,
+                labels.noValue
+            ),
             y,
             labelPaint,
             bodyPaint
@@ -236,12 +289,12 @@ object ArrayResultPdfExporter {
             siteMeasurements.mapNotNull { it.primaryFeatureValue?.finiteOrNull() }
         }
         val minimum = if (useConcentration) {
-            analyte.reliableRangeMin?.finiteOrNull() ?: observedValues.minOrNull() ?: 0.0
+            analyte.projectRangeMin?.finiteOrNull() ?: observedValues.minOrNull() ?: 0.0
         } else {
             observedValues.minOrNull() ?: 0.0
         }
         val maximum = if (useConcentration) {
-            analyte.reliableRangeMax?.finiteOrNull() ?: observedValues.maxOrNull() ?: 1.0
+            analyte.projectRangeMax?.finiteOrNull() ?: observedValues.maxOrNull() ?: 1.0
         } else {
             observedValues.maxOrNull() ?: 1.0
         }
@@ -268,6 +321,17 @@ object ArrayResultPdfExporter {
                 value?.finiteOrNull()?.let { heatmapColor(it, minimum, maximum) }
                     ?: Color.rgb(226, 232, 240)
             },
+            qualityForSite = { site ->
+                val measurement = site.measurements.firstOrNull {
+                    it.analyteId == analyte.analyteId
+                }
+                val value = if (useConcentration) {
+                    measurement?.concentrationValue
+                } else {
+                    measurement?.primaryFeatureValue
+                }
+                measurement?.resolveQualityLevel(site, value)
+            },
             measurementForQc = { site ->
                 site.measurements.firstOrNull { it.analyteId == analyte.analyteId }
             }
@@ -289,21 +353,45 @@ object ArrayResultPdfExporter {
         val sectionPaint = textPaint(14f, Color.rgb(31, 41, 55), bold = true)
         val bodyPaint = textPaint(10.5f, Color.rgb(55, 65, 81))
         val labelPaint = textPaint(10.5f, Color.rgb(75, 85, 99), bold = true)
-        canvas.drawText(labels.qualityControl, PAGE_MARGIN, 54f, titlePaint)
+        canvas.drawText(labels.qualitySummary, PAGE_MARGIN, 54f, titlePaint)
 
-        val siteMeasurements = snapshot.sites.flatMap(ArrayPhysicalSiteResult::measurements)
-        val siteFailureCount = siteMeasurements.count { !it.qualityReliable }
-        val lowSignalCount = siteMeasurements.count { !it.signalDetectable }
+        val measurementRecords = snapshot.sites.flatMap { site ->
+            site.measurements.map { measurement -> site to measurement }
+        }
+        val reviewCount = measurementRecords.count { (site, measurement) ->
+            measurement.resolveQualityLevel(site) == ArrayMeasurementQualityLevel.REVIEW
+        }
+        val unavailableCount = measurementRecords.count { (site, measurement) ->
+            measurement.resolveQualityLevel(site) == ArrayMeasurementQualityLevel.UNAVAILABLE
+        }
+        val lowSignalCount = measurementRecords.count { (_, measurement) ->
+            !measurement.signalDetectable
+        }
         var y = 86f
         y = drawKeyValue(
             canvas,
-            labels.frameIssueCount,
+            labels.frameReviewCount,
             snapshot.frame.qcIssues.size.toString(),
             y,
             labelPaint,
             bodyPaint
         )
-        y = drawKeyValue(canvas, labels.siteFailureCount, siteFailureCount.toString(), y, labelPaint, bodyPaint)
+        y = drawKeyValue(
+            canvas,
+            labels.reviewMeasurementCount,
+            reviewCount.toString(),
+            y,
+            labelPaint,
+            bodyPaint
+        )
+        y = drawKeyValue(
+            canvas,
+            labels.unavailableMeasurementCount,
+            unavailableCount.toString(),
+            y,
+            labelPaint,
+            bodyPaint
+        )
         y = drawKeyValue(canvas, labels.lowSignalCount, lowSignalCount.toString(), y, labelPaint, bodyPaint)
         if (snapshot.frame.qcIssues.isNotEmpty()) {
             y += 8f
@@ -338,14 +426,17 @@ object ArrayResultPdfExporter {
             .joinToString()
             .ifBlank { labels.noValue }
         y = drawKeyValue(canvas, labels.processor, processors, y, labelPaint, bodyPaint)
-        y = drawKeyValue(
+        canvas.drawText(labels.frozenSnapshot, PAGE_MARGIN, y, labelPaint)
+        y += 18f
+        y = drawWrappedText(
             canvas,
-            labels.frozenSnapshot,
             "SHA-256 ${ArrayResultExporter.sha256(snapshot.effectiveConfigSnapshotJson.toByteArray(StandardCharsets.UTF_8))}",
+            PAGE_MARGIN,
             y,
-            labelPaint,
-            bodyPaint
-        )
+            PAGE_WIDTH - PAGE_MARGIN * 2,
+            bodyPaint,
+            14f
+        ) + 5f
         y += 12f
         drawWrappedText(
             canvas,
@@ -366,10 +457,17 @@ object ArrayResultPdfExporter {
         top: Float,
         maxHeight: Float,
         cellColor: (ArrayPhysicalSiteResult) -> Int,
+        qualityForSite: ((ArrayPhysicalSiteResult) -> ArrayMeasurementQualityLevel?)? = null,
         measurementForQc: ((ArrayPhysicalSiteResult) -> ArraySiteMeasurementResult?)? = null
     ) {
         val width = PAGE_WIDTH - PAGE_MARGIN * 2
-        val cellSize = min(width / snapshot.columns.coerceAtLeast(1), maxHeight / snapshot.rows.coerceAtLeast(1))
+        // 10×10/15×15 仍会尽量使用页面宽度；小阵列限制单元上限，避免 1×1 或 4×4
+        // 被拉伸成缺乏阵列语义的整页色块。
+        val cellSize = minOf(
+            width / snapshot.columns.coerceAtLeast(1),
+            maxHeight / snapshot.rows.coerceAtLeast(1),
+            42f
+        )
         val gridWidth = cellSize * snapshot.columns
         val left = PAGE_MARGIN + (width - gridWidth) / 2f
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -378,7 +476,12 @@ object ArrayResultPdfExporter {
             strokeWidth = 0.6f
             color = Color.argb(100, 71, 85, 105)
         }
-        val failureBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val reviewBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = min(2.2f, cellSize / 4f)
+            color = Color.rgb(245, 158, 11)
+        }
+        val unavailableBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = min(2.2f, cellSize / 4f)
             color = Color.rgb(220, 38, 38)
@@ -401,10 +504,13 @@ object ArrayResultPdfExporter {
                 fill.color = site?.let(cellColor) ?: Color.rgb(241, 245, 249)
                 canvas.drawRect(rect, fill)
                 canvas.drawRect(rect, border)
-                val measurement = site?.let { measurementForQc?.invoke(it) }
-                if (measurement != null && !measurement.qualityReliable) {
-                    canvas.drawRect(rect, failureBorder)
+                when (site?.let { qualityForSite?.invoke(it) }) {
+                    ArrayMeasurementQualityLevel.REVIEW -> canvas.drawRect(rect, reviewBorder)
+                    ArrayMeasurementQualityLevel.UNAVAILABLE -> canvas.drawRect(rect, unavailableBorder)
+                    ArrayMeasurementQualityLevel.VALID,
+                    null -> Unit
                 }
+                val measurement = site?.let { measurementForQc?.invoke(it) }
                 if (measurement != null && !measurement.signalDetectable) {
                     canvas.drawCircle(
                         rect.right - cellSize * 0.22f,
@@ -419,9 +525,12 @@ object ArrayResultPdfExporter {
 
     private fun overviewColor(site: ArrayPhysicalSiteResult): Int {
         if (site.measurements.isEmpty()) return Color.rgb(226, 232, 240)
-        if (site.measurements.any { !it.qualityReliable }) return Color.rgb(254, 202, 202)
-        if (site.measurements.any { !it.signalDetectable }) return Color.rgb(254, 240, 138)
-        return Color.rgb(187, 247, 208)
+        val levels = site.measurements.map { measurement -> measurement.resolveQualityLevel(site) }
+        return when {
+            ArrayMeasurementQualityLevel.UNAVAILABLE in levels -> Color.rgb(254, 226, 226)
+            ArrayMeasurementQualityLevel.REVIEW in levels -> Color.rgb(254, 240, 190)
+            else -> Color.rgb(187, 247, 208)
+        }
     }
 
     private fun heatmapColor(value: Double, minimum: Double, maximum: Double): Int {
@@ -448,8 +557,15 @@ object ArrayResultPdfExporter {
         )
     }
 
-    private fun drawSummaryMetric(canvas: Canvas, label: String, value: String, left: Float, top: Float) {
-        val rect = RectF(left, top, left + 150f, top + 50f)
+    private fun drawSummaryMetric(
+        canvas: Canvas,
+        label: String,
+        value: String,
+        left: Float,
+        top: Float,
+        width: Float = 150f
+    ) {
+        val rect = RectF(left, top, left + width, top + 50f)
         val background = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(241, 245, 249)
             style = Paint.Style.FILL
@@ -515,10 +631,15 @@ object ArrayResultPdfExporter {
         canvas.drawText(footer, PAGE_WIDTH - PAGE_MARGIN - paint.measureText(footer), PAGE_HEIGHT - 24f, paint)
     }
 
-    private fun reliableRangeText(analyte: ArrayAnalyteResult, missing: String): String {
-        val minimum = analyte.reliableRangeMin?.finiteOrNull() ?: return missing
-        val maximum = analyte.reliableRangeMax?.finiteOrNull() ?: return missing
-        return "$minimum – $maximum ${analyte.concentrationUnit}"
+    private fun rangeText(
+        minimumValue: Double?,
+        maximumValue: Double?,
+        unit: String,
+        missing: String
+    ): String {
+        val minimum = minimumValue?.finiteOrNull() ?: return missing
+        val maximum = maximumValue?.finiteOrNull() ?: return missing
+        return "$minimum – $maximum $unit"
     }
 
     private fun formatTimestamp(timestamp: Long): String {
@@ -542,4 +663,6 @@ object ArrayResultPdfExporter {
     }
 
     private fun Double.finiteOrNull(): Double? = takeIf(Double::isFinite)
+
+    private fun Int?.orZero(): Int = this ?: 0
 }

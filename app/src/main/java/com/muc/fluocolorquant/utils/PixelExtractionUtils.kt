@@ -7,6 +7,10 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.muc.fluocolorquant.data.enums.PixelType
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
+import com.muc.fluocolorquant.domain.signal.RgbSignalSample
+import com.muc.fluocolorquant.domain.signal.SignalFeatureCatalog
+import com.muc.fluocolorquant.domain.signal.SignalFeatureExtraction
+import com.muc.fluocolorquant.domain.signal.SignalFeatureV2Extractor
 import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -109,6 +113,10 @@ object PixelExtractionUtils {
             pixelValues[PixelType.MAGENTA.identifier] = cmykValues[1]
             pixelValues[PixelType.YELLOW.identifier] = cmykValues[2]
             pixelValues[PixelType.BLACK.identifier] = cmykValues[3]
+
+            // Legacy 键到这里为止保持原算法和原数值不变。新的 V2 特征使用独立稳定编码
+            // 追加到同一 JSON，旧曲线继续读取旧键，新曲线只读取带版本的精确键。
+            pixelValues.putAll(extractV2PixelValues(bitmap, mask).values)
             
         } catch (e: Exception) {
             Log.e(TAG, "提取像素值失败", e)
@@ -116,6 +124,40 @@ object PixelExtractionUtils {
         
         // 转换为JSON字符串
         return Gson().toJson(pixelValues)
+    }
+
+    /**
+     * 单独提取 V2 信号，供设备测试和未来高级诊断页面读取结构化无效原因。
+     *
+     * 普通孔位持久化仍保存扁平 `Map<String, Double>`，无效特征不会写入数值 Map，避免
+     * 低饱和度 Hue 或低分母通道比率被错误保存为 0 后参与曲线拟合。
+     */
+    fun extractV2PixelValues(
+        bitmap: Bitmap,
+        shape: ArrayUnitShape = ArrayUnitShape.CIRCLE,
+        foregroundMask: BooleanArray? = null
+    ): SignalFeatureExtraction {
+        val mask = createUnitMask(bitmap.width, bitmap.height, shape, foregroundMask)
+        return extractV2PixelValues(bitmap, mask)
+    }
+
+    private fun extractV2PixelValues(
+        bitmap: Bitmap,
+        mask: BooleanArray
+    ): SignalFeatureExtraction {
+        val samples = ArrayList<RgbSignalSample>(mask.count { it })
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                if (!mask[y * bitmap.width + x]) continue
+                val pixel = bitmap.getPixel(x, y)
+                samples += RgbSignalSample(
+                    red = Color.red(pixel).toDouble(),
+                    green = Color.green(pixel).toDouble(),
+                    blue = Color.blue(pixel).toDouble()
+                )
+            }
+        }
+        return SignalFeatureV2Extractor.extract(samples)
     }
     
     /**
@@ -428,6 +470,26 @@ object PixelExtractionUtils {
         )
     }
 
+    /**
+     * 对孔位特征执行版本安全的空白扣除。
+     *
+     * Legacy 键继续逐项相减以保持旧 96 孔板行为；V2 仅对目录中声明为加性强度的特征
+     * 相减，Hue、Lab、比率等非加性信号保持提取值。
+     */
+    fun applyBlankCorrection(
+        pixelValues: Map<String, Double>,
+        blankValues: Map<String, Double>
+    ): Map<String, Double> {
+        val correctedV2 = SignalFeatureCatalog.applyV2BlankCorrection(pixelValues, blankValues)
+        return correctedV2.mapValues { (code, value) ->
+            if (SignalFeatureCatalog.definitionForCode(code) == null) {
+                value - (blankValues[code] ?: 0.0)
+            } else {
+                value
+            }
+        }
+    }
+
     /** 把 Kotlin 布尔掩膜转换为 OpenCV 8 位单通道掩膜。 */
     private fun createOpenCvMask(width: Int, height: Int, pixelMask: BooleanArray): Mat {
         require(pixelMask.size == width * height) { "OpenCV 掩膜尺寸与图像不一致" }
@@ -475,4 +537,15 @@ object PixelExtractionUtils {
             null
         }
     }
+
+    /** 按曲线冻结的特征编码读取信号；V2 无效时不会静默回退到 Legacy。 */
+    fun getSignalValue(
+        pixelValueJson: String,
+        signalFeatureCode: String?,
+        fallbackPixelType: PixelType
+    ): Double? = SignalFeatureCatalog.resolveValue(
+        values = jsonToMap(pixelValueJson),
+        signalFeatureCode = signalFeatureCode,
+        legacyPixelType = fallbackPixelType
+    )
 }

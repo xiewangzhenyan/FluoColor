@@ -1,6 +1,7 @@
 package com.muc.fluocolorquant.domain.result
 
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapScaleMode
+import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueState
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueInput
 import com.muc.fluocolorquant.ui.screens.result.array.buildAnalyteHeatmapModel
 import com.muc.fluocolorquant.ui.screens.result.array.resolveArraySiteIndex
@@ -18,7 +19,7 @@ import org.junit.Test
 class ArrayHeatmapScaleTest {
 
     @Test
-    fun `浓度归一化不受警告和质量失败编码影响`() {
+    fun `范围和普通几何标志不再制造测量质量复核`() {
         val analyte = analyte(reliableMin = 0.0, reliableMax = 10.0)
         val inputs = listOf(
             input(siteIndex = 0, concentration = 5.0),
@@ -38,8 +39,130 @@ class ArrayHeatmapScaleTest {
         assertEquals(10.0, model.scale.maximum, 0.0)
         assertEquals(listOf(0.5f, 0.5f, 0.5f), model.cells.map { it.normalizedValue })
         assertFalse(model.cells[0].qc.warning)
-        assertTrue(model.cells[1].qc.warning)
-        assertTrue(model.cells[2].qc.failure)
+        assertFalse(model.cells[1].qc.warning)
+        assertTrue(model.cells[2].qc.warning)
+        assertFalse(model.cells[2].qc.failure)
+    }
+
+    @Test
+    fun `运行963同构分布拆分为范围统计而不是189个建议复核`() {
+        val analyte = analyte(reliableMin = 10.0, reliableMax = 40.0).copy(
+            projectRangeMin = 0.0,
+            projectRangeMax = 100.0
+        )
+        val statuses = buildList {
+            repeat(61) { add("WITHIN_RANGE") }
+            repeat(119) { add("ABOVE_RANGE") }
+            repeat(8) { add("BELOW_RANGE") }
+            repeat(20) { add("BELOW_PROJECT_RANGE") }
+            repeat(17) { add("ABOVE_PROJECT_RANGE") }
+        }
+        val inputs = statuses.mapIndexed { siteIndex, status ->
+            val concentration = when (status) {
+                "WITHIN_RANGE" -> 25.0
+                "ABOVE_RANGE" -> 50.0
+                "BELOW_RANGE" -> 5.0
+                else -> null
+            }
+            ArrayHeatmapValueInput(
+                siteIndex = siteIndex,
+                rowIndex = siteIndex / 15,
+                columnIndex = siteIndex % 15,
+                siteKey = "R${(siteIndex / 15 + 1).toString().padStart(2, '0')}C${(siteIndex % 15 + 1).toString().padStart(2, '0')}",
+                enabled = true,
+                roleCode = "SAMPLE",
+                concentrationValue = concentration,
+                primaryFeatureValue = siteIndex.toDouble(),
+                reliableRangeStatus = status,
+                signalDetectable = true,
+                qualityReliable = true,
+                geometryFlags = emptySet(),
+                // 复现真实运行中25个范围内位点携带普通光度提示，但可靠性布尔值仍为true。
+                photometryFlags = if (siteIndex < 25) setOf("non_uniform") else emptySet(),
+                quantificationStatus = when (status) {
+                    "WITHIN_RANGE" -> "QUANTIFIED"
+                    "ABOVE_RANGE", "BELOW_RANGE" -> "EXTRAPOLATED"
+                    else -> "OUTSIDE_PROJECT_RANGE"
+                }
+            )
+        }
+
+        val model = buildAnalyteHeatmapModel(
+            rows = 15,
+            columns = 15,
+            analyte = analyte,
+            inputs = inputs
+        )
+
+        assertEquals(225, model.calculatedCount)
+        assertEquals(61, model.withinCalibrationRangeCount)
+        assertEquals(127, model.calibrationExtrapolatedCount)
+        assertEquals(37, model.outsideProjectRangeCount)
+        assertEquals(225, model.reliableCount)
+        assertEquals(0, model.warningCount)
+        assertEquals(0, model.failureCount)
+    }
+
+    @Test
+    fun `超项目量程使用端点颜色并保留方向状态`() {
+        val analyte = analyte(reliableMin = 0.0, reliableMax = 100.0)
+        val model = buildAnalyteHeatmapModel(
+            rows = 1,
+            columns = 3,
+            analyte = analyte,
+            inputs = listOf(
+                input(siteIndex = 0, concentration = null, primaryFeature = 20.0).copy(
+                    reliableRangeStatus = "BELOW_PROJECT_RANGE",
+                    quantificationStatus = "OUTSIDE_PROJECT_RANGE"
+                ),
+                input(siteIndex = 1, concentration = null, primaryFeature = 80.0).copy(
+                    reliableRangeStatus = "ABOVE_PROJECT_RANGE",
+                    quantificationStatus = "OUTSIDE_PROJECT_RANGE"
+                ),
+                input(siteIndex = 2, concentration = 40.0, qualityReliable = false)
+            )
+        )
+
+        assertEquals(ArrayHeatmapValueState.BELOW_PROJECT_RANGE, model.cells[0].valueState)
+        assertEquals(0.0, model.cells[0].displayValue ?: Double.NaN, 0.0)
+        assertEquals(0.0f, model.cells[0].normalizedValue)
+        assertFalse(model.cells[0].qc.failure)
+        assertEquals(ArrayHeatmapValueState.ABOVE_PROJECT_RANGE, model.cells[1].valueState)
+        assertEquals(100.0, model.cells[1].displayValue ?: Double.NaN, 0.0)
+        assertEquals(1.0f, model.cells[1].normalizedValue)
+        assertFalse(model.cells[1].qc.failure)
+        assertFalse(model.cells[2].qc.failure)
+        assertTrue(model.cells[2].qc.warning)
+        assertEquals(40.0, model.cells[2].displayValue ?: Double.NaN, 0.0)
+    }
+
+    @Test
+    fun `全部位点超项目量程时仍保持浓度色带`() {
+        val model = buildAnalyteHeatmapModel(
+            rows = 1,
+            columns = 2,
+            analyte = analyte(reliableMin = 0.0, reliableMax = 100.0),
+            inputs = listOf(
+                input(siteIndex = 0, concentration = null, primaryFeature = 8.0).copy(
+                    reliableRangeStatus = "BELOW_PROJECT_RANGE",
+                    quantificationStatus = "OUTSIDE_PROJECT_RANGE"
+                ),
+                input(siteIndex = 1, concentration = null, primaryFeature = 92.0).copy(
+                    reliableRangeStatus = "ABOVE_PROJECT_RANGE",
+                    quantificationStatus = "OUTSIDE_PROJECT_RANGE"
+                )
+            )
+        )
+
+        assertEquals(ArrayHeatmapScaleMode.CONCENTRATION, model.scale.mode)
+        assertEquals(listOf(0.0f, 1.0f), model.cells.map { it.normalizedValue })
+        assertEquals(
+            listOf(
+                ArrayHeatmapValueState.BELOW_PROJECT_RANGE,
+                ArrayHeatmapValueState.ABOVE_PROJECT_RANGE
+            ),
+            model.cells.map { it.valueState }
+        )
     }
 
     @Test
@@ -60,6 +183,54 @@ class ArrayHeatmapScaleTest {
         assertEquals(10.0, model.scale.minimum, 0.0)
         assertEquals(30.0, model.scale.maximum, 0.0)
         assertEquals(listOf(0.0f, 0.5f, 1.0f), model.cells.map { it.normalizedValue })
+    }
+
+    @Test
+    fun `旧运行只保存部分浓度时统一回退为信号热力图`() {
+        val analyte = analyte(reliableMin = 28.0, reliableMax = 34.0)
+        val model = buildAnalyteHeatmapModel(
+            rows = 1,
+            columns = 3,
+            analyte = analyte,
+            inputs = listOf(
+                input(siteIndex = 0, concentration = 30.0, primaryFeature = 10.0),
+                input(siteIndex = 1, primaryFeature = 20.0).copy(
+                    reliableRangeStatus = "BELOW_RANGE",
+                    quantificationStatus = "OUT_OF_RELIABLE_RANGE"
+                ),
+                input(siteIndex = 2, primaryFeature = 30.0, signalDetectable = false).copy(
+                    reliableRangeStatus = "ABOVE_RANGE",
+                    quantificationStatus = "OUT_OF_RELIABLE_RANGE"
+                )
+            )
+        )
+
+        assertEquals(ArrayHeatmapScaleMode.PRIMARY_FEATURE, model.scale.mode)
+        assertTrue(model.historicalConcentrationIncomplete)
+        assertEquals(listOf(10.0, 20.0, 30.0), model.cells.map { it.displayValue })
+        assertTrue(model.cells.none { it.qc.failure })
+        assertTrue(model.cells.all { it.valueState == ArrayHeatmapValueState.QUANTIFIED })
+        assertTrue(model.cells[2].qc.lowSignal)
+    }
+
+    @Test
+    fun `没有有限信号时才进入无法计算状态`() {
+        val model = buildAnalyteHeatmapModel(
+            rows = 1,
+            columns = 1,
+            analyte = analyte(reliableMin = 0.0, reliableMax = 100.0),
+            inputs = listOf(
+                input(siteIndex = 0, primaryFeature = null, signalDetectable = false).copy(
+                    reliableRangeStatus = null,
+                    quantificationStatus = "NON_FINITE_SIGNAL"
+                )
+            )
+        )
+
+        assertTrue(model.cells.single().qc.failure)
+        assertFalse(model.cells.single().qc.lowSignal)
+        assertEquals(ArrayHeatmapValueState.UNAVAILABLE, model.cells.single().valueState)
+        assertEquals(null, model.cells.single().displayValue)
     }
 
     @Test

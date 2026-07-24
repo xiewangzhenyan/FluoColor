@@ -2,9 +2,14 @@ package com.muc.fluocolorquant.ui.screens.detection
 
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.FittingFunction
+import com.muc.fluocolorquant.domain.calibration.CalibrationCandidate
+import com.muc.fluocolorquant.domain.calibration.CalibrationCandidateStatus
+import com.muc.fluocolorquant.domain.calibration.CalibrationFunctionResult
+import com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
+import com.muc.fluocolorquant.domain.calibration.CalibrationResultSet
+import com.muc.fluocolorquant.domain.calibration.OnsiteCalibrationState
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationDraft
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
-import com.muc.fluocolorquant.domain.detection.GridOnsiteFitPreview
 import com.muc.fluocolorquant.domain.detection.isReadyForConfirmation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -46,24 +51,45 @@ class GridQuantitationWorkflowTest {
         )
         assertFalse(initial.isReadyForConfirmation())
 
+        val candidate = CalibrationCandidate(
+            id = "net:linear:0",
+            analyteId = "ca125",
+            primaryFeature = AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
+            function = FittingFunction.LINEAR,
+            parameters = mapOf("a" to 1.0, "b" to 0.0),
+            standardPoints = listOf(0.0 to 0.0, 10.0 to 10.0),
+            curvePoints = listOf(0.0 to 0.0, 10.0 to 10.0),
+            latexFormula = "y=x",
+            rSquared = 1.0,
+            rmse = 0.0,
+            normalizedRmse = 0.0,
+            mae = 0.0,
+            backCalculatedRmsePercent = 0.0,
+            acceptedStandardRatio = 1.0,
+            weightingCode = 0,
+            accepted = true,
+            status = CalibrationCandidateStatus.AVAILABLE
+        )
+        val resultSet = CalibrationResultSet(
+            analyteId = "ca125",
+            inputFingerprint = "fingerprint",
+            policySnapshot = CalibrationPolicy.DEFAULT,
+            functionResults = listOf(
+                CalibrationFunctionResult(FittingFunction.LINEAR, candidate)
+            ),
+            recommendedCandidateId = candidate.id,
+            processorVersion = "test",
+            engineVersion = "test"
+        )
         val fitted = initial.copy(
-            onsitePreview = GridOnsiteFitPreview(
-                analyteId = "ca125",
-                primaryFeature = AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
-                function = FittingFunction.LINEAR,
-                parameters = mapOf("a" to 1.0, "b" to 0.0),
-                standardPoints = listOf(0.0 to 0.0, 10.0 to 10.0),
-                curvePoints = listOf(0.0 to 0.0, 10.0 to 10.0),
-                latexFormula = "y=x",
-                rSquared = 1.0,
-                rmse = 0.0,
-                mae = 0.0,
-                acceptedStandardRatio = 1.0,
-                accepted = true
-            )
+            onsiteState = OnsiteCalibrationState.Reviewing(resultSet)
         )
         assertTrue(fitted.isReadyForConfirmation())
-        assertFalse(fitted.copy(fittingInProgress = true).isReadyForConfirmation())
+        assertFalse(
+            fitted.copy(
+                onsiteState = OnsiteCalibrationState.Fitting("request", "fingerprint")
+            ).isReadyForConfirmation()
+        )
     }
 
     @Test

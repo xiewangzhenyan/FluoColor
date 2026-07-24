@@ -78,6 +78,7 @@ sealed class Screen(open val route: String) {
     object AnalyteManagement : Screen("analyte_management")
     object ReagentLibrary : Screen("reagent_library")
     object CurveModelLibrary : Screen("curve_model_library")
+    object CalibrationSettings : Screen("calibration_settings")
     // 旧路由继续指向统一分析模型库；历史曲线使用独立兼容入口，避免旧项目数据丢失。
     object LegacyCurveModelLibrary : Screen("legacy_curve_model_library")
     object CarrierProfileManagement : Screen("carrier_profile_management")

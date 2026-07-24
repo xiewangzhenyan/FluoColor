@@ -116,7 +116,11 @@ object ColorimetricPhotometryProcessor {
             val qc = SitePhotometryQc.from(
                 flags = flags,
                 snr = base.signalToNoiseRatio,
-                snrMinimum = quant.config.snrMinimum
+                snrMinimum = quant.config.snrMinimum,
+                hardFailure = !base.qc.qualityReliable ||
+                    base.saturationRatio >= quant.config.severeSaturationRatioLimit ||
+                    base.roiClipRatio >= quant.config.severeBorderClipRatioLimit ||
+                    base.annulusClipRatio >= quant.config.severeBorderClipRatioLimit
             )
             val primaryValue = when (config.primaryFeature) {
                 AnalysisPrimaryFeature.DELTA_E_2000 -> deltaE

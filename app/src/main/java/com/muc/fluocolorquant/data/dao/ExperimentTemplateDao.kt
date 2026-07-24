@@ -10,6 +10,7 @@ import androidx.room.Update
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
+import com.muc.fluocolorquant.data.model.TemplateQuantitationBinding
 import kotlinx.coroutines.flow.Flow
 import java.util.Date
 
@@ -72,17 +73,30 @@ interface ExperimentTemplateDao {
     @Query("SELECT * FROM template_site_assignments WHERE templateId = :templateId ORDER BY rowIndex, columnIndex")
     suspend fun getSiteAssignments(templateId: String): List<TemplateSiteAssignment>
 
+    /** 获取模板逐分析物冻结定量方案。 */
+    @Query(
+        "SELECT * FROM template_quantitation_bindings " +
+            "WHERE templateId = :templateId ORDER BY analyteId"
+    )
+    suspend fun getQuantitationBindings(templateId: String): List<TemplateQuantitationBinding>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAnalyteConfigs(configs: List<TemplateAnalyteConfig>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSiteAssignments(assignments: List<TemplateSiteAssignment>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertQuantitationBindings(bindings: List<TemplateQuantitationBinding>)
+
     @Query("DELETE FROM template_analyte_configs WHERE templateId = :templateId")
     suspend fun deleteAnalyteConfigs(templateId: String)
 
     @Query("DELETE FROM template_site_assignments WHERE templateId = :templateId")
     suspend fun deleteSiteAssignments(templateId: String)
+
+    @Query("DELETE FROM template_quantitation_bindings WHERE templateId = :templateId")
+    suspend fun deleteQuantitationBindings(templateId: String)
 
     @Query("SELECT MAX(version) FROM experiment_templates WHERE templateName = :name")
     suspend fun getLatestVersionByName(name: String): Int?
@@ -120,12 +134,15 @@ interface ExperimentTemplateDao {
     suspend fun replaceTemplateChildren(
         templateId: String,
         analyteConfigs: List<TemplateAnalyteConfig>,
-        siteAssignments: List<TemplateSiteAssignment>
+        siteAssignments: List<TemplateSiteAssignment>,
+        quantitationBindings: List<TemplateQuantitationBinding>
     ) {
+        deleteQuantitationBindings(templateId)
         deleteSiteAssignments(templateId)
         deleteAnalyteConfigs(templateId)
         if (analyteConfigs.isNotEmpty()) upsertAnalyteConfigs(analyteConfigs)
         if (siteAssignments.isNotEmpty()) upsertSiteAssignments(siteAssignments)
+        if (quantitationBindings.isNotEmpty()) upsertQuantitationBindings(quantitationBindings)
     }
 
     /** 原子创建模板主档、多分析物定义和全阵列位点配置。 */
@@ -133,11 +150,13 @@ interface ExperimentTemplateDao {
     suspend fun insertBundle(
         template: ExperimentTemplate,
         analyteConfigs: List<TemplateAnalyteConfig>,
-        siteAssignments: List<TemplateSiteAssignment>
+        siteAssignments: List<TemplateSiteAssignment>,
+        quantitationBindings: List<TemplateQuantitationBinding>
     ) {
         insertTemplateStrict(template)
         if (analyteConfigs.isNotEmpty()) upsertAnalyteConfigs(analyteConfigs)
         if (siteAssignments.isNotEmpty()) upsertSiteAssignments(siteAssignments)
+        if (quantitationBindings.isNotEmpty()) upsertQuantitationBindings(quantitationBindings)
     }
 
     /** 草稿更新在同一事务中替换主档和全部子项，避免半张芯片布局。 */
@@ -145,10 +164,16 @@ interface ExperimentTemplateDao {
     suspend fun replaceDraftBundle(
         template: ExperimentTemplate,
         analyteConfigs: List<TemplateAnalyteConfig>,
-        siteAssignments: List<TemplateSiteAssignment>
+        siteAssignments: List<TemplateSiteAssignment>,
+        quantitationBindings: List<TemplateQuantitationBinding>
     ) {
         updateTemplate(template)
-        replaceTemplateChildren(template.id, analyteConfigs, siteAssignments)
+        replaceTemplateChildren(
+            template.id,
+            analyteConfigs,
+            siteAssignments,
+            quantitationBindings
+        )
     }
 
     /** 发布新版本时才归档同名旧发布版本。 */

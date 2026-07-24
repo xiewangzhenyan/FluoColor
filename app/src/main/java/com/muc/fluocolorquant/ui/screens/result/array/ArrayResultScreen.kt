@@ -1,6 +1,8 @@
 package com.muc.fluocolorquant.ui.screens.result.array
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,9 +30,7 @@ import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Science
-import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -61,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -93,16 +94,15 @@ const val ARRAY_RESULT_SCREEN_TAG: String = "array_result_screen"
 const val ARRAY_RESULT_ANALYTE_TAB_TAG: String = "array_result_tab_analytes"
 const val ARRAY_ANALYTE_CHIP_TAG_PREFIX: String = "array_analyte_chip_"
 const val ARRAY_HEATMAP_CARD_TAG_PREFIX: String = "array_heatmap_card_"
+const val ARRAY_HEATMAP_LEGEND_TAG_PREFIX: String = "array_heatmap_legend_"
 const val ARRAY_RUN_HISTORY_BUTTON_TAG: String = "array_run_history_button"
 const val ARRAY_RUN_SWITCH_PROGRESS_TAG: String = "array_run_switch_progress"
 const val ARRAY_RESULT_EXPORT_BUTTON_TAG: String = "array_result_export_button"
 
 private enum class ArrayResultTab(val icon: ImageVector) {
     OVERVIEW(Icons.Outlined.GridOn),
-    ANALYTES(Icons.Outlined.Analytics),
-    IMAGE(Icons.Outlined.Image),
-    PROCESS(Icons.Outlined.AccountTree),
-    QC(Icons.Outlined.Verified)
+    ANALYSIS(Icons.Outlined.Analytics),
+    PROCESS(Icons.Outlined.AccountTree)
 }
 
 /** 新微流控/通用阵列结果页面入口。 */
@@ -249,13 +249,13 @@ private fun ArrayResultSuccess(
                         .testTag(ARRAY_RUN_SWITCH_PROGRESS_TAG)
                 )
             }
-            // 一级结果视图只有五项，使用等宽标签可让用户一眼看到全部入口。
-            // ScrollableTabRow 在手机宽度下会把“质量控制”裁出屏幕，且没有明确的可滚动提示。
+            // 一级结果页只保留用户真正需要反复访问的三类信息：结果、分析与过程。
+            // 原始图像作为过程证据的第一步展示；详细 QC 继续保存在位点详情和导出数据中。
             TabRow(selectedTabIndex = selectedTab) {
                 tabs.forEachIndexed { index, tab ->
                     Tab(
                         modifier = Modifier.testTag(
-                            if (tab == ArrayResultTab.ANALYTES) {
+                            if (tab == ArrayResultTab.ANALYSIS) {
                                 ARRAY_RESULT_ANALYTE_TAB_TAG
                             } else {
                                 "array_result_tab_${tab.name.lowercase()}"
@@ -275,28 +275,14 @@ private fun ArrayResultSuccess(
                 }
             }
             when (tabs[selectedTab]) {
-                // 帧级 QC 无论严重度如何都只负责提示复核，不再隐藏已经生成的热力图和
-                // 分析物结果。每个位点的可靠性、补位和光度失败仍会在图中明确标色，用户
-                // 可以同时查看结果、原图、九步处理证据和质控原因后自行决定是否重拍。
                 ArrayResultTab.OVERVIEW -> ArrayOverviewTab(
                     snapshot = snapshot,
                     onSiteClick = { selectedSite = it }
                 )
-                ArrayResultTab.ANALYTES -> ArrayAnalytesTab(
-                    snapshot = snapshot,
-                    onSiteClick = { selectedSite = it }
-                )
-                ArrayResultTab.IMAGE -> ArrayImageTab(
-                    snapshot = snapshot,
-                    onSiteClick = { selectedSite = it }
+                ArrayResultTab.ANALYSIS -> ArrayAnalytesTab(
+                    snapshot = snapshot
                 )
                 ArrayResultTab.PROCESS -> ArrayProcessingEvidenceTab(snapshot)
-                ArrayResultTab.QC -> ArrayQcPanel(
-                    snapshot = snapshot,
-                    onSiteClick = { site ->
-                        selectedSite = ArraySiteSelection(site.siteIndex, site.analyteId)
-                    }
-                )
             }
         }
     }
@@ -331,9 +317,6 @@ private fun ArrayResultSuccess(
 @Composable
 private fun ArrayResultHero(snapshot: ArrayResultSnapshot) {
     val measuredSiteCount = snapshot.sites.count { it.measurements.isNotEmpty() }
-    val reliableMeasurementCount = snapshot.sites.sumOf { site ->
-        site.measurements.count { it.qualityReliable }
-    }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -375,7 +358,7 @@ private fun ArrayResultHero(snapshot: ArrayResultSnapshot) {
                             R.string.array_result_carrier_summary,
                             snapshot.rows,
                             snapshot.columns,
-                            arrayRunStatusLabel(snapshot.runStatus)
+                            arrayRunStatusLabel(snapshot.userFacingRunStatus())
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
@@ -388,9 +371,35 @@ private fun ArrayResultHero(snapshot: ArrayResultSnapshot) {
             ) {
                 MetricText(stringResource(R.string.array_result_physical_sites), snapshot.sites.size)
                 MetricText(stringResource(R.string.array_result_measured_sites), measuredSiteCount)
-                MetricText(stringResource(R.string.array_result_reliable_measurements), reliableMeasurementCount)
+                MetricText(stringResource(R.string.array_result_analyte_count), snapshot.analytes.size)
             }
         }
+    }
+}
+
+/**
+ * 根据运行中实际冻结的浓度结果修正完成态文案。
+ *
+ * 早期阵列运行可能统一保存为 `Completed`，即使当时只生成了信号、没有形成任何浓度；
+ * 如果结果页直接展示数据库旧状态，就会出现顶部写“已定量”，下方却显示“仅信号热力图”的
+ * 自相矛盾。这里只修正三种成功完成态，失败、处理中和需要重拍等状态仍完全尊重原始运行记录。
+ */
+private fun ArrayResultSnapshot.userFacingRunStatus(): String {
+    val completedStatuses = setOf("Completed", "PartiallyQuantified", "SignalOnlyCompleted")
+    if (runStatus !in completedStatuses) return runStatus
+
+    val analyteIds = analytes.map { analyte -> analyte.analyteId }.toSet()
+    val quantifiedAnalyteIds = sites
+        .asSequence()
+        .flatMap { site -> site.measurements.asSequence() }
+        .filter { measurement -> measurement.concentrationValue?.isFinite() == true }
+        .mapNotNull { measurement -> measurement.analyteId }
+        .toSet()
+
+    return when {
+        quantifiedAnalyteIds.isEmpty() -> "SignalOnlyCompleted"
+        analyteIds.isNotEmpty() && analyteIds.all(quantifiedAnalyteIds::contains) -> "Completed"
+        else -> "PartiallyQuantified"
     }
 }
 
@@ -477,10 +486,7 @@ private fun ArrayOverviewTab(
             }
             item {
                 ArrayHeatmapResultCard(
-                    title = stringResource(
-                        R.string.array_heatmap_analyte_title,
-                        selectedAnalyte.name
-                    ),
+                    title = heatmapTitle(heatmapModel, selectedAnalyte),
                     subtitle = heatmapSubtitle(heatmapModel, selectedAnalyte),
                     model = heatmapModel,
                     onSiteClick = { cell ->
@@ -501,7 +507,12 @@ private fun ArrayOverviewTab(
                     onSiteClick = onSiteClick
                 )
             }
-            item { AnalyteSnapshotCard(selectedAnalyte) }
+            item {
+                AnalyteSnapshotCard(
+                    analyte = selectedAnalyte,
+                    historicalRangeSemantics = heatmapModel.historicalConcentrationIncomplete
+                )
+            }
         }
     }
 }
@@ -580,7 +591,7 @@ private fun ArrayStandardCurveCard(analyte: ArrayAnalyteResult) {
                 ),
                 yAxisLabel = stringResource(
                     R.string.array_result_curve_y_axis,
-                    analyte.primaryFeature
+                    primaryFeatureLabel(analyte.primaryFeature)
                 ),
                 title = "",
                 dataPoints = points,
@@ -594,14 +605,16 @@ private fun ArrayStandardCurveCard(analyte: ArrayAnalyteResult) {
 
 @Composable
 private fun ArrayAnalytesTab(
-    snapshot: ArrayResultSnapshot,
-    onSiteClick: (ArraySiteSelection) -> Unit
+    snapshot: ArrayResultSnapshot
 ) {
     var selectedAnalyteId by remember(snapshot.runId) {
         mutableStateOf(snapshot.analytes.firstOrNull()?.analyteId)
     }
     val selectedAnalyte = snapshot.analytes.firstOrNull { it.analyteId == selectedAnalyteId }
         ?: snapshot.analytes.firstOrNull()
+    val selectedHeatmapModel = selectedAnalyte?.let { analyte ->
+        remember(snapshot, analyte) { buildAnalyteHeatmapModel(snapshot, analyte) }
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -634,7 +647,13 @@ private fun ArrayAnalytesTab(
                 }
             }
             if (selectedAnalyte != null) {
-                item { AnalyteSnapshotCard(selectedAnalyte) }
+                item {
+                    AnalyteSnapshotCard(
+                        analyte = selectedAnalyte,
+                        historicalRangeSemantics =
+                            selectedHeatmapModel?.historicalConcentrationIncomplete == true
+                    )
+                }
                 if (selectedAnalyte.hasRenderableCurve()) {
                     item { ArrayStandardCurveCard(selectedAnalyte) }
                     item { ArrayCurveMetricsCard(selectedAnalyte) }
@@ -658,19 +677,12 @@ private fun ArrayAnalytesTab(
                         analyte = selectedAnalyte
                     )
                 }
-                item {
-                    ArraySampleConcentrationTable(
-                        snapshot = snapshot,
-                        analyte = selectedAnalyte,
-                        onSiteClick = onSiteClick
-                    )
-                }
             }
         }
     }
 }
 
-/** 曲线/统计页展示冻结拟合质量，不重新选择模型或修改历史结果。 */
+/** 分析页展示冻结拟合质量，不重新选择模型或修改历史结果。 */
 @Composable
 private fun ArrayCurveMetricsCard(analyte: ArrayAnalyteResult) {
     val metrics = analyte.validationMetrics
@@ -766,9 +778,10 @@ private fun ArrayQuantitationMethodSummary(
     }
     val quantified = records.count { record -> record.measurement.concentrationValue != null }
     val outOfRange = records.count { record ->
-        record.measurement.reliableRangeStatus in setOf("BELOW_RANGE", "ABOVE_RANGE")
+        record.measurement.concentrationValue != null &&
+            record.measurement.reliableRangeStatus in setOf("BELOW_RANGE", "ABOVE_RANGE")
     }
-    val signalOnly = records.size - quantified - outOfRange
+    val signalOnly = records.count { record -> record.measurement.concentrationValue == null }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp)
@@ -950,60 +963,78 @@ private fun ArraySampleConcentrationTable(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        stringResource(R.string.array_statistics_site),
-                        modifier = Modifier.width(54.dp),
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                    Text(
-                        stringResource(R.string.array_statistics_sample),
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                    Text(
-                        stringResource(R.string.array_statistics_concentration),
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-                HorizontalDivider()
                 records.take(MAXIMUM_VISIBLE_SAMPLE_ROWS).forEach { record ->
-                    Row(
+                    val concentration = record.measurement.concentrationValue
+                    val rangeStatus = record.measurement.reliableRangeStatus?.uppercase()
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
                                 onSiteClick(
                                     ArraySiteSelection(record.siteIndex, analyte.analyteId)
                                 )
-                            }
-                            .padding(vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(record.siteKey, modifier = Modifier.width(54.dp))
-                        Text(
-                            text = record.sampleSlot.orEmpty().ifBlank {
-                                stringResource(R.string.array_statistics_unnamed_sample)
                             },
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            text = record.measurement.concentrationValue?.let { value ->
-                                stringResource(
-                                    R.string.array_statistics_concentration_value,
-                                    formatArrayHeatmapValue(value),
-                                    analyte.concentrationUnit
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(9.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Text(
+                                    text = record.siteKey,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
-                            } ?: stringResource(R.string.array_statistics_not_quantified),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (record.measurement.concentrationValue != null) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
                             }
-                        )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = record.sampleSlot.orEmpty().ifBlank {
+                                        stringResource(R.string.array_statistics_unnamed_sample)
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = when (rangeStatus) {
+                                        "BELOW_RANGE", "ABOVE_RANGE" -> stringResource(
+                                            R.string.array_statistics_extrapolated
+                                        )
+                                        "BELOW_PROJECT_RANGE", "ABOVE_PROJECT_RANGE" -> stringResource(
+                                            R.string.array_statistics_outside_project_range
+                                        )
+                                        else -> stringResource(R.string.array_statistics_sample_result)
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                text = concentration?.let { value ->
+                                    stringResource(
+                                        R.string.array_statistics_concentration_value,
+                                        formatArrayHeatmapValue(value),
+                                        analyte.concentrationUnit
+                                    )
+                                } ?: stringResource(R.string.array_statistics_not_quantified),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (concentration != null) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
                     }
                 }
                 val hiddenCount = records.size - MAXIMUM_VISIBLE_SAMPLE_ROWS
@@ -1135,7 +1166,7 @@ private fun ArrayHeatmapResultCard(
             }
             ArrayHeatmap(model = model, onSiteClick = onSiteClick)
             ArrayHeatmapScaleLegend(model.scale)
-            ArrayHeatmapQcLegend()
+            ArrayHeatmapQcLegend(model)
         }
     }
 }
@@ -1179,55 +1210,188 @@ private fun ArrayHeatmapScaleLegend(scale: ArrayHeatmapScale) {
     }
 }
 
-/** 警告、失败和低信号必须使用不同符号，避免含义被合并。 */
+/** 复核、范围方向、低信号和无法计算使用独立弱符号，图例必须与实际单元编码一致。 */
 @Composable
-private fun ArrayHeatmapQcLegend() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        QcLegendItem(
-            color = Color(0xFFF59E0B),
-            label = stringResource(R.string.array_heatmap_legend_warning)
-        )
-        QcLegendItem(
-            color = MaterialTheme.colorScheme.error,
-            label = stringResource(R.string.array_heatmap_legend_failure)
-        )
-        QcLegendItem(
-            color = Color(0xFF0288D1),
-            label = stringResource(R.string.array_heatmap_legend_low_signal)
-        )
+fun ArrayHeatmapQcLegend(model: ArrayHeatmapModel) {
+    val denseArray = maxOf(model.rows, model.columns) >= 15
+    val visibleKinds = buildList {
+        // 大阵列不会逐格绘制轻度复核边框，因此图例也不能继续宣称存在这种视觉编码。
+        if (!denseArray && model.cells.any { it.qc.warning }) add(ArrayHeatmapLegendKind.WARNING)
+        if (model.cells.any { it.valueState == ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED }) {
+            add(ArrayHeatmapLegendKind.EXTRAPOLATED)
+        }
+        if (model.cells.any { it.valueState == ArrayHeatmapValueState.BELOW_PROJECT_RANGE }) {
+            add(ArrayHeatmapLegendKind.BELOW_PROJECT_RANGE)
+        }
+        if (model.cells.any { it.valueState == ArrayHeatmapValueState.ABOVE_PROJECT_RANGE }) {
+            add(ArrayHeatmapLegendKind.ABOVE_PROJECT_RANGE)
+        }
+        // 15×15 总览不逐格画低信号点，因此仅在小阵列图例中展示该符号。
+        if (!denseArray && model.cells.any { it.qc.lowSignal }) add(ArrayHeatmapLegendKind.LOW_SIGNAL)
+        if (model.cells.any { it.qc.failure }) add(ArrayHeatmapLegendKind.FAILURE)
+    }
+    if (visibleKinds.isEmpty()) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        // 范围状态使用三列紧凑布局，使“曲线外推 / 低于量程 / 高于量程”在常见手机宽度下同排展示。
+        // 每个图例仍保留等宽区域，避免中英文长度差异导致方向标记错位或视觉节奏凌乱。
+        visibleKinds.chunked(3).forEach { rowKinds ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowKinds.forEachIndexed { slotIndex, kind ->
+                    // 三个等宽槽位分别靠左、居中、靠右，既保持均匀节奏，也让首尾图例与色带两端对齐。
+                    val slotAlignment = when (slotIndex) {
+                        0 -> Alignment.CenterStart
+                        1 -> Alignment.Center
+                        else -> Alignment.CenterEnd
+                    }
+                    when (kind) {
+                        ArrayHeatmapLegendKind.WARNING -> QcLegendItem(
+                            kind = kind,
+                            label = stringResource(R.string.array_heatmap_legend_warning),
+                            slotAlignment = slotAlignment
+                        )
+                        ArrayHeatmapLegendKind.EXTRAPOLATED -> QcLegendItem(
+                            kind = kind,
+                            label = stringResource(R.string.array_heatmap_legend_extrapolated),
+                            slotAlignment = slotAlignment
+                        )
+                        ArrayHeatmapLegendKind.BELOW_PROJECT_RANGE -> QcLegendItem(
+                            kind = kind,
+                            label = stringResource(R.string.array_heatmap_legend_below_project),
+                            slotAlignment = slotAlignment
+                        )
+                        ArrayHeatmapLegendKind.ABOVE_PROJECT_RANGE -> QcLegendItem(
+                            kind = kind,
+                            label = stringResource(R.string.array_heatmap_legend_above_project),
+                            slotAlignment = slotAlignment
+                        )
+                        ArrayHeatmapLegendKind.LOW_SIGNAL -> QcLegendItem(
+                            kind = kind,
+                            label = stringResource(R.string.array_heatmap_legend_low_signal),
+                            slotAlignment = slotAlignment
+                        )
+                        ArrayHeatmapLegendKind.FAILURE -> QcLegendItem(
+                            kind = kind,
+                            label = stringResource(R.string.array_heatmap_legend_failure),
+                            slotAlignment = slotAlignment
+                        )
+                    }
+                }
+                // 不足三项时补齐剩余列，确保现有图例保持固定列宽，不会被拉伸成整行。
+                repeat(3 - rowKinds.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
     }
 }
 
+/** 图例只列出当前热力图真正绘制的视觉状态，避免用户看到不存在的警告符号。 */
+private enum class ArrayHeatmapLegendKind {
+    WARNING,
+    EXTRAPOLATED,
+    BELOW_PROJECT_RANGE,
+    ABOVE_PROJECT_RANGE,
+    LOW_SIGNAL,
+    FAILURE
+}
+
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.QcLegendItem(color: Color, label: String) {
-    Row(
-        modifier = Modifier.weight(1f),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
+private fun androidx.compose.foundation.layout.RowScope.QcLegendItem(
+    kind: ArrayHeatmapLegendKind,
+    label: String,
+    slotAlignment: Alignment
+) {
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .testTag("$ARRAY_HEATMAP_LEGEND_TAG_PREFIX${kind.name}"),
+        contentAlignment = slotAlignment
     ) {
-        Box(
-            modifier = Modifier
-                .size(9.dp)
-                .background(color, RoundedCornerShape(3.dp))
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ArrayHeatmapLegendMarker(kind)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
-/** 统计卡明确区分质量警告、质量失败、低信号和未检测。 */
+/** 图例使用中性灰还原弱状态标记，避免在图例中重新引入与浓度色带冲突的强调色。 */
+@Composable
+private fun ArrayHeatmapLegendMarker(kind: ArrayHeatmapLegendKind) {
+    val markerColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+    Box(modifier = Modifier.size(11.dp), contentAlignment = Alignment.Center) {
+        when (kind) {
+            ArrayHeatmapLegendKind.WARNING -> Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .border(1.dp, markerColor, RoundedCornerShape(3.dp))
+            )
+            ArrayHeatmapLegendKind.EXTRAPOLATED -> Canvas(modifier = Modifier.size(7.dp)) {
+                val triangle = Path().apply {
+                    moveTo(0f, size.height)
+                    lineTo(0f, 0f)
+                    lineTo(size.width, size.height)
+                    close()
+                }
+                drawPath(triangle, markerColor)
+            }
+            ArrayHeatmapLegendKind.BELOW_PROJECT_RANGE -> Canvas(
+                modifier = Modifier.size(width = 8.dp, height = 5.dp)
+            ) {
+                // 向下三角与热力图单元保持同一语义，用户无需依赖图标在框内的位置判断。
+                val triangle = Path().apply {
+                    moveTo(0f, 0f)
+                    lineTo(size.width, 0f)
+                    lineTo(size.width / 2f, size.height)
+                    close()
+                }
+                drawPath(triangle, markerColor)
+            }
+            ArrayHeatmapLegendKind.ABOVE_PROJECT_RANGE -> Canvas(
+                modifier = Modifier.size(width = 8.dp, height = 5.dp)
+            ) {
+                // 向上三角与“高于项目量程”形成直观方向对应。
+                val triangle = Path().apply {
+                    moveTo(size.width / 2f, 0f)
+                    lineTo(0f, size.height)
+                    lineTo(size.width, size.height)
+                    close()
+                }
+                drawPath(triangle, markerColor)
+            }
+            ArrayHeatmapLegendKind.LOW_SIGNAL -> Box(
+                modifier = Modifier
+                    .size(3.dp)
+                    .background(markerColor, RoundedCornerShape(50))
+            )
+            ArrayHeatmapLegendKind.FAILURE -> Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .background(Color(0xFFE1E5EA), RoundedCornerShape(3.dp))
+            )
+        }
+    }
+}
+
+/**
+ * 统计卡优先展示定量范围分布，避免把曲线外推误写成测量质量事故。
+ *
+ * 测量质量、低信号和未测位点仅在确实存在时追加一行说明，普通运行不再被大量
+ * “建议复核”占据视觉焦点。
+ */
 @Composable
 private fun ArrayHeatmapStatistics(model: ArrayHeatmapModel) {
-    val reliablePercent = if (model.measuredCount == 0) 0.0 else {
-        model.reliableCount.toDouble() / model.measuredCount * 100.0
-    }
+    val concentrationMode = model.scale.mode == ArrayHeatmapScaleMode.CONCENTRATION
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -1240,7 +1404,13 @@ private fun ArrayHeatmapStatistics(model: ArrayHeatmapModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = stringResource(R.string.array_heatmap_statistics_title),
+                text = stringResource(
+                    if (concentrationMode) {
+                        R.string.array_heatmap_quantitation_summary_title
+                    } else {
+                        R.string.array_heatmap_signal_summary_title
+                    }
+                ),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
@@ -1248,28 +1418,68 @@ private fun ArrayHeatmapStatistics(model: ArrayHeatmapModel) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                HeatmapMetric(
-                    value = stringResource(R.string.array_heatmap_percent, reliablePercent),
-                    label = stringResource(R.string.array_heatmap_reliable)
-                )
-                HeatmapMetric(
-                    value = model.warningCount.toString(),
-                    label = stringResource(R.string.array_heatmap_warning)
-                )
-                HeatmapMetric(
-                    value = model.failureCount.toString(),
-                    label = stringResource(R.string.array_heatmap_failure)
-                )
-                HeatmapMetric(
-                    value = model.missingCount.toString(),
-                    label = stringResource(R.string.array_heatmap_missing)
+                if (concentrationMode) {
+                    HeatmapMetric(
+                        value = model.calculatedCount.toString(),
+                        label = stringResource(R.string.array_heatmap_calculated)
+                    )
+                    HeatmapMetric(
+                        value = model.withinCalibrationRangeCount.toString(),
+                        label = stringResource(R.string.array_heatmap_within_calibration)
+                    )
+                    HeatmapMetric(
+                        value = model.calibrationExtrapolatedCount.toString(),
+                        label = stringResource(R.string.array_heatmap_extrapolated_count)
+                    )
+                    HeatmapMetric(
+                        value = model.outsideProjectRangeCount.toString(),
+                        label = stringResource(R.string.array_heatmap_outside_project_count)
+                    )
+                } else {
+                    HeatmapMetric(
+                        value = model.calculatedCount.toString(),
+                        label = stringResource(R.string.array_heatmap_calculated)
+                    )
+                    HeatmapMetric(
+                        value = model.reliableCount.toString(),
+                        label = stringResource(R.string.array_heatmap_reliable)
+                    )
+                    HeatmapMetric(
+                        value = model.warningCount.toString(),
+                        label = stringResource(R.string.array_heatmap_warning)
+                    )
+                    HeatmapMetric(
+                        value = model.failureCount.toString(),
+                        label = stringResource(R.string.array_heatmap_failure)
+                    )
+                }
+            }
+            if (model.warningCount > 0 || model.failureCount > 0) {
+                Text(
+                    text = stringResource(
+                        R.string.array_heatmap_quality_summary_format,
+                        model.reliableCount,
+                        model.warningCount,
+                        model.failureCount
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Text(
-                text = stringResource(R.string.array_heatmap_low_signal_count, model.lowSignalCount),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (model.lowSignalCount > 0) {
+                Text(
+                    text = stringResource(R.string.array_heatmap_low_signal_count, model.lowSignalCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (model.missingCount > 0) {
+                Text(
+                    text = stringResource(R.string.array_heatmap_missing_count, model.missingCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -1329,7 +1539,10 @@ private fun ArrayRoleDistribution(roleCounts: Map<String, Int>) {
 }
 
 @Composable
-private fun AnalyteSnapshotCard(analyte: ArrayAnalyteResult) {
+private fun AnalyteSnapshotCard(
+    analyte: ArrayAnalyteResult,
+    historicalRangeSemantics: Boolean = false
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp)
@@ -1355,12 +1568,47 @@ private fun AnalyteSnapshotCard(analyte: ArrayAnalyteResult) {
             Text(
                 text = stringResource(
                     R.string.array_result_analyte_feature,
-                    analyte.primaryFeature,
+                    primaryFeatureLabel(analyte.primaryFeature),
                     analyte.concentrationUnit
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            val projectMin = analyte.projectRangeMin
+            val projectMax = analyte.projectRangeMax
+            if (!historicalRangeSemantics && projectMin != null && projectMax != null) {
+                Text(
+                    text = stringResource(
+                        R.string.array_result_project_range,
+                        formatArrayHeatmapValue(projectMin),
+                        formatArrayHeatmapValue(projectMax),
+                        analyte.concentrationUnit
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (historicalRangeSemantics) {
+                Text(
+                    text = stringResource(R.string.array_result_legacy_project_range_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+            val calibrationMin = analyte.calibrationRangeMin
+            val calibrationMax = analyte.calibrationRangeMax
+            if (calibrationMin != null && calibrationMax != null) {
+                Text(
+                    text = stringResource(
+                        R.string.array_result_calibration_range,
+                        formatArrayHeatmapValue(calibrationMin),
+                        formatArrayHeatmapValue(calibrationMax),
+                        analyte.concentrationUnit
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -1389,13 +1637,30 @@ private fun heatmapSubtitle(model: ArrayHeatmapModel, analyte: ArrayAnalyteResul
             )
         }
         ArrayHeatmapScaleMode.PRIMARY_FEATURE -> stringResource(
-            R.string.array_heatmap_signal_subtitle,
-            analyte.primaryFeature
+            if (model.historicalConcentrationIncomplete) {
+                R.string.array_heatmap_historical_signal_subtitle
+            } else {
+                R.string.array_heatmap_signal_subtitle
+            },
+            primaryFeatureLabel(analyte.primaryFeature)
         )
         ArrayHeatmapScaleMode.OVERVIEW_RELIABILITY -> stringResource(
             R.string.array_heatmap_overview_subtitle
         )
     }
+}
+
+/** 标题必须与当前色带一致，历史兼容信号图不能继续误称为浓度“结果热力图”。 */
+@Composable
+private fun heatmapTitle(model: ArrayHeatmapModel, analyte: ArrayAnalyteResult): String {
+    return stringResource(
+        if (model.scale.mode == ArrayHeatmapScaleMode.CONCENTRATION) {
+            R.string.array_heatmap_analyte_concentration_title
+        } else {
+            R.string.array_heatmap_analyte_signal_title
+        },
+        analyte.name
+    )
 }
 
 @Composable
@@ -1555,10 +1820,8 @@ private fun ArrayResultCenteredState(
 
 private fun ArrayResultTab.titleResource(): Int = when (this) {
     ArrayResultTab.OVERVIEW -> R.string.array_result_tab_overview
-    ArrayResultTab.ANALYTES -> R.string.array_result_tab_analytes
-    ArrayResultTab.IMAGE -> R.string.array_result_tab_image
+    ArrayResultTab.ANALYSIS -> R.string.array_result_tab_analytes
     ArrayResultTab.PROCESS -> R.string.array_result_tab_process
-    ArrayResultTab.QC -> R.string.array_result_tab_qc
 }
 
 /** 顶栏只显示便于辨认的运行 ID 尾段，完整 ID 仍在历史面板中保留。 */

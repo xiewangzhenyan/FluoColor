@@ -9,6 +9,7 @@ import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
+import com.muc.fluocolorquant.data.model.TemplateQuantitationBinding
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -45,8 +46,13 @@ class ExperimentTemplateRepositoryTest {
             setOf(saved.template.id),
             saved.siteAssignments.map { it.templateId }.toSet()
         )
+        assertEquals(
+            setOf(saved.template.id),
+            saved.quantitationBindings.map { it.templateId }.toSet()
+        )
         assertEquals(2, repository.getBundle(saved.template.id)?.analyteConfigs?.size)
         assertEquals(4, repository.getBundle(saved.template.id)?.siteAssignments?.size)
+        assertEquals(2, repository.getBundle(saved.template.id)?.quantitationBindings?.size)
     }
 
     @Test
@@ -143,9 +149,25 @@ class ExperimentTemplateRepositoryTest {
                 site(templateId, 0, 1, "cea", TemplateSiteRole.BLANK),
                 site(templateId, 1, 0, "nse", TemplateSiteRole.SAMPLE),
                 site(templateId, 1, 1, "nse", TemplateSiteRole.BLANK)
+            ),
+            quantitationBindings = listOf(
+                binding(templateId, "cea"),
+                binding(templateId, "nse")
             )
         )
     }
+
+    private fun binding(templateId: String, analyteId: String) =
+        TemplateQuantitationBinding(
+            id = "binding-$analyteId",
+            templateId = templateId,
+            analyteId = analyteId,
+            method = "SIGNAL_ONLY",
+            resourceSnapshotJson = "{}",
+            contentFingerprint = "fingerprint-$analyteId",
+            processorName = "test",
+            processorVersion = "1"
+        )
 
     private fun site(
         templateId: String,
@@ -167,6 +189,8 @@ class ExperimentTemplateRepositoryTest {
         private val templates = MutableStateFlow<List<ExperimentTemplate>>(emptyList())
         private val analyteConfigs = mutableMapOf<String, MutableList<TemplateAnalyteConfig>>()
         private val siteAssignments = mutableMapOf<String, MutableList<TemplateSiteAssignment>>()
+        private val quantitationBindings =
+            mutableMapOf<String, MutableList<TemplateQuantitationBinding>>()
 
         override fun getAllTemplates(): Flow<List<ExperimentTemplate>> = templates
 
@@ -197,6 +221,7 @@ class ExperimentTemplateRepositoryTest {
             templates.value = templates.value.filterNot { it.id == id }
             analyteConfigs.remove(id)
             siteAssignments.remove(id)
+            quantitationBindings.remove(id)
         }
 
         override suspend fun getAnalyteConfigs(templateId: String): List<TemplateAnalyteConfig> =
@@ -204,6 +229,10 @@ class ExperimentTemplateRepositoryTest {
 
         override suspend fun getSiteAssignments(templateId: String): List<TemplateSiteAssignment> =
             siteAssignments[templateId].orEmpty()
+
+        override suspend fun getQuantitationBindings(
+            templateId: String
+        ): List<TemplateQuantitationBinding> = quantitationBindings[templateId].orEmpty()
 
         override suspend fun upsertAnalyteConfigs(configs: List<TemplateAnalyteConfig>) {
             configs.groupBy(TemplateAnalyteConfig::templateId).forEach { (templateId, values) ->
@@ -223,12 +252,28 @@ class ExperimentTemplateRepositoryTest {
             }
         }
 
+        override suspend fun upsertQuantitationBindings(
+            bindings: List<TemplateQuantitationBinding>
+        ) {
+            bindings.groupBy(TemplateQuantitationBinding::templateId)
+                .forEach { (templateId, values) ->
+                    quantitationBindings.getOrPut(templateId) { mutableListOf() }.apply {
+                        removeAll { old -> values.any { it.id == old.id } }
+                        addAll(values)
+                    }
+                }
+        }
+
         override suspend fun deleteAnalyteConfigs(templateId: String) {
             analyteConfigs.remove(templateId)
         }
 
         override suspend fun deleteSiteAssignments(templateId: String) {
             siteAssignments.remove(templateId)
+        }
+
+        override suspend fun deleteQuantitationBindings(templateId: String) {
+            quantitationBindings.remove(templateId)
         }
 
         override suspend fun getLatestVersionByName(name: String): Int? =

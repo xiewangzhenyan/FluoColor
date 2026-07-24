@@ -3,13 +3,17 @@ package com.muc.fluocolorquant.ui.screens.result.array
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
+import android.content.ContentValues
 import android.os.ParcelFileDescriptor
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.muc.fluocolorquant.domain.detection.grid.GridGeometryDiagnostics
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
@@ -45,11 +49,13 @@ class ArrayResultExportTest {
         assertTrue(String(bytes.copyOfRange(0, 4), Charsets.US_ASCII) == "%PDF")
 
         val file = File(context.cacheDir, "array-result-export-test.pdf")
+        val keepVisualArtifact = InstrumentationRegistry.getArguments()
+            .getString("keepPdf") == "true"
         try {
             file.writeBytes(bytes)
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
                 PdfRenderer(descriptor).use { renderer ->
-                    // 一页统一 XML 封面 + 一页总览 + 一页分析物 + 一页 QC/追溯。
+                    // 一页统一 XML 封面 + 一页总览 + 一页分析物 + 一页质量摘要/追溯。
                     assertEquals(4, renderer.pageCount)
                     renderer.openPage(0).use { coverPage ->
                         val bitmap = Bitmap.createBitmap(
@@ -77,7 +83,35 @@ class ArrayResultExportTest {
                 }
             }
         } finally {
-            file.delete()
+            // 本地视觉审计可通过 keepPdf=true 保留产物并用 adb run-as 拉取；普通 CI
+            // 仍自动删除临时文件，不在测试设备中长期堆积报告。
+            if (keepVisualArtifact) {
+                // connectedAndroidTest 结束后会卸载测试包，应用私有目录随之删除；通过
+                // MediaStore 写入公共 Download，便于 pdftoppm 做逐页视觉审计。
+                runCatching {
+                    context.contentResolver.delete(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        "${MediaStore.Downloads.DISPLAY_NAME} = ?",
+                        arrayOf("array-result-export-test.pdf")
+                    )
+                }
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, "array-result-export-test.pdf")
+                    put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val outputUri = requireNotNull(
+                    context.contentResolver.insert(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        values
+                    )
+                )
+                context.contentResolver.openOutputStream(outputUri).use { output ->
+                    requireNotNull(output).write(bytes)
+                }
+            } else {
+                file.delete()
+            }
         }
     }
 
@@ -116,7 +150,11 @@ class ArrayResultExportTest {
             modelVersion = 2,
             primaryFeature = "DELTA_E_2000",
             processorName = "colorimetric-photometry",
-            processorVersion = "v1"
+            processorVersion = "v1",
+            projectRangeMin = 0.0,
+            projectRangeMax = 100.0,
+            calibrationRangeMin = 28.0,
+            calibrationRangeMax = 34.0
         )
         val measurement = ArraySiteMeasurementResult(
             measurementId = 1L,
@@ -234,17 +272,21 @@ class ArrayResultExportTest {
             layout = "Layout",
             physicalSites = "Sites",
             measurements = "Measurements",
-            reliableMeasurements = "Reliable",
+            validMeasurements = "Valid",
+            reviewMeasurements = "Review",
+            unavailableMeasurements = "Unavailable",
             overviewHeatmap = "Overview",
             analyteSection = "Analyte",
             model = "Model",
             primaryFeature = "Feature",
-            reliableRange = "Range",
+            projectRange = "Project range",
+            calibrationRange = "Calibration range",
             concentrationHeatmap = "Concentration",
             signalHeatmap = "Signal",
-            qualityControl = "Quality",
-            frameIssueCount = "Frame issues",
-            siteFailureCount = "Failures",
+            qualitySummary = "Quality",
+            frameReviewCount = "Frame review",
+            reviewMeasurementCount = "Review",
+            unavailableMeasurementCount = "Unavailable",
             lowSignalCount = "Low signal",
             traceability = "Traceability",
             locator = "Locator",

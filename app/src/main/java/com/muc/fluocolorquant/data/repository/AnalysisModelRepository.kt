@@ -22,6 +22,7 @@ data class AnalysisModelBundle(
 interface AnalysisModelRepository {
     fun observeAll(): Flow<List<AnalysisModel>>
     suspend fun getBundle(id: String): AnalysisModelBundle?
+    suspend fun getReusableBundleByContentFingerprint(fingerprint: String): AnalysisModelBundle?
     suspend fun createDraft(bundle: AnalysisModelBundle): AnalysisModelBundle
     suspend fun updateDraft(bundle: AnalysisModelBundle)
     suspend fun replace(bundle: AnalysisModelBundle)

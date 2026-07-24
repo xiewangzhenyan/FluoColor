@@ -28,7 +28,7 @@ class FluorescencePhotometryProcessorTest {
     }
 
     @Test
-    fun `热点位点必须标记且判为质量不可靠`() {
+    fun `热点位点保留结果并标记为建议复核`() {
         val hot = baseSite(index = 0, green = 130.0, integratedGreen = 3500.0, hotPixelRatio = 0.012)
 
         val result = FluorescencePhotometryProcessor.process(
@@ -41,7 +41,7 @@ class FluorescencePhotometryProcessorTest {
         )
 
         assertTrue(PhotometryFlag.HOT_PIXEL in result.sites.single().qc.flags)
-        assertFalse(result.sites.single().qc.qualityReliable)
+        assertTrue(result.sites.single().qc.qualityReliable)
     }
 
     private fun quantResult(sites: List<BaseSitePhotometry>): PgQuantResult {
