@@ -1,5 +1,6 @@
 package com.muc.fluocolorquant.ui.screens.detection
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -222,7 +224,7 @@ private fun LocalizationWorkflow(
     }
 
     if (state.editingLayout) {
-        GridLayoutEditor(
+        ArrayLayoutEditor(
             preview = preview,
             assignments = assignments,
             onAssignmentsChange = { changed ->
@@ -359,9 +361,15 @@ private fun LocalizationConfirmation(
     }
 }
 
-/** 微流控真实裁切预览下方的通用孔位布局编辑器。 */
+/**
+ * 规则阵列共用的孔位布局与定量编辑器。
+ *
+ * 页面状态、画笔合并、模板和逐分析物定量完全复用；载体差异仅通过 [visualStyle] 和
+ * [realCropSourceBitmap] 注入。这样96孔板可以使用圆孔外观与内存中的标准方向图，同时不会
+ * 复制微流控已经稳定的多笔画笔、孔位保护和定量状态机。
+ */
 @Composable
-private fun GridLayoutEditor(
+internal fun ArrayLayoutEditor(
     preview: GridLocalizationPreview,
     assignments: Map<Int, GridLayoutAssignmentDraft>,
     onAssignmentsChange: (Map<Int, GridLayoutAssignmentDraft>) -> Unit,
@@ -380,7 +388,12 @@ private fun GridLayoutEditor(
     onSetOnsiteSaveToLibrary: (String, Boolean) -> Unit,
     onEditOnsiteCalibration: (String) -> Unit,
     onConfirmQuantitationAnalyte: (String, Boolean) -> Unit,
-    onSaveTemplate: (String) -> Unit
+    onSaveTemplate: (String) -> Unit,
+    realCropSourceBitmap: Bitmap? = null,
+    visualStyle: ArraySiteVisualStyle = ArraySiteVisualStyle.SQUARE,
+    compactHeader: Boolean = false,
+    includeQuantitationStep: Boolean = false,
+    realPreviewTitleRes: Int = R.string.grid_layout_real_preview
 ) {
     var selectedAnalyteId by rememberSaveable(preview.runId) {
         mutableStateOf(preview.analytes.firstOrNull()?.id)
@@ -390,6 +403,7 @@ private fun GridLayoutEditor(
     }
     var clearMode by rememberSaveable(preview.runId) { mutableStateOf(false) }
     var sampleId by rememberSaveable(preview.runId) { mutableStateOf("") }
+    var selectedSiteIndex by rememberSaveable(preview.runId) { mutableStateOf<Int?>(null) }
     val toastManager = LocalToastManager.current
     // stringResource 必须在 Composable 上下文提前读取，点击回调中只使用已经解析的字符串。
     val occupiedSiteMessage = stringResource(R.string.grid_layout_occupied_site_protected)
@@ -398,33 +412,61 @@ private fun GridLayoutEditor(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .testTag(ArrayLayoutEditorTestTags.ROOT)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        WorkflowStepHeader(currentStep = 2)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+        WorkflowStepHeader(
+            currentStep = 2,
+            includeQuantitationStep = includeQuantitationStep
+        )
+        if (compactHeader) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
-                    text = stringResource(R.string.grid_layout_title),
-                    style = MaterialTheme.typography.headlineSmall,
+                    text = stringResource(R.string.plate96_layout_standard_summary),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(
-                    text = stringResource(R.string.grid_layout_description),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                OutlinedButton(onClick = onBackToLocalization) {
+                    Text(stringResource(R.string.plate96_layout_review_short), maxLines = 1)
+                }
             }
-            OutlinedButton(onClick = onBackToLocalization) {
-                Text(stringResource(R.string.grid_layout_review_localization))
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.grid_layout_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(R.string.grid_layout_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                OutlinedButton(onClick = onBackToLocalization) {
+                    Text(stringResource(R.string.grid_layout_review_localization))
+                }
             }
         }
 
-        LayoutSectionTitle(stringResource(R.string.grid_layout_real_preview))
-        RealSiteCropGrid(preview = preview)
+        LayoutSectionTitle(stringResource(realPreviewTitleRes))
+        RealSiteCropGrid(
+            preview = preview,
+            sourceBitmap = realCropSourceBitmap,
+            visualStyle = visualStyle,
+            selectedSiteIndex = selectedSiteIndex,
+            onSiteSelected = { selectedSiteIndex = it }
+        )
 
         LayoutSectionTitle(stringResource(R.string.grid_layout_analyte))
         GridAnalyteSelector(
@@ -470,6 +512,7 @@ private fun GridLayoutEditor(
          */
         fun paintIndices(indices: Set<Int>) {
             if (indices.isEmpty()) return
+            selectedSiteIndex = indices.last()
             val analyteId = selectedAnalyteId
             if (!clearMode && analyteId == null && selectedRole != TemplateSiteRole.DISABLED) return
 
@@ -499,7 +542,10 @@ private fun GridLayoutEditor(
             CompactVirtualLayoutGrid(
                 preview = preview,
                 assignments = assignments,
-                onPaintIndices = ::paintIndices
+                onPaintIndices = ::paintIndices,
+                visualStyle = visualStyle,
+                selectedSiteIndex = selectedSiteIndex,
+                onSiteSelected = { selectedSiteIndex = it }
             )
         }
 
@@ -581,15 +627,27 @@ private fun List<GridLayoutAssignmentDraft>.toIndexedAssignmentMap(
 
 
 @Composable
-private fun WorkflowStepHeader(currentStep: Int) {
+private fun WorkflowStepHeader(
+    currentStep: Int,
+    includeQuantitationStep: Boolean = false
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        listOf(
-            R.string.grid_workflow_step_localization,
-            R.string.grid_workflow_step_layout
-        ).forEachIndexed { index, labelRes ->
+        val stepLabels = if (includeQuantitationStep) {
+            listOf(
+                R.string.plate96_step_localization,
+                R.string.plate96_step_layout,
+                R.string.plate96_step_quantitation
+            )
+        } else {
+            listOf(
+                R.string.grid_workflow_step_localization,
+                R.string.grid_workflow_step_layout
+            )
+        }
+        stepLabels.forEachIndexed { index, labelRes ->
             val selected = currentStep == index + 1
             Surface(
                 modifier = Modifier.weight(1f),

@@ -2696,4 +2696,10 @@
     <string name="plate96_adjustment_move_down">Move well down</string>
     <string name="plate96_adjustment_move_left">Move well left</string>
     <string name="plate96_adjustment_move_right">Move well right</string>
+    <string name="plate96_layout_screen_title">96-well layout</string>
+    <string name="plate96_layout_standard_summary">96 wells · A1–H12</string>
+    <string name="plate96_layout_review_short">Review</string>
+    <string name="plate96_layout_real_preview">Real well preview</string>
+    <string name="grid_layout_clear_short">Clear</string>
+    <string name="grid_layout_more_short">More</string>
 </resources>

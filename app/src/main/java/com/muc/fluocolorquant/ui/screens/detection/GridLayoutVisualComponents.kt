@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Block
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -65,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBitmapCropper
@@ -85,6 +88,30 @@ internal data class RealSiteCropBitmap(
 )
 
 /**
+ * 阵列布局页只共享交互骨架，不强行统一载体外观。
+ *
+ * 微流控芯片继续使用方形位点；96孔板使用圆形位点。该枚举同时控制真实裁切、虚拟布局、
+ * 选中边框和放大预览，防止同一页面出现“真实圆孔、虚拟方格”的视觉语义漂移。
+ */
+internal enum class ArraySiteVisualStyle {
+    SQUARE,
+    CIRCLE
+}
+
+/** 96孔板统一使用的圆孔视觉策略，后续结果页可以沿用同一语义。 */
+internal val Plate96SiteVisualStyle: ArraySiteVisualStyle = ArraySiteVisualStyle.CIRCLE
+
+/** 通用布局工作台的稳定测试标签，微流控与96孔板设备回归共用。 */
+internal object ArrayLayoutEditorTestTags {
+    const val ROOT: String = "array_layout_editor_root"
+    const val REAL_GRID: String = "array_layout_real_grid"
+    const val VIRTUAL_GRID: String = "array_layout_virtual_grid"
+    const val QUANTITATION: String = "array_layout_quantitation"
+    const val CROP_PREFIX: String = "array_layout_crop_"
+    const val CROP_DIALOG: String = "array_layout_crop_dialog"
+}
+
+/**
  * 按通用单元分割器给出的真实紧致边界从无增强透视矫正图逐孔裁切。
  *
  * 页面只解码一次矫正图，225 个小裁切总内存远低于同时加载 225 张原始图片；裁切结果不会
@@ -92,15 +119,23 @@ internal data class RealSiteCropBitmap(
  * 因此页面显示边界与比色/荧光实际使用边界不会再发生漂移。
  */
 @Composable
-internal fun RealSiteCropGrid(preview: GridLocalizationPreview) {
+internal fun RealSiteCropGrid(
+    preview: GridLocalizationPreview,
+    sourceBitmap: Bitmap? = null,
+    visualStyle: ArraySiteVisualStyle = ArraySiteVisualStyle.SQUARE,
+    selectedSiteIndex: Int? = null,
+    onSiteSelected: (Int) -> Unit = {}
+) {
     val crops = remember(
         preview.runId,
         preview.rectifiedImagePath,
         preview.cropHalfSizePx,
-        preview.sites
+        preview.sites,
+        sourceBitmap
     ) {
-        buildRealSiteCrops(preview)
+        buildRealSiteCrops(preview, sourceBitmap)
     }
+    var expandedSiteIndex by rememberSaveable(preview.runId) { mutableStateOf<Int?>(null) }
     DisposableEffect(crops) {
         onDispose {
             crops.forEach { crop ->
@@ -124,7 +159,11 @@ internal fun RealSiteCropGrid(preview: GridLocalizationPreview) {
         return
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(ArrayLayoutEditorTestTags.REAL_GRID)
+    ) {
         val metrics = rememberGridMetrics(
             maxWidth = maxWidth,
             rows = preview.rows,
@@ -147,7 +186,55 @@ internal fun RealSiteCropGrid(preview: GridLocalizationPreview) {
                     repeat(preview.columns) { columnIndex ->
                         val siteIndex = rowIndex * preview.columns + columnIndex
                         val crop = crops[siteIndex]
-                        RealSiteCropCell(crop, metrics.cellSize)
+                        RealSiteCropCell(
+                            crop = crop,
+                            cellSize = metrics.cellSize,
+                            visualStyle = visualStyle,
+                            selected = crop.site.siteIndex == selectedSiteIndex,
+                            onClick = {
+                                onSiteSelected(crop.site.siteIndex)
+                                expandedSiteIndex = crop.site.siteIndex
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    crops.firstOrNull { it.site.siteIndex == expandedSiteIndex }?.let { crop ->
+        Dialog(onDismissRequest = { expandedSiteIndex = null }) {
+            Surface(
+                modifier = Modifier.testTag(ArrayLayoutEditorTestTags.CROP_DIALOG),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = siteCoordinateLabel(crop.site.rowIndex, crop.site.columnIndex),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Surface(
+                        modifier = Modifier.size(220.dp),
+                        shape = if (visualStyle == ArraySiteVisualStyle.CIRCLE) CircleShape
+                        else RoundedCornerShape(20.dp),
+                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                    ) {
+                        Image(
+                            bitmap = crop.bitmap.asImageBitmap(),
+                            contentDescription = siteCoordinateLabel(
+                                crop.site.rowIndex,
+                                crop.site.columnIndex
+                            ),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
                     }
                 }
             }
@@ -241,7 +328,7 @@ internal fun GridRolePalette(
         }
 
         RoleToolCard(
-            label = stringResource(R.string.grid_layout_clear_mode),
+            label = stringResource(R.string.grid_layout_clear_short),
             icon = Icons.Default.DeleteSweep,
             accent = MaterialTheme.colorScheme.error,
             selected = clearMode,
@@ -252,7 +339,7 @@ internal fun GridRolePalette(
         Box(modifier = Modifier.weight(1f)) {
             RoleToolCard(
                 label = selectedMoreRole?.let { gridRoleLabel(it) }
-                    ?: stringResource(R.string.grid_layout_more_roles),
+                    ?: stringResource(R.string.grid_layout_more_short),
                 icon = selectedMoreRole?.let(::gridRoleIcon) ?: Icons.Default.MoreHoriz,
                 accent = selectedMoreRole?.let { gridRoleAccent(it) }
                     ?: MaterialTheme.colorScheme.secondary,
@@ -293,7 +380,10 @@ internal fun GridRolePalette(
 internal fun CompactVirtualLayoutGrid(
     preview: GridLocalizationPreview,
     assignments: Map<Int, GridLayoutAssignmentDraft>,
-    onPaintIndices: (Set<Int>) -> Unit
+    onPaintIndices: (Set<Int>) -> Unit,
+    visualStyle: ArraySiteVisualStyle = ArraySiteVisualStyle.SQUARE,
+    selectedSiteIndex: Int? = null,
+    onSiteSelected: (Int) -> Unit = {}
 ) {
     val largeGrid = preview.rows >= 16 || preview.columns >= 16
     var brushMode by rememberSaveable(preview.runId) { mutableStateOf(!largeGrid) }
@@ -304,7 +394,9 @@ internal fun CompactVirtualLayoutGrid(
      * 同时留出舒适的卡片内边距，保证窄屏与大字体模式下仍不会互相遮挡。
      */
     Column(
-        modifier = Modifier.padding(10.dp),
+        modifier = Modifier
+            .padding(10.dp)
+            .testTag(ArrayLayoutEditorTestTags.VIRTUAL_GRID),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (largeGrid) {
@@ -368,7 +460,9 @@ internal fun CompactVirtualLayoutGrid(
                                             columnIndex = columnIndex,
                                             assignment = assignments[siteIndex],
                                             analytes = preview.analytes,
-                                            cellSize = metrics.cellSize
+                                            cellSize = metrics.cellSize,
+                                            visualStyle = visualStyle,
+                                            selected = selectedSiteIndex == siteIndex
                                         )
                                     }
                                 }
@@ -380,7 +474,8 @@ internal fun CompactVirtualLayoutGrid(
                                 columns = preview.columns,
                                 cellSize = metrics.cellSize,
                                 gap = metrics.gap,
-                                onPaintIndices = onPaintIndices
+                                onPaintIndices = onPaintIndices,
+                                onSiteSelected = onSiteSelected
                             )
                         }
                     }
@@ -441,11 +536,25 @@ private fun RoleToolCard(
 }
 
 @Composable
-private fun RealSiteCropCell(crop: RealSiteCropBitmap, cellSize: Dp) {
+private fun RealSiteCropCell(
+    crop: RealSiteCropBitmap,
+    cellSize: Dp,
+    visualStyle: ArraySiteVisualStyle,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
     Surface(
-        modifier = Modifier.size(cellSize),
-        shape = RoundedCornerShape(if (cellSize < 24.dp) 3.dp else 5.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        modifier = Modifier
+            .size(cellSize)
+            .testTag("${ArrayLayoutEditorTestTags.CROP_PREFIX}${crop.site.siteIndex}")
+            .clickable(onClick = onClick),
+        shape = if (visualStyle == ArraySiteVisualStyle.CIRCLE) CircleShape
+        else RoundedCornerShape(if (cellSize < 24.dp) 3.dp else 5.dp),
+        border = BorderStroke(
+            if (selected) 2.dp else 1.dp,
+            if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outlineVariant
+        )
     ) {
         Box {
             Image(
@@ -455,17 +564,23 @@ private fun RealSiteCropCell(crop: RealSiteCropBitmap, cellSize: Dp) {
                 contentScale = ContentScale.Crop
             )
             Surface(
-                modifier = Modifier.align(Alignment.TopStart),
-                color = Color.Black.copy(alpha = 0.68f),
+                modifier = Modifier.align(
+                    if (visualStyle == ArraySiteVisualStyle.CIRCLE) Alignment.TopCenter
+                    else Alignment.TopStart
+                ),
+                color = Color.Black.copy(alpha = 0.46f),
                 shape = RoundedCornerShape(bottomEnd = 3.dp)
             ) {
                 Text(
                     text = siteCoordinateLabel(crop.site.rowIndex, crop.site.columnIndex),
-                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 1.dp),
+                    modifier = Modifier.padding(horizontal = 1.5.dp, vertical = 0.dp),
                     color = Color.White,
-                    fontSize = if (cellSize < 24.dp) 5.sp else 7.sp,
-                    lineHeight = 7.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = if (cellSize < 28.dp) 4.5.sp else 5.5.sp,
+                    lineHeight = 6.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip
                 )
             }
         }
@@ -478,7 +593,9 @@ private fun VirtualSiteCell(
     columnIndex: Int,
     assignment: GridLayoutAssignmentDraft?,
     analytes: List<GridLocalizationAnalyte>,
-    cellSize: Dp
+    cellSize: Dp,
+    visualStyle: ArraySiteVisualStyle,
+    selected: Boolean
 ) {
     val analyteIndex = analytes.indexOfFirst { it.id == assignment?.analyteId }
     val accent = when {
@@ -490,30 +607,44 @@ private fun VirtualSiteCell(
     else Color.White
     Surface(
         modifier = Modifier.size(cellSize),
-        shape = RoundedCornerShape(if (cellSize < 24.dp) 3.dp else 5.dp),
+        shape = if (visualStyle == ArraySiteVisualStyle.CIRCLE) CircleShape
+        else RoundedCornerShape(if (cellSize < 24.dp) 3.dp else 5.dp),
         color = accent,
         border = BorderStroke(
-            1.dp,
-            if (assignment == null) MaterialTheme.colorScheme.outlineVariant
+            if (selected) 2.dp else 1.dp,
+            if (selected) MaterialTheme.colorScheme.primary
+            else if (assignment == null) MaterialTheme.colorScheme.outlineVariant
             else accent.copy(alpha = 0.9f)
         )
     ) {
-        Box(modifier = Modifier.padding(1.dp)) {
+        Box(modifier = Modifier.padding(if (visualStyle == ArraySiteVisualStyle.CIRCLE) 2.dp else 1.dp)) {
             Text(
                 text = siteCoordinateLabel(rowIndex, columnIndex),
-                modifier = Modifier.align(Alignment.TopStart),
+                modifier = Modifier.align(
+                    if (visualStyle == ArraySiteVisualStyle.CIRCLE) Alignment.TopCenter
+                    else Alignment.TopStart
+                ),
                 color = contentColor,
-                fontSize = if (cellSize < 24.dp) 5.sp else 7.sp,
+                fontSize = if (cellSize < 24.dp) 5.sp else 6.5.sp,
                 lineHeight = 7.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip
             )
             Text(
                 text = gridRoleShortLabel(assignment?.role),
-                modifier = Modifier.align(Alignment.BottomEnd),
+                modifier = Modifier.align(
+                    if (visualStyle == ArraySiteVisualStyle.CIRCLE) Alignment.BottomCenter
+                    else Alignment.BottomEnd
+                ),
                 color = contentColor,
                 fontSize = if (cellSize < 24.dp) 6.sp else 8.sp,
                 lineHeight = 8.sp,
-                fontWeight = FontWeight.ExtraBold
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip
             )
         }
     }
@@ -525,9 +656,11 @@ private fun BrushGestureLayer(
     columns: Int,
     cellSize: Dp,
     gap: Dp,
-    onPaintIndices: (Set<Int>) -> Unit
+    onPaintIndices: (Set<Int>) -> Unit,
+    onSiteSelected: (Int) -> Unit
 ) {
     val currentOnPaintIndices by rememberUpdatedState(onPaintIndices)
+    val currentOnSiteSelected by rememberUpdatedState(onSiteSelected)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -575,7 +708,10 @@ private fun BrushGestureLayer(
                         change.consume()
                     } while (event.changes.any { it.pressed })
 
-                    if (visited.isNotEmpty()) currentOnPaintIndices(visited)
+                    if (visited.isNotEmpty()) {
+                        currentOnPaintIndices(visited)
+                        currentOnSiteSelected(visited.last())
+                    }
                 }
             }
     )
@@ -678,9 +814,15 @@ private fun GridRowHeader(rowIndex: Int, metrics: GridMetrics) {
     }
 }
 
-internal fun buildRealSiteCrops(preview: GridLocalizationPreview): List<RealSiteCropBitmap> {
-    val path = preview.rectifiedImagePath ?: return emptyList()
-    val source = BitmapFactory.decodeFile(path) ?: return emptyList()
+internal fun buildRealSiteCrops(
+    preview: GridLocalizationPreview,
+    sourceBitmap: Bitmap? = null
+): List<RealSiteCropBitmap> {
+    val source = sourceBitmap ?: run {
+        val path = preview.rectifiedImagePath ?: return emptyList()
+        BitmapFactory.decodeFile(path) ?: return emptyList()
+    }
+    val ownsSource = sourceBitmap == null
     return try {
         preview.sites.sortedBy(GridLocalizationSitePreview::siteIndex).mapNotNull { site ->
             runCatching {
@@ -708,7 +850,8 @@ internal fun buildRealSiteCrops(preview: GridLocalizationPreview): List<RealSite
             }.getOrNull()
         }
     } finally {
-        if (!source.isRecycled) source.recycle()
+        // 页面传入的标准方向Bitmap由定位ViewModel管理生命周期；这里只回收本函数自行解码的源图。
+        if (ownsSource && !source.isRecycled) source.recycle()
     }
 }
 

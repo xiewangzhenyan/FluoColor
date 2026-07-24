@@ -2699,4 +2699,10 @@
     <string name="plate96_adjustment_move_down">孔位向下移动</string>
     <string name="plate96_adjustment_move_left">孔位向左移动</string>
     <string name="plate96_adjustment_move_right">孔位向右移动</string>
+    <string name="plate96_layout_screen_title">96孔板布局</string>
+    <string name="plate96_layout_standard_summary">96孔 · A1–H12</string>
+    <string name="plate96_layout_review_short">复核定位</string>
+    <string name="plate96_layout_real_preview">真实孔位预览</string>
+    <string name="grid_layout_clear_short">清除</string>
+    <string name="grid_layout_more_short">更多</string>
 </resources>
