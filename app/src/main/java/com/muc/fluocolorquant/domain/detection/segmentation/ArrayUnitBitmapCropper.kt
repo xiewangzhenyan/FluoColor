@@ -58,7 +58,8 @@ object ArrayUnitBitmapCropper {
         rowIndex: Int,
         columnIndex: Int,
         shape: ArrayUnitShape,
-        bounds: ArrayUnitBounds
+        bounds: ArrayUnitBounds,
+        regionSource: ArrayUnitRegionSource = ArrayUnitRegionSource.DETECTED_GEOMETRY
     ): ArrayUnitRegion {
         bounds.requireValid()
         return ArrayUnitRegion(
@@ -67,7 +68,7 @@ object ArrayUnitBitmapCropper {
             columnIndex = columnIndex,
             shape = shape,
             bounds = bounds,
-            source = ArrayUnitRegionSource.DETECTED_GEOMETRY,
+            source = regionSource,
             foregroundMask = geometryMask(bounds.width, bounds.height, shape)
         ).requireValid()
     }

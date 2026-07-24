@@ -2,6 +2,8 @@ package com.muc.fluocolorquant.di
 
 import com.muc.fluocolorquant.domain.detection.quantification.AndroidGridDeepLearningExecutor
 import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningExecutor
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96ObjectDetector
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96YoloDetector
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -19,4 +21,11 @@ abstract class DetectionModule {
     abstract fun bindGridDeepLearningExecutor(
         implementation: AndroidGridDeepLearningExecutor
     ): GridDeepLearningExecutor
+
+    /** 新96孔板定位链通过领域接口复用YOLO，不再依赖旧DetectionViewModel。 */
+    @Binds
+    @Singleton
+    abstract fun bindPlate96ObjectDetector(
+        implementation: Plate96YoloDetector
+    ): Plate96ObjectDetector
 }
