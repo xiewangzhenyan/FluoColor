@@ -53,6 +53,7 @@ class Plate96RealImageProbeInstrumentedTest {
             assertEquals(12, session.result.orientation.sourceColumns)
             assertTrue(session.result.diagnostics.observedSiteCount >= MINIMUM_REAL_OBSERVED_SITES)
             assertTrue(session.result.diagnostics.shapeRefinedSiteCount >= MINIMUM_REAL_REFINED_SITES)
+            assertTrue(session.result.diagnostics.imputedSiteCount <= MAXIMUM_REAL_IMPUTED_SITES)
         } finally {
             bitmap.recycle()
         }
@@ -61,7 +62,9 @@ class Plate96RealImageProbeInstrumentedTest {
     private companion object {
         const val TAG: String = "Plate96RealImageProbe"
         const val ARGUMENT_IMAGE_PATH: String = "plate96ImagePath"
-        const val MINIMUM_REAL_OBSERVED_SITES: Int = 72
-        const val MINIMUM_REAL_REFINED_SITES: Int = 90
+        // 最终几何复核会主动拒绝孔内反光小圆；宁可使用稳定晶格兜底，也不追求虚高的“精定位数”。
+        const val MINIMUM_REAL_OBSERVED_SITES: Int = 84
+        const val MINIMUM_REAL_REFINED_SITES: Int = 84
+        const val MAXIMUM_REAL_IMPUTED_SITES: Int = 12
     }
 }

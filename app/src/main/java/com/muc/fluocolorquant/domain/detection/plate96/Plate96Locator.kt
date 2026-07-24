@@ -5,6 +5,9 @@ import com.muc.fluocolorquant.domain.detection.array.ArrayLocalizationResult
 import com.muc.fluocolorquant.domain.detection.array.ArrayLocator
 import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorConfig
 import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
+import com.muc.fluocolorquant.domain.detection.array.ArrayOrientationSource
+import com.muc.fluocolorquant.domain.detection.array.ArrayImagePoint
+import com.muc.fluocolorquant.domain.detection.array.ArrayOriginCorner
 import com.muc.fluocolorquant.domain.detection.array.Plate96LayoutContract
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 import javax.inject.Inject
@@ -21,7 +24,11 @@ class Plate96Locator @Inject constructor(
     data class Session(
         val circles: List<Plate96CircleCandidate>,
         val orientationResolution: Plate96OrientationResolution,
-        val result: ArrayLocalizationResult
+        val result: ArrayLocalizationResult,
+        /** 保存当前方向下未经人工修改的定位基线，供单孔“恢复自动”精确回退。 */
+        val automaticResult: ArrayLocalizationResult = result,
+        /** 保存算法最初的方向裁决，用户修改A1后仍可以恢复自动建议。 */
+        val automaticOrientationResolution: Plate96OrientationResolution = orientationResolution
     )
 
     override suspend fun locate(
@@ -78,7 +85,88 @@ class Plate96Locator @Inject constructor(
             circles = resolvedCircles,
             resolution = orientation
         )
-        return Session(resolvedCircles, orientation, result)
+        return Session(resolvedCircles, orientation, result, result, orientation)
+    }
+
+    /** 用户确认A1角落后只重建坐标和标准晶格，不重复执行YOLO或霍夫圆。 */
+    fun reorientSession(
+        sourceWidth: Int,
+        sourceHeight: Int,
+        session: Session,
+        originCorner: ArrayOriginCorner
+    ): Session {
+        val confirmedOrientation = Plate96LayoutContract.orientation(
+            originCorner = originCorner,
+            source = ArrayOrientationSource.USER_CONFIRMED,
+            confidence = 1.0
+        )
+        require(
+            confirmedOrientation.sourceRows == session.orientationResolution.recommended.sourceRows &&
+                confirmedOrientation.sourceColumns == session.orientationResolution.recommended.sourceColumns
+        ) { "所选A1角落与当前横竖方向不一致" }
+        val confirmedResolution = session.orientationResolution.copy(
+            orientation = confirmedOrientation,
+            requiresOriginConfirmation = false
+        )
+        val reorientedResult = gridAssembler.assemble(
+            sourceWidth = sourceWidth,
+            sourceHeight = sourceHeight,
+            circles = session.circles,
+            resolution = confirmedResolution
+        )
+        return session.copy(
+            orientationResolution = confirmedResolution,
+            result = reorientedResult,
+            automaticResult = reorientedResult
+        )
+    }
+
+    /** 在标准方向坐标中更新单孔几何，定位模型和圆检测不会重新执行。 */
+    fun adjustSite(
+        session: Session,
+        siteIndex: Int,
+        normalizedCenter: ArrayImagePoint,
+        radiusPx: Double
+    ): Session {
+        return session.copy(
+            result = gridAssembler.adjustSite(
+                result = session.result,
+                automaticResult = session.automaticResult,
+                siteIndex = siteIndex,
+                requestedNormalizedCenter = normalizedCenter,
+                requestedRadiusPx = radiusPx
+            )
+        )
+    }
+
+    /** 恢复一个孔位的自动圆心和半径，其他孔位的人工修改保持不变。 */
+    fun restoreAutomaticSite(session: Session, siteIndex: Int): Session {
+        return session.copy(
+            result = gridAssembler.restoreAutomaticSite(
+                result = session.result,
+                automaticResult = session.automaticResult,
+                siteIndex = siteIndex
+            )
+        )
+    }
+
+    /** 恢复算法最初的方向建议，并清除当前方向下的人工孔位调整。 */
+    fun restoreAutomaticOrientation(
+        sourceWidth: Int,
+        sourceHeight: Int,
+        session: Session
+    ): Session {
+        val automaticResult = gridAssembler.assemble(
+            sourceWidth = sourceWidth,
+            sourceHeight = sourceHeight,
+            circles = session.circles,
+            resolution = session.automaticOrientationResolution
+        )
+        return session.copy(
+            orientationResolution = session.automaticOrientationResolution,
+            result = automaticResult,
+            automaticResult = automaticResult
+        )
     }
 
     private fun resolveOrientation(circles: List<Plate96CircleCandidate>): Plate96OrientationResolution {
