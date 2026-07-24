@@ -41,6 +41,7 @@ import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiState
 import com.muc.fluocolorquant.ui.viewmodels.GridConfigurationEvent
 import com.muc.fluocolorquant.ui.viewmodels.GridDetectionViewModel
 import com.muc.fluocolorquant.ui.navigation.Screen
+import com.muc.fluocolorquant.ui.screens.detection.plate96.Plate96LocalizationScreen
 import kotlinx.coroutines.launch
 import android.net.Uri
 import android.graphics.RectF
@@ -131,12 +132,12 @@ fun WellDetectionScreen(
         }
     }
 
-    if (gridState == GridDetectionUiState.LegacyPlate) {
-        // 只有确认是孔板后才创建旧 ViewModel，因此微流控不会预加载 YOLO/PyTorch。
-        LegacyWellDetectionScreen(
-            navController = navController,
+    if (gridState == GridDetectionUiState.Plate96Localization) {
+        // 标准96孔板进入新的方向确认和圆孔定位页；旧YOLO结果保存链不再参与新运行。
+        Plate96LocalizationScreen(
             imageUri = imageUri,
-            projectId = projectId
+            onBack = { navController.popBackStack() },
+            onContinue = gridViewModel::acceptPlate96Localization
         )
     } else {
         GridDetectionGatewayContent(

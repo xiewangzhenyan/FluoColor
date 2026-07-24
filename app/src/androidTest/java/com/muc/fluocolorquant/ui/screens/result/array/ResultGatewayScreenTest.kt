@@ -10,6 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.muc.fluocolorquant.ui.screens.result.RESULT_GATEWAY_ARRAY_TAG
 import com.muc.fluocolorquant.ui.screens.result.RESULT_GATEWAY_LEGACY_TAG
 import com.muc.fluocolorquant.ui.screens.result.RESULT_GATEWAY_LOADING_TAG
+import com.muc.fluocolorquant.ui.screens.result.RESULT_GATEWAY_PLATE96_TAG
 import com.muc.fluocolorquant.ui.screens.result.ResultGatewayContent
 import com.muc.fluocolorquant.ui.theme.FluoColorTheme
 import com.muc.fluocolorquant.ui.viewmodels.ResultGatewayUiState
@@ -55,6 +56,25 @@ class ResultGatewayScreenTest {
 
         composeRule.onNodeWithTag(RESULT_GATEWAY_LEGACY_TAG).assertIsDisplayed()
         composeRule.onAllNodesWithTag(RESULT_GATEWAY_ARRAY_TAG).assertCountEquals(0)
+    }
+
+    @Test
+    fun `新96孔板运行只渲染独立孔板结果分支`() {
+        composeRule.setContent {
+            FluoColorTheme {
+                ResultGatewayContent(
+                    state = ResultGatewayUiState.NewPlate96Result,
+                    onRetry = {},
+                    arrayContent = { Text("array-test-content") },
+                    plate96Content = { Text("plate96-test-content") },
+                    legacyContent = { Text("legacy-test-content") }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(RESULT_GATEWAY_PLATE96_TAG).assertIsDisplayed()
+        composeRule.onAllNodesWithTag(RESULT_GATEWAY_ARRAY_TAG).assertCountEquals(0)
+        composeRule.onAllNodesWithTag(RESULT_GATEWAY_LEGACY_TAG).assertCountEquals(0)
     }
 
     @Test

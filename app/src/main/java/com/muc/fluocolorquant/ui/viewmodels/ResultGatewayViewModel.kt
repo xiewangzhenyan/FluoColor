@@ -3,6 +3,8 @@ package com.muc.fluocolorquant.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.repository.ArrayResultRepository
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultLoadResult
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshotMapper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -15,6 +17,7 @@ import kotlinx.coroutines.launch
 sealed interface ResultGatewayUiState {
     data object Loading : ResultGatewayUiState
     data object NewArrayResult : ResultGatewayUiState
+    data object NewPlate96Result : ResultGatewayUiState
     data object LegacyResult : ResultGatewayUiState
     data object InvalidRun : ResultGatewayUiState
     data object Error : ResultGatewayUiState
@@ -45,10 +48,14 @@ class ResultGatewayViewModel @Inject constructor(
         _uiState.value = ResultGatewayUiState.Loading
         viewModelScope.launch {
             try {
-                _uiState.value = if (repository.hasNewArrayResult(runId)) {
-                    ResultGatewayUiState.NewArrayResult
-                } else {
+                _uiState.value = if (!repository.hasNewArrayResult(runId)) {
                     ResultGatewayUiState.LegacyResult
+                } else {
+                    // 新结果按冻结载体协议分流；不能把“有SiteMeasurement”等同于微流控。
+                    when (Plate96ResultSnapshotMapper.map(repository.loadSnapshot(runId))) {
+                        is Plate96ResultLoadResult.Success -> ResultGatewayUiState.NewPlate96Result
+                        is Plate96ResultLoadResult.Failure -> ResultGatewayUiState.NewArrayResult
+                    }
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation

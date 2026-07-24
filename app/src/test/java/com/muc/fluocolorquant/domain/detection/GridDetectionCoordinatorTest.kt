@@ -68,7 +68,7 @@ class GridDetectionCoordinatorTest {
     @Test
     fun `孔板载体保留旧YOLO霍夫兼容链`() {
         assertEquals(
-            GridCarrierRoute.LEGACY_PLATE,
+            GridCarrierRoute.PLATE96,
             GridDetectionRouteResolver.resolve(CarrierType.PLATE)
         )
     }

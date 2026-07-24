@@ -43,6 +43,9 @@ import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceRe
 import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceWriter
 import com.muc.fluocolorquant.domain.detection.evidence.GridPersistedSourceInput
 import com.muc.fluocolorquant.domain.detection.evidence.NoOpGridProcessingEvidenceWriter
+import com.muc.fluocolorquant.domain.detection.evidence.NoOpPlate96ProcessingEvidenceWriter
+import com.muc.fluocolorquant.domain.detection.evidence.PLATE96_PROCESSING_EVIDENCE_SCHEMA
+import com.muc.fluocolorquant.domain.detection.evidence.Plate96ProcessingEvidenceWriter
 import com.muc.fluocolorquant.domain.detection.quantification.ENDPOINT_QUANTIFIER_VERSION
 import com.muc.fluocolorquant.domain.detection.quantification.FORMULA_ENGINE_VERSION
 import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningBatchResult
@@ -71,6 +74,11 @@ import com.muc.fluocolorquant.domain.detection.photometry.PG_QUANT_PROCESSOR_VER
 import com.muc.fluocolorquant.domain.detection.photometry.PG_QUANT_PROCESSOR_NAME
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantSampler
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
+import com.muc.fluocolorquant.domain.detection.plate96.PLATE96_RUN_GEOMETRY_SCHEMA_V1
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96Locator
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96RunGeometryCodec
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96RunGeometrySnapshot
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96ScientificSamplingAdapter
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 import com.muc.fluocolorquant.domain.detection.segmentation.OpenCvArrayUnitSegmenter
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
@@ -89,8 +97,8 @@ enum class GridCarrierRoute {
     /** 微流控规则阵列使用 PG-Grid 几何和新的模态专用光度。 */
     MICROFLUIDIC_PG_GRID,
 
-    /** 旧孔板继续使用已有 YOLO＋霍夫圆兼容链，避免破坏历史实验。 */
-    LEGACY_PLATE,
+    /** 96孔板使用独立方向确认、圆孔定位和几何协议，定量层复用规则阵列内核。 */
+    PLATE96,
 
     /** 自定义载体必须先声明定位协议，不能猜测为微流控或孔板。 */
     UNSUPPORTED
@@ -106,7 +114,7 @@ object GridDetectionRouteResolver {
     fun resolve(carrierType: CarrierType): GridCarrierRoute {
         return when (carrierType) {
             CarrierType.MICROFLUIDIC_CHIP -> GridCarrierRoute.MICROFLUIDIC_PG_GRID
-            CarrierType.PLATE -> GridCarrierRoute.LEGACY_PLATE
+            CarrierType.PLATE -> GridCarrierRoute.PLATE96
             CarrierType.CUSTOM -> GridCarrierRoute.UNSUPPORTED
         }
     }
@@ -293,8 +301,35 @@ data class GridLocalizationSession(
     val frameQcJson: String,
     /** 应用长期目录中的未增强运行输入；写入失败时为空并兼容回退到请求原路径。 */
     val persistedSourceInput: GridPersistedSourceInput?,
-    val processingEvidence: List<GridProcessingEvidenceRecord>
+    val processingEvidence: List<GridProcessingEvidenceRecord>,
+    /** 页面视觉和持久化分流必须读取明确载体语义，不能根据8×12或96个位点猜测。 */
+    val presentation: GridLocalizationPresentation,
+    /** 运行JSON中的稳定几何键；微流控为pgGrid，96孔板为plate96Geometry。 */
+    val geometryPersistence: GridGeometryPersistence,
+    val detectionModelUsed: String,
+    val processingVersions: Map<String, String>,
+    val confidenceThreshold: Float? = null,
+    val iouThreshold: Float? = null,
+    val frameQcIssueCount: Int = 0
 )
+
+/** 规则阵列工作台的物理呈现类型；结果页面仍保持各自独立。 */
+enum class GridLocalizationPresentation {
+    MICROFLUIDIC,
+    PLATE96
+}
+
+/** 几何JSON的持久化描述，防止96孔板被错误写入pgGrid字段。 */
+data class GridGeometryPersistence(
+    val jsonKey: String,
+    val schemaVersion: String,
+    val json: String
+) {
+    init {
+        require(jsonKey in setOf("pgGrid", "plate96Geometry")) { "不支持的阵列几何持久化键" }
+        require(schemaVersion.isNotBlank() && json.isNotBlank()) { "阵列几何版本和JSON不能为空" }
+    }
+}
 
 /** 只执行芯片定位、基础光度与处理证据生成后的稳定结果。 */
 sealed interface GridLocalizationOutcome {
@@ -328,7 +363,10 @@ class GridDetectionCoordinator @Inject constructor(
     private val calibrationEngine: ArrayCalibrationEngine = ArrayCalibrationEngine(),
     /** 将用户选择的候选冻结为分析物快照；该步骤绝不再次调用拟合。 */
     private val calibrationApplicationService: CalibrationApplicationService =
-        CalibrationApplicationService()
+        CalibrationApplicationService(),
+    /** 96孔板使用独立圆孔过程图；测试默认不写文件。 */
+    private val plate96EvidenceWriter: Plate96ProcessingEvidenceWriter =
+        NoOpPlate96ProcessingEvidenceWriter
 ) {
     private val gson = Gson()
 
@@ -355,7 +393,7 @@ class GridDetectionCoordinator @Inject constructor(
                 setOf(GridDetectionBlockReason.UNSUPPORTED_CARRIER)
             )
         when (GridDetectionRouteResolver.resolve(carrierType)) {
-            GridCarrierRoute.LEGACY_PLATE -> return GridLocalizationOutcome.LegacyPlateRequired
+            GridCarrierRoute.PLATE96 -> return GridLocalizationOutcome.LegacyPlateRequired
             GridCarrierRoute.UNSUPPORTED -> {
                 return GridLocalizationOutcome.Blocked(
                     setOf(GridDetectionBlockReason.UNSUPPORTED_CARRIER)
@@ -418,7 +456,130 @@ class GridDetectionCoordinator @Inject constructor(
                 quant = quant,
                 frameQcJson = frameQcJson,
                 persistedSourceInput = persistedSourceInput,
-                processingEvidence = processingEvidence
+                processingEvidence = processingEvidence,
+                presentation = GridLocalizationPresentation.MICROFLUIDIC,
+                geometryPersistence = GridGeometryPersistence(
+                    jsonKey = "pgGrid",
+                    schemaVersion = PG_GRID_SCHEMA_V2_1,
+                    json = PgGridJsonCodec.encode(grid)
+                ),
+                detectionModelUsed = "OpenCV PG-Grid 2.1.0",
+                processingVersions = linkedMapOf(
+                    "geometry" to PG_GRID_SCHEMA_V2_1,
+                    "basePhotometry" to PG_QUANT_PROCESSOR_VERSION,
+                    "colorimetric" to COLORIMETRIC_PROCESSOR_VERSION,
+                    "fluorescence" to FLUORESCENCE_PROCESSOR_VERSION,
+                    "endpointQuantifier" to ENDPOINT_QUANTIFIER_VERSION,
+                    "formulaEngine" to FORMULA_ENGINE_VERSION,
+                    "processingEvidence" to GRID_PROCESSING_EVIDENCE_SCHEMA
+                ),
+                frameQcIssueCount = grid.frameQc.size
+            )
+        )
+    }
+
+    /**
+     * 接收用户已经确认和微调完成的96孔板定位会话，生成一次可复用的光度会话。
+     *
+     * 方向与圆孔定位在进入本方法前已经完成；这里不会再次运行YOLO或霍夫圆，只执行一次
+     * 原图科学采样、过程证据写入，并把独立`plate96Geometry`冻结到后续运行。
+     */
+    suspend fun preparePlate96Localization(
+        request: GridDetectionRequest,
+        normalizedBitmap: Bitmap,
+        locatorSession: Plate96Locator.Session,
+        exifRotationDegrees: Int = 0,
+        exifFlipped: Boolean = false
+    ): GridLocalizationOutcome {
+        request.onStageChanged(GridDetectionStage.PREPARING)
+        val carrierType = CarrierType.fromCode(request.snapshot.carrierProfile.carrierType)
+        if (
+            carrierType != CarrierType.PLATE ||
+            SiteShape.fromCode(request.snapshot.carrierProfile.siteShape) != SiteShape.CIRCLE ||
+            request.snapshot.carrierProfile.rows != 8 ||
+            request.snapshot.carrierProfile.columns != 12
+        ) {
+            return GridLocalizationOutcome.Blocked(setOf(GridDetectionBlockReason.UNSUPPORTED_CARRIER))
+        }
+        val preflight = preflight(
+            request = request,
+            requireSiteAssignments = false,
+            requireLocatorConfig = false
+        )
+        if (preflight.reasons.isNotEmpty()) {
+            return GridLocalizationOutcome.Blocked(preflight.reasons)
+        }
+
+        val localization = locatorSession.result.requireValid()
+        val geometry = Plate96RunGeometrySnapshot.from(localization)
+        val sampling = Plate96ScientificSamplingAdapter.create(localization)
+        request.onStageChanged(GridDetectionStage.PHOTOMETRY)
+        val quant = withContext(Dispatchers.Default) {
+            PgQuantSampler.sample(
+                bitmap = request.endpointBitmap,
+                grid = sampling.grid,
+                unitSegmentation = sampling.segmentation
+            )
+        }
+        val frameQcJson = gson.toJson(
+            linkedMapOf(
+                "geometry" to localization.diagnostics,
+                "orientation" to localization.orientation,
+                "issues" to emptyList<Any>()
+            )
+        )
+        request.onStageChanged(GridDetectionStage.RENDERING_EVIDENCE)
+        val persistedSourceInput = writeSourceInput(request)
+        val processingEvidence = withContext(Dispatchers.IO) {
+            runCatching {
+                plate96EvidenceWriter.write(
+                    runId = request.runId,
+                    sourceBitmap = request.endpointBitmap,
+                    normalizedBitmap = normalizedBitmap,
+                    session = locatorSession,
+                    quant = quant
+                )
+            }.onFailure { error ->
+                Log.w(PROCESSING_EVIDENCE_LOG_TAG, "96孔板处理证据写入失败：${request.runId}", error)
+            }.getOrDefault(emptyList())
+        }
+        val requestWithOrientation = request.copy(
+            acquisitionMetadataJson = Plate96RunGeometryCodec.mergeAcquisitionMetadata(
+                existingJson = request.acquisitionMetadataJson,
+                geometry = geometry,
+                exifRotationDegrees = exifRotationDegrees,
+                exifFlipped = exifFlipped
+            )
+        )
+        return GridLocalizationOutcome.Ready(
+            GridLocalizationSession(
+                request = requestWithOrientation,
+                grid = sampling.grid,
+                quant = quant,
+                frameQcJson = frameQcJson,
+                persistedSourceInput = persistedSourceInput,
+                processingEvidence = processingEvidence,
+                presentation = GridLocalizationPresentation.PLATE96,
+                geometryPersistence = GridGeometryPersistence(
+                    jsonKey = "plate96Geometry",
+                    schemaVersion = PLATE96_RUN_GEOMETRY_SCHEMA_V1,
+                    json = Plate96RunGeometryCodec.encode(geometry)
+                ),
+                detectionModelUsed = "Plate96 YOLO + circular-grid ${localization.locatorVersion}",
+                processingVersions = linkedMapOf(
+                    "geometry" to PLATE96_RUN_GEOMETRY_SCHEMA_V1,
+                    "orientation" to localization.orientation.schemaVersion,
+                    "imageTransform" to localization.imageTransform.processorVersion,
+                    "basePhotometry" to PG_QUANT_PROCESSOR_VERSION,
+                    "colorimetric" to COLORIMETRIC_PROCESSOR_VERSION,
+                    "fluorescence" to FLUORESCENCE_PROCESSOR_VERSION,
+                    "endpointQuantifier" to ENDPOINT_QUANTIFIER_VERSION,
+                    "formulaEngine" to FORMULA_ENGINE_VERSION,
+                    "processingEvidence" to PLATE96_PROCESSING_EVIDENCE_SCHEMA
+                ),
+                confidenceThreshold = Plate96Locator.DEFAULT_CONFIG.confidenceThreshold,
+                iouThreshold = Plate96Locator.DEFAULT_CONFIG.iouThreshold,
+                frameQcIssueCount = 0
             )
         )
     }
@@ -434,7 +595,11 @@ class GridDetectionCoordinator @Inject constructor(
         // 现场曲线已经在用户点击“应用此曲线”时冻结。这里直接执行最终快照，禁止因为
         // 线程时序、算法升级或数值初值变化再次拟合出与用户所见不同的曲线。
         val request = session.request.copy(snapshot = finalizedSnapshot)
-        val preflight = preflight(request, requireSiteAssignments = true)
+        val preflight = preflight(
+            request = request,
+            requireSiteAssignments = true,
+            requireLocatorConfig = session.presentation == GridLocalizationPresentation.MICROFLUIDIC
+        )
         if (preflight.reasons.isNotEmpty()) return GridDetectionOutcome.Blocked(preflight.reasons)
         val modality = requireNotNull(DetectionModality.fromCode(request.snapshot.template.detectionMode))
 
@@ -453,7 +618,7 @@ class GridDetectionCoordinator @Inject constructor(
 
         val bundle = buildPersistenceBundle(
             request = request,
-            gridJson = PgGridJsonCodec.encode(session.grid),
+            geometryPersistence = session.geometryPersistence,
             frameQcJson = session.frameQcJson,
             measurements = processed.measurements,
             status = statusForQuantification(
@@ -462,7 +627,11 @@ class GridDetectionCoordinator @Inject constructor(
             ),
             modelUsageJson = gson.toJson(processed.modelUsage),
             persistedSourceInput = session.persistedSourceInput,
-            processingEvidence = session.processingEvidence
+            processingEvidence = session.processingEvidence,
+            detectionModelUsed = session.detectionModelUsed,
+            processingVersions = session.processingVersions,
+            confidenceThreshold = session.confidenceThreshold,
+            iouThreshold = session.iouThreshold
         )
         request.onStageChanged(GridDetectionStage.PERSISTING)
         withContext(Dispatchers.IO) { repository.save(bundle) }
@@ -471,7 +640,7 @@ class GridDetectionCoordinator @Inject constructor(
             runId = request.runId,
             measurementCount = processed.measurements.size,
             signalOnlyAnalyteIds = processed.signalOnlyAnalyteIds,
-            frameQcIssueCount = session.grid.frameQc.size,
+            frameQcIssueCount = session.frameQcIssueCount,
             effectiveSnapshot = request.snapshot
         )
     }
@@ -719,7 +888,9 @@ class GridDetectionCoordinator @Inject constructor(
 
     private fun preflight(
         request: GridDetectionRequest,
-        requireSiteAssignments: Boolean
+        requireSiteAssignments: Boolean,
+        /** 只有PG-Grid需要极性配置；圆孔板由独立定位器冻结圆形几何。 */
+        requireLocatorConfig: Boolean = true
     ): PreflightResult {
         val reasons = linkedSetOf<GridDetectionBlockReason>().apply {
             addAll(GridDetectionPreflightValidator.validate(request.project, request.snapshot).reasons)
@@ -736,13 +907,18 @@ class GridDetectionCoordinator @Inject constructor(
             reasons += GridDetectionBlockReason.INVALID_TEMPLATE_PROTOCOL
         }
 
-        val polarity = ScientificDetectionConfigCodec.decodeCarrierPolarity(
-            snapshot.carrierProfile.locatorConfigJson
-        )
-        if (snapshot.carrierProfile.locatorConfigJson.isNullOrBlank()) {
-            reasons += GridDetectionBlockReason.MISSING_LOCATOR_CONFIG
-        } else if (polarity == null) {
-            reasons += GridDetectionBlockReason.INVALID_LOCATOR_CONFIG
+        val polarity = if (requireLocatorConfig) {
+            ScientificDetectionConfigCodec.decodeCarrierPolarity(
+                snapshot.carrierProfile.locatorConfigJson
+            ).also { decoded ->
+                if (snapshot.carrierProfile.locatorConfigJson.isNullOrBlank()) {
+                    reasons += GridDetectionBlockReason.MISSING_LOCATOR_CONFIG
+                } else if (decoded == null) {
+                    reasons += GridDetectionBlockReason.INVALID_LOCATOR_CONFIG
+                }
+            }
+        } else {
+            null
         }
 
         snapshot.analytes.forEach { analyteSnapshot ->
@@ -1372,13 +1548,17 @@ class GridDetectionCoordinator @Inject constructor(
 
     private fun buildPersistenceBundle(
         request: GridDetectionRequest,
-        gridJson: String,
+        geometryPersistence: GridGeometryPersistence,
         frameQcJson: String,
         measurements: List<SiteMeasurement>,
         status: String,
         modelUsageJson: String?,
         persistedSourceInput: GridPersistedSourceInput? = null,
-        processingEvidence: List<GridProcessingEvidenceRecord> = emptyList()
+        processingEvidence: List<GridProcessingEvidenceRecord> = emptyList(),
+        detectionModelUsed: String,
+        processingVersions: Map<String, String>,
+        confidenceThreshold: Float? = null,
+        iouThreshold: Float? = null
     ): GridDetectionPersistenceBundle {
         // 运行快照必须描述“本次实际执行的配置对象”。不能照抄 Project 中可能来自旧版本、
         // 人工导入或已损坏的 JSON 字符串，否则历史结果会与真实处理参数不一致。
@@ -1387,26 +1567,16 @@ class GridDetectionCoordinator @Inject constructor(
             runId = request.runId,
             projectId = request.project.id,
             timestamp = request.capturedAt,
-            detectionModelUsed = "OpenCV PG-Grid 2.1.0",
+            detectionModelUsed = detectionModelUsed,
             concentrationModelUsed = modelUsageJson,
             status = status,
             errorMessage = null,
-            confThreshold = null,
-            iouThreshold = null,
+            confThreshold = confidenceThreshold,
+            iouThreshold = iouThreshold,
             wellsDetected = measurements.size,
             effectiveConfigSnapshotJson = effectiveSnapshot,
             acquisitionMetadataJson = request.acquisitionMetadataJson,
-            processingVersionJson = gson.toJson(
-                mapOf(
-                    "geometry" to PG_GRID_SCHEMA_V2_1,
-                    "basePhotometry" to PG_QUANT_PROCESSOR_VERSION,
-                    "colorimetric" to COLORIMETRIC_PROCESSOR_VERSION,
-                    "fluorescence" to FLUORESCENCE_PROCESSOR_VERSION,
-                    "endpointQuantifier" to ENDPOINT_QUANTIFIER_VERSION,
-                    "formulaEngine" to FORMULA_ENGINE_VERSION,
-                    "processingEvidence" to GRID_PROCESSING_EVIDENCE_SCHEMA
-                )
-            ),
+            processingVersionJson = gson.toJson(processingVersions),
             frameQcJson = frameQcJson,
             siteQcSummaryJson = summarizeSiteQc(measurements),
             // 项目样本槽映射和覆盖原因在检测时冻结到运行；结果页不得回读后来被修改的
@@ -1445,12 +1615,17 @@ class GridDetectionCoordinator @Inject constructor(
                 revision = index + 1
             )
         }
-        // gridJson 进入附件派生字段会误被解释为文件路径，因此保存在运行 QC/版本快照中。
+        // 几何JSON进入附件派生字段会误被解释为文件路径，因此保存在运行QC快照中。
+        // 键名由明确载体协议提供：96孔板绝不能为了复用结果页而冒充pgGrid。
         val runWithGeometry = run.copy(
             frameQcJson = gson.toJson(
-                mapOf(
+                linkedMapOf<String, Any?>(
                     "frame" to gson.fromJson(frameQcJson, JsonObject::class.java),
-                    "pgGrid" to gson.fromJson(gridJson, JsonObject::class.java)
+                    geometryPersistence.jsonKey to gson.fromJson(
+                        geometryPersistence.json,
+                        JsonObject::class.java
+                    ),
+                    "geometrySchemaVersion" to geometryPersistence.schemaVersion
                 )
             )
         )

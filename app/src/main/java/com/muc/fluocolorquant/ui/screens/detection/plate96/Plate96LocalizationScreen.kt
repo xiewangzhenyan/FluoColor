@@ -90,6 +90,7 @@ import com.muc.fluocolorquant.domain.detection.plate96.Plate96Locator
 import com.muc.fluocolorquant.ui.viewmodels.Plate96ImageViewMode
 import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationError
 import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationStage
+import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationSelection
 import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationUiState
 import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationViewModel
 import kotlin.math.hypot
@@ -122,7 +123,7 @@ object Plate96LocalizationTestTags {
 fun Plate96LocalizationScreen(
     imageUri: String?,
     onBack: () -> Unit,
-    onContinue: (Plate96Locator.Session) -> Unit,
+    onContinue: (Plate96LocalizationSelection) -> Unit,
     viewModel: Plate96LocalizationViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -167,7 +168,10 @@ fun Plate96LocalizationScreen(
                 onNudgeSelectedSite = viewModel::nudgeSelectedSite,
                 onSetSelectedSiteRadius = viewModel::setSelectedSiteRadius,
                 onRestoreSelectedSite = viewModel::restoreSelectedSite,
-                onContinue = { onContinue(current.session) },
+                onContinue = {
+                    // 移交当前同一份原图、标准图和人工确认后的定位会话，禁止下游重新定位。
+                    viewModel.currentSelection()?.let(onContinue)
+                },
                 modifier = Modifier.padding(padding)
             )
         }

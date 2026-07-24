@@ -54,6 +54,7 @@ import com.muc.fluocolorquant.domain.detection.GridDetectionStage
 import com.muc.fluocolorquant.domain.detection.GridExperimentTemplateOption
 import com.muc.fluocolorquant.domain.detection.GridLayoutConfigurationSource
 import com.muc.fluocolorquant.domain.detection.GridLocalizationOutcome
+import com.muc.fluocolorquant.domain.detection.GridLocalizationPresentation
 import com.muc.fluocolorquant.domain.detection.GridLocalizationSession
 import com.muc.fluocolorquant.domain.detection.isConfigurationComplete
 import com.muc.fluocolorquant.domain.detection.isReadyForConfirmation
@@ -135,7 +136,9 @@ data class GridLocalizationPreview(
     val availableModels: List<GridAnalysisModelOption> = emptyList(),
     val quantitationDrafts: List<GridAnalyteQuantitationDraft> = emptyList(),
     /** 当前工作台只展开这一项，避免多个分析物配置卡同时堆叠。 */
-    val selectedQuantitationAnalyteId: String? = null
+    val selectedQuantitationAnalyteId: String? = null,
+    /** 页面只根据明确载体呈现选择圆孔或方格，不根据行列数猜测。 */
+    val presentation: GridLocalizationPresentation = GridLocalizationPresentation.MICROFLUIDIC
 )
 
 /** 孔位布局页的一次性操作结果；Compose 负责将稳定事件映射为中英文自定义 Toast。 */
@@ -194,10 +197,12 @@ data class GridPaintMergeResult(
 /** 微流控检测网关 UI 状态；所有用户文案由 Compose 根据枚举读取资源。 */
 sealed interface GridDetectionUiState {
     data object ResolvingProject : GridDetectionUiState
-    data object LegacyPlate : GridDetectionUiState
+    /** 已确认项目为标准96孔板，交由圆孔定位确认页继续。 */
+    data object Plate96Localization : GridDetectionUiState
 
     data class Processing(
-        val stage: GridDetectionStage
+        val stage: GridDetectionStage,
+        val presentation: GridLocalizationPresentation = GridLocalizationPresentation.MICROFLUIDIC
     ) : GridDetectionUiState
 
     data class LocalizationReady(
@@ -330,6 +335,73 @@ class GridDetectionViewModel @Inject constructor(
     fun showLocalizationPreview() {
         val current = _uiState.value as? GridDetectionUiState.LocalizationReady ?: return
         _uiState.value = current.copy(editingLayout = false)
+    }
+
+    /**
+     * 接收96孔板定位页已经确认的同一份原图、标准方向图和圆孔会话。
+     *
+     * 这里不会重新解码图片或重新运行YOLO/霍夫圆；只生成一次光度矩阵与长期证据，然后
+     * 进入和微流控共用的布局/模板/逐分析物定量工作台。
+     */
+    fun acceptPlate96Localization(selection: Plate96LocalizationSelection) {
+        val projectId = lastProjectId ?: return
+        val imageUri = lastImageUri ?: return
+        if (running) return
+        viewModelScope.launch {
+            running = true
+            try {
+                val project = projectRepository.getProjectById(projectId)
+                    ?: run {
+                        _uiState.value = GridDetectionUiState.Error(
+                            GridDetectionUiError.PROJECT_NOT_FOUND
+                        )
+                        return@launch
+                    }
+                val snapshot = project.templateSnapshotJson?.let { json ->
+                    runCatching { TemplateProjectSnapshotCodec.decode(json) }.getOrNull()
+                } ?: run {
+                    _uiState.value = GridDetectionUiState.Error(
+                        GridDetectionUiError.SNAPSHOT_MISSING_OR_INVALID
+                    )
+                    return@launch
+                }
+                val outcome = coordinator.preparePlate96Localization(
+                    request = GridDetectionRequest(
+                        project = project,
+                        snapshot = snapshot,
+                        endpointBitmap = selection.sourceBitmap,
+                        endpointPath = imageUri,
+                        operatorId = project.userId,
+                        onStageChanged = { stage ->
+                            _uiState.value = GridDetectionUiState.Processing(
+                                stage = stage,
+                                presentation = GridLocalizationPresentation.PLATE96
+                            )
+                        }
+                    ),
+                    normalizedBitmap = selection.normalizedBitmap,
+                    locatorSession = selection.session,
+                    exifRotationDegrees = selection.exifRotationDegrees,
+                    exifFlipped = selection.exifFlipped
+                )
+                _uiState.value = when (outcome) {
+                    GridLocalizationOutcome.LegacyPlateRequired ->
+                        GridDetectionUiState.Plate96Localization
+                    is GridLocalizationOutcome.Blocked ->
+                        GridDetectionUiState.Blocked(outcome.reasons)
+                    is GridLocalizationOutcome.Ready -> initializeLocalizationSession(
+                        session = outcome.session,
+                        openLayoutImmediately = true
+                    )
+                }
+            } catch (_: Exception) {
+                _uiState.value = GridDetectionUiState.Error(GridDetectionUiError.EXECUTION_FAILED)
+            } catch (_: LinkageError) {
+                _uiState.value = GridDetectionUiState.Error(GridDetectionUiError.EXECUTION_FAILED)
+            } finally {
+                running = false
+            }
+        }
     }
 
     /**
@@ -1416,7 +1488,7 @@ class GridDetectionViewModel @Inject constructor(
             try {
                 val outcome = coordinator.finalizeLocalized(session, finalizedSnapshot)
                 _uiState.value = when (outcome) {
-                    GridDetectionOutcome.LegacyPlateRequired -> GridDetectionUiState.LegacyPlate
+                    GridDetectionOutcome.LegacyPlateRequired -> GridDetectionUiState.Plate96Localization
                     is GridDetectionOutcome.Blocked -> GridDetectionUiState.Blocked(outcome.reasons)
                     is GridDetectionOutcome.RetakeRequired -> {
                         GridDetectionUiState.RetakeRequired(outcome.runId)
@@ -1483,8 +1555,8 @@ class GridDetectionViewModel @Inject constructor(
                     )
                     return@launch
                 }
-                if (GridDetectionRouteResolver.resolve(carrierType) == GridCarrierRoute.LEGACY_PLATE) {
-                    _uiState.value = GridDetectionUiState.LegacyPlate
+                if (GridDetectionRouteResolver.resolve(carrierType) == GridCarrierRoute.PLATE96) {
+                    _uiState.value = GridDetectionUiState.Plate96Localization
                     return@launch
                 }
                 val bitmap = loadBitmap(imageUri)
@@ -1507,39 +1579,12 @@ class GridDetectionViewModel @Inject constructor(
                     )
                 )
                 _uiState.value = when (outcome) {
-                    GridLocalizationOutcome.LegacyPlateRequired -> GridDetectionUiState.LegacyPlate
+                    GridLocalizationOutcome.LegacyPlateRequired -> GridDetectionUiState.Plate96Localization
                     is GridLocalizationOutcome.Blocked -> GridDetectionUiState.Blocked(outcome.reasons)
-                    is GridLocalizationOutcome.Ready -> {
-                        localizationSession = outcome.session
-                        val session = outcome.session
-                        loadConfigurationResources(session)
-                        configurationSource = if (session.request.snapshot.sourceTemplateId != null) {
-                            GridLayoutConfigurationSource.EXPERIMENT_TEMPLATE
-                        } else {
-                            GridLayoutConfigurationSource.MANUAL
-                        }
-                        selectedTemplateId = session.request.snapshot.sourceTemplateId
-                        quantitationDrafts = session.request.snapshot.analytes.associate { analyte ->
-                            analyte.analyte.id to analyte.toQuantitationDraft()
-                        }
-                        selectedQuantitationAnalyteId = session.request.snapshot.analytes
-                            .firstOrNull()?.analyte?.id
-                        val frozenAssignments = session.snapshotAssignmentDrafts()
-                        val recoverableAssignments = layoutDraftStore.beginSession(
-                            rows = session.grid.rows,
-                            columns = session.grid.columns,
-                            frozenAssignments = frozenAssignments
-                        )
-                        if (configurationSource == GridLayoutConfigurationSource.MANUAL) {
-                            manualAssignmentsBackup = recoverableAssignments
-                            manualQuantitationBackup = quantitationDrafts
-                            manualSnapshotBackup = session.request.snapshot
-                        }
-                        GridDetectionUiState.LocalizationReady(
-                            preview = session.toPreview(recoverableAssignments),
-                            editingLayout = false
-                        )
-                    }
+                    is GridLocalizationOutcome.Ready -> initializeLocalizationSession(
+                        session = outcome.session,
+                        openLayoutImmediately = false
+                    )
                 }
             } catch (_: Exception) {
                 _uiState.value = GridDetectionUiState.Error(GridDetectionUiError.EXECUTION_FAILED)
@@ -1549,6 +1594,45 @@ class GridDetectionViewModel @Inject constructor(
                 running = false
             }
         }
+    }
+
+    /**
+     * 微流控与96孔板进入布局页前共享的唯一初始化入口。
+     *
+     * 资源列表、模板来源、定量草稿和多笔画笔都在这里一次性建立，避免两种载体分别维护
+     * 状态后出现“模板能用但现场曲线状态不同步”的分叉行为。
+     */
+    private suspend fun initializeLocalizationSession(
+        session: GridLocalizationSession,
+        openLayoutImmediately: Boolean
+    ): GridDetectionUiState.LocalizationReady {
+        localizationSession = session
+        loadConfigurationResources(session)
+        configurationSource = if (session.request.snapshot.sourceTemplateId != null) {
+            GridLayoutConfigurationSource.EXPERIMENT_TEMPLATE
+        } else {
+            GridLayoutConfigurationSource.MANUAL
+        }
+        selectedTemplateId = session.request.snapshot.sourceTemplateId
+        quantitationDrafts = session.request.snapshot.analytes.associate { analyte ->
+            analyte.analyte.id to analyte.toQuantitationDraft()
+        }
+        selectedQuantitationAnalyteId = session.request.snapshot.analytes.firstOrNull()?.analyte?.id
+        val frozenAssignments = session.snapshotAssignmentDrafts()
+        val recoverableAssignments = layoutDraftStore.beginSession(
+            rows = session.grid.rows,
+            columns = session.grid.columns,
+            frozenAssignments = frozenAssignments
+        )
+        if (configurationSource == GridLayoutConfigurationSource.MANUAL) {
+            manualAssignmentsBackup = recoverableAssignments
+            manualQuantitationBackup = quantitationDrafts
+            manualSnapshotBackup = session.request.snapshot
+        }
+        return GridDetectionUiState.LocalizationReady(
+            preview = session.toPreview(recoverableAssignments),
+            editingLayout = openLayoutImmediately
+        )
     }
 
     private fun GridLocalizationSession.toPreview(
@@ -1563,9 +1647,10 @@ class GridDetectionViewModel @Inject constructor(
             siteCount = grid.sites.size,
             observedRatio = grid.geometry.observedRatio,
             meanConfidence = grid.geometry.meanConfidence,
-            frameQcIssueCount = grid.frameQc.size,
+            frameQcIssueCount = frameQcIssueCount,
             rectifiedImagePath = processingEvidence.firstOrNull {
-                it.role == CaptureRole.PROCESS_RECTIFIED
+                it.role == CaptureRole.PROCESS_RECTIFIED ||
+                    it.role == CaptureRole.PROCESS_ORIENTATION_NORMALIZED
             }?.path,
             // 兼容旧内存会话的最后兜底值；新运行的每个位点都从 unitSegmentation 取紧致区域。
             cropHalfSizePx = (quant.pitchPx * 0.46).coerceAtLeast(quant.roiRadiusPx),
@@ -1603,7 +1688,8 @@ class GridDetectionViewModel @Inject constructor(
             ),
             selectedQuantitationAnalyteId = selectedQuantitationAnalyteId
                 ?.takeIf { selectedId -> request.snapshot.analytes.any { it.analyte.id == selectedId } }
-                ?: request.snapshot.analytes.firstOrNull()?.analyte?.id
+                ?: request.snapshot.analytes.firstOrNull()?.analyte?.id,
+            presentation = presentation
         )
     }
 

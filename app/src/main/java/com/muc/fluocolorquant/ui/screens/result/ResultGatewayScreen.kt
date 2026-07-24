@@ -25,11 +25,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayResultScreen
+import com.muc.fluocolorquant.ui.screens.result.plate96.Plate96ResultScreen
 import com.muc.fluocolorquant.ui.viewmodels.ResultGatewayUiState
 import com.muc.fluocolorquant.ui.viewmodels.ResultGatewayViewModel
 
 const val RESULT_GATEWAY_LOADING_TAG: String = "result_gateway_loading"
 const val RESULT_GATEWAY_ARRAY_TAG: String = "result_gateway_array"
+const val RESULT_GATEWAY_PLATE96_TAG: String = "result_gateway_plate96"
 const val RESULT_GATEWAY_LEGACY_TAG: String = "result_gateway_legacy"
 
 /**
@@ -53,6 +55,9 @@ fun ResultGatewayScreen(
         arrayContent = {
             ArrayResultScreen(navController = navController, runId = runId)
         },
+        plate96Content = {
+            Plate96ResultScreen(navController = navController, runId = runId)
+        },
         legacyContent = {
             NewResultScreen(navController = navController, runId = runId)
         }
@@ -65,6 +70,7 @@ fun ResultGatewayContent(
     state: ResultGatewayUiState,
     onRetry: () -> Unit,
     arrayContent: @Composable () -> Unit,
+    plate96Content: @Composable () -> Unit = arrayContent,
     legacyContent: @Composable () -> Unit
 ) {
     when (state) {
@@ -91,6 +97,11 @@ fun ResultGatewayContent(
                 .fillMaxSize()
                 .testTag(RESULT_GATEWAY_ARRAY_TAG)
         ) { arrayContent() }
+        ResultGatewayUiState.NewPlate96Result -> Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag(RESULT_GATEWAY_PLATE96_TAG)
+        ) { plate96Content() }
         ResultGatewayUiState.LegacyResult -> Box(
             modifier = Modifier
                 .fillMaxSize()

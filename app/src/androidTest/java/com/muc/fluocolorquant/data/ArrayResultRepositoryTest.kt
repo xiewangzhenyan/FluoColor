@@ -28,6 +28,20 @@ import com.muc.fluocolorquant.domain.detection.grid.GridSiteKey
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
 import com.muc.fluocolorquant.domain.detection.grid.PgGridJsonCodec
 import com.muc.fluocolorquant.domain.detection.grid.PgGridResult
+import com.muc.fluocolorquant.domain.detection.array.ArrayBackgroundAnnulus
+import com.muc.fluocolorquant.domain.detection.array.ArrayCoordinateTransformer
+import com.muc.fluocolorquant.domain.detection.array.ArrayGridCoordinate
+import com.muc.fluocolorquant.domain.detection.array.ArrayImageBounds
+import com.muc.fluocolorquant.domain.detection.array.ArrayImagePoint
+import com.muc.fluocolorquant.domain.detection.array.ArrayLocalizationDiagnostics
+import com.muc.fluocolorquant.domain.detection.array.ArrayOrientationSource
+import com.muc.fluocolorquant.domain.detection.array.ArrayOriginCorner
+import com.muc.fluocolorquant.domain.detection.array.ArraySiteLocalizationSource
+import com.muc.fluocolorquant.domain.detection.array.Plate96LayoutContract
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96RunGeometryCodec
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96RunGeometrySnapshot
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96RunSiteGeometry
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBounds
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideCodec
 import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideSnapshot
@@ -35,6 +49,8 @@ import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshotCodec
 import com.muc.fluocolorquant.domain.result.ArrayResultErrorCode
 import com.muc.fluocolorquant.domain.result.ArrayResultLoadResult
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultLoadResult
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshotMapper
 import java.util.Date
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -124,6 +140,111 @@ class ArrayResultRepositoryTest {
         val runs = repository.getProjectRuns(PROJECT_ID)
 
         assertEquals(listOf("run-newer", "run-older"), runs.map { it.runId })
+    }
+
+    @Test
+    fun `新96孔板运行重建后保持方向圆孔索引和冻结浓度`() = runBlocking {
+        val analyte = Analyte(PLATE_ANALYTE_ID, "CEA")
+        val snapshot = plateSnapshot(analyte)
+        val project = Project(
+            id = PLATE_PROJECT_ID,
+            name = "96孔板持久化闭环",
+            detectionMode = "COLORIMETRIC",
+            recognitionType = "AUTO",
+            imageUri = "content://plate96-source",
+            rows = 8,
+            columns = 12,
+            createTime = Date(1_000L),
+            userId = "user-id",
+            lastRunTimestamp = Date(2_000L),
+            analysisMethod = "CURVE_FIT",
+            templateId = PLATE_TEMPLATE_ID,
+            templateVersion = 1,
+            templateSnapshotJson = TemplateProjectSnapshotCodec.encode(snapshot)
+        )
+        val geometry = plateGeometry()
+        val frameQcJson = gson.toJson(
+            linkedMapOf(
+                "frame" to linkedMapOf<String, Any>(
+                    "geometry" to geometry.diagnostics,
+                    "issues" to emptyList<Any>()
+                ),
+                "plate96Geometry" to gson.fromJson(
+                    Plate96RunGeometryCodec.encode(geometry),
+                    JsonObject::class.java
+                ),
+                "geometrySchemaVersion" to geometry.schemaVersion
+            )
+        )
+        val acquisitionMetadata = Plate96RunGeometryCodec.mergeAcquisitionMetadata(
+            existingJson = "{\"camera\":\"rear\"}",
+            geometry = geometry,
+            exifRotationDegrees = 90,
+            exifFlipped = false
+        )
+        val run = DetectionRun(
+            runId = PLATE_RUN_ID,
+            projectId = PLATE_PROJECT_ID,
+            timestamp = Date(2_000L),
+            detectionModelUsed = "Plate96 YOLO + circular-grid 1.0",
+            concentrationModelUsed = "{}",
+            status = "Completed",
+            errorMessage = null,
+            confThreshold = 0.25f,
+            iouThreshold = 0.45f,
+            wellsDetected = 96,
+            effectiveConfigSnapshotJson = TemplateProjectSnapshotCodec.encode(snapshot),
+            acquisitionMetadataJson = acquisitionMetadata,
+            processingVersionJson = "{\"geometry\":\"plate96-run-geometry-v1\"}",
+            frameQcJson = frameQcJson
+        )
+        val measurements = List(96) { index ->
+            SiteMeasurement(
+                runId = PLATE_RUN_ID,
+                siteIndex = index,
+                analyteId = PLATE_ANALYTE_ID,
+                detectionMode = "COLORIMETRIC",
+                rawSignalJson = "{\"siteIndex\":$index}",
+                primaryFeatureName = "DELTA_E_2000",
+                primaryFeatureValue = index.toDouble(),
+                confidence = 0.96,
+                signalDetectable = true,
+                qualityReliable = true,
+                processorName = "colorimetric-photometry",
+                processorVersion = "v1",
+                concentrationValue = index.toDouble(),
+                concentrationUnit = "ng/mL",
+                reliableRangeStatus = "WITHIN_RANGE"
+            )
+        }
+
+        database.analyteDao().insertAnalyte(analyte)
+        database.projectDao().insertProject(project)
+        database.detectionRunDao().insertDetectionRun(run)
+        database.captureArtifactDao().insert(
+            CaptureArtifact(
+                id = "plate96-endpoint",
+                runId = PLATE_RUN_ID,
+                captureRole = "ENDPOINT",
+                originalPath = "content://plate96-source",
+                capturedAt = Date(2_000L),
+                locked = true
+            )
+        )
+        database.siteMeasurementDao().insertAll(measurements)
+
+        // 重新创建仓库模拟应用进程重启；结果必须只读冻结数据，不调用任何定位或拟合器。
+        val reopened = ArrayResultRepositoryImpl(database).loadSnapshot(PLATE_RUN_ID)
+        val plate = Plate96ResultSnapshotMapper.map(reopened)
+
+        assertTrue(plate is Plate96ResultLoadResult.Success)
+        val restored = (plate as Plate96ResultLoadResult.Success).snapshot
+        assertEquals(96, restored.wells.size)
+        assertEquals("A1", restored.wells.first().wellLabel)
+        assertEquals("H12", restored.wells.last().wellLabel)
+        assertEquals(95.0, restored.wells.last().site.measurements.single().concentrationValue)
+        assertEquals(0, restored.orientation.quarterTurnsClockwise)
+        assertTrue(restored.orientation.userConfirmed == true)
     }
 
     private fun fixture(): Fixture {
@@ -334,6 +455,171 @@ class ArrayResultRepositoryTest {
         ).requireValid()
     }
 
+    private fun plateSnapshot(analyte: Analyte): TemplateProjectSnapshot {
+        val carrier = CarrierProfile(
+            id = PLATE_CARRIER_ID,
+            name = "标准96孔板",
+            carrierType = "PLATE",
+            rows = 8,
+            columns = 12,
+            siteShape = "CIRCLE"
+        )
+        val acquisition = AcquisitionProfile(
+            id = PLATE_ACQUISITION_ID,
+            name = "96孔板相机",
+            supportedModesJson = "[\"COLORIMETRIC\"]",
+            compatibleCarrierTypesJson = "[\"PLATE\"]",
+            cameraControlStrategy = "AUTO_LOCKED"
+        )
+        val template = ExperimentTemplate(
+            id = PLATE_TEMPLATE_ID,
+            templateName = "96孔板模板",
+            analyteId = null,
+            reagentAntigenId = null,
+            reagentAntibodyId = null,
+            fkCurveModelId = null,
+            reliableRangeMin = 0.0,
+            reliableRangeMax = 100.0,
+            concentrationUnit = "ng/mL",
+            defaultLayoutJson = null,
+            version = 1,
+            status = "PUBLISHED",
+            carrierProfileId = PLATE_CARRIER_ID,
+            detectionMode = "COLORIMETRIC",
+            readoutLayout = "GRID_SITES",
+            acquisitionProfileId = PLATE_ACQUISITION_ID,
+            inputProtocol = "ENDPOINT_ONLY"
+        )
+        val model = AnalysisModel(
+            id = PLATE_MODEL_ID,
+            name = "CEA现场曲线",
+            modelType = "STANDARD_CURVE",
+            analyteId = PLATE_ANALYTE_ID,
+            detectionMode = "COLORIMETRIC",
+            inputProtocol = "ENDPOINT_ONLY",
+            primaryFeature = "DELTA_E_2000",
+            processorName = "colorimetric-photometry",
+            processorVersion = "v1",
+            concentrationUnit = "ng/mL",
+            reliableRangeMin = 0.0,
+            reliableRangeMax = 100.0,
+            version = 1
+        )
+        return TemplateProjectSnapshot(
+            frozenAtEpochMillis = 1_500L,
+            template = template,
+            carrierProfile = carrier,
+            acquisitionProfile = acquisition,
+            analytes = listOf(
+                TemplateProjectAnalyteSnapshot(
+                    analyte = analyte,
+                    templateConfig = TemplateAnalyteConfig(
+                        id = "plate96-config",
+                        templateId = PLATE_TEMPLATE_ID,
+                        analyteId = PLATE_ANALYTE_ID,
+                        analysisModelId = PLATE_MODEL_ID,
+                        concentrationUnit = "ng/mL",
+                        reliableRangeMin = 0.0,
+                        reliableRangeMax = 100.0
+                    ),
+                    analysisModel = AnalysisModelBundle(
+                        model = model,
+                        standardCurve = StandardCurveDefinition(
+                            analysisModelId = PLATE_MODEL_ID,
+                            fittingFunction = "LINEAR",
+                            parametersJson = "{\"a\":1.0,\"b\":0.0}",
+                            monotonicDirection = "INCREASING"
+                        )
+                    )
+                )
+            ),
+            siteAssignments = List(96) { index ->
+                TemplateSiteAssignment(
+                    id = "plate96-site-$index",
+                    templateId = PLATE_TEMPLATE_ID,
+                    rowIndex = index / 12,
+                    columnIndex = index % 12,
+                    analyteId = PLATE_ANALYTE_ID,
+                    roleType = "SAMPLE",
+                    enabled = true
+                )
+            }
+        )
+    }
+
+    private fun plateGeometry(): Plate96RunGeometrySnapshot {
+        val orientation = Plate96LayoutContract.orientation(
+            originCorner = ArrayOriginCorner.TOP_LEFT,
+            source = ArrayOrientationSource.USER_CONFIRMED,
+            confidence = 1.0
+        )
+        val transform = ArrayCoordinateTransformer.createImageTransform(
+            sourceWidth = 1200,
+            sourceHeight = 800,
+            rotation = orientation.rotation,
+            mirrored = false
+        )
+        return Plate96RunGeometrySnapshot(
+            locatorName = "plate96-test",
+            locatorVersion = "1.0",
+            orientation = orientation,
+            imageTransform = transform,
+            sites = List(96) { index ->
+                val row = index / 12
+                val column = index % 12
+                val center = ArrayImagePoint(70.0 + column * 92.0, 70.0 + row * 92.0)
+                val coordinate = ArrayGridCoordinate(row, column)
+                Plate96RunSiteGeometry(
+                    siteIndex = index,
+                    displayLabel = Plate96LayoutContract.displayLabel(row, column),
+                    canonicalCoordinate = coordinate,
+                    sourceCoordinate = coordinate,
+                    normalizedCenter = center,
+                    sourceCenter = center,
+                    normalizedBounds = ArrayImageBounds(
+                        center.x - 28.0,
+                        center.y - 28.0,
+                        center.x + 28.0,
+                        center.y + 28.0
+                    ),
+                    sourceBounds = ArrayImageBounds(
+                        center.x - 28.0,
+                        center.y - 28.0,
+                        center.x + 28.0,
+                        center.y + 28.0
+                    ),
+                    normalizedBackgroundAnnulus = ArrayBackgroundAnnulus(center, 34.0, 42.0),
+                    sourceBackgroundAnnulus = ArrayBackgroundAnnulus(center, 34.0, 42.0),
+                    normalizedCropBounds = ArrayUnitBounds(
+                        (center.x - 28.0).toInt(),
+                        (center.y - 28.0).toInt(),
+                        (center.x + 28.0).toInt(),
+                        (center.y + 28.0).toInt()
+                    ),
+                    sourceCropBounds = ArrayUnitBounds(
+                        (center.x - 28.0).toInt(),
+                        (center.y - 28.0).toInt(),
+                        (center.x + 28.0).toInt(),
+                        (center.y + 28.0).toInt()
+                    ),
+                    radiusPx = 28.0,
+                    confidence = 0.96,
+                    source = ArraySiteLocalizationSource.SHAPE_REFINED,
+                    flags = emptySet()
+                )
+            },
+            diagnostics = ArrayLocalizationDiagnostics(
+                observedSiteCount = 96,
+                shapeRefinedSiteCount = 96,
+                imputedSiteCount = 0,
+                orientationScore = 0.99,
+                orientationAlternativeScore = 0.61,
+                orientationAmbiguous = false,
+                meanConfidence = 0.96
+            )
+        ).requireValid()
+    }
+
     private fun frameQcJson(grid: PgGridResult): String {
         return gson.toJson(
             linkedMapOf(
@@ -364,5 +650,12 @@ class ArrayResultRepositoryTest {
         const val ACQUISITION_ID = "acquisition-room-array"
         const val ANALYTE_ID = "analyte-room-cea"
         const val MODEL_ID = "model-room-cea"
+        const val PLATE_PROJECT_ID = "project-room-plate96"
+        const val PLATE_RUN_ID = "run-room-plate96"
+        const val PLATE_TEMPLATE_ID = "template-room-plate96"
+        const val PLATE_CARRIER_ID = "carrier-room-plate96"
+        const val PLATE_ACQUISITION_ID = "acquisition-room-plate96"
+        const val PLATE_ANALYTE_ID = "analyte-room-plate96-cea"
+        const val PLATE_MODEL_ID = "model-room-plate96-cea"
     }
 }

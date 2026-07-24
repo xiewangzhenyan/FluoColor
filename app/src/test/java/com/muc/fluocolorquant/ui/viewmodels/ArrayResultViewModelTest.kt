@@ -3,12 +3,16 @@ package com.muc.fluocolorquant.ui.viewmodels
 import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.repository.ArrayResultRepository
 import com.muc.fluocolorquant.domain.detection.grid.GridGeometryDiagnostics
+import com.muc.fluocolorquant.domain.detection.grid.GridPoint
+import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.result.ArrayCarrierResult
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
 import com.muc.fluocolorquant.domain.result.ArrayFrameResult
+import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultErrorCode
 import com.muc.fluocolorquant.domain.result.ArrayResultLoadResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
+import com.muc.fluocolorquant.domain.result.ArraySiteGeometry
 import java.util.Date
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -54,6 +58,19 @@ class ArrayResultViewModelTest {
             advanceUntilIdle()
 
             assertEquals(ResultGatewayUiState.LegacyResult, viewModel.uiState.value)
+        }
+
+    @Test
+    fun `新96孔板结果按冻结载体协议进入独立结果页`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            repository.hasNew = true
+            repository.loadResult = ArrayResultLoadResult.Success(plateSnapshot())
+            val viewModel = ResultGatewayViewModel(repository)
+
+            viewModel.load("run-plate96")
+            advanceUntilIdle()
+
+            assertEquals(ResultGatewayUiState.NewPlate96Result, viewModel.uiState.value)
         }
 
     @Test
@@ -203,6 +220,49 @@ class ArrayResultViewModelTest {
             wellsDetected = 100,
             effectiveConfigSnapshotJson = "{}",
             siteQcSummaryJson = "{\"total\":100,\"reliable\":90}"
+        )
+    }
+
+    private fun plateSnapshot(): ArrayResultSnapshot {
+        return snapshot(runId = "run-plate96").copy(
+            projectName = "96孔板项目",
+            carrier = ArrayCarrierResult(
+                id = "plate96-carrier",
+                name = "标准96孔板",
+                carrierType = "PLATE",
+                version = 1,
+                siteShape = "CIRCLE",
+                orientationMarkerJson = null
+            ),
+            rows = 8,
+            columns = 12,
+            sites = List(96) { index ->
+                val row = index / 12
+                val column = index % 12
+                ArrayPhysicalSiteResult(
+                    siteIndex = index,
+                    rowIndex = row,
+                    columnIndex = column,
+                    siteKey = "R${row + 1}C${column + 1}",
+                    enabled = true,
+                    roleCode = "SAMPLE",
+                    analyteId = null,
+                    defaultSampleSlot = null,
+                    sampleSlot = null,
+                    overrideReason = null,
+                    standardConcentration = null,
+                    repeatGroup = null,
+                    referenceScope = null,
+                    geometry = ArraySiteGeometry(
+                        rectified = GridPoint(column * 10.0, row * 10.0),
+                        original = GridPoint(column * 10.0, row * 10.0),
+                        confidence = 0.96,
+                        source = GridPointSource.CANDIDATE_REFINED,
+                        flags = emptySet()
+                    ),
+                    measurements = emptyList()
+                )
+            }
         )
     }
 }

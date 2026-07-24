@@ -43,7 +43,9 @@ import com.muc.fluocolorquant.domain.project.TemplateProjectCreationCoordinator
 import com.muc.fluocolorquant.domain.detection.grid.OpenCvPgGridLocator
 import com.muc.fluocolorquant.domain.detection.grid.PgGridLocator
 import com.muc.fluocolorquant.domain.detection.evidence.AndroidGridProcessingEvidenceWriter
+import com.muc.fluocolorquant.domain.detection.evidence.AndroidPlate96ProcessingEvidenceWriter
 import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceWriter
+import com.muc.fluocolorquant.domain.detection.evidence.Plate96ProcessingEvidenceWriter
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -66,6 +68,13 @@ abstract class RepositoryModule {
     abstract fun provideGridProcessingEvidenceWriter(
         writer: AndroidGridProcessingEvidenceWriter
     ): GridProcessingEvidenceWriter
+
+    /** 96孔板过程图保持圆孔与标准A1～H12语义，不复用微流控方格渲染。 */
+    @Binds
+    @Singleton
+    abstract fun providePlate96ProcessingEvidenceWriter(
+        writer: AndroidPlate96ProcessingEvidenceWriter
+    ): Plate96ProcessingEvidenceWriter
 
     /** 模板与曲线编辑器读取和检测设置相同的浓度单位来源。 */
     @Binds

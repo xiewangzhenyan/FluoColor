@@ -5,6 +5,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParseException
 import com.muc.fluocolorquant.data.enums.AnalysisModelType
+import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.model.SiteMeasurement
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
@@ -18,6 +19,8 @@ import com.muc.fluocolorquant.domain.detection.photometry.ColorimetricSitePhotom
 import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceSitePhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.LabPhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.RgbPhotometry
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96RunGeometryCodec
+import com.muc.fluocolorquant.domain.detection.plate96.toResultGrid
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideCodec
 import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideSnapshot
@@ -64,14 +67,18 @@ object ArrayResultSnapshotMapper {
                 return failure(ArrayResultErrorCode.CORRUPT_CONFIGURATION_DEVIATION)
             }
 
-        val gridResult = when (val parsed = parsePgGrid(source.run.frameQcJson)) {
-            is PgGridParseResult.Success -> parsed.grid
-            PgGridParseResult.Missing -> {
+        val carrierType = CarrierType.fromCode(templateSnapshot.carrierProfile.carrierType)
+            ?: return failure(ArrayResultErrorCode.INCONSISTENT_SNAPSHOT)
+        val gridResult = when (val parsed = parseRunGeometry(source.run.frameQcJson, carrierType)) {
+            is RunGeometryParseResult.Success -> parsed.grid
+            RunGeometryParseResult.MissingPgGrid ->
                 return failure(ArrayResultErrorCode.MISSING_PG_GRID_GEOMETRY)
-            }
-            PgGridParseResult.Corrupt -> {
+            RunGeometryParseResult.CorruptPgGrid ->
                 return failure(ArrayResultErrorCode.CORRUPT_PG_GRID_GEOMETRY)
-            }
+            RunGeometryParseResult.MissingPlate96 ->
+                return failure(ArrayResultErrorCode.MISSING_PLATE96_GEOMETRY)
+            RunGeometryParseResult.CorruptPlate96 ->
+                return failure(ArrayResultErrorCode.CORRUPT_PLATE96_GEOMETRY)
         }
         if (
             gridResult.rows != templateSnapshot.carrierProfile.rows ||
@@ -287,16 +294,55 @@ object ArrayResultSnapshotMapper {
         }
     }
 
-    private fun parsePgGrid(frameQcJson: String?): PgGridParseResult {
-        if (frameQcJson.isNullOrBlank()) return PgGridParseResult.Missing
-        return try {
-            val root = gson.fromJson(frameQcJson, JsonObject::class.java)
-                ?: return PgGridParseResult.Corrupt
-            val pgGrid = root.get("pgGrid") ?: return PgGridParseResult.Missing
-            val decoded = PgGridJsonCodec.decode(gson.toJson(pgGrid)).requireValid()
-            PgGridParseResult.Success(decoded)
+    /**
+     * 按冻结载体类型选择几何协议，禁止仅凭行列或位点数量猜测。
+     *
+     * 96孔板使用独立`plate96Geometry`；微流控继续读取`pgGrid`。两者最终收敛为结果层
+     * 当前使用的规则阵列视图，但解析阶段不会互相兜底，从而及时暴露错误持久化。
+     */
+    private fun parseRunGeometry(
+        frameQcJson: String?,
+        carrierType: CarrierType
+    ): RunGeometryParseResult {
+        if (frameQcJson.isNullOrBlank()) {
+            return if (carrierType == CarrierType.PLATE) {
+                RunGeometryParseResult.MissingPlate96
+            } else {
+                RunGeometryParseResult.MissingPgGrid
+            }
+        }
+        val root = try {
+            gson.fromJson(frameQcJson, JsonObject::class.java)
         } catch (_: RuntimeException) {
-            PgGridParseResult.Corrupt
+            null
+        } ?: return if (carrierType == CarrierType.PLATE) {
+            RunGeometryParseResult.CorruptPlate96
+        } else {
+            RunGeometryParseResult.CorruptPgGrid
+        }
+        return when (carrierType) {
+            CarrierType.PLATE -> {
+                val geometry = root.get("plate96Geometry")
+                    ?: return RunGeometryParseResult.MissingPlate96
+                try {
+                    RunGeometryParseResult.Success(
+                        Plate96RunGeometryCodec.decode(gson.toJson(geometry)).toResultGrid()
+                    )
+                } catch (_: RuntimeException) {
+                    RunGeometryParseResult.CorruptPlate96
+                }
+            }
+            CarrierType.MICROFLUIDIC_CHIP,
+            CarrierType.CUSTOM -> {
+                val pgGrid = root.get("pgGrid") ?: return RunGeometryParseResult.MissingPgGrid
+                try {
+                    RunGeometryParseResult.Success(
+                        PgGridJsonCodec.decode(gson.toJson(pgGrid)).requireValid()
+                    )
+                } catch (_: RuntimeException) {
+                    RunGeometryParseResult.CorruptPgGrid
+                }
+            }
         }
     }
 
@@ -611,10 +657,12 @@ object ArrayResultSnapshotMapper {
         return ArrayResultLoadResult.Failure(code)
     }
 
-    private sealed interface PgGridParseResult {
-        data class Success(val grid: PgGridResult) : PgGridParseResult
-        data object Missing : PgGridParseResult
-        data object Corrupt : PgGridParseResult
+    private sealed interface RunGeometryParseResult {
+        data class Success(val grid: PgGridResult) : RunGeometryParseResult
+        data object MissingPgGrid : RunGeometryParseResult
+        data object CorruptPgGrid : RunGeometryParseResult
+        data object MissingPlate96 : RunGeometryParseResult
+        data object CorruptPlate96 : RunGeometryParseResult
     }
 
     private sealed interface DetailParseResult {

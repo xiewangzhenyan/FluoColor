@@ -60,6 +60,20 @@ sealed interface Plate96LocalizationUiState {
 }
 
 /**
+ * 用户确认定位后移交给统一布局与定量工作台的内存对象。
+ *
+ * Bitmap与定位会话均来自同一次算法运行，接收方不得重新解码图片或重新定位，否则EXIF、
+ * 手动微调和最终科学采样可能发生漂移。
+ */
+data class Plate96LocalizationSelection(
+    val sourceBitmap: Bitmap,
+    val normalizedBitmap: Bitmap,
+    val session: Plate96Locator.Session,
+    val exifRotationDegrees: Int,
+    val exifFlipped: Boolean
+)
+
+/**
  * 新96孔板定位状态机。
  *
  * 切换算法会取消旧任务；A1确认只重建坐标，不重复模型推理；页面重组不会重新运行定位。
@@ -116,6 +130,19 @@ class Plate96LocalizationViewModel @Inject constructor(
         val uri = currentUri ?: return
         currentUri = null
         start(uri)
+    }
+
+    /** 只在Ready状态生成移交对象；返回值共享当前会话Bitmap，不复制大图。 */
+    fun currentSelection(): Plate96LocalizationSelection? {
+        val ready = _uiState.value as? Plate96LocalizationUiState.Ready ?: return null
+        if (!ready.orientationConfirmed) return null
+        return Plate96LocalizationSelection(
+            sourceBitmap = ready.sourceBitmap,
+            normalizedBitmap = ready.normalizedBitmap,
+            session = ready.session,
+            exifRotationDegrees = ready.exifRotationDegrees,
+            exifFlipped = ready.exifFlipped
+        )
     }
 
     fun selectImageView(mode: Plate96ImageViewMode) {

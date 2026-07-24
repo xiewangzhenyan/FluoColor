@@ -66,6 +66,7 @@ import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
 import com.muc.fluocolorquant.domain.detection.isConfigurationComplete
 import com.muc.fluocolorquant.domain.detection.GridDetectionBlockReason
 import com.muc.fluocolorquant.domain.detection.GridDetectionStage
+import com.muc.fluocolorquant.domain.detection.GridLocalizationPresentation
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiError
@@ -108,10 +109,25 @@ fun GridDetectionGatewayContent(
     onConfirmQuantitationAnalyte: (String, Boolean) -> Unit = { _, _ -> },
     onSaveTemplate: (String) -> Unit = {}
 ) {
+    val presentation = when (state) {
+        is GridDetectionUiState.Processing -> state.presentation
+        is GridDetectionUiState.LocalizationReady -> state.preview.presentation
+        else -> GridLocalizationPresentation.MICROFLUIDIC
+    }
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.microfluidic_detection_title)) },
+                title = {
+                    Text(
+                        stringResource(
+                            if (presentation == GridLocalizationPresentation.PLATE96) {
+                                R.string.plate96_layout_screen_title
+                            } else {
+                                R.string.microfluidic_detection_title
+                            }
+                        )
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -133,7 +149,7 @@ fun GridDetectionGatewayContent(
                     title = stringResource(R.string.grid_stage_preparing)
                 )
 
-                GridDetectionUiState.LegacyPlate -> CenteredProcessing(
+                GridDetectionUiState.Plate96Localization -> CenteredProcessing(
                     title = stringResource(R.string.grid_stage_preparing)
                 )
 
@@ -224,6 +240,7 @@ private fun LocalizationWorkflow(
     }
 
     if (state.editingLayout) {
+        val isPlate96 = preview.presentation == GridLocalizationPresentation.PLATE96
         ArrayLayoutEditor(
             preview = preview,
             assignments = assignments,
@@ -245,7 +262,15 @@ private fun LocalizationWorkflow(
             onSetOnsiteSaveToLibrary = onSetOnsiteSaveToLibrary,
             onEditOnsiteCalibration = onEditOnsiteCalibration,
             onConfirmQuantitationAnalyte = onConfirmQuantitationAnalyte,
-            onSaveTemplate = onSaveTemplate
+            onSaveTemplate = onSaveTemplate,
+            visualStyle = if (isPlate96) Plate96SiteVisualStyle else ArraySiteVisualStyle.SQUARE,
+            compactHeader = isPlate96,
+            includeQuantitationStep = isPlate96,
+            realPreviewTitleRes = if (isPlate96) {
+                R.string.plate96_layout_real_preview
+            } else {
+                R.string.grid_layout_real_preview
+            }
         )
     } else {
         LocalizationConfirmation(
