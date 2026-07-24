@@ -22,9 +22,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -41,14 +38,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.muc.fluocolorquant.R
-import com.muc.fluocolorquant.domain.detection.grid.GridFrameQcCode
-import com.muc.fluocolorquant.domain.detection.grid.GridFrameQcIssue
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.GridQcSeverity
 import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
@@ -143,15 +137,18 @@ fun buildArraySiteQcEntries(snapshot: ArrayResultSnapshot): List<ArraySiteQcEntr
     )
 }
 
-/** 帧级、几何级和位点级 QC 的完整页面。 */
+/**
+ * 面向普通用户的几何与位点质量页面。
+ *
+ * 帧级阈值仍保存在运行快照、处理证据和科研导出中，但不再以大面积红色警告或“整帧失败”
+ * 吓唬用户；只展示可以直接对应到定位质量或具体物理位点的问题。
+ */
 @Composable
 fun ArrayQcPanel(
     snapshot: ArrayResultSnapshot,
     onSiteClick: (ArrayPhysicalSiteResult) -> Unit
 ) {
     val siteEntries = remember(snapshot) { buildArraySiteQcEntries(snapshot) }
-    val frameIssues = snapshot.frame.qcIssues.sortedByDescending { severityRank(it.severity) }
-    val hasFrameFailure = frameIssues.any { it.severity == GridQcSeverity.FAILURE }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -159,23 +156,7 @@ fun ArrayQcPanel(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (hasFrameFailure) {
-            item { FrameFailureBanner() }
-        }
         item { GeometrySummaryCard(snapshot) }
-        item {
-            SectionHeading(
-                title = stringResource(R.string.array_qc_frame_issues_title),
-                count = frameIssues.size
-            )
-        }
-        if (frameIssues.isEmpty()) {
-            item { EmptyQcCard(stringResource(R.string.array_qc_no_frame_issues)) }
-        } else {
-            items(frameIssues, key = { "${it.code.name}-${it.severity.name}" }) { issue ->
-                FrameIssueCard(issue)
-            }
-        }
         item {
             SectionHeading(
                 title = stringResource(R.string.array_qc_site_issues_title),
@@ -196,38 +177,6 @@ fun ArrayQcPanel(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 20.dp)
             )
-        }
-    }
-}
-
-@Composable
-private fun FrameFailureBanner() {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-        shape = RoundedCornerShape(18.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(
-                    text = stringResource(R.string.array_qc_frame_failure_title),
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-                Text(
-                    text = stringResource(R.string.array_qc_frame_failure_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-            }
         }
     }
 }
@@ -273,79 +222,6 @@ private fun GeometrySummaryCard(snapshot: ArrayResultSnapshot) {
     }
 }
 
-@Composable
-private fun FrameIssueCard(issue: GridFrameQcIssue) {
-    val colors = severityColors(issue.severity)
-    var expanded by rememberSaveable(issue.code.name, issue.severity.name) {
-        mutableStateOf(false)
-    }
-    val arrowRotation by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        label = "frameQcArrow"
-    )
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = colors.container)
-    ) {
-        Column(modifier = Modifier.padding(15.dp)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded },
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = severityIcon(issue.severity),
-                    contentDescription = null,
-                    tint = colors.accent
-                )
-                Text(
-                    text = frameIssueTitle(issue.code),
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                SeverityBadge(issue.severity)
-                Icon(
-                    imageVector = Icons.Default.ExpandMore,
-                    contentDescription = stringResource(
-                        if (expanded) R.string.array_qc_collapse_advice
-                        else R.string.array_qc_expand_advice
-                    ),
-                    modifier = Modifier.rotate(arrowRotation),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (issue.measuredValue != null || issue.threshold != null) {
-                Text(
-                    text = stringResource(
-                        R.string.array_qc_measure_threshold,
-                        issue.measuredValue?.let(::formatArrayHeatmapValue)
-                            ?: stringResource(R.string.array_heatmap_no_value_symbol),
-                        issue.threshold?.let(::formatArrayHeatmapValue)
-                            ?: stringResource(R.string.array_heatmap_no_value_symbol)
-                    ),
-                    modifier = Modifier.padding(start = 36.dp, top = 7.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Text(
-                    text = frameIssueAdvice(issue.code),
-                    modifier = Modifier.padding(start = 36.dp, top = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun SiteQcCard(
@@ -527,47 +403,11 @@ private fun severityColors(severity: GridQcSeverity): QcColors {
     }
 }
 
-private fun severityIcon(severity: GridQcSeverity): ImageVector = when (severity) {
-    GridQcSeverity.FAILURE -> Icons.Outlined.ErrorOutline
-    GridQcSeverity.WARNING -> Icons.Outlined.WarningAmber
-    GridQcSeverity.INFO -> Icons.Outlined.Info
-}
-
 @Composable
 private fun severityLabel(severity: GridQcSeverity): String = when (severity) {
     GridQcSeverity.FAILURE -> stringResource(R.string.array_qc_severity_failure)
     GridQcSeverity.WARNING -> stringResource(R.string.array_qc_severity_warning)
     GridQcSeverity.INFO -> stringResource(R.string.array_qc_severity_info)
-}
-
-@Composable
-private fun frameIssueTitle(code: GridFrameQcCode): String = when (code) {
-    GridFrameQcCode.CHIP_REGION_FALLBACK -> stringResource(R.string.array_qc_frame_chip_fallback_title)
-    GridFrameQcCode.GRID_SUPPORT_LOW -> stringResource(R.string.array_qc_frame_grid_support_title)
-    GridFrameQcCode.HIGH_IMPUTED_RATIO -> stringResource(R.string.array_qc_frame_imputed_ratio_title)
-    GridFrameQcCode.GEOMETRY_RMSE_HIGH -> stringResource(R.string.array_qc_frame_rmse_title)
-    GridFrameQcCode.OVER_EXPOSED -> stringResource(R.string.array_qc_frame_over_exposed_title)
-    GridFrameQcCode.UNDER_EXPOSED -> stringResource(R.string.array_qc_frame_under_exposed_title)
-    GridFrameQcCode.BLURRED -> stringResource(R.string.array_qc_frame_blurred_title)
-    GridFrameQcCode.ILLUMINATION_NON_UNIFORM -> stringResource(
-        R.string.array_qc_frame_illumination_title
-    )
-    GridFrameQcCode.PERSPECTIVE_EXCESSIVE -> stringResource(R.string.array_qc_frame_perspective_title)
-}
-
-@Composable
-private fun frameIssueAdvice(code: GridFrameQcCode): String = when (code) {
-    GridFrameQcCode.CHIP_REGION_FALLBACK -> stringResource(R.string.array_qc_frame_chip_fallback_advice)
-    GridFrameQcCode.GRID_SUPPORT_LOW -> stringResource(R.string.array_qc_frame_grid_support_advice)
-    GridFrameQcCode.HIGH_IMPUTED_RATIO -> stringResource(R.string.array_qc_frame_imputed_ratio_advice)
-    GridFrameQcCode.GEOMETRY_RMSE_HIGH -> stringResource(R.string.array_qc_frame_rmse_advice)
-    GridFrameQcCode.OVER_EXPOSED -> stringResource(R.string.array_qc_frame_over_exposed_advice)
-    GridFrameQcCode.UNDER_EXPOSED -> stringResource(R.string.array_qc_frame_under_exposed_advice)
-    GridFrameQcCode.BLURRED -> stringResource(R.string.array_qc_frame_blurred_advice)
-    GridFrameQcCode.ILLUMINATION_NON_UNIFORM -> stringResource(
-        R.string.array_qc_frame_illumination_advice
-    )
-    GridFrameQcCode.PERSPECTIVE_EXCESSIVE -> stringResource(R.string.array_qc_frame_perspective_advice)
 }
 
 @Composable

@@ -2,9 +2,13 @@ package com.muc.fluocolorquant.domain.detection.photometry
 
 import com.google.gson.annotations.SerializedName
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitSegmentationResult
 
-/** PG-Quant 通用光度处理器的稳定版本；模态处理器会在此基础上声明自己的版本。 */
-const val PG_QUANT_PROCESSOR_VERSION: String = "pg-quant-android-v1"
+/** 旧圆形固定 ROI 采样器版本，仅用于未提供单元分割结果的兼容调用。 */
+const val PG_QUANT_LEGACY_PROCESSOR_VERSION: String = "pg-quant-android-v1"
+
+/** 紧致单元前景掩膜采样器版本；生产微流控主链从本版本开始保存。 */
+const val PG_QUANT_PROCESSOR_VERSION: String = "pg-quant-android-v2-unit-mask"
 
 /** 全局参考原始证据使用的基础光度处理器稳定名称。 */
 const val PG_QUANT_PROCESSOR_NAME: String = "pg-quant"
@@ -178,7 +182,12 @@ data class PgQuantResult(
     val illuminationModel: String,
     val illuminationUniformity: Double,
     val config: PgQuantConfig,
-    val sites: List<BaseSitePhotometry>
+    val sites: List<BaseSitePhotometry>,
+    /**
+     * 本次光度实际使用的单元区域；旧历史/测试可为空并继续解释为 v1 圆形 ROI。
+     * 该对象只在当前检测会话中用于预览和处理证据，不写入逐位点科学结果 JSON。
+     */
+    val unitSegmentation: ArrayUnitSegmentationResult? = null
 ) {
     fun requireValid(): PgQuantResult = apply {
         require(rows > 0 && columns > 0) { "PG-Quant 行列必须大于 0" }
@@ -189,6 +198,12 @@ data class PgQuantResult(
         }
         require(illuminationModel.isNotBlank()) { "平场模型名称不能为空" }
         require(illuminationUniformity in 0.0..1.0) { "光照均匀度必须位于 0 到 1" }
+        unitSegmentation?.let { segmentation ->
+            segmentation.requireValid()
+            require(segmentation.rows == rows && segmentation.columns == columns) {
+                "单元分割规格必须与 PG-Quant 一致"
+            }
+        }
         sites.forEachIndexed { index, site ->
             require(site.siteIndex == index) { "PG-Quant 位点必须按行优先连续排列" }
             require(site.rowIndex == index / columns && site.columnIndex == index % columns) {

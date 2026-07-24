@@ -20,6 +20,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOutMap
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,6 +59,7 @@ import kotlin.math.max
 
 const val ARRAY_HEATMAP_CELL_TAG_PREFIX: String = "array_heatmap_cell_"
 const val ARRAY_HEATMAP_TRANSFORM_TAG: String = "array_heatmap_transform_container"
+const val ARRAY_HEATMAP_ZOOM_TOGGLE_TAG: String = "array_heatmap_zoom_toggle"
 
 /** 热力图底色所表达的科学量，QC 不得通过切换该枚举来改变底色含义。 */
 enum class ArrayHeatmapScaleMode {
@@ -341,12 +347,16 @@ fun ArrayHeatmap(
     var panOffset by remember(model.rows, model.columns, model.analyteId) {
         mutableStateOf(Offset.Zero)
     }
+    var interactionEnabled by remember(model.rows, model.columns, model.analyteId) {
+        mutableStateOf(false)
+    }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
 
     LaunchedEffect(model.rows, model.columns, model.analyteId, model.scale.mode) {
         // 切换分析物或色带语义时回到完整阵列，避免用户误以为少了位点。
         userScale = 1f
         panOffset = Offset.Zero
+        interactionEnabled = false
     }
 
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
@@ -374,7 +384,16 @@ fun ArrayHeatmap(
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .onSizeChanged { viewportSize = it }
                 .testTag(if (transformEnabled) ARRAY_HEATMAP_TRANSFORM_TAG else "array_heatmap_static_container")
-                .then(if (transformEnabled) Modifier.transformable(transformState) else Modifier)
+                // 大阵列默认把单指纵向拖动交给外层结果页滚动；只有用户明确点击缩放按钮后，
+                // 才启用缩放和平移手势。这样既保留大阵列细看能力，也不会把下方统计、
+                // 标准曲线和角色分布困在热力图之后。
+                .then(
+                    if (transformEnabled && interactionEnabled) {
+                        Modifier.transformable(transformState)
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             Column(
                 modifier = Modifier
@@ -403,6 +422,43 @@ fun ArrayHeatmap(
                             )
                         }
                     }
+                }
+            }
+            if (transformEnabled) {
+                IconButton(
+                    onClick = {
+                        interactionEnabled = !interactionEnabled
+                        if (!interactionEnabled) {
+                            // 退出交互模式时恢复完整阵列，避免下次进入仍停留在局部放大状态。
+                            userScale = 1f
+                            panOffset = Offset.Zero
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(38.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                            CircleShape
+                        )
+                        .testTag(ARRAY_HEATMAP_ZOOM_TOGGLE_TAG)
+                ) {
+                    Icon(
+                        imageVector = if (interactionEnabled) {
+                            Icons.Default.ZoomOutMap
+                        } else {
+                            Icons.Default.ZoomIn
+                        },
+                        contentDescription = stringResource(
+                            if (interactionEnabled) {
+                                R.string.array_heatmap_zoom_exit
+                            } else {
+                                R.string.array_heatmap_zoom_enter
+                            }
+                        ),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }

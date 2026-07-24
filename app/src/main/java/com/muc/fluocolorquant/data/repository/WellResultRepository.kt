@@ -11,6 +11,9 @@ import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.WellResult
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBitmapCropper
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBounds
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 import com.muc.fluocolorquant.ui.viewmodels.WellDetection
 import com.muc.fluocolorquant.utils.DetectionModeSupport
 import com.muc.fluocolorquant.utils.math.GridDimensions
@@ -31,6 +34,8 @@ import java.io.FileOutputStream
 import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.ceil
+import kotlin.math.floor
 
 /**
  * 孔位结果仓库
@@ -304,36 +309,35 @@ class WellResultRepository @Inject constructor(
     }
     
     /**
-     * 裁剪孔位图像
+     * 使用通用阵列单元契约裁剪圆形孔板孔位。
+     *
+     * 旧 YOLO＋霍夫链保存的检测框已经是圆的紧致外接框；这里不重复定位，而是把该几何
+     * 适配成圆形前景区域。模型输入仍保留矩形 Bitmap（兼容既有训练分布），后续像素提取
+     * 则继续使用圆形掩膜，不会把外接框四角当作孔内信号。
      * @param originalBitmap 原始图像
      * @param rect 孔位矩形区域
      * @return 裁剪后的图像
      */
     private fun cropWellImage(originalBitmap: Bitmap, rect: RectF): Bitmap {
-        // 计算裁剪区域
-        val left = rect.left.toInt().coerceAtLeast(0)
-        val top = rect.top.toInt().coerceAtLeast(0)
-        val width = rect.width().toInt().coerceAtMost(originalBitmap.width - left)
-        val height = rect.height().toInt().coerceAtMost(originalBitmap.height - top)
-        
-        // 裁剪图像
-        var croppedBitmap = Bitmap.createBitmap(
-            originalBitmap,
-            left,
-            top,
-            width,
-            height
+        val left = floor(rect.left.toDouble()).toInt().coerceIn(0, originalBitmap.width - 1)
+        val top = floor(rect.top.toDouble()).toInt().coerceIn(0, originalBitmap.height - 1)
+        val right = ceil(rect.right.toDouble()).toInt().coerceIn(left + 1, originalBitmap.width)
+        val bottom = ceil(rect.bottom.toDouble()).toInt().coerceIn(top + 1, originalBitmap.height)
+        val region = ArrayUnitBitmapCropper.detectedGeometryRegion(
+            siteIndex = 0,
+            rowIndex = 0,
+            columnIndex = 0,
+            shape = ArrayUnitShape.CIRCLE,
+            bounds = ArrayUnitBounds(left, top, right, bottom)
         )
-        
-        // 调整为模型输入大小
-        croppedBitmap = Bitmap.createScaledBitmap(
-            croppedBitmap,
-            CROPPED_WELL_SIZE,
-            CROPPED_WELL_SIZE,
-            true
+        return ArrayUnitBitmapCropper.crop(
+            source = originalBitmap,
+            region = region,
+            targetWidth = CROPPED_WELL_SIZE,
+            targetHeight = CROPPED_WELL_SIZE,
+            // 共享浓度模型沿用原有矩形输入，不把透明像素引入未见过的训练分布。
+            transparentOutsideMask = false
         )
-        
-        return croppedBitmap
     }
 
     /**
@@ -424,11 +428,12 @@ class WellResultRepository @Inject constructor(
         }
         
         // 创建图像文件
-        val imageFile = File(directory, "well_${wellIndex}.jpg")
+        val imageFile = File(directory, "well_${wellIndex}.png")
         
         // 保存图像
         FileOutputStream(imageFile).use { outputStream ->
-            wellBitmap.compress(Bitmap.CompressFormat.JPEG, 95, outputStream)
+            // 科学裁切使用 PNG 无损保存，避免 JPEG 块效应污染后续像素特征和曲线拟合。
+            wellBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
             outputStream.flush()
         }
         

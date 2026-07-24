@@ -6,11 +6,11 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.muc.fluocolorquant.data.enums.PixelType
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
-import org.opencv.core.Scalar
 import org.opencv.imgproc.Imgproc
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -28,12 +28,17 @@ object PixelExtractionUtils {
      * @param bitmap 孔位图像
      * @return 像素特征值的JSON字符串
      */
-    fun extractAllPixelValues(bitmap: Bitmap): String {
+    fun extractAllPixelValues(
+        bitmap: Bitmap,
+        shape: ArrayUnitShape = ArrayUnitShape.CIRCLE,
+        foregroundMask: BooleanArray? = null
+    ): String {
         val pixelValues = mutableMapOf<String, Double>()
         
         try {
+            val mask = createUnitMask(bitmap.width, bitmap.height, shape, foregroundMask)
             // 计算平均RGB值
-            val avgRgb = calculateAverageRgb(bitmap)
+            val avgRgb = calculateAverageRgb(bitmap, mask)
             val avgR = avgRgb[0]
             val avgG = avgRgb[1]
             val avgB = avgRgb[2]
@@ -64,17 +69,17 @@ object PixelExtractionUtils {
             if (avgB > 0) pixelValues[PixelType.RATIO_GB.identifier] = avgG / avgB
             
             // 计算HSV/HSL值
-            val hsvValues = calculateAverageHsv(bitmap)
+            val hsvValues = calculateAverageHsv(bitmap, mask)
             pixelValues[PixelType.HUE.identifier] = hsvValues[0]
             pixelValues[PixelType.SATURATION_HSV.identifier] = hsvValues[1]
             pixelValues[PixelType.VALUE_HSV.identifier] = hsvValues[2]
             
-            val hslValues = calculateAverageHsl(bitmap)
+            val hslValues = calculateAverageHsl(bitmap, mask)
             pixelValues[PixelType.SATURATION_HSL.identifier] = hslValues[1]
             pixelValues[PixelType.LIGHTNESS_HSL.identifier] = hslValues[2]
             
             // 计算CIE XYZ值
-            val xyzValues = calculateAverageCieXyz(bitmap)
+            val xyzValues = calculateAverageCieXyz(bitmap, mask)
             pixelValues[PixelType.CIE_X.identifier] = xyzValues[0]
             pixelValues[PixelType.CIE_Y.identifier] = xyzValues[1]
             pixelValues[PixelType.CIE_Z.identifier] = xyzValues[2]
@@ -87,13 +92,13 @@ object PixelExtractionUtils {
             }
             
             // 计算CIE L*a*b*值
-            val labValues = calculateAverageCieLab(bitmap)
+            val labValues = calculateAverageCieLab(bitmap, mask)
             pixelValues[PixelType.CIE_L.identifier] = labValues[0]
             pixelValues[PixelType.CIE_a.identifier] = labValues[1]
             pixelValues[PixelType.CIE_b.identifier] = labValues[2]
             
             // 计算YCbCr值
-            val ycbcrValues = calculateAverageYCbCr(bitmap)
+            val ycbcrValues = calculateAverageYCbCr(bitmap, mask)
             pixelValues[PixelType.YCBCR_Y.identifier] = ycbcrValues[0]
             pixelValues[PixelType.YCBCR_CB.identifier] = ycbcrValues[1]
             pixelValues[PixelType.YCBCR_CR.identifier] = ycbcrValues[2]
@@ -118,16 +123,12 @@ object PixelExtractionUtils {
      * @param bitmap 孔位图像
      * @return RGB平均值数组 [R, G, B]
      */
-    private fun calculateAverageRgb(bitmap: Bitmap): DoubleArray {
+    private fun calculateAverageRgb(bitmap: Bitmap, mask: BooleanArray): DoubleArray {
         var totalR = 0.0
         var totalG = 0.0
         var totalB = 0.0
         val width = bitmap.width
         val height = bitmap.height
-        val totalPixels = width * height
-        
-        // 创建圆形掩码，只计算圆形区域内的像素
-        val mask = createCircularMask(width, height)
         var validPixels = 0
         
         for (y in 0 until height) {
@@ -197,12 +198,28 @@ object PixelExtractionUtils {
     }
     
     /**
-     * 创建圆形掩码
+     * 创建与载体单元形状一致的像素掩码。
+     *
+     * 旧 96 孔板默认仍使用内缩到 90% 半径的圆形区域，保持历史像素值连续；方形芯片
+     * 使用完整紧致框。自定义形状应由调用方传入 [foregroundMask]，未提供时保守使用整框。
      * @param width 图像宽度
      * @param height 图像高度
      * @return 布尔数组，表示每个像素是否在圆形区域内
      */
-    private fun createCircularMask(width: Int, height: Int): BooleanArray {
+    private fun createUnitMask(
+        width: Int,
+        height: Int,
+        shape: ArrayUnitShape,
+        foregroundMask: BooleanArray?
+    ): BooleanArray {
+        foregroundMask?.let { supplied ->
+            require(supplied.size == width * height) { "前景掩膜尺寸必须等于 Bitmap 像素数" }
+            return supplied.copyOf()
+        }
+        if (shape == ArrayUnitShape.SQUARE || shape == ArrayUnitShape.CUSTOM) {
+            return BooleanArray(width * height) { true }
+        }
+
         val mask = BooleanArray(width * height)
         val centerX = width / 2.0
         val centerY = height / 2.0
@@ -223,13 +240,12 @@ object PixelExtractionUtils {
      * @param bitmap 孔位图像
      * @return HSV平均值数组 [H, S, V]
      */
-    private fun calculateAverageHsv(bitmap: Bitmap): DoubleArray {
+    private fun calculateAverageHsv(bitmap: Bitmap, mask: BooleanArray): DoubleArray {
         var totalH = 0.0
         var totalS = 0.0
         var totalV = 0.0
         val width = bitmap.width
         val height = bitmap.height
-        val mask = createCircularMask(width, height)
         var validPixels = 0
         
         val hsv = FloatArray(3)
@@ -263,13 +279,12 @@ object PixelExtractionUtils {
      * @param bitmap 孔位图像
      * @return HSL平均值数组 [H, S, L]
      */
-    private fun calculateAverageHsl(bitmap: Bitmap): DoubleArray {
+    private fun calculateAverageHsl(bitmap: Bitmap, mask: BooleanArray): DoubleArray {
         var totalH = 0.0
         var totalS = 0.0
         var totalL = 0.0
         val width = bitmap.width
         val height = bitmap.height
-        val mask = createCircularMask(width, height)
         var validPixels = 0
         
         for (y in 0 until height) {
@@ -325,7 +340,7 @@ object PixelExtractionUtils {
      * @param bitmap 孔位图像
      * @return CIE XYZ平均值数组 [X, Y, Z]
      */
-    private fun calculateAverageCieXyz(bitmap: Bitmap): DoubleArray {
+    private fun calculateAverageCieXyz(bitmap: Bitmap, pixelMask: BooleanArray): DoubleArray {
         // 将Bitmap转换为OpenCV Mat
         val rgbMat = Mat()
         Utils.bitmapToMat(bitmap, rgbMat)
@@ -334,11 +349,7 @@ object PixelExtractionUtils {
         val xyzMat = Mat()
         Imgproc.cvtColor(rgbMat, xyzMat, Imgproc.COLOR_RGB2XYZ)
         
-        // 创建圆形掩码
-        val mask = Mat.zeros(rgbMat.size(), CvType.CV_8UC1)
-        val center = org.opencv.core.Point(rgbMat.width() / 2.0, rgbMat.height() / 2.0)
-        val radius = minOf(rgbMat.width(), rgbMat.height()) / 2.0 * 0.9
-        Imgproc.circle(mask, center, radius.toInt(), Scalar(255.0), -1)
+        val mask = createOpenCvMask(rgbMat.width(), rgbMat.height(), pixelMask)
         
         // 计算平均值
         val meanValues = Core.mean(xyzMat, mask)
@@ -360,7 +371,7 @@ object PixelExtractionUtils {
      * @param bitmap 孔位图像
      * @return CIE L*a*b*平均值数组 [L*, a*, b*]
      */
-    private fun calculateAverageCieLab(bitmap: Bitmap): DoubleArray {
+    private fun calculateAverageCieLab(bitmap: Bitmap, pixelMask: BooleanArray): DoubleArray {
         // 将Bitmap转换为OpenCV Mat
         val rgbMat = Mat()
         Utils.bitmapToMat(bitmap, rgbMat)
@@ -369,11 +380,7 @@ object PixelExtractionUtils {
         val labMat = Mat()
         Imgproc.cvtColor(rgbMat, labMat, Imgproc.COLOR_RGB2Lab)
         
-        // 创建圆形掩码
-        val mask = Mat.zeros(rgbMat.size(), CvType.CV_8UC1)
-        val center = org.opencv.core.Point(rgbMat.width() / 2.0, rgbMat.height() / 2.0)
-        val radius = minOf(rgbMat.width(), rgbMat.height()) / 2.0 * 0.9
-        Imgproc.circle(mask, center, radius.toInt(), Scalar(255.0), -1)
+        val mask = createOpenCvMask(rgbMat.width(), rgbMat.height(), pixelMask)
         
         // 计算平均值
         val meanValues = Core.mean(labMat, mask)
@@ -395,7 +402,7 @@ object PixelExtractionUtils {
      * @param bitmap 孔位图像
      * @return YCbCr平均值数组 [Y, Cb, Cr]
      */
-    private fun calculateAverageYCbCr(bitmap: Bitmap): DoubleArray {
+    private fun calculateAverageYCbCr(bitmap: Bitmap, pixelMask: BooleanArray): DoubleArray {
         // 将Bitmap转换为OpenCV Mat
         val rgbMat = Mat()
         Utils.bitmapToMat(bitmap, rgbMat)
@@ -404,11 +411,7 @@ object PixelExtractionUtils {
         val ycrcbMat = Mat()
         Imgproc.cvtColor(rgbMat, ycrcbMat, Imgproc.COLOR_RGB2YCrCb)
         
-        // 创建圆形掩码
-        val mask = Mat.zeros(rgbMat.size(), CvType.CV_8UC1)
-        val center = org.opencv.core.Point(rgbMat.width() / 2.0, rgbMat.height() / 2.0)
-        val radius = minOf(rgbMat.width(), rgbMat.height()) / 2.0 * 0.9
-        Imgproc.circle(mask, center, radius.toInt(), Scalar(255.0), -1)
+        val mask = createOpenCvMask(rgbMat.width(), rgbMat.height(), pixelMask)
         
         // 计算平均值
         val meanValues = Core.mean(ycrcbMat, mask)
@@ -423,6 +426,17 @@ object PixelExtractionUtils {
             meanValues.`val`[1],
             meanValues.`val`[2]
         )
+    }
+
+    /** 把 Kotlin 布尔掩膜转换为 OpenCV 8 位单通道掩膜。 */
+    private fun createOpenCvMask(width: Int, height: Int, pixelMask: BooleanArray): Mat {
+        require(pixelMask.size == width * height) { "OpenCV 掩膜尺寸与图像不一致" }
+        val mask = Mat(height, width, CvType.CV_8UC1)
+        val bytes = ByteArray(pixelMask.size) { index ->
+            if (pixelMask[index]) 0xFF.toByte() else 0
+        }
+        mask.put(0, 0, bytes)
+        return mask
     }
     
     /**
@@ -461,4 +475,4 @@ object PixelExtractionUtils {
             null
         }
     }
-} 
+}

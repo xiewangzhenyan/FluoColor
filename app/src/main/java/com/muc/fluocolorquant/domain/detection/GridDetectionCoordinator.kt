@@ -6,16 +6,20 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.muc.fluocolorquant.data.enums.AnalysisModelType
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
+import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.data.enums.ReadoutLayout
+import com.muc.fluocolorquant.data.enums.SiteShape
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.data.model.CaptureArtifact
+import com.muc.fluocolorquant.data.model.CalibrationPoint
 import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.SiteMeasurement
+import com.muc.fluocolorquant.data.model.StandardCurveDefinition
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
 import com.muc.fluocolorquant.data.repository.GridDetectionPersistenceBundle
 import com.muc.fluocolorquant.data.repository.GridDetectionRunRepository
@@ -33,6 +37,9 @@ import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceWr
 import com.muc.fluocolorquant.domain.detection.evidence.NoOpGridProcessingEvidenceWriter
 import com.muc.fluocolorquant.domain.detection.quantification.ENDPOINT_QUANTIFIER_VERSION
 import com.muc.fluocolorquant.domain.detection.quantification.FORMULA_ENGINE_VERSION
+import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningBatchResult
+import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningExecutor
+import com.muc.fluocolorquant.domain.detection.quantification.UnavailableGridDeepLearningExecutor
 import com.muc.fluocolorquant.domain.detection.quantification.PreparedEndpointQuantificationResult
 import com.muc.fluocolorquant.domain.detection.quantification.PreparedStandardCurveQuantifier
 import com.muc.fluocolorquant.domain.detection.quantification.StandardCurveQuantifier
@@ -55,9 +62,13 @@ import com.muc.fluocolorquant.domain.detection.photometry.PG_QUANT_PROCESSOR_VER
 import com.muc.fluocolorquant.domain.detection.photometry.PG_QUANT_PROCESSOR_NAME
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantSampler
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
+import com.muc.fluocolorquant.domain.detection.segmentation.OpenCvArrayUnitSegmenter
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshotCodec
+import com.muc.fluocolorquant.utils.math.FittingEngine
+import com.muc.fluocolorquant.utils.math.FittingResult
 import java.util.Date
 import java.util.UUID
 import javax.inject.Inject
@@ -255,8 +266,37 @@ sealed interface GridDetectionOutcome {
         val measurementCount: Int,
         val signalOnlyAnalyteIds: Set<String>,
         /** 帧级 QC 只作为复核证据，不再阻止已经形成完整晶格的图片继续分析。 */
-        val frameQcIssueCount: Int = 0
+        val frameQcIssueCount: Int = 0,
+        /** 本次真正执行并写入 DetectionRun 的校准后快照，项目草稿据此继续编辑。 */
+        val effectiveSnapshot: TemplateProjectSnapshot
     ) : GridDetectionOutcome
+}
+
+/**
+ * 定位确认页与最终定量之间共享的内存会话。
+ *
+ * 会话保留本次真实定位、光度和处理证据，用户完成孔位布局后直接继续定量，避免再次运行
+ * OpenCV 导致同一张图片在两个页面得到轻微不同的定位结果。
+ */
+data class GridLocalizationSession(
+    val request: GridDetectionRequest,
+    val grid: PgGridResult,
+    val quant: PgQuantResult,
+    val frameQcJson: String,
+    val processingEvidence: List<GridProcessingEvidenceRecord>
+)
+
+/** 只执行芯片定位、基础光度与处理证据生成后的稳定结果。 */
+sealed interface GridLocalizationOutcome {
+    data object LegacyPlateRequired : GridLocalizationOutcome
+
+    data class Blocked(
+        val reasons: Set<GridDetectionBlockReason>
+    ) : GridLocalizationOutcome
+
+    data class Ready(
+        val session: GridLocalizationSession
+    ) : GridLocalizationOutcome
 }
 
 /**
@@ -269,25 +309,50 @@ sealed interface GridDetectionOutcome {
 class GridDetectionCoordinator @Inject constructor(
     private val locator: PgGridLocator,
     private val repository: GridDetectionRunRepository,
-    private val evidenceWriter: GridProcessingEvidenceWriter = NoOpGridProcessingEvidenceWriter
+    private val evidenceWriter: GridProcessingEvidenceWriter = NoOpGridProcessingEvidenceWriter,
+    private val unitSegmenter: OpenCvArrayUnitSegmenter = OpenCvArrayUnitSegmenter(),
+    /** JVM 测试省略该参数时安全降级；Hilt 生产图会注入真实 PyTorch Lite 实现。 */
+    private val deepLearningExecutor: GridDeepLearningExecutor =
+        UnavailableGridDeepLearningExecutor
 ) {
     private val gson = Gson()
 
+    /** 兼容旧调用：已有完整布局的项目仍可一次执行到底。 */
     suspend fun execute(request: GridDetectionRequest): GridDetectionOutcome {
+        return when (val localization = localize(request)) {
+            GridLocalizationOutcome.LegacyPlateRequired -> GridDetectionOutcome.LegacyPlateRequired
+            is GridLocalizationOutcome.Blocked -> GridDetectionOutcome.Blocked(localization.reasons)
+            is GridLocalizationOutcome.Ready -> finalizeLocalized(
+                session = localization.session,
+                finalizedSnapshot = request.snapshot
+            )
+        }
+    }
+
+    /**
+     * 第一阶段只做定位、基础光度与可视化证据，不要求项目已经配置孔位角色。
+     * 这使普通用户可以先看到算法实际定位效果，再决定每个物理位点属于哪个分析物。
+     */
+    suspend fun localize(request: GridDetectionRequest): GridLocalizationOutcome {
         request.onStageChanged(GridDetectionStage.PREPARING)
         val carrierType = CarrierType.fromCode(request.snapshot.carrierProfile.carrierType)
-            ?: return GridDetectionOutcome.Blocked(setOf(GridDetectionBlockReason.UNSUPPORTED_CARRIER))
+            ?: return GridLocalizationOutcome.Blocked(
+                setOf(GridDetectionBlockReason.UNSUPPORTED_CARRIER)
+            )
         when (GridDetectionRouteResolver.resolve(carrierType)) {
-            GridCarrierRoute.LEGACY_PLATE -> return GridDetectionOutcome.LegacyPlateRequired
+            GridCarrierRoute.LEGACY_PLATE -> return GridLocalizationOutcome.LegacyPlateRequired
             GridCarrierRoute.UNSUPPORTED -> {
-                return GridDetectionOutcome.Blocked(setOf(GridDetectionBlockReason.UNSUPPORTED_CARRIER))
+                return GridLocalizationOutcome.Blocked(
+                    setOf(GridDetectionBlockReason.UNSUPPORTED_CARRIER)
+                )
             }
             GridCarrierRoute.MICROFLUIDIC_PG_GRID -> Unit
         }
 
-        val preflight = preflight(request)
-        if (preflight.reasons.isNotEmpty()) return GridDetectionOutcome.Blocked(preflight.reasons)
-        val modality = requireNotNull(DetectionModality.fromCode(request.snapshot.template.detectionMode))
+        val preflight = preflight(request, requireSiteAssignments = false)
+        if (preflight.reasons.isNotEmpty()) {
+            return GridLocalizationOutcome.Blocked(preflight.reasons)
+        }
         val polarity = requireNotNull(preflight.targetPolarity)
 
         request.onStageChanged(GridDetectionStage.LOCATING)
@@ -312,28 +377,81 @@ class GridDetectionCoordinator @Inject constructor(
         // 保存结果和九步处理证据；用户可在质控页结合原图自行决定是否需要重拍。
         // 真正不可计算的情况（图片解码失败、定位异常、坐标契约损坏）仍由异常路径阻止。
         request.onStageChanged(GridDetectionStage.PHOTOMETRY)
+        val siteShape = SiteShape.fromCode(request.snapshot.carrierProfile.siteShape)
+            ?: SiteShape.CUSTOM
+        val unitSegmentation = withContext(Dispatchers.Default) {
+            unitSegmenter.segment(
+                sourceBitmap = request.endpointBitmap,
+                grid = grid,
+                shape = ArrayUnitShape.fromSiteShape(siteShape)
+            )
+        }
         val quant = withContext(Dispatchers.Default) {
-            PgQuantSampler.sample(request.endpointBitmap, grid)
+            PgQuantSampler.sample(
+                bitmap = request.endpointBitmap,
+                grid = grid,
+                unitSegmentation = unitSegmentation
+            )
         }
         request.onStageChanged(GridDetectionStage.RENDERING_EVIDENCE)
         val processingEvidence = writeProcessingEvidence(request, grid, quant)
+        return GridLocalizationOutcome.Ready(
+            GridLocalizationSession(
+                request = request,
+                grid = grid,
+                quant = quant,
+                frameQcJson = frameQcJson,
+                processingEvidence = processingEvidence
+            )
+        )
+    }
+
+    /**
+     * 第二阶段使用用户确认后的位点布局执行模态处理、定量与原子保存。
+     * [finalizedSnapshot] 会进入 DetectionRun 的不可变快照，历史结果不再回读项目草稿布局。
+     */
+    suspend fun finalizeLocalized(
+        session: GridLocalizationSession,
+        finalizedSnapshot: TemplateProjectSnapshot
+    ): GridDetectionOutcome {
+        // 用户在布局页录入了标准品浓度时，先根据本次真实光度自动选择最佳曲线并冻结到
+        // 运行快照；没有足够标准点的分析物继续保持仅信号，不会伪造浓度。
+        val calibratedSnapshot = withContext(Dispatchers.Default) {
+            applyOnsiteCalibrations(
+                snapshot = finalizedSnapshot,
+                quant = session.quant,
+                runId = session.request.runId
+            )
+        }
+        val request = session.request.copy(snapshot = calibratedSnapshot)
+        val preflight = preflight(request, requireSiteAssignments = true)
+        if (preflight.reasons.isNotEmpty()) return GridDetectionOutcome.Blocked(preflight.reasons)
+        val modality = requireNotNull(DetectionModality.fromCode(request.snapshot.template.detectionMode))
+
         request.onStageChanged(GridDetectionStage.CHECKING_MODELS)
         val processed = withContext(Dispatchers.Default) {
             when (modality) {
-                DetectionModality.COLORIMETRIC -> processColorimetric(request, grid, quant)
-                DetectionModality.FLUORESCENCE -> processFluorescence(request, grid, quant)
+                DetectionModality.COLORIMETRIC -> {
+                    processColorimetric(request, session.grid, session.quant)
+                }
+                DetectionModality.FLUORESCENCE -> {
+                    processFluorescence(request, session.grid, session.quant)
+                }
                 DetectionModality.SPECTRUM -> error("预检已经阻止光谱进入规则阵列终点链")
             }
         }
 
         val bundle = buildPersistenceBundle(
             request = request,
-            gridJson = PgGridJsonCodec.encode(grid),
-            frameQcJson = frameQcJson,
+            gridJson = PgGridJsonCodec.encode(session.grid),
+            frameQcJson = session.frameQcJson,
             measurements = processed.measurements,
-            status = statusForSignalOnlyAnalytes(processed.signalOnlyAnalyteIds),
+            status = statusForQuantification(
+                signalOnlyAnalyteIds = processed.signalOnlyAnalyteIds,
+                measurements = processed.measurements
+            ),
             modelUsageJson = gson.toJson(processed.modelUsage),
-            processingEvidence = processingEvidence
+            processingEvidence = session.processingEvidence
         )
         request.onStageChanged(GridDetectionStage.PERSISTING)
         withContext(Dispatchers.IO) { repository.save(bundle) }
@@ -342,11 +460,225 @@ class GridDetectionCoordinator @Inject constructor(
             runId = request.runId,
             measurementCount = processed.measurements.size,
             signalOnlyAnalyteIds = processed.signalOnlyAnalyteIds,
-            frameQcIssueCount = grid.frameQc.size
+            frameQcIssueCount = session.grid.frameQc.size,
+            effectiveSnapshot = request.snapshot
         )
     }
 
-    private fun preflight(request: GridDetectionRequest): PreflightResult {
+    /**
+     * 为设置了至少两个有效标准浓度水平的分析物执行现场自动拟合。
+     *
+     * 比色和荧光共用同一成熟拟合引擎，但信号提取严格按各自处理器和主特征执行；因此
+     * 两种模态不会共用同一条曲线实例，也不会把 RGB 灰度误当作荧光净强度。
+     */
+    /**
+     * 模块内可测的现场标定入口。
+     *
+     * 保持为 `internal` 而不是公开 API：生产代码仍只应从 [finalizeLocalized] 调用，
+     * 单元测试则可以直接注入冻结光度结果，验证曲线、单位和仅信号回退语义，不必构造
+     * Android Bitmap 或真正执行一次 OpenCV 定位。
+     */
+    internal fun applyOnsiteCalibrations(
+        snapshot: TemplateProjectSnapshot,
+        quant: PgQuantResult,
+        runId: String
+    ): TemplateProjectSnapshot {
+        val updatedAnalytes = snapshot.analytes.map { analyteSnapshot ->
+            if (
+                analyteSnapshot.resolvedGridQuantitationMode() !=
+                GridAnalyteQuantitationMode.ONSITE_AUTO_FIT
+            ) {
+                return@map analyteSnapshot
+            }
+            val preview = previewOnsiteCalibration(
+                snapshot = snapshot,
+                quant = quant,
+                analyteId = analyteSnapshot.analyte.id
+            ) ?: return@map analyteSnapshot
+            val minimum = preview.standardPoints.minOf { it.first }
+            val maximum = preview.standardPoints.maxOf { it.first }
+            val model = analyteSnapshot.analysisModel.model.copy(
+                name = "onsite-auto-fit",
+                modelType = AnalysisModelType.STANDARD_CURVE.code,
+                primaryFeature = preview.primaryFeature.code,
+                reliableRangeMin = minimum,
+                reliableRangeMax = maximum,
+                validationMetricsJson = gson.toJson(
+                    linkedMapOf(
+                        "R2" to preview.rSquared,
+                        "RMSE" to preview.rmse,
+                        "MAE" to preview.mae,
+                        "ACCEPTED_STANDARD_RATIO" to preview.acceptedStandardRatio,
+                        "ACCEPTED" to preview.accepted
+                    )
+                ),
+                updatedAt = Date()
+            )
+            val curve = StandardCurveDefinition(
+                analysisModelId = model.id,
+                fittingFunction = preview.function.identifier,
+                parametersJson = gson.toJson(preview.parameters),
+                monotonicDirection = "AUTO"
+            )
+            val calibrationPoints = preview.standardPoints.mapIndexed { index, (concentration, signal) ->
+                CalibrationPoint(
+                    id = "$runId-${analyteSnapshot.analyte.id}-standard-$index",
+                    analysisModelId = model.id,
+                    concentration = concentration,
+                    signalValue = signal,
+                    repeatIndex = index
+                )
+            }
+            analyteSnapshot.copy(
+                templateConfig = analyteSnapshot.templateConfig.copy(
+                    reliableRangeMin = minimum,
+                    reliableRangeMax = maximum
+                ),
+                analysisModel = AnalysisModelBundle(
+                    model = model,
+                    standardCurve = curve,
+                    calibrationPoints = calibrationPoints
+                ),
+                quantitationMode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code,
+                onsiteSelectedFeature = preview.primaryFeature.code,
+                onsiteSelectedFunction = preview.function.identifier
+            )
+        }
+        return snapshot.copy(analytes = updatedAnalytes)
+    }
+
+    /**
+     * 根据本次真实标准孔，为一个分析物比较“候选信号 × 线性/4PL/5PL”。
+     *
+     * 普通模式不要求用户理解像素公式：未指定高级选项时会遍历当前检测模态允许的全部
+     * 主信号，并按验收状态、标准点接受率、RMSE、MAE 和 R² 选择最稳妥组合。高级模式
+     * 只会缩小候选集合，不允许输入任意函数名或参数 JSON。
+     */
+    internal fun previewOnsiteCalibration(
+        snapshot: TemplateProjectSnapshot,
+        quant: PgQuantResult,
+        analyteId: String
+    ): GridOnsiteFitPreview? {
+        val modality = DetectionModality.fromCode(snapshot.template.detectionMode) ?: return null
+        val analyteSnapshot = snapshot.analytes.firstOrNull { it.analyte.id == analyteId }
+            ?: return null
+        val standards = validStandards(snapshot, analyteId)
+        if (standards.mapNotNull(TemplateSiteAssignment::standardConcentration).distinct().size < 2) {
+            return null
+        }
+
+        val selectedFeature = AnalysisPrimaryFeature.fromCode(analyteSnapshot.onsiteSelectedFeature)
+        val features = selectedFeature?.let(::setOf) ?: AnalysisFeaturePolicy.allowedFeatures(modality)
+        val selectedFunction = analyteSnapshot.onsiteSelectedFunction
+            ?.let(FittingFunction::fromIdentifier)
+        val functions = selectedFunction?.let(::setOf)
+            ?: FittingEngine.automaticCalibrationFunctions()
+
+        val candidates = features.flatMap { feature ->
+            val signalBySite = signalValuesForFeature(
+                snapshot = snapshot,
+                quant = quant,
+                analyteSnapshot = analyteSnapshot,
+                modality = modality,
+                feature = feature
+            ) ?: return@flatMap emptyList()
+            val points = standards.mapNotNull { assignment ->
+                val concentration = assignment.standardConcentration ?: return@mapNotNull null
+                val siteIndex = assignment.rowIndex * snapshot.carrierProfile.columns +
+                    assignment.columnIndex
+                val signal = signalBySite[siteIndex]?.takeIf(Double::isFinite)
+                    ?: return@mapNotNull null
+                concentration to signal
+            }
+            if (points.map { it.first }.distinct().size < 2) return@flatMap emptyList()
+            FittingEngine.fitCalibrationCandidates(points, functions).map { result ->
+                feature to result
+            }
+        }
+        val selected = candidates.minWithOrNull(
+            compareBy<Pair<AnalysisPrimaryFeature, FittingResult>>(
+                { if ((it.second.metrics["ICH M10 Accepted"] ?: 0.0) >= 1.0) 0 else 1 },
+                { -(it.second.metrics["Accepted Standard Ratio"] ?: 0.0) },
+                { it.second.metrics["RMSE"] ?: Double.POSITIVE_INFINITY },
+                { it.second.metrics["MAE"] ?: Double.POSITIVE_INFINITY },
+                { -it.second.rSquared }
+            )
+        ) ?: return null
+        val feature = selected.first
+        val fitting = selected.second
+        if (!fitting.isSuccess || fitting.parameters.isEmpty()) return null
+        return GridOnsiteFitPreview(
+            analyteId = analyteId,
+            primaryFeature = feature,
+            function = fitting.function,
+            parameters = fitting.params,
+            standardPoints = fitting.standardPoints,
+            curvePoints = fitting.curvePoints,
+            latexFormula = FittingEngine.formatParametersToLatex(
+                fitting.function,
+                fitting.params
+            ),
+            rSquared = fitting.rSquared,
+            rmse = fitting.metrics["RMSE"]?.takeIf(Double::isFinite),
+            mae = fitting.metrics["MAE"]?.takeIf(Double::isFinite),
+            acceptedStandardRatio = fitting.metrics["Accepted Standard Ratio"]
+                ?.takeIf(Double::isFinite),
+            accepted = (fitting.metrics["ICH M10 Accepted"] ?: 0.0) >= 1.0
+        )
+    }
+
+    /** 获取一个分析物全部有效标准孔，保持物理行优先顺序。 */
+    private fun validStandards(
+        snapshot: TemplateProjectSnapshot,
+        analyteId: String
+    ): List<TemplateSiteAssignment> = snapshot.siteAssignments.filter { assignment ->
+        assignment.enabled &&
+            assignment.analyteId == analyteId &&
+            assignment.roleType == TemplateSiteRole.STANDARD.code &&
+            assignment.standardConcentration?.isFinite() == true &&
+            requireNotNull(assignment.standardConcentration) >= 0.0
+    }.sortedBy { it.rowIndex * snapshot.carrierProfile.columns + it.columnIndex }
+
+    /**
+     * 按候选主特征执行一次模态专用光度处理。
+     * 比色仍强制使用真实参考位，荧光仍强制读取冻结通道，不会为了拟合候选而绕过科学校正。
+     */
+    private fun signalValuesForFeature(
+        snapshot: TemplateProjectSnapshot,
+        quant: PgQuantResult,
+        analyteSnapshot: TemplateProjectAnalyteSnapshot,
+        modality: DetectionModality,
+        feature: AnalysisPrimaryFeature
+    ): Map<Int, Double>? {
+        if (!AnalysisFeaturePolicy.isCompatible(modality, feature)) return null
+        return when (modality) {
+            DetectionModality.COLORIMETRIC -> {
+                val references = referenceIndices(snapshot, analyteSnapshot)
+                if (references.isEmpty()) return null
+                ColorimetricPhotometryProcessor.process(
+                    quant,
+                    ColorimetricProcessorConfig(references, feature)
+                ).sites.associate { it.base.siteIndex to it.primaryFeatureValue }
+            }
+
+            DetectionModality.FLUORESCENCE -> {
+                val channel = ScientificDetectionConfigCodec.decodeFluorescenceChannel(
+                    analyteSnapshot.templateConfig.displayConfigJson
+                ) ?: return null
+                FluorescencePhotometryProcessor.process(
+                    quant,
+                    FluorescenceProcessorConfig(channel, feature)
+                ).sites.associate { it.base.siteIndex to it.primaryFeatureValue }
+            }
+
+            DetectionModality.SPECTRUM -> null
+        }
+    }
+
+    private fun preflight(
+        request: GridDetectionRequest,
+        requireSiteAssignments: Boolean
+    ): PreflightResult {
         val reasons = linkedSetOf<GridDetectionBlockReason>().apply {
             addAll(GridDetectionPreflightValidator.validate(request.project, request.snapshot).reasons)
         }
@@ -373,13 +705,19 @@ class GridDetectionCoordinator @Inject constructor(
 
         snapshot.analytes.forEach { analyteSnapshot ->
             val assignments = assignmentsForAnalyte(snapshot, analyteSnapshot)
-            if (assignments.isEmpty()) reasons += GridDetectionBlockReason.MISSING_ANALYTE_ASSIGNMENT
+            if (requireSiteAssignments && assignments.isEmpty()) {
+                reasons += GridDetectionBlockReason.MISSING_ANALYTE_ASSIGNMENT
+            }
             val modality = DetectionModality.fromCode(snapshot.template.detectionMode)
             val feature = AnalysisPrimaryFeature.fromCode(analyteSnapshot.analysisModel.model.primaryFeature)
             if (feature == null || !isFeatureSupported(modality, feature)) {
                 reasons += GridDetectionBlockReason.INVALID_PRIMARY_FEATURE
             }
-            if (modality == DetectionModality.COLORIMETRIC && referenceIndices(snapshot, analyteSnapshot).isEmpty()) {
+            if (
+                requireSiteAssignments &&
+                modality == DetectionModality.COLORIMETRIC &&
+                referenceIndices(snapshot, analyteSnapshot).isEmpty()
+            ) {
                 reasons += GridDetectionBlockReason.MISSING_COLORIMETRIC_REFERENCE
             }
             if (
@@ -440,10 +778,13 @@ class GridDetectionCoordinator @Inject constructor(
                     processorVersion = COLORIMETRIC_PROCESSOR_VERSION
                 )
             }
-            val quantified = applyQuantification(
+            val quantified = applyConfiguredQuantification(
                 measurements = baseMeasurements,
                 analyteSnapshot = analyteSnapshot,
-                compatibility = compatibility
+                compatibility = compatibility,
+                sourceBitmap = request.endpointBitmap,
+                grid = grid,
+                quant = quant
             )
             measurements += quantified.measurements
             if (!quantified.modelExecutable) signalOnly += analyteSnapshot.analyte.id
@@ -581,10 +922,13 @@ class GridDetectionCoordinator @Inject constructor(
                     processorVersion = FLUORESCENCE_PROCESSOR_VERSION
                 )
             }
-            val quantified = applyQuantification(
+            val quantified = applyConfiguredQuantification(
                 measurements = baseMeasurements,
                 analyteSnapshot = analyteSnapshot,
-                compatibility = compatibility
+                compatibility = compatibility,
+                sourceBitmap = request.endpointBitmap,
+                grid = grid,
+                quant = quant
             )
             measurements += quantified.measurements
             if (!quantified.modelExecutable) signalOnly += analyteSnapshot.analyte.id
@@ -739,6 +1083,198 @@ class GridDetectionCoordinator @Inject constructor(
             outOfRangeCount = outOfRangeCount,
             siteSignalOnlyCount = siteSignalOnlyCount,
             total = quantifiedMeasurements.size
+        )
+    }
+
+    /**
+     * 按布局页冻结的定量方式分流。
+     *
+     * 显式“仅信号”必须优先于模型内容，防止用户切换方案后仍执行旧曲线；标准曲线和
+     * 现场拟合共用严格反算器。深度学习执行器接入前保持模型级仅信号并写明原因，绝不
+     * 把 PTL 文件当作标准曲线参数解析。
+     */
+    private fun applyConfiguredQuantification(
+        measurements: List<SiteMeasurement>,
+        analyteSnapshot: TemplateProjectAnalyteSnapshot,
+        compatibility: ModelCompatibilityResult,
+        sourceBitmap: Bitmap,
+        grid: PgGridResult,
+        quant: PgQuantResult
+    ): QuantificationBatch {
+        return when (analyteSnapshot.resolvedGridQuantitationMode()) {
+            GridAnalyteQuantitationMode.ONSITE_AUTO_FIT,
+            GridAnalyteQuantitationMode.EXISTING_STANDARD_CURVE -> applyQuantification(
+                measurements = measurements,
+                analyteSnapshot = analyteSnapshot,
+                compatibility = compatibility
+            )
+
+            GridAnalyteQuantitationMode.DEEP_LEARNING_MODEL -> applyDeepLearningQuantification(
+                measurements = measurements,
+                analyteSnapshot = analyteSnapshot,
+                compatibility = compatibility,
+                sourceBitmap = sourceBitmap,
+                grid = grid,
+                quant = quant
+            )
+
+            GridAnalyteQuantitationMode.SIGNAL_ONLY -> signalOnlyBatch(
+                measurements = measurements,
+                reason = "USER_SELECTED_SIGNAL_ONLY"
+            )
+        }
+    }
+
+    /**
+     * 使用真实紧致单元裁切执行逐孔 PTL 推理。
+     *
+     * 模型兼容、文件、SHA、输入协议或任意一个位点推理失败时，整分析物从原始测量重建
+     * 为“仅信号”；绝不保留故障发生前已经算出的部分浓度。
+     */
+    private fun applyDeepLearningQuantification(
+        measurements: List<SiteMeasurement>,
+        analyteSnapshot: TemplateProjectAnalyteSnapshot,
+        compatibility: ModelCompatibilityResult,
+        sourceBitmap: Bitmap,
+        grid: PgGridResult,
+        quant: PgQuantResult
+    ): QuantificationBatch {
+        if (compatibility is ModelCompatibilityResult.Incompatible) {
+            return signalOnlyBatch(
+                measurements = measurements,
+                reason = "MODEL_INCOMPATIBLE",
+                extra = mapOf(
+                    "compatibilityReasons" to compatibility.reasons.map(Enum<*>::name)
+                )
+            )
+        }
+        val execution = deepLearningExecutor.execute(
+            sourceBitmap = sourceBitmap,
+            grid = grid,
+            segmentation = quant.unitSegmentation,
+            measurements = measurements,
+            modelBundle = analyteSnapshot.analysisModel
+        )
+        return applyDeepLearningBatchResult(
+            measurements = measurements,
+            analyteSnapshot = analyteSnapshot,
+            compatibility = compatibility,
+            execution = execution
+        )
+    }
+
+    /**
+     * 深度学习批次结果到数据库测量的纯映射入口。
+     *
+     * 与 Bitmap/PyTorch 解耦后，JVM 测试可以严格验证成功、超范围、失败和不完整输出的
+     * 原子语义；生产调用仍只能从 [applyDeepLearningQuantification] 进入真实执行链。
+     */
+    internal fun applyDeepLearningBatchResult(
+        measurements: List<SiteMeasurement>,
+        analyteSnapshot: TemplateProjectAnalyteSnapshot,
+        compatibility: ModelCompatibilityResult,
+        execution: GridDeepLearningBatchResult
+    ): QuantificationBatch {
+        if (compatibility is ModelCompatibilityResult.Incompatible) {
+            return signalOnlyBatch(
+                measurements = measurements,
+                reason = "MODEL_INCOMPATIBLE",
+                extra = mapOf(
+                    "compatibilityReasons" to compatibility.reasons.map(Enum<*>::name)
+                )
+            )
+        }
+        if (execution is GridDeepLearningBatchResult.Failure) {
+            return signalOnlyBatch(
+                measurements = measurements,
+                reason = execution.reason.name
+            )
+        }
+        val predictions = (execution as GridDeepLearningBatchResult.Success).predictions
+        if (predictions.size != measurements.size ||
+            measurements.any { measurement -> measurement.siteIndex !in predictions }
+        ) {
+            return signalOnlyBatch(
+                measurements = measurements,
+                reason = "INCOMPLETE_BATCH_OUTPUT"
+            )
+        }
+
+        var quantifiedCount = 0
+        var outOfRangeCount = 0
+        val updated = measurements.map { measurement ->
+            val prediction = requireNotNull(predictions[measurement.siteIndex])
+            if (prediction.concentration != null) {
+                quantifiedCount += 1
+                measurement.copy(
+                    concentrationValue = prediction.concentration,
+                    concentrationUnit = analyteSnapshot.analysisModel.model.concentrationUnit,
+                    reliableRangeStatus = prediction.rangeStatus.name,
+                    modelSnapshotJson = prediction.modelSnapshotJson,
+                    quantificationQcJson = gson.toJson(
+                        mapOf(
+                            "status" to "QUANTIFIED",
+                            "method" to "DEEP_LEARNING",
+                            "rangeStatus" to prediction.rangeStatus.name
+                        )
+                    )
+                )
+            } else {
+                outOfRangeCount += 1
+                measurement.copy(
+                    concentrationValue = null,
+                    concentrationUnit = analyteSnapshot.analysisModel.model.concentrationUnit,
+                    reliableRangeStatus = prediction.rangeStatus.name,
+                    modelSnapshotJson = prediction.modelSnapshotJson,
+                    quantificationQcJson = gson.toJson(
+                        mapOf(
+                            "status" to "OUT_OF_RELIABLE_RANGE",
+                            "method" to "DEEP_LEARNING",
+                            "rangeStatus" to prediction.rangeStatus.name,
+                            "concentrationSuppressed" to true
+                        )
+                    )
+                )
+            }
+        }
+        return QuantificationBatch(
+            measurements = updated,
+            modelExecutable = true,
+            quantifiedCount = quantifiedCount,
+            outOfRangeCount = outOfRangeCount,
+            siteSignalOnlyCount = 0,
+            total = updated.size
+        )
+    }
+
+    /** 构造统一的模型级仅信号结果，保留全部原始和校正光度证据。 */
+    private fun signalOnlyBatch(
+        measurements: List<SiteMeasurement>,
+        reason: String,
+        extra: Map<String, Any?> = emptyMap()
+    ): QuantificationBatch {
+        val reasonJson = gson.toJson(
+            linkedMapOf<String, Any?>(
+                "status" to "SIGNAL_ONLY",
+                "scope" to "MODEL",
+                "reason" to reason
+            ).apply { putAll(extra) }
+        )
+        return QuantificationBatch(
+            measurements = measurements.map { measurement ->
+                measurement.copy(
+                    concentrationValue = null,
+                    concentrationUnit = null,
+                    reliableRangeStatus = null,
+                    modelSnapshotJson = null,
+                    quantificationQcJson = reasonJson
+                )
+            },
+            modelExecutable = false,
+            quantifiedCount = 0,
+            outOfRangeCount = 0,
+            siteSignalOnlyCount = 0,
+            total = measurements.size
         )
     }
 
@@ -933,10 +1469,23 @@ class GridDetectionCoordinator @Inject constructor(
         photometryReliable: Boolean,
         grid: com.muc.fluocolorquant.domain.detection.grid.PgGridResult,
         index: Int
+    ): Boolean = isSiteMeasurementReliable(
+        photometryReliable = photometryReliable,
+        pointSource = grid.sites[index].source
+    )
+
+    /**
+     * 位点可靠性只由该位点自身的光度质量和定位来源决定。
+     *
+     * `grid.geometry.trusted` 是整帧的保守复核提示；当算法已经形成完整晶格时，不能再用
+     * 一个帧级布尔值把全部 100/225 个真实观测位点同时判为失败。模型补位仍明确标为
+     * 不可靠，真实观测点则保留各自的光度判定，避免结果页出现“已测 225、可靠 0”。
+     */
+    internal fun isSiteMeasurementReliable(
+        photometryReliable: Boolean,
+        pointSource: GridPointSource
     ): Boolean {
-        return photometryReliable &&
-            grid.geometry.trusted &&
-            grid.sites[index].source != GridPointSource.MODEL_IMPUTED
+        return photometryReliable && pointSource != GridPointSource.MODEL_IMPUTED
     }
 
     private fun siteQcJson(
@@ -984,6 +1533,22 @@ class GridDetectionCoordinator @Inject constructor(
     /** 运行状态只由模型级不可执行分析物决定，位点警告不会把整个运行降级。 */
     internal fun statusForSignalOnlyAnalytes(signalOnlyAnalyteIds: Set<String>): String {
         return if (signalOnlyAnalyteIds.isEmpty()) STATUS_COMPLETED else STATUS_SIGNAL_ONLY
+    }
+
+    /**
+     * 多分析物运行允许不同分析物使用不同定量方案。
+     * 只要已有任一有效浓度，同时仍有分析物仅保留信号，运行状态就应显示“部分定量”，
+     * 不能把已经生成的浓度和现场曲线统称为“仅信号”。
+     */
+    internal fun statusForQuantification(
+        signalOnlyAnalyteIds: Set<String>,
+        measurements: List<SiteMeasurement>
+    ): String {
+        return when {
+            signalOnlyAnalyteIds.isEmpty() -> STATUS_COMPLETED
+            measurements.any { it.concentrationValue?.isFinite() == true } -> STATUS_PARTIAL
+            else -> STATUS_SIGNAL_ONLY
+        }
     }
 
     private fun summarizeSiteQc(measurements: List<SiteMeasurement>): String {
@@ -1049,6 +1614,7 @@ class GridDetectionCoordinator @Inject constructor(
     private companion object {
         const val PROCESSING_EVIDENCE_LOG_TAG: String = "GridProcessingEvidence"
         const val STATUS_SIGNAL_ONLY: String = "SignalOnlyCompleted"
+        const val STATUS_PARTIAL: String = "PartiallyQuantified"
         const val STATUS_COMPLETED: String = "Completed"
     }
 }

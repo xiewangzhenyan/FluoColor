@@ -30,7 +30,14 @@ data class TemplateProjectSnapshot(
     val carrierProfile: CarrierProfile,
     val acquisitionProfile: AcquisitionProfile,
     val analytes: List<TemplateProjectAnalyteSnapshot>,
-    val siteAssignments: List<TemplateSiteAssignment>
+    val siteAssignments: List<TemplateSiteAssignment>,
+    /**
+     * 布局页临时应用资源库模板时，项目根模板 ID 仍保持项目自己的冻结身份；这里单独记录
+     * 来源模板，既保证现有外键/预检关系不被破坏，也让历史结果能追溯本次复用了哪个方案。
+     */
+    val sourceTemplateId: String? = null,
+    val sourceTemplateName: String? = null,
+    val sourceTemplateVersion: Int? = null
 ) {
     companion object {
         /** 当前快照 JSON 的稳定结构版本。 */
@@ -47,7 +54,13 @@ data class TemplateProjectSnapshot(
 data class TemplateProjectAnalyteSnapshot(
     val analyte: Analyte,
     val templateConfig: TemplateAnalyteConfig,
-    val analysisModel: AnalysisModelBundle
+    val analysisModel: AnalysisModelBundle,
+    /** 为空表示旧快照，运行时会根据冻结模型类型安全推断。 */
+    val quantitationMode: String? = null,
+    /** 现场拟合高级设置；为空时后台自动比较当前模态允许的全部候选信号。 */
+    val onsiteSelectedFeature: String? = null,
+    /** 现场拟合高级设置；为空时后台自动比较线性、4PL 和 5PL。 */
+    val onsiteSelectedFunction: String? = null
 )
 
 /**

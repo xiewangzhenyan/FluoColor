@@ -6,6 +6,7 @@ import com.muc.fluocolorquant.data.model.AcquisitionProfile
 import com.muc.fluocolorquant.data.model.AnalysisModel
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.CarrierProfile
+import com.muc.fluocolorquant.data.model.CalibrationPoint
 import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.Project
@@ -64,6 +65,10 @@ class ArrayResultSnapshotMapperTest {
         assertEquals("SAMPLE", snapshot.sites[1].roleCode)
         assertEquals(ANALYTE_ID, snapshot.sites[1].analyteId)
         assertEquals("运行时样本-01", snapshot.sites[1].sampleSlot)
+        val analyte = snapshot.analytes.single()
+        assertEquals("linear", analyte.fittingFunction)
+        assertEquals(1.0, analyte.fittingParameters["a"] ?: Double.NaN, 1e-9)
+        assertEquals(2, analyte.calibrationPoints.size)
     }
 
     @Test
@@ -444,6 +449,22 @@ class ArrayResultSnapshotMapperTest {
                     fittingFunction = "LINEAR",
                     parametersJson = "{\"a\":1.0,\"b\":0.0}",
                     monotonicDirection = "INCREASING"
+                ),
+                calibrationPoints = listOf(
+                    CalibrationPoint(
+                        id = "curve-point-1",
+                        analysisModelId = MODEL_ID,
+                        concentration = 1.0,
+                        signalValue = 1.0,
+                        repeatIndex = 0
+                    ),
+                    CalibrationPoint(
+                        id = "curve-point-2",
+                        analysisModelId = MODEL_ID,
+                        concentration = 10.0,
+                        signalValue = 10.0,
+                        repeatIndex = 1
+                    )
                 )
             )
         )

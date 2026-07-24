@@ -5,6 +5,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParseException
 import com.muc.fluocolorquant.data.enums.AnalysisModelType
+import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.model.SiteMeasurement
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
 import com.muc.fluocolorquant.domain.detection.grid.PgGridJsonCodec
@@ -499,6 +500,7 @@ object ArrayResultSnapshotMapper {
 
     private fun TemplateProjectAnalyteSnapshot.toResult(): ArrayAnalyteResult {
         val model = analysisModel.model
+        val standardCurve = analysisModel.standardCurve
         return ArrayAnalyteResult(
             analyteId = analyte.id,
             name = analyte.name,
@@ -512,8 +514,54 @@ object ArrayResultSnapshotMapper {
             modelVersion = model.version,
             primaryFeature = model.primaryFeature,
             processorName = model.processorName,
-            processorVersion = model.processorVersion
+            processorVersion = model.processorVersion,
+            fittingFunction = normalizeFittingFunction(standardCurve?.fittingFunction),
+            fittingParameters = parseFiniteDoubleMap(standardCurve?.parametersJson),
+            calibrationPoints = analysisModel.calibrationPoints
+                .asSequence()
+                .filter { point ->
+                    point.concentration.isFinite() && point.signalValue.isFinite()
+                }
+                .sortedWith(
+                    compareBy<com.muc.fluocolorquant.data.model.CalibrationPoint> {
+                        it.concentration
+                    }.thenBy { it.repeatIndex }
+                )
+                .map { point ->
+                    ArrayCalibrationPointResult(
+                        concentration = point.concentration,
+                        signalValue = point.signalValue,
+                        repeatIndex = point.repeatIndex
+                    )
+                }
+                .toList(),
+            validationMetrics = parseFiniteDoubleMap(model.validationMetricsJson)
         )
+    }
+
+    /**
+     * 从冻结参数 JSON 中只提取有限数值。
+     *
+     * 损坏或仍为仅信号占位的空参数不会让整个历史结果页崩溃；它们只是不显示曲线卡，
+     * 原始 JSON 仍完整保存在运行快照中供导出和审计。
+     */
+    private fun parseFiniteDoubleMap(json: String?): Map<String, Double> {
+        val root = parseJsonObject(json) ?: return emptyMap()
+        return root.entrySet().mapNotNull { (name, element) ->
+            val value = runCatching {
+                element.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asDouble
+            }.getOrNull()
+            value?.takeIf(Double::isFinite)?.let { name to it }
+        }.toMap()
+    }
+
+    /** 兼容旧快照保存枚举名、新快照保存稳定 identifier 的两种历史格式。 */
+    private fun normalizeFittingFunction(value: String?): String? {
+        if (value.isNullOrBlank()) return null
+        return FittingFunction.fromIdentifier(value)?.identifier
+            ?: FittingFunction.entries.firstOrNull { function ->
+                function.name.equals(value, ignoreCase = true)
+            }?.identifier
     }
 
     private fun parseJsonObject(json: String?): JsonObject? {

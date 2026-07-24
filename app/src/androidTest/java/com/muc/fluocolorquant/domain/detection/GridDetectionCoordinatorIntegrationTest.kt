@@ -368,7 +368,7 @@ class GridDetectionCoordinatorIntegrationTest {
         assertEquals(0, reference.siteIndex)
         assertEquals("COLORIMETRIC_REFERENCE_EVIDENCE", reference.primaryFeatureName)
         assertEquals("pg-quant", reference.processorName)
-        assertEquals("pg-quant-android-v1", reference.processorVersion)
+        assertEquals("pg-quant-android-v2-unit-mask", reference.processorVersion)
         val referenceRaw = JsonParser().parse(reference.rawSignalJson).asJsonObject
         assertEquals("colorimetric-reference-evidence-v1", referenceRaw["schemaVersion"].asString)
         assertTrue(referenceRaw.has("site"))

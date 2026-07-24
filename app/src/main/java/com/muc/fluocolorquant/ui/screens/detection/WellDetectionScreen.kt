@@ -38,12 +38,14 @@ import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
 import com.muc.fluocolorquant.ui.viewmodels.DetectionViewModel
 import com.muc.fluocolorquant.ui.viewmodels.EnhancedWellDetection
 import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiState
+import com.muc.fluocolorquant.ui.viewmodels.GridConfigurationEvent
 import com.muc.fluocolorquant.ui.viewmodels.GridDetectionViewModel
 import com.muc.fluocolorquant.ui.navigation.Screen
 import kotlinx.coroutines.launch
 import android.net.Uri
 import android.graphics.RectF
 import android.graphics.Bitmap
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +56,22 @@ fun WellDetectionScreen(
     gridViewModel: GridDetectionViewModel = hiltViewModel()
 ) {
     val gridState by gridViewModel.uiState.collectAsState()
+    val toastManager = LocalToastManager.current
+    // stringResource 只能在 Composable 上下文读取；事件协程只消费提前解析好的文本。
+    val templateAppliedMessage = stringResource(R.string.grid_event_template_applied)
+    val templateIncompatibleMessage = stringResource(R.string.grid_event_template_incompatible)
+    val modelAppliedMessage = stringResource(R.string.grid_event_model_applied)
+    val modelIncompatibleMessage = stringResource(R.string.grid_event_model_incompatible)
+    val fitReadyMessage = stringResource(R.string.grid_event_fit_ready)
+    val fitUnavailableMessage = stringResource(R.string.grid_event_fit_unavailable)
+    val curveSavedFormat = stringResource(R.string.grid_event_curve_saved)
+    val curveNameConflictMessage = stringResource(R.string.grid_event_curve_name_conflict)
+    val curveSaveFailedMessage = stringResource(R.string.grid_event_curve_save_failed)
+    val templateSavedFormat = stringResource(R.string.grid_event_template_saved)
+    val templateNameConflictMessage = stringResource(R.string.grid_event_template_name_conflict)
+    val templateSaveIncompleteMessage = stringResource(R.string.grid_event_template_save_incomplete)
+    val templateSaveFailedMessage = stringResource(R.string.grid_event_template_save_failed)
+    val operationFailedMessage = stringResource(R.string.grid_event_operation_failed)
     val decodedImageUri = remember(imageUri) {
         runCatching { imageUri?.let { java.net.URLDecoder.decode(it, "UTF-8") } }
             .getOrDefault(imageUri)
@@ -61,6 +79,53 @@ fun WellDetectionScreen(
 
     LaunchedEffect(projectId, decodedImageUri) {
         gridViewModel.start(projectId, decodedImageUri)
+    }
+
+    LaunchedEffect(gridViewModel) {
+        gridViewModel.configurationEvents.collect { event ->
+            when (event) {
+                GridConfigurationEvent.TemplateApplied ->
+                    toastManager.showToast(templateAppliedMessage, ToastType.SUCCESS)
+                GridConfigurationEvent.TemplateIncompatible ->
+                    toastManager.showToast(templateIncompatibleMessage, ToastType.WARNING)
+                GridConfigurationEvent.ModelApplied ->
+                    toastManager.showToast(modelAppliedMessage, ToastType.SUCCESS)
+                GridConfigurationEvent.ModelIncompatible ->
+                    toastManager.showToast(modelIncompatibleMessage, ToastType.WARNING)
+                GridConfigurationEvent.FitReady ->
+                    toastManager.showToast(fitReadyMessage, ToastType.SUCCESS)
+                GridConfigurationEvent.FitUnavailable ->
+                    toastManager.showToast(fitUnavailableMessage, ToastType.WARNING)
+                is GridConfigurationEvent.CurveSaved -> toastManager.showToast(
+                    String.format(Locale.getDefault(), curveSavedFormat, event.name),
+                    ToastType.SUCCESS
+                )
+                GridConfigurationEvent.CurveNameConflict ->
+                    toastManager.showToast(curveNameConflictMessage, ToastType.WARNING)
+                GridConfigurationEvent.CurveSaveFailed ->
+                    toastManager.showToast(curveSaveFailedMessage, ToastType.ERROR)
+                is GridConfigurationEvent.TemplateSaved -> toastManager.showToast(
+                    String.format(Locale.getDefault(), templateSavedFormat, event.name),
+                    ToastType.SUCCESS
+                )
+                GridConfigurationEvent.TemplateNameConflict ->
+                    toastManager.showToast(templateNameConflictMessage, ToastType.WARNING)
+                GridConfigurationEvent.TemplateSaveIncomplete ->
+                    toastManager.showToast(templateSaveIncompleteMessage, ToastType.WARNING)
+                GridConfigurationEvent.TemplateSaveFailed ->
+                    toastManager.showToast(templateSaveFailedMessage, ToastType.ERROR)
+                GridConfigurationEvent.OperationFailed ->
+                    toastManager.showToast(operationFailedMessage, ToastType.ERROR)
+            }
+        }
+    }
+
+    // 微流控布局确认并保存成功后直接进入最终结果页，移除多余的“检测完成”中转卡。
+    LaunchedEffect(gridState) {
+        val completed = gridState as? GridDetectionUiState.Completed ?: return@LaunchedEffect
+        navController.navigate(Screen.NewResult.createRoute(completed.runId)) {
+            popUpTo(Screen.WellDetection.route) { inclusive = true }
+        }
     }
 
     if (gridState == GridDetectionUiState.LegacyPlate) {
@@ -75,9 +140,22 @@ fun WellDetectionScreen(
             state = gridState,
             onBack = { navController.popBackStack() },
             onRetry = gridViewModel::retry,
-            onViewResults = { runId ->
-                navController.navigate(Screen.NewResult.createRoute(runId))
-            }
+            onOpenLayout = gridViewModel::openLayoutEditor,
+            onReviewLocalization = gridViewModel::showLocalizationPreview,
+            onAssignmentsChange = gridViewModel::updateLayoutDraft,
+            onPaintAssignments = gridViewModel::paintLayoutDraft,
+            onFinalizeLayout = gridViewModel::finalizeLayout,
+            onUseManualConfiguration = gridViewModel::useManualConfiguration,
+            onApplyTemplate = gridViewModel::applyExperimentTemplate,
+            onSelectQuantitationAnalyte = gridViewModel::selectQuantitationAnalyte,
+            onSetQuantitationMode = gridViewModel::setQuantitationMode,
+            onSelectAnalysisModel = gridViewModel::selectAnalysisModel,
+            onUpdateOnsiteAdvanced = gridViewModel::updateOnsiteAdvanced,
+            onUpdateStandardConcentrations = gridViewModel::updateStandardConcentrations,
+            onPreviewOnsiteFit = gridViewModel::previewOnsiteFit,
+            onConfirmQuantitationAnalyte = gridViewModel::confirmQuantitationAnalyte,
+            onSaveOnsiteCurve = gridViewModel::saveOnsiteCurve,
+            onSaveTemplate = gridViewModel::saveCurrentConfigurationAsTemplate
         )
     }
 }

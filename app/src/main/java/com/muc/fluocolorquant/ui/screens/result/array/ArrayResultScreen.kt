@@ -1,6 +1,7 @@
 package com.muc.fluocolorquant.ui.screens.result.array
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,8 +10,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -20,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Biotech
 import androidx.compose.material.icons.outlined.AccountTree
+import androidx.compose.material.icons.outlined.Analytics
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.GridOn
@@ -35,6 +39,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -60,18 +65,29 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.CaptureRole
+import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
+import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
+import com.muc.fluocolorquant.domain.detection.quantification.BuiltInSharedConcentrationModel
+import com.muc.fluocolorquant.ui.components.LatexAlignment
+import com.muc.fluocolorquant.ui.components.LatexView
+import com.muc.fluocolorquant.ui.components.charts.CurveChart
+import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.ArrayResultUiState
 import com.muc.fluocolorquant.ui.viewmodels.ArrayResultViewModel
 import com.muc.fluocolorquant.ui.viewmodels.ArrayRunHistoryItem
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
+import com.muc.fluocolorquant.utils.math.FittingEngine
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 const val ARRAY_RESULT_SCREEN_TAG: String = "array_result_screen"
 const val ARRAY_RESULT_ANALYTE_TAB_TAG: String = "array_result_tab_analytes"
@@ -83,7 +99,7 @@ const val ARRAY_RESULT_EXPORT_BUTTON_TAG: String = "array_result_export_button"
 
 private enum class ArrayResultTab(val icon: ImageVector) {
     OVERVIEW(Icons.Outlined.GridOn),
-    ANALYTES(Icons.Outlined.Science),
+    ANALYTES(Icons.Outlined.Analytics),
     IMAGE(Icons.Outlined.Image),
     PROCESS(Icons.Outlined.AccountTree),
     QC(Icons.Outlined.Verified)
@@ -100,7 +116,14 @@ fun ArrayResultScreen(
     LaunchedEffect(runId) { viewModel.load(runId) }
     ArrayResultContent(
         state = state,
-        onBack = navController::navigateUp,
+        onBack = {
+            // 无论用户是刚完成检测还是从历史记录进入，最终结果页返回都应落到首页首屏，
+            // 不能退回定位、布局或历史 Pager 的中间状态。
+            navController.navigate(Screen.Home.route) {
+                popUpTo(Screen.Home.route) { inclusive = true }
+                launchSingleTop = true
+            }
+        },
         onRetry = viewModel::retry,
         onSelectRun = viewModel::selectRun
     )
@@ -410,40 +433,160 @@ private fun ArrayOverviewTab(
     snapshot: ArrayResultSnapshot,
     onSiteClick: (ArraySiteSelection) -> Unit
 ) {
-    val heatmapModel = remember(snapshot) { buildOverviewHeatmapModel(snapshot) }
+    var selectedAnalyteId by rememberSaveable(snapshot.runId) {
+        mutableStateOf(snapshot.analytes.firstOrNull()?.analyteId)
+    }
+    val selectedAnalyte = snapshot.analytes.firstOrNull { analyte ->
+        analyte.analyteId == selectedAnalyteId
+    } ?: snapshot.analytes.firstOrNull()
+    val heatmapModel = selectedAnalyte?.let { analyte ->
+        remember(snapshot, analyte) { buildAnalyteHeatmapModel(snapshot, analyte) }
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            ArrayHeatmapResultCard(
-                title = stringResource(R.string.array_result_overview_card_title),
-                subtitle = stringResource(
-                    R.string.array_result_overview_card_body,
-                    snapshot.rows,
-                    snapshot.columns,
-                    heatmapModel.reliableCount,
-                    heatmapModel.measuredCount - heatmapModel.reliableCount
-                ),
-                model = heatmapModel,
-                onSiteClick = { cell ->
-                    val site = snapshot.sites.getOrNull(cell.siteIndex)
-                    onSiteClick(ArraySiteSelection(cell.siteIndex, site?.analyteId))
-                }
-            )
-        }
-        item { ArrayHeatmapStatistics(heatmapModel) }
-        item { ArrayRoleDistribution(heatmapModel.roleCounts) }
-        item {
-            SectionCard(
-                icon = Icons.Outlined.Verified,
-                title = stringResource(R.string.array_result_snapshot_trace_title),
-                body = stringResource(
-                    R.string.array_result_snapshot_trace_body,
-                    snapshot.frame.locatorName,
-                    snapshot.frame.locatorVersion
+        if (snapshot.analytes.isEmpty() || selectedAnalyte == null || heatmapModel == null) {
+            item {
+                SectionCard(
+                    icon = Icons.Outlined.Science,
+                    title = stringResource(R.string.array_result_no_analytes),
+                    body = stringResource(R.string.array_result_no_analytes_body)
                 )
+            }
+        } else {
+            // 不同分析物可能使用 ng/mL、IU/mL 等不同单位，所以总览必须先选分析物，
+            // 再绘制单一单位的浓度色带，绝不能把多个分析物的绝对浓度混成一张图。
+            item {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp)
+                ) {
+                    items(snapshot.analytes, key = { it.analyteId }) { analyte ->
+                        FilterChip(
+                            modifier = Modifier.testTag(
+                                "array_overview_analyte_chip_${analyte.analyteId}"
+                            ),
+                            selected = analyte.analyteId == selectedAnalyte.analyteId,
+                            onClick = { selectedAnalyteId = analyte.analyteId },
+                            label = { Text(analyte.name) }
+                        )
+                    }
+                }
+            }
+            item {
+                ArrayHeatmapResultCard(
+                    title = stringResource(
+                        R.string.array_heatmap_analyte_title,
+                        selectedAnalyte.name
+                    ),
+                    subtitle = heatmapSubtitle(heatmapModel, selectedAnalyte),
+                    model = heatmapModel,
+                    onSiteClick = { cell ->
+                        onSiteClick(
+                            ArraySiteSelection(
+                                siteIndex = cell.siteIndex,
+                                analyteId = selectedAnalyte.analyteId
+                            )
+                        )
+                    }
+                )
+            }
+            item { ArrayHeatmapStatistics(heatmapModel) }
+            item {
+                ArraySampleConcentrationTable(
+                    snapshot = snapshot,
+                    analyte = selectedAnalyte,
+                    onSiteClick = onSiteClick
+                )
+            }
+            item { AnalyteSnapshotCard(selectedAnalyte) }
+        }
+    }
+}
+
+/** 只有函数、完整参数和至少两个有限标准点同时存在时才展示曲线，避免伪图。 */
+private fun ArrayAnalyteResult.hasRenderableCurve(): Boolean {
+    val function = fittingFunction?.let(FittingFunction::fromIdentifier) ?: return false
+    return calibrationPoints.size >= 2 &&
+        function.requiredParams.all(fittingParameters::containsKey)
+}
+
+/**
+ * 展示本次运行真正冻结的标准曲线，而不是回读当前曲线库。
+ * 图表复用项目已有 Canvas 曲线组件，公式则由 jlatexmath-android 排版。
+ */
+@Composable
+private fun ArrayStandardCurveCard(analyte: ArrayAnalyteResult) {
+    val function = remember(analyte.fittingFunction) {
+        analyte.fittingFunction?.let(FittingFunction::fromIdentifier)
+    } ?: return
+    val parameters = analyte.fittingParameters
+    val points = remember(analyte.calibrationPoints) {
+        analyte.calibrationPoints.map { point -> point.concentration to point.signalValue }
+    }
+    val fittedCurve = remember(function, parameters) {
+        FittingEngine.createFunctionFromParameters(function, parameters)
+    }
+    val latex = remember(function, parameters) {
+        FittingEngine.formatParametersToLatex(function, parameters)
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.array_result_curve_title, analyte.name),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = stringResource(
+                    R.string.array_result_curve_subtitle,
+                    points.size,
+                    analyte.concentrationUnit
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                LatexView(
+                    latex = latex,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    alignment = LatexAlignment.CENTER
+                )
+            }
+            CurveChart(
+                fittedCurve = fittedCurve,
+                selectedFunction = function,
+                parameters = parameters,
+                xAxisLabel = stringResource(
+                    R.string.array_result_curve_x_axis,
+                    analyte.concentrationUnit
+                ),
+                yAxisLabel = stringResource(
+                    R.string.array_result_curve_y_axis,
+                    analyte.primaryFeature
+                ),
+                title = "",
+                dataPoints = points,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp)
             )
         }
     }
@@ -459,9 +602,6 @@ private fun ArrayAnalytesTab(
     }
     val selectedAnalyte = snapshot.analytes.firstOrNull { it.analyteId == selectedAnalyteId }
         ?: snapshot.analytes.firstOrNull()
-    val heatmapModel = selectedAnalyte?.let { analyte ->
-        remember(snapshot, analyte) { buildAnalyteHeatmapModel(snapshot, analyte) }
-    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -493,31 +633,440 @@ private fun ArrayAnalytesTab(
                     }
                 }
             }
-            if (selectedAnalyte != null && heatmapModel != null) {
+            if (selectedAnalyte != null) {
+                item { AnalyteSnapshotCard(selectedAnalyte) }
+                if (selectedAnalyte.hasRenderableCurve()) {
+                    item { ArrayStandardCurveCard(selectedAnalyte) }
+                    item { ArrayCurveMetricsCard(selectedAnalyte) }
+                } else {
+                    item {
+                        ArrayQuantitationMethodSummary(
+                            snapshot = snapshot,
+                            analyte = selectedAnalyte
+                        )
+                    }
+                }
                 item {
-                    ArrayHeatmapResultCard(
-                        title = stringResource(
-                            R.string.array_heatmap_analyte_title,
-                            selectedAnalyte.name
-                        ),
-                        subtitle = heatmapSubtitle(heatmapModel, selectedAnalyte),
-                        model = heatmapModel,
-                        onSiteClick = { cell ->
-                            onSiteClick(
-                                ArraySiteSelection(
-                                    siteIndex = cell.siteIndex,
-                                    analyteId = selectedAnalyte.analyteId
-                                )
-                            )
-                        }
+                    ArrayRepeatabilityCard(
+                        snapshot = snapshot,
+                        analyte = selectedAnalyte
                     )
                 }
-                item { ArrayHeatmapStatistics(heatmapModel) }
-                item { AnalyteSnapshotCard(selectedAnalyte) }
+                item {
+                    ArrayStandardRecoveryCard(
+                        snapshot = snapshot,
+                        analyte = selectedAnalyte
+                    )
+                }
+                item {
+                    ArraySampleConcentrationTable(
+                        snapshot = snapshot,
+                        analyte = selectedAnalyte,
+                        onSiteClick = onSiteClick
+                    )
+                }
             }
         }
     }
 }
+
+/** 曲线/统计页展示冻结拟合质量，不重新选择模型或修改历史结果。 */
+@Composable
+private fun ArrayCurveMetricsCard(analyte: ArrayAnalyteResult) {
+    val metrics = analyte.validationMetrics
+    val acceptedRatio = metrics["ACCEPTED_STANDARD_RATIO"]
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.array_statistics_fit_metrics_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                ResultMetric(
+                    modifier = Modifier.weight(1f),
+                    label = stringResource(R.string.grid_quant_fit_metric_r2),
+                    value = metrics["R2"]?.let(::formatArrayHeatmapValue).orEmpty()
+                )
+                ResultMetric(
+                    modifier = Modifier.weight(1f),
+                    label = stringResource(R.string.grid_quant_fit_metric_rmse),
+                    value = metrics["RMSE"]?.let(::formatArrayHeatmapValue).orEmpty()
+                )
+                ResultMetric(
+                    modifier = Modifier.weight(1f),
+                    label = stringResource(R.string.grid_quant_fit_metric_mae),
+                    value = metrics["MAE"]?.let(::formatArrayHeatmapValue).orEmpty()
+                )
+                ResultMetric(
+                    modifier = Modifier.weight(1f),
+                    label = stringResource(R.string.grid_quant_fit_metric_acceptance),
+                    value = acceptedRatio?.let { ratio ->
+                        stringResource(R.string.array_statistics_percent_value, ratio * 100.0)
+                    }.orEmpty()
+                )
+            }
+            if (metrics.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.array_statistics_metrics_unavailable),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultMetric(modifier: Modifier, label: String, value: String) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = value.ifBlank { stringResource(R.string.grid_quant_value_unavailable) },
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+/** 深度学习或仅信号没有标准曲线时，展示真实执行计数而不是伪造空曲线。 */
+@Composable
+private fun ArrayQuantitationMethodSummary(
+    snapshot: ArrayResultSnapshot,
+    analyte: ArrayAnalyteResult
+) {
+    val records = remember(snapshot.runId, analyte.analyteId) {
+        snapshot.analyteRecords(analyte.analyteId)
+    }
+    val quantified = records.count { record -> record.measurement.concentrationValue != null }
+    val outOfRange = records.count { record ->
+        record.measurement.reliableRangeStatus in setOf("BELOW_RANGE", "ABOVE_RANGE")
+    }
+    val signalOnly = records.size - quantified - outOfRange
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.array_statistics_quantitation_summary),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                HeatmapMetric(
+                    value = quantified.toString(),
+                    label = stringResource(R.string.array_statistics_quantified)
+                )
+                HeatmapMetric(
+                    value = outOfRange.toString(),
+                    label = stringResource(R.string.array_statistics_out_of_range)
+                )
+                HeatmapMetric(
+                    value = signalOnly.toString(),
+                    label = stringResource(R.string.array_statistics_signal_only)
+                )
+            }
+        }
+    }
+}
+
+/** 重复组按模板 repeatGroup 或重复样本编号聚合，计算平均值、样本标准差和 CV。 */
+@Composable
+private fun ArrayRepeatabilityCard(
+    snapshot: ArrayResultSnapshot,
+    analyte: ArrayAnalyteResult
+) {
+    val groups = remember(snapshot.runId, analyte.analyteId) {
+        snapshot.analyteRecords(analyte.analyteId)
+            .mapNotNull { record ->
+                val value = record.measurement.concentrationValue ?: return@mapNotNull null
+                val groupKey = record.repeatGroup
+                    ?: record.sampleSlot?.takeIf(String::isNotBlank)
+                    ?: return@mapNotNull null
+                groupKey to value
+            }
+            .groupBy({ it.first }, { it.second })
+            .filterValues { values -> values.size >= 2 }
+            .map { (name, values) -> RepeatabilitySummary.create(name, values) }
+            .sortedBy(RepeatabilitySummary::name)
+    }
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.array_statistics_repeatability_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (groups.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.array_statistics_repeatability_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                groups.forEachIndexed { index, group ->
+                    if (index > 0) HorizontalDivider()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(group.name, style = MaterialTheme.typography.labelLarge)
+                            Text(
+                                text = stringResource(
+                                    R.string.array_statistics_repeatability_mean,
+                                    formatArrayHeatmapValue(group.mean),
+                                    analyte.concentrationUnit,
+                                    group.count
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = group.cvPercent?.let { cv ->
+                                stringResource(R.string.array_statistics_cv_value, cv)
+                            } ?: stringResource(R.string.grid_quant_value_unavailable),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 标准品有已知浓度时计算回收率；无真实标准结果时明确显示空状态。 */
+@Composable
+private fun ArrayStandardRecoveryCard(
+    snapshot: ArrayResultSnapshot,
+    analyte: ArrayAnalyteResult
+) {
+    val recoveries = remember(snapshot.runId, analyte.analyteId) {
+        snapshot.analyteRecords(analyte.analyteId).mapNotNull { record ->
+            if (record.roleCode != TemplateSiteRole.STANDARD.code) return@mapNotNull null
+            val expected = record.standardConcentration?.takeIf { it.isFinite() && it != 0.0 }
+                ?: return@mapNotNull null
+            val measured = record.measurement.concentrationValue ?: return@mapNotNull null
+            measured / expected * 100.0
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.array_statistics_recovery_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (recoveries.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.array_statistics_recovery_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                val mean = recoveries.average()
+                Text(
+                    text = stringResource(
+                        R.string.array_statistics_recovery_summary,
+                        mean,
+                        recoveries.minOrNull() ?: mean,
+                        recoveries.maxOrNull() ?: mean,
+                        recoveries.size
+                    ),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+/** 结果页与曲线统计页共用的逐样本浓度表。 */
+@Composable
+private fun ArraySampleConcentrationTable(
+    snapshot: ArrayResultSnapshot,
+    analyte: ArrayAnalyteResult,
+    onSiteClick: (ArraySiteSelection) -> Unit
+) {
+    val records = remember(snapshot.runId, analyte.analyteId) {
+        snapshot.analyteRecords(analyte.analyteId).filter { record ->
+            record.roleCode == TemplateSiteRole.SAMPLE.code
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.array_statistics_sample_table_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (records.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.array_statistics_sample_table_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        stringResource(R.string.array_statistics_site),
+                        modifier = Modifier.width(54.dp),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    Text(
+                        stringResource(R.string.array_statistics_sample),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    Text(
+                        stringResource(R.string.array_statistics_concentration),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                HorizontalDivider()
+                records.take(MAXIMUM_VISIBLE_SAMPLE_ROWS).forEach { record ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSiteClick(
+                                    ArraySiteSelection(record.siteIndex, analyte.analyteId)
+                                )
+                            }
+                            .padding(vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(record.siteKey, modifier = Modifier.width(54.dp))
+                        Text(
+                            text = record.sampleSlot.orEmpty().ifBlank {
+                                stringResource(R.string.array_statistics_unnamed_sample)
+                            },
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            text = record.measurement.concentrationValue?.let { value ->
+                                stringResource(
+                                    R.string.array_statistics_concentration_value,
+                                    formatArrayHeatmapValue(value),
+                                    analyte.concentrationUnit
+                                )
+                            } ?: stringResource(R.string.array_statistics_not_quantified),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (record.measurement.concentrationValue != null) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
+                }
+                val hiddenCount = records.size - MAXIMUM_VISIBLE_SAMPLE_ROWS
+                if (hiddenCount > 0) {
+                    Text(
+                        text = stringResource(R.string.array_statistics_more_rows, hiddenCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 一个分析物在某物理位点的结果行，避免多个统计组件重复遍历和拼接快照字段。 */
+private data class ArrayAnalyteSiteRecord(
+    val siteIndex: Int,
+    val siteKey: String,
+    val roleCode: String?,
+    val sampleSlot: String?,
+    val repeatGroup: String?,
+    val standardConcentration: Double?,
+    val measurement: ArraySiteMeasurementResult
+)
+
+private fun ArrayResultSnapshot.analyteRecords(analyteId: String): List<ArrayAnalyteSiteRecord> {
+    return sites.mapNotNull { site ->
+        val measurement = site.measurements.firstOrNull { it.analyteId == analyteId }
+            ?: return@mapNotNull null
+        ArrayAnalyteSiteRecord(
+            siteIndex = site.siteIndex,
+            siteKey = site.siteKey,
+            roleCode = site.roleCode,
+            sampleSlot = site.sampleSlot ?: site.defaultSampleSlot,
+            repeatGroup = site.repeatGroup,
+            standardConcentration = site.standardConcentration,
+            measurement = measurement
+        )
+    }
+}
+
+private data class RepeatabilitySummary(
+    val name: String,
+    val count: Int,
+    val mean: Double,
+    val cvPercent: Double?
+) {
+    companion object {
+        fun create(name: String, values: List<Double>): RepeatabilitySummary {
+            val mean = values.average()
+            val variance = values.sumOf { value -> (value - mean) * (value - mean) } /
+                (values.size - 1).coerceAtLeast(1)
+            val standardDeviation = sqrt(variance.coerceAtLeast(0.0))
+            val cv = (standardDeviation / abs(mean) * 100.0).takeIf {
+                mean != 0.0 && it.isFinite()
+            }
+            return RepeatabilitySummary(name, values.size, mean, cv)
+        }
+    }
+}
+
+private const val MAXIMUM_VISIBLE_SAMPLE_ROWS = 50
 
 /** 热力图卡片统一承载网格、科学色带和独立 QC 图例。 */
 @Composable
@@ -797,7 +1346,7 @@ private fun AnalyteSnapshotCard(analyte: ArrayAnalyteResult) {
             Text(
                 text = stringResource(
                     R.string.array_result_analyte_model,
-                    analyte.modelName,
+                    analyte.userFacingModelName(),
                     analyte.modelVersion
                 ),
                 style = MaterialTheme.typography.bodySmall,
@@ -813,6 +1362,16 @@ private fun AnalyteSnapshotCard(analyte: ArrayAnalyteResult) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+/** 内置共享模型在历史结果页同样使用本地化名称，不暴露稳定机器资源名。 */
+@Composable
+private fun ArrayAnalyteResult.userFacingModelName(): String {
+    return if (BuiltInSharedConcentrationModel.isBuiltInResourceName(modelName)) {
+        stringResource(R.string.grid_quant_builtin_shared_model)
+    } else {
+        modelName
     }
 }
 

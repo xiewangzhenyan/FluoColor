@@ -25,10 +25,21 @@ import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.data.repository.GridDetectionPersistenceBundle
 import com.muc.fluocolorquant.data.repository.GridDetectionRunRepository
+import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.PgGridLocator
+import com.muc.fluocolorquant.domain.detection.grid.GridPoint
+import com.muc.fluocolorquant.domain.detection.photometry.BaseSitePhotometry
+import com.muc.fluocolorquant.domain.detection.photometry.PgQuantConfig
+import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
+import com.muc.fluocolorquant.domain.detection.photometry.RgbPhotometry
+import com.muc.fluocolorquant.domain.detection.photometry.SitePhotometryQc
 import com.muc.fluocolorquant.domain.detection.quantification.EndpointQuantificationReason
+import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningBatchResult
+import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningFailureReason
+import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningPrediction
 import com.muc.fluocolorquant.domain.detection.quantification.PreparedEndpointQuantificationResult
 import com.muc.fluocolorquant.domain.detection.quantification.PreparedStandardCurveQuantifier
+import com.muc.fluocolorquant.domain.detection.quantification.ReliableRangeStatus
 import com.muc.fluocolorquant.domain.detection.quantification.StandardCurveQuantifier
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot
@@ -323,6 +334,127 @@ class GridDetectionCoordinatorTest {
     }
 
     @Test
+    fun `深度学习成功批次同时保存范围内浓度并抑制超范围数值`() {
+        val coordinator = coordinator()
+        val analyte = deepLearningAnalyteSnapshot()
+        val measurements = listOf(
+            measurement(siteIndex = 0, primaryFeatureValue = 10.0).copy(analyteId = "cea"),
+            measurement(siteIndex = 1, primaryFeatureValue = 20.0).copy(analyteId = "cea")
+        )
+
+        val batch = coordinator.applyDeepLearningBatchResult(
+            measurements = measurements,
+            analyteSnapshot = analyte,
+            compatibility = ModelCompatibilityResult.Compatible,
+            execution = GridDeepLearningBatchResult.Success(
+                predictions = mapOf(
+                    0 to GridDeepLearningPrediction(
+                        siteIndex = 0,
+                        concentration = 42.0,
+                        rangeStatus = ReliableRangeStatus.WITHIN_RANGE,
+                        modelSnapshotJson = "{\"type\":\"dl\"}"
+                    ),
+                    1 to GridDeepLearningPrediction(
+                        siteIndex = 1,
+                        concentration = null,
+                        rangeStatus = ReliableRangeStatus.ABOVE_RANGE,
+                        modelSnapshotJson = "{\"type\":\"dl\"}"
+                    )
+                )
+            )
+        )
+
+        assertTrue(batch.modelExecutable)
+        assertEquals(1, batch.quantifiedCount)
+        assertEquals(1, batch.outOfRangeCount)
+        assertEquals(42.0, requireNotNull(batch.measurements[0].concentrationValue), 1e-6)
+        assertEquals("ng/mL", batch.measurements[0].concentrationUnit)
+        assertEquals("WITHIN_RANGE", batch.measurements[0].reliableRangeStatus)
+        assertNull(batch.measurements[1].concentrationValue)
+        assertEquals("ABOVE_RANGE", batch.measurements[1].reliableRangeStatus)
+    }
+
+    @Test
+    fun `深度学习任一模型级失败或输出不完整都会撤销整批浓度`() {
+        val coordinator = coordinator()
+        val analyte = deepLearningAnalyteSnapshot()
+        val measurements = listOf(
+            measurement(siteIndex = 0, primaryFeatureValue = 10.0).copy(analyteId = "cea"),
+            measurement(siteIndex = 1, primaryFeatureValue = 20.0).copy(analyteId = "cea")
+        )
+
+        val failed = coordinator.applyDeepLearningBatchResult(
+            measurements = measurements,
+            analyteSnapshot = analyte,
+            compatibility = ModelCompatibilityResult.Compatible,
+            execution = GridDeepLearningBatchResult.Failure(
+                GridDeepLearningFailureReason.CHECKSUM_MISMATCH
+            )
+        )
+        val incomplete = coordinator.applyDeepLearningBatchResult(
+            measurements = measurements,
+            analyteSnapshot = analyte,
+            compatibility = ModelCompatibilityResult.Compatible,
+            execution = GridDeepLearningBatchResult.Success(
+                predictions = mapOf(
+                    0 to GridDeepLearningPrediction(
+                        siteIndex = 0,
+                        concentration = 42.0,
+                        rangeStatus = ReliableRangeStatus.WITHIN_RANGE,
+                        modelSnapshotJson = "{}"
+                    )
+                )
+            )
+        )
+
+        listOf(failed, incomplete).forEach { batch ->
+            assertFalse(batch.modelExecutable)
+            assertEquals(0, batch.quantifiedCount)
+            assertTrue(batch.measurements.all { it.concentrationValue == null })
+        }
+    }
+
+    @Test
+    fun `多分析物中部分模型可执行时运行状态为部分定量`() {
+        val coordinator = coordinator()
+        val quantified = measurement(siteIndex = 0, primaryFeatureValue = 10.0).copy(
+            concentrationValue = 2.5,
+            concentrationUnit = "ng/mL"
+        )
+
+        val status = coordinator.statusForQuantification(
+            signalOnlyAnalyteIds = setOf("cea"),
+            measurements = listOf(quantified, measurement(1, 20.0))
+        )
+
+        assertEquals("PartiallyQuantified", status)
+    }
+
+    @Test
+    fun `整帧几何仅提示时真实观测位点仍按自身光度质量判定`() {
+        val coordinator = coordinator()
+
+        assertTrue(
+            coordinator.isSiteMeasurementReliable(
+                photometryReliable = true,
+                pointSource = GridPointSource.CANDIDATE_REFINED
+            )
+        )
+        assertFalse(
+            coordinator.isSiteMeasurementReliable(
+                photometryReliable = true,
+                pointSource = GridPointSource.MODEL_IMPUTED
+            )
+        )
+        assertFalse(
+            coordinator.isSiteMeasurementReliable(
+                photometryReliable = false,
+                pointSource = GridPointSource.CANDIDATE_REFINED
+            )
+        )
+    }
+
+    @Test
     fun `Ready运行时出现模型故障时撤销部分浓度并整体降级`() {
         val snapshot = validSnapshot()
         val analyteSnapshot = snapshot.analytes.single()
@@ -361,6 +493,136 @@ class GridDetectionCoordinatorTest {
         assertEquals("SignalOnlyCompleted", coordinator.statusForSignalOnlyAnalytes(setOf("cea")))
     }
 
+    @Test
+    fun `现场标准点为每个分析物独立生成曲线单位并量化样本`() {
+        val first = validSnapshot().analytes.single().copy(
+            quantitationMode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code
+        )
+        val secondAnalyte = Analyte(id = "afp", name = "AFP")
+        val secondModelId = "model-afp"
+        val second = first.copy(
+            analyte = secondAnalyte,
+            templateConfig = first.templateConfig.copy(
+                id = "config-afp",
+                analyteId = secondAnalyte.id,
+                analysisModelId = secondModelId,
+                concentrationUnit = "IU/mL",
+                reliableRangeMin = 0.0,
+                reliableRangeMax = 10.0
+            ),
+            analysisModel = first.analysisModel.copy(
+                model = first.analysisModel.model.copy(
+                    id = secondModelId,
+                    analyteId = secondAnalyte.id,
+                    concentrationUnit = "IU/mL",
+                    reliableRangeMin = 0.0,
+                    reliableRangeMax = 10.0
+                ),
+                standardCurve = requireNotNull(first.analysisModel.standardCurve).copy(
+                    analysisModelId = secondModelId,
+                    parametersJson = "{}"
+                ),
+                calibrationPoints = emptyList()
+            ),
+            quantitationMode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code
+        )
+        val base = validSnapshot()
+        val snapshot = base.copy(
+            carrierProfile = base.carrierProfile.copy(
+                name = "2x3 chip",
+                rows = 2,
+                columns = 3
+            ),
+            analytes = listOf(first, second),
+            siteAssignments = listOf(
+                standardAssignment(base.template.id, "cea-10", 0, 0, "cea", 10.0),
+                standardAssignment(base.template.id, "cea-110", 0, 1, "cea", 110.0),
+                sampleAssignment(base.template.id, "cea-sample", 0, 2, "cea"),
+                standardAssignment(base.template.id, "afp-1", 1, 0, "afp", 1.0),
+                standardAssignment(base.template.id, "afp-11", 1, 1, "afp", 11.0),
+                sampleAssignment(base.template.id, "afp-sample", 1, 2, "afp")
+            )
+        )
+        // CEA 的 10/110 标准对应信号 10/110，样本信号 60；AFP 的 1/11 标准对应
+        // 信号 20/120，样本信号 70。两条曲线共享算法，但单位与可靠范围必须完全独立。
+        val quant = quantResult(
+            rows = 2,
+            columns = 3,
+            signals = listOf(10.0, 110.0, 60.0, 20.0, 120.0, 70.0)
+        )
+        val coordinator = coordinator()
+
+        val calibrated = coordinator.applyOnsiteCalibrations(snapshot, quant, "run-onsite")
+
+        val cea = calibrated.analytes.first { it.analyte.id == "cea" }
+        val afp = calibrated.analytes.first { it.analyte.id == "afp" }
+        assertEquals(2, cea.analysisModel.calibrationPoints.size)
+        assertEquals(2, afp.analysisModel.calibrationPoints.size)
+        assertTrue(requireNotNull(cea.analysisModel.standardCurve).parametersJson != "{}")
+        assertTrue(requireNotNull(afp.analysisModel.standardCurve).parametersJson != "{}")
+        assertEquals("ng/mL", cea.analysisModel.model.concentrationUnit)
+        assertEquals("IU/mL", afp.analysisModel.model.concentrationUnit)
+
+        val ceaBatch = coordinator.applyQuantification(
+            measurements = listOf(measurement(2, 60.0).copy(analyteId = "cea")),
+            analyteSnapshot = cea,
+            compatibility = ModelCompatibilityResult.Compatible
+        )
+        val afpBatch = coordinator.applyQuantification(
+            measurements = listOf(measurement(5, 70.0).copy(analyteId = "afp")),
+            analyteSnapshot = afp,
+            compatibility = ModelCompatibilityResult.Compatible
+        )
+
+        assertTrue(ceaBatch.modelExecutable)
+        assertTrue(afpBatch.modelExecutable)
+        assertEquals(60.0, requireNotNull(ceaBatch.measurements.single().concentrationValue), 1e-4)
+        assertEquals("ng/mL", ceaBatch.measurements.single().concentrationUnit)
+        assertEquals(6.0, requireNotNull(afpBatch.measurements.single().concentrationValue), 1e-4)
+        assertEquals("IU/mL", afpBatch.measurements.single().concentrationUnit)
+    }
+
+    @Test
+    fun `现场标准浓度不足两个水平时保留不可执行曲线并继续仅信号`() {
+        val base = validSnapshot()
+        val signalOnlyAnalyte = base.analytes.single().let { source ->
+            source.copy(
+                analysisModel = source.analysisModel.copy(
+                    standardCurve = requireNotNull(source.analysisModel.standardCurve).copy(
+                        parametersJson = "{}"
+                    ),
+                    calibrationPoints = emptyList()
+                )
+            )
+        }
+        val snapshot = base.copy(
+            analytes = listOf(signalOnlyAnalyte),
+            siteAssignments = listOf(
+                standardAssignment(base.template.id, "only-standard", 0, 0, "cea", 10.0),
+                sampleAssignment(base.template.id, "sample", 0, 1, "cea")
+            )
+        )
+        val coordinator = coordinator()
+
+        val calibrated = coordinator.applyOnsiteCalibrations(
+            snapshot = snapshot,
+            quant = quantResult(2, 2, listOf(20.0, 30.0, 40.0, 50.0)),
+            runId = "run-insufficient"
+        )
+        val analyte = calibrated.analytes.single()
+        val batch = coordinator.applyQuantification(
+            measurements = listOf(measurement(1, 30.0)),
+            analyteSnapshot = analyte,
+            compatibility = ModelCompatibilityResult.Compatible
+        )
+
+        assertEquals("{}", requireNotNull(analyte.analysisModel.standardCurve).parametersJson)
+        assertTrue(analyte.analysisModel.calibrationPoints.isEmpty())
+        assertFalse(batch.modelExecutable)
+        assertNull(batch.measurements.single().concentrationValue)
+        assertEquals("signal_only", batch.execution)
+    }
+
     private fun coordinator(): GridDetectionCoordinator {
         val locator = PgGridLocator { _, _ -> error("纯量化单测不应调用定位器") }
         return GridDetectionCoordinator(locator, NoOpGridRunRepository())
@@ -379,6 +641,108 @@ class GridDetectionCoordinatorTest {
             qualityReliable = true,
             processorName = "fluorescence-photometry",
             processorVersion = "v1"
+        )
+    }
+
+    /** 构造布局中的现场标准品位点，浓度与分析物必须同时冻结。 */
+    private fun standardAssignment(
+        templateId: String,
+        id: String,
+        row: Int,
+        column: Int,
+        analyteId: String,
+        concentration: Double
+    ): TemplateSiteAssignment {
+        return TemplateSiteAssignment(
+            id = id,
+            templateId = templateId,
+            rowIndex = row,
+            columnIndex = column,
+            analyteId = analyteId,
+            roleType = TemplateSiteRole.STANDARD.code,
+            standardConcentration = concentration,
+            enabled = true
+        )
+    }
+
+    /** 构造一个等待现场曲线反算的样本位点。 */
+    private fun sampleAssignment(
+        templateId: String,
+        id: String,
+        row: Int,
+        column: Int,
+        analyteId: String
+    ): TemplateSiteAssignment {
+        return TemplateSiteAssignment(
+            id = id,
+            templateId = templateId,
+            rowIndex = row,
+            columnIndex = column,
+            analyteId = analyteId,
+            roleType = TemplateSiteRole.SAMPLE.code,
+            defaultSampleSlot = id,
+            enabled = true
+        )
+    }
+
+    /**
+     * 构造确定性的荧光基础光度：绿色通道背景固定为 5，背景噪声固定为 1，因而
+     * `FLUORESCENCE_SNR` 与传入 signal 一致，便于精确验证现场线性曲线和浓度单位。
+     */
+    private fun quantResult(
+        rows: Int,
+        columns: Int,
+        signals: List<Double>
+    ): PgQuantResult {
+        require(signals.size == rows * columns)
+        val sites = signals.mapIndexed { index, signal ->
+            val row = index / columns
+            val column = index % columns
+            val background = RgbPhotometry(5.0, 5.0, 5.0)
+            val roi = RgbPhotometry(5.0 + signal, 5.0 + signal, 5.0 + signal)
+            BaseSitePhotometry(
+                siteIndex = index,
+                rowIndex = row,
+                columnIndex = column,
+                rectifiedCenter = GridPoint(column * 10.0 + 5.0, row * 10.0 + 5.0),
+                originalCenter = GridPoint(column * 10.0 + 5.0, row * 10.0 + 5.0),
+                roiMedianRgb = roi,
+                roiMedianGray = 5.0 + signal,
+                backgroundMedianRgb = background,
+                backgroundMedianGray = 5.0,
+                backgroundSigmaRgb = RgbPhotometry(1.0, 1.0, 1.0),
+                backgroundSigmaGray = 1.0,
+                correctedMedianRgb = roi,
+                correctedMedianGray = 5.0 + signal,
+                signalGray = signal,
+                signalRatio = signal / 5.0,
+                correctedSignalGray = signal,
+                integratedSignalRgb = RgbPhotometry(signal, signal, signal),
+                integratedSignalGray = signal,
+                signalToNoiseRatio = signal,
+                saturationRatio = 0.0,
+                roiContaminationRatio = 0.0,
+                hotPixelRatio = 0.0,
+                roiClipRatio = 0.0,
+                annulusClipRatio = 0.0,
+                qc = SitePhotometryQc(
+                    flags = emptySet(),
+                    signalDetectable = true,
+                    qualityReliable = true
+                )
+            )
+        }
+        return PgQuantResult(
+            rows = rows,
+            columns = columns,
+            pitchPx = 10.0,
+            roiRadiusPx = 1.8,
+            annulusInnerPx = 3.0,
+            annulusOuterPx = 4.4,
+            illuminationModel = "test-flat-field",
+            illuminationUniformity = 1.0,
+            config = PgQuantConfig(),
+            sites = sites
         )
     }
 
@@ -410,7 +774,7 @@ class GridDetectionCoordinatorTest {
             concentrationUnit = "ng/mL",
             reliableRangeMin = 0.0,
             reliableRangeMax = 100.0,
-            displayConfigJson = "{\"schemaVersion\":\"fluorescence-display-v1\",\"channel\":\"GREEN\"}"
+            displayConfigJson = "{\"schemaVersion\":\"fluorescence-display-v1\",\"fluorescenceChannel\":\"GREEN\"}"
         )
         return TemplateProjectSnapshot(
             frozenAtEpochMillis = 1_000L,
@@ -484,6 +848,30 @@ class GridDetectionCoordinatorTest {
                     enabled = true
                 )
             )
+        )
+    }
+
+    /** 构造结构完整的深度学习分析物快照，供批次原子性测试使用。 */
+    private fun deepLearningAnalyteSnapshot(): TemplateProjectAnalyteSnapshot {
+        val source = validSnapshot().analytes.single()
+        val model = source.analysisModel.model.copy(
+            modelType = AnalysisModelType.DEEP_LEARNING.code
+        )
+        return source.copy(
+            templateConfig = source.templateConfig.copy(analysisModelId = model.id),
+            analysisModel = AnalysisModelBundle(
+                model = model,
+                deepLearning = DeepLearningModelDefinition(
+                    analysisModelId = model.id,
+                    modelFileName = "models/improved_concentration_model_lite.ptl",
+                    checksumSha256 = "0".repeat(64),
+                    inputWidth = 128,
+                    inputHeight = 128,
+                    normalizationJson = "{\"mean\":[0.485,0.456,0.406],\"std\":[0.229,0.224,0.225]}",
+                    trainingDataVersion = "test"
+                )
+            ),
+            quantitationMode = GridAnalyteQuantitationMode.DEEP_LEARNING_MODEL.code
         )
     }
 

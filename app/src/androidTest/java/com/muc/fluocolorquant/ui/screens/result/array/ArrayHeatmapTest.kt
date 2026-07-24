@@ -88,6 +88,7 @@ class ArrayHeatmapTest {
         }
 
         composeRule.onNodeWithTag(ARRAY_HEATMAP_TRANSFORM_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(ARRAY_HEATMAP_ZOOM_TOGGLE_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag("${ARRAY_HEATMAP_CELL_TAG_PREFIX}224", useUnmergedTree = true)
             .assertIsDisplayed()
     }

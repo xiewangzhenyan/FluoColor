@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -104,7 +105,7 @@ class ArrayResultDetailTest {
             }
         }
 
-        composeRule.onNodeWithTag(ARRAY_QC_PANEL_TAG).performScrollToIndex(4)
+        composeRule.onNodeWithTag(ARRAY_QC_PANEL_TAG).performScrollToIndex(2)
         composeRule.onNodeWithTag(
             "${ARRAY_QC_IMPUTED_TAG_PREFIX}0",
             useUnmergedTree = true
@@ -119,7 +120,7 @@ class ArrayResultDetailTest {
         ).performClick()
         composeRule.onNodeWithTag(imputedAdviceTag, useUnmergedTree = true)
             .assertIsDisplayed()
-        composeRule.onNodeWithTag(ARRAY_QC_PANEL_TAG).performScrollToIndex(5)
+        composeRule.onNodeWithTag(ARRAY_QC_PANEL_TAG).performScrollToIndex(3)
         composeRule.onNodeWithTag(
             "${ARRAY_QC_LOW_SIGNAL_TAG_PREFIX}1",
             useUnmergedTree = true
@@ -152,7 +153,7 @@ class ArrayResultDetailTest {
     }
 
     @Test
-    fun `严重帧级风险仍展示热力图并在质控页保留复核提示`() {
+    fun `严重帧级风险保留后台证据但普通质控页不再显示整帧警告`() {
         val source = colorimetricSnapshot()
         val failed = source.copy(
             frame = source.frame.copy(
@@ -176,9 +177,11 @@ class ArrayResultDetailTest {
             }
         }
 
-        composeRule.onNodeWithTag("${ARRAY_HEATMAP_CARD_TAG_PREFIX}overview").assertIsDisplayed()
+        composeRule.onNodeWithTag("${ARRAY_HEATMAP_CARD_TAG_PREFIX}color-analyte")
+            .assertIsDisplayed()
         composeRule.onNodeWithTag("array_result_tab_qc").performClick()
-        composeRule.onNodeWithText(string(R.string.array_qc_frame_failure_title)).assertIsDisplayed()
+        composeRule.onAllNodesWithText(string(R.string.array_qc_frame_failure_title))
+            .assertCountEquals(0)
     }
 
     @Test

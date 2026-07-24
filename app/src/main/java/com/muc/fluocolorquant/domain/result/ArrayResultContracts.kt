@@ -103,7 +103,22 @@ data class ArrayAnalyteResult(
     val modelVersion: Int,
     val primaryFeature: String,
     val processorName: String,
-    val processorVersion: String
+    val processorVersion: String,
+    /** 冻结运行实际使用的标准曲线函数；深度学习或仅信号运行时为空。 */
+    val fittingFunction: String? = null,
+    /** 只保留可安全解析的有限参数，结果页不会直接展示底层 JSON。 */
+    val fittingParameters: Map<String, Double> = emptyMap(),
+    /** 本次运行冻结的真实标准点，用于结果页重建拟合曲线。 */
+    val calibrationPoints: List<ArrayCalibrationPointResult> = emptyList(),
+    /** 拟合时冻结的有限验证指标，例如 R²、RMSE、MAE 和标准点接受率。 */
+    val validationMetrics: Map<String, Double> = emptyMap()
+)
+
+/** 结果页绘图需要的最小标准点契约，避免 UI 依赖 Room 实体。 */
+data class ArrayCalibrationPointResult(
+    val concentration: Double,
+    val signalValue: Double,
+    val repeatIndex: Int
 )
 
 /** 帧级几何与质量控制；完整 PG-Grid 原文仍保留在运行 JSON 中。 */

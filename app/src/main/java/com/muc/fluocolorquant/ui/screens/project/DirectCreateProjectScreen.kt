@@ -38,9 +38,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.Biotech
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
@@ -48,7 +46,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Sensors
@@ -100,16 +97,13 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.muc.fluocolorquant.R
-import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.domain.project.DirectCarrierPreset
 import com.muc.fluocolorquant.domain.project.ProjectDetectionDestination
 import com.muc.fluocolorquant.ui.components.LocalToastManager
-import com.muc.fluocolorquant.ui.components.ScientificPickerOption
 import com.muc.fluocolorquant.ui.components.ScientificPickerSheet
 import com.muc.fluocolorquant.ui.components.ScientificSelectionField
 import com.muc.fluocolorquant.ui.components.ToastType
-import com.muc.fluocolorquant.ui.components.analysisFeatureLabel
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.DirectProjectEvent
 import com.muc.fluocolorquant.ui.viewmodels.DirectProjectUiState
@@ -246,12 +240,12 @@ fun DirectCreateProjectScreen(
         onCarrierPresetChange = viewModel::updateCarrierPreset,
         onCustomRowsChange = viewModel::updateCustomRows,
         onCustomColumnsChange = viewModel::updateCustomColumns,
-        onAnalyteChange = viewModel::updateAnalyte,
-        onConcentrationUnitChange = viewModel::updateConcentrationUnit,
-        onAnalysisModelChange = viewModel::updateAnalysisModel,
-        onSampleIdChange = viewModel::updateSampleId,
-        onReferenceRowChange = viewModel::updateColorReferenceRow,
-        onReferenceColumnChange = viewModel::updateColorReferenceColumn,
+        onAnalytesChange = { analytes ->
+            viewModel.updateSelectedAnalytes(analytes.map { it.id })
+        },
+        onAnalyteUnitChange = viewModel::updateAnalyteConcentrationUnit,
+        onAnalyteMaxConcentrationChange = viewModel::updateAnalyteMaxConcentration,
+        onRemoveAnalyte = viewModel::removeAnalyte,
         onChooseImage = { showImageSourceDialog = true },
         onRemoveImage = { viewModel.updateImageUri(null) },
         onCreate = {
@@ -319,20 +313,21 @@ private fun DirectCreateProjectContent(
     onCarrierPresetChange: (DirectCarrierPreset) -> Unit,
     onCustomRowsChange: (String) -> Unit,
     onCustomColumnsChange: (String) -> Unit,
-    onAnalyteChange: (String) -> Unit,
-    onConcentrationUnitChange: (String) -> Unit,
-    onAnalysisModelChange: (String?) -> Unit,
-    onSampleIdChange: (String) -> Unit,
-    onReferenceRowChange: (String) -> Unit,
-    onReferenceColumnChange: (String) -> Unit,
+    onAnalytesChange: (List<com.muc.fluocolorquant.data.model.Analyte>) -> Unit,
+    onAnalyteUnitChange: (String, String) -> Unit,
+    onAnalyteMaxConcentrationChange: (String, String) -> Unit,
+    onRemoveAnalyte: (String) -> Unit,
     onChooseImage: () -> Unit,
     onRemoveImage: () -> Unit,
     onCreate: () -> Unit
 ) {
     var showAnalytePicker by rememberSaveable { mutableStateOf(false) }
-    var showUnitPicker by rememberSaveable { mutableStateOf(false) }
-    var showAnalysisModelPicker by rememberSaveable { mutableStateOf(false) }
-    val selectedAnalyte = state.analytes.firstOrNull { it.id == state.form.selectedAnalyteId }
+    var unitPickerAnalyteId by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedAnalytes = state.form.selectedAnalytes.mapNotNull { selection ->
+        state.analytes.firstOrNull { it.id == selection.analyteId }?.let { analyte ->
+            analyte to selection
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -460,97 +455,14 @@ private fun DirectCreateProjectContent(
                     title = stringResource(R.string.direct_create_analysis_section),
                     subtitle = stringResource(R.string.direct_create_analysis_help)
                 )
-                ScientificSelectionField(
-                    label = stringResource(R.string.analyte),
-                    value = selectedAnalyte?.name,
-                    placeholder = stringResource(R.string.direct_create_select_analyte),
-                    icon = Icons.Default.Biotech,
-                    onClick = { showAnalytePicker = true },
-                    enabled = !state.isLoading,
-                    supportingValue = if (state.isLoading) {
-                        stringResource(R.string.direct_create_loading_options)
-                    } else {
-                        null
-                    }
+                DirectAnalyteSelectionArea(
+                    selectedAnalytes = selectedAnalytes,
+                    isLoading = state.isLoading,
+                    onOpenPicker = { showAnalytePicker = true },
+                    onOpenUnitPicker = { analyteId -> unitPickerAnalyteId = analyteId },
+                    onMaxConcentrationChange = onAnalyteMaxConcentrationChange,
+                    onRemoveAnalyte = onRemoveAnalyte
                 )
-                ScientificSelectionField(
-                    label = stringResource(R.string.concentration_unit),
-                    value = state.form.concentrationUnit,
-                    placeholder = stringResource(R.string.direct_create_select_unit),
-                    icon = Icons.Default.Straighten,
-                    onClick = { showUnitPicker = true }
-                )
-                OutlinedTextField(
-                    value = state.form.sampleId,
-                    onValueChange = onSampleIdChange,
-                    label = { Text(stringResource(R.string.direct_create_sample_id)) },
-                    supportingText = {
-                        Text(stringResource(R.string.direct_create_sample_id_support))
-                    },
-                    leadingIcon = {
-                        // 样本编号属于实验标签信息，使用标签图标比无线信号图标更符合用户认知。
-                        Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    singleLine = true
-                )
-
-                DirectAnalysisModelSelector(
-                    models = state.compatibleModels,
-                    selectedModelId = state.form.selectedAnalysisModelId,
-                    automaticallySelected = state.compatibleModels.size == 1 &&
-                        !state.form.analysisModelSelectionExplicit,
-                    onOpenPicker = { showAnalysisModelPicker = true }
-                )
-
-                AnimatedVisibility(
-                    visible = state.form.requiresColorReference,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        DirectFormSectionHeader(
-                            icon = Icons.Default.WaterDrop,
-                            title = stringResource(R.string.direct_create_reference_section),
-                            subtitle = stringResource(R.string.direct_create_reference_desc)
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedTextField(
-                                value = state.form.colorReferenceRowInput,
-                                onValueChange = onReferenceRowChange,
-                                label = {
-                                    Text(stringResource(R.string.direct_create_reference_row))
-                                },
-                                modifier = Modifier.weight(1f),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                isError = !state.form.colorReferenceValid,
-                                shape = RoundedCornerShape(14.dp),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = state.form.colorReferenceColumnInput,
-                                onValueChange = onReferenceColumnChange,
-                                label = {
-                                    Text(stringResource(R.string.direct_create_reference_column))
-                                },
-                                modifier = Modifier.weight(1f),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                isError = !state.form.colorReferenceValid,
-                                shape = RoundedCornerShape(14.dp),
-                                singleLine = true
-                            )
-                        }
-                        if (!state.form.colorReferenceValid) {
-                            Text(
-                                text = stringResource(R.string.direct_create_reference_error),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -571,59 +483,34 @@ private fun DirectCreateProjectContent(
     }
 
     if (showAnalytePicker) {
-        ScientificPickerSheet(
-            title = stringResource(R.string.direct_create_select_analyte),
-            options = state.analytes.map { analyte ->
-                ScientificPickerOption(
-                    id = analyte.id,
-                    title = analyte.name,
-                    icon = Icons.Default.Biotech
-                )
+        AnalyteSelectionDialog(
+            availableAnalytes = state.analytes,
+            selectedAnalytes = selectedAnalytes.map { it.first },
+            onConfirm = { analytes ->
+                onAnalytesChange(analytes)
+                showAnalytePicker = false
             },
-            selectedId = state.form.selectedAnalyteId,
-            onSelect = onAnalyteChange,
             onDismiss = { showAnalytePicker = false }
         )
     }
 
-    if (showUnitPicker) {
+    val unitSelection = state.form.selectedAnalytes.firstOrNull {
+        it.analyteId == unitPickerAnalyteId
+    }
+    if (unitSelection != null) {
         ScientificPickerSheet(
             title = stringResource(R.string.direct_create_select_unit),
             options = state.concentrationUnits.map { unit ->
-                ScientificPickerOption(
+                com.muc.fluocolorquant.ui.components.ScientificPickerOption(
                     id = unit,
-                    title = unit,
-                    icon = Icons.Default.Straighten
+                    title = unit
                 )
             },
-            selectedId = state.form.concentrationUnit,
-            onSelect = onConcentrationUnitChange,
-            onDismiss = { showUnitPicker = false }
-        )
-    }
-
-    if (showAnalysisModelPicker) {
-        ScientificPickerSheet(
-            title = stringResource(R.string.direct_create_select_model),
-            options = listOf(
-                ScientificPickerOption(
-                    id = SIGNAL_ONLY_OPTION_ID,
-                    title = stringResource(R.string.direct_create_signal_only_option),
-                    subtitle = stringResource(R.string.direct_create_signal_only_model_desc),
-                    icon = Icons.Default.Info
-                )
-            ) + state.compatibleModels.map { model ->
-                ScientificPickerOption(
-                    id = model.id,
-                    title = model.name,
-                    icon = Icons.Default.AutoGraph
-                )
+            selectedId = unitSelection.concentrationUnit,
+            onSelect = { unit ->
+                onAnalyteUnitChange(unitSelection.analyteId, unit)
             },
-            selectedId = state.form.selectedAnalysisModelId ?: SIGNAL_ONLY_OPTION_ID,
-            onSelect = { selectedId ->
-                onAnalysisModelChange(selectedId.takeUnless { it == SIGNAL_ONLY_OPTION_ID })
-            },
-            onDismiss = { showAnalysisModelPicker = false }
+            onDismiss = { unitPickerAnalyteId = null }
         )
     }
 }
@@ -859,83 +746,131 @@ private fun DirectCarrierPresetTile(
 }
 
 /**
- * 定量曲线选择器。
+ * 多分析物选择与逐分析物单位配置区。
  *
- * 唯一候选会自动选中；多个候选通过全宽底部面板选择；用户始终可以主动切换到仅信号。
- * 页面只显示曲线名称和可理解的信号类型，不暴露拟合参数 JSON 或处理器机器字段。
+ * 多选入口保持一个清晰主操作；确认后每个分析物独立成卡，单位使用系统设置中的下拉选项，
+ * 从交互层阻止自由文本、拼写差异和“一个全局单位覆盖全部分析物”的数据错误。
  */
 @Composable
-private fun DirectAnalysisModelSelector(
-    models: List<com.muc.fluocolorquant.data.model.AnalysisModel>,
-    selectedModelId: String?,
-    automaticallySelected: Boolean,
-    onOpenPicker: () -> Unit
+private fun DirectAnalyteSelectionArea(
+    selectedAnalytes: List<Pair<com.muc.fluocolorquant.data.model.Analyte, DirectAnalyteSelection>>,
+    isLoading: Boolean,
+    onOpenPicker: () -> Unit,
+    onOpenUnitPicker: (String) -> Unit,
+    onMaxConcentrationChange: (String, String) -> Unit,
+    onRemoveAnalyte: (String) -> Unit
 ) {
-    val selectedModel = models.firstOrNull { it.id == selectedModelId }
-    val selectedFeature = selectedModel?.primaryFeature
-        ?.let(AnalysisPrimaryFeature::fromCode)
-    val selectedFeatureLabel = if (selectedFeature != null) {
-        analysisFeatureLabel(selectedFeature)
-    } else {
-        null
-    }
-
-    if (models.isEmpty()) {
-        DirectSignalOnlyNotice()
-        return
-    }
-
     ScientificSelectionField(
-        label = stringResource(R.string.direct_create_quantitation_model),
-        value = selectedModel?.name ?: stringResource(R.string.direct_create_signal_only_option),
-        placeholder = stringResource(R.string.direct_create_select_model),
-        icon = Icons.Default.AutoGraph,
+        label = stringResource(R.string.analyte),
+        value = if (selectedAnalytes.isNotEmpty()) {
+            stringResource(R.string.direct_create_analyte_count, selectedAnalytes.size)
+        } else {
+            null
+        },
+        placeholder = stringResource(R.string.direct_create_select_analytes),
+        icon = Icons.Default.Biotech,
         onClick = onOpenPicker,
-        supportingValue = when {
-            selectedModel == null -> stringResource(R.string.direct_create_signal_only_model_desc)
-            automaticallySelected -> stringResource(R.string.direct_create_model_auto_selected)
-            else -> selectedFeatureLabel
+        enabled = !isLoading,
+        supportingValue = if (isLoading) {
+            stringResource(R.string.direct_create_loading_options)
+        } else {
+            stringResource(R.string.direct_create_analyte_multi_help)
         }
     )
-}
 
-/** 仅信号说明压缩为轻量提示行，不再占据一张独立大卡片。 */
-@Composable
-private fun DirectSignalOnlyNotice() {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(9.dp)
+    selectedAnalytes.forEach { (analyte, selection) ->
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(17.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
-            Icon(
-                imageVector = Icons.Default.Info,
-                contentDescription = null,
-                modifier = Modifier.size(19.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = stringResource(R.string.direct_create_signal_only_title),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = stringResource(R.string.direct_create_signal_only_compact_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Column(
+                modifier = Modifier.padding(start = 13.dp, top = 10.dp, end = 8.dp, bottom = 13.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = analyte.name,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    IconButton(onClick = { onRemoveAnalyte(analyte.id) }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(
+                                R.string.direct_create_remove_analyte,
+                                analyte.name
+                            ),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        /*
+                         * 最大浓度与右侧单位统一采用“外置标签 + 64dp 控件”的结构。此前左侧
+                         * 使用浮动标签 TextField、右侧使用外置标签选择器，导致顶部基线和高度
+                         * 永远无法齐平；这里从组件结构上消除差异，而不是靠魔法边距微调。
+                         */
+                        Text(
+                            text = stringResource(R.string.max_concentration),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (selection.maxConcentration == null) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            fontWeight = FontWeight.Medium
+                        )
+                        OutlinedTextField(
+                            value = selection.maxConcentrationInput,
+                            onValueChange = { value ->
+                                onMaxConcentrationChange(analyte.id, value)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(64.dp),
+                            leadingIcon = {
+                                Icon(Icons.Default.Science, contentDescription = null)
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            isError = selection.maxConcentration == null,
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                    }
+                    ScientificSelectionField(
+                        label = stringResource(R.string.concentration_unit),
+                        value = selection.concentrationUnit,
+                        placeholder = stringResource(R.string.direct_create_select_unit),
+                        icon = Icons.Default.Straighten,
+                        onClick = { onOpenUnitPicker(analyte.id) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (selection.maxConcentration == null) {
+                    Text(
+                        text = stringResource(R.string.direct_create_max_concentration_invalid),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
     }
 }
-
-/** 底部选择器使用的内部稳定 ID，不会写入表单或数据库。 */
-private const val SIGNAL_ONLY_OPTION_ID = "__signal_only__"
 
 /**
  * 大图预览继承旧版 240dp 图片区的优点，使用 Fit 显示完整实验图，不把芯片边缘裁掉。

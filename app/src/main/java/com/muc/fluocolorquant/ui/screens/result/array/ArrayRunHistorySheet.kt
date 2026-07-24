@@ -350,6 +350,11 @@ private fun runStatusStyle(status: String): RunStatusStyle {
             container = Color(0xFFFFEAC2),
             content = Color(0xFF7A4D00)
         )
+        "PartiallyQuantified" -> RunStatusStyle(
+            label = arrayRunStatusLabel(status),
+            container = MaterialTheme.colorScheme.secondaryContainer,
+            content = MaterialTheme.colorScheme.onSecondaryContainer
+        )
         "RetakeRequired" -> RunStatusStyle(
             label = arrayRunStatusLabel(status),
             container = MaterialTheme.colorScheme.errorContainer,
@@ -377,6 +382,7 @@ private fun runStatusStyle(status: String): RunStatusStyle {
 @Composable
 internal fun arrayRunStatusLabel(status: String): String = when (status) {
     "Completed" -> stringResource(R.string.array_run_status_completed)
+    "PartiallyQuantified" -> stringResource(R.string.array_run_status_partial)
     "SignalOnlyCompleted" -> stringResource(R.string.array_run_status_signal_only)
     "RetakeRequired" -> stringResource(R.string.array_run_status_retake)
     "Failed" -> stringResource(R.string.array_run_status_failed)

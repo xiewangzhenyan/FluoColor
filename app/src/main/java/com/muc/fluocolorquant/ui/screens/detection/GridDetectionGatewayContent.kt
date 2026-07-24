@@ -1,16 +1,26 @@
 package com.muc.fluocolorquant.ui.screens.detection
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GridView
@@ -21,29 +31,53 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.data.enums.CaptureRole
+import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
+import com.muc.fluocolorquant.data.enums.FittingFunction
+import com.muc.fluocolorquant.data.enums.TemplateSiteRole
+import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
 import com.muc.fluocolorquant.domain.detection.GridDetectionBlockReason
 import com.muc.fluocolorquant.domain.detection.GridDetectionStage
+import com.muc.fluocolorquant.ui.components.LocalToastManager
+import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiError
 import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiState
+import com.muc.fluocolorquant.ui.viewmodels.GridLayoutAssignmentDraft
+import com.muc.fluocolorquant.ui.viewmodels.GridLayoutPaintIntent
+import com.muc.fluocolorquant.ui.viewmodels.GridLocalizationPreview
+import com.muc.fluocolorquant.ui.viewmodels.GridPaintMergeResult
+import java.io.File
 
 /**
- * 微流控检测专用页面内容。
+ * 微流控统一工作流页面。
  *
- * 页面只展示普通实验人员需要的阶段、重拍和结果入口；极性、阈值、单应参数和模型
- * 兼容细节留在管理员配置及结果诊断中，避免便携检测流程被工程参数淹没。
+ * 页面先让用户查看真实的原图定位、透视矫正和最终网格证据，再进入孔位布局；不会再显示
+ * “检测完成”中转卡。所有定量和保存都必须等用户确认位点归属后才执行。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,7 +85,23 @@ fun GridDetectionGatewayContent(
     state: GridDetectionUiState,
     onBack: () -> Unit,
     onRetry: () -> Unit,
-    onViewResults: (String) -> Unit
+    onOpenLayout: () -> Unit,
+    onReviewLocalization: () -> Unit,
+    onAssignmentsChange: (List<GridLayoutAssignmentDraft>) -> Unit,
+    onPaintAssignments: (GridLayoutPaintIntent) -> GridPaintMergeResult,
+    onFinalizeLayout: (List<GridLayoutAssignmentDraft>) -> Unit,
+    onUseManualConfiguration: () -> Unit = {},
+    onApplyTemplate: (String) -> Unit = {},
+    onSelectQuantitationAnalyte: (String) -> Unit = {},
+    onSetQuantitationMode: (String, GridAnalyteQuantitationMode) -> Unit = { _, _ -> },
+    onSelectAnalysisModel: (String, String) -> Unit = { _, _ -> },
+    onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit =
+        { _, _, _ -> },
+    onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit = { _, _ -> },
+    onPreviewOnsiteFit: (String) -> Unit = {},
+    onConfirmQuantitationAnalyte: (String) -> Unit = {},
+    onSaveOnsiteCurve: (String, String) -> Unit = { _, _ -> },
+    onSaveTemplate: (String) -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -68,48 +118,66 @@ fun GridDetectionGatewayContent(
             )
         }
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
         ) {
             when (state) {
-                GridDetectionUiState.ResolvingProject -> ProcessingCard(
+                GridDetectionUiState.ResolvingProject -> CenteredProcessing(
                     title = stringResource(R.string.grid_stage_preparing)
                 )
 
-                GridDetectionUiState.LegacyPlate -> ProcessingCard(
+                GridDetectionUiState.LegacyPlate -> CenteredProcessing(
                     title = stringResource(R.string.grid_stage_preparing)
                 )
 
-                is GridDetectionUiState.Processing -> ProcessingCard(
+                is GridDetectionUiState.Processing -> CenteredProcessing(
                     title = stageText(state.stage)
                 )
 
-                is GridDetectionUiState.Completed -> CompletedCard(
+                is GridDetectionUiState.LocalizationReady -> LocalizationWorkflow(
                     state = state,
-                    onBack = onBack,
-                    onViewResults = onViewResults
+                    onRetry = onRetry,
+                    onOpenLayout = onOpenLayout,
+                    onReviewLocalization = onReviewLocalization,
+                    onAssignmentsChange = onAssignmentsChange,
+                    onPaintAssignments = onPaintAssignments,
+                    onFinalizeLayout = onFinalizeLayout,
+                    onUseManualConfiguration = onUseManualConfiguration,
+                    onApplyTemplate = onApplyTemplate,
+                    onSelectQuantitationAnalyte = onSelectQuantitationAnalyte,
+                    onSetQuantitationMode = onSetQuantitationMode,
+                    onSelectAnalysisModel = onSelectAnalysisModel,
+                    onUpdateOnsiteAdvanced = onUpdateOnsiteAdvanced,
+                    onUpdateStandardConcentrations = onUpdateStandardConcentrations,
+                    onPreviewOnsiteFit = onPreviewOnsiteFit,
+                    onConfirmQuantitationAnalyte = onConfirmQuantitationAnalyte,
+                    onSaveOnsiteCurve = onSaveOnsiteCurve,
+                    onSaveTemplate = onSaveTemplate
+                )
+
+                is GridDetectionUiState.Completed -> CenteredProcessing(
+                    title = stringResource(R.string.grid_detection_opening_results)
                 )
 
                 is GridDetectionUiState.RetakeRequired -> MessageCard(
                     title = stringResource(R.string.grid_detection_retake_title),
                     message = stringResource(R.string.grid_detection_retake_message),
-                    isError = true,
                     primaryLabel = stringResource(R.string.retry),
                     onPrimary = onRetry,
                     onBack = onBack
                 )
 
-                is GridDetectionUiState.Blocked -> BlockedCard(state.reasons, onBack)
+                is GridDetectionUiState.Blocked -> BlockedCard(
+                    reasons = state.reasons,
+                    onRetry = onRetry,
+                    onBack = onBack
+                )
 
                 is GridDetectionUiState.Error -> MessageCard(
                     title = stringResource(R.string.grid_detection_error_title),
                     message = errorText(state.reason),
-                    isError = true,
                     primaryLabel = stringResource(R.string.retry),
                     onPrimary = onRetry,
                     onBack = onBack
@@ -119,105 +187,471 @@ fun GridDetectionGatewayContent(
     }
 }
 
+/** 定位确认和布局编辑共用同一定位会话，页面切换不会重新运行算法。 */
 @Composable
-private fun ProcessingCard(title: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+private fun LocalizationWorkflow(
+    state: GridDetectionUiState.LocalizationReady,
+    onRetry: () -> Unit,
+    onOpenLayout: () -> Unit,
+    onReviewLocalization: () -> Unit,
+    onAssignmentsChange: (List<GridLayoutAssignmentDraft>) -> Unit,
+    onPaintAssignments: (GridLayoutPaintIntent) -> GridPaintMergeResult,
+    onFinalizeLayout: (List<GridLayoutAssignmentDraft>) -> Unit,
+    onUseManualConfiguration: () -> Unit,
+    onApplyTemplate: (String) -> Unit,
+    onSelectQuantitationAnalyte: (String) -> Unit,
+    onSetQuantitationMode: (String, GridAnalyteQuantitationMode) -> Unit,
+    onSelectAnalysisModel: (String, String) -> Unit,
+    onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit,
+    onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit,
+    onPreviewOnsiteFit: (String) -> Unit,
+    onConfirmQuantitationAnalyte: (String) -> Unit,
+    onSaveOnsiteCurve: (String, String) -> Unit,
+    onSaveTemplate: (String) -> Unit
+) {
+    val preview = state.preview
+    val assignments = remember(preview.initialAssignments, preview.columns) {
+        preview.initialAssignments.toIndexedAssignmentMap(preview.columns)
+    }
+
+    if (state.editingLayout) {
+        GridLayoutEditor(
+            preview = preview,
+            assignments = assignments,
+            onAssignmentsChange = { changed ->
+                onAssignmentsChange(changed.values.toList())
+            },
+            onPaintAssignments = onPaintAssignments,
+            onBackToLocalization = onReviewLocalization,
+            onFinalize = { onFinalizeLayout(assignments.values.toList()) },
+            onUseManualConfiguration = onUseManualConfiguration,
+            onApplyTemplate = onApplyTemplate,
+            onSelectQuantitationAnalyte = onSelectQuantitationAnalyte,
+            onSetQuantitationMode = onSetQuantitationMode,
+            onSelectAnalysisModel = onSelectAnalysisModel,
+            onUpdateOnsiteAdvanced = onUpdateOnsiteAdvanced,
+            onUpdateStandardConcentrations = onUpdateStandardConcentrations,
+            onPreviewOnsiteFit = onPreviewOnsiteFit,
+            onConfirmQuantitationAnalyte = onConfirmQuantitationAnalyte,
+            onSaveOnsiteCurve = onSaveOnsiteCurve,
+            onSaveTemplate = onSaveTemplate
         )
+    } else {
+        LocalizationConfirmation(
+            preview = preview,
+            onRetry = onRetry,
+            onContinue = onOpenLayout
+        )
+    }
+}
+
+/** 用户可切换查看算法真实生成的处理证据，并确认定位质量。 */
+@Composable
+private fun LocalizationConfirmation(
+    preview: GridLocalizationPreview,
+    onRetry: () -> Unit,
+    onContinue: () -> Unit
+) {
+    val evidenceRoles = listOf(
+        CaptureRole.PROCESS_ORIGINAL_GEOMETRY,
+        CaptureRole.PROCESS_RECTIFIED,
+        CaptureRole.PROCESS_GRID_OVERLAY
+    ).filter { role -> preview.evidence.any { it.role == role } }
+    var selectedRole by rememberSaveable(preview.runId) {
+        mutableStateOf(evidenceRoles.lastOrNull() ?: CaptureRole.PROCESS_ORIGINAL_GEOMETRY)
+    }
+    val selectedPath = preview.evidence.firstOrNull { it.role == selectedRole }?.path
+    val imageModel: Any = selectedPath?.let(::File) ?: preview.originalImageUri
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        WorkflowStepHeader(currentStep = 1)
+        Text(
+            text = stringResource(R.string.grid_localization_title),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = stringResource(R.string.grid_localization_description),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        if (evidenceRoles.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(evidenceRoles, key = CaptureRole::code) { role ->
+                    FilterChip(
+                        selected = selectedRole == role,
+                        onClick = { selectedRole = role },
+                        label = { Text(evidenceRoleLabel(role)) }
+                    )
+                }
+            }
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            AsyncImage(
+                model = imageModel,
+                contentDescription = stringResource(R.string.grid_localization_preview),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f),
+                contentScale = ContentScale.Fit
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            LocalizationMetric(
+                modifier = Modifier.weight(1f),
+                value = "${preview.rows}×${preview.columns}",
+                label = stringResource(R.string.grid_localization_grid_size)
+            )
+            LocalizationMetric(
+                modifier = Modifier.weight(1f),
+                value = stringResource(
+                    R.string.grid_localization_percent,
+                    preview.observedRatio * 100
+                ),
+                label = stringResource(R.string.grid_localization_observed_ratio)
+            )
+            LocalizationMetric(
+                modifier = Modifier.weight(1f),
+                value = stringResource(
+                    R.string.grid_localization_percent,
+                    preview.meanConfidence * 100
+                ),
+                label = stringResource(R.string.grid_localization_confidence)
+            )
+        }
+
+        OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Refresh, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.grid_localization_retry))
+        }
+        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.CheckCircle, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.grid_localization_confirm))
+        }
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+/** 微流控真实裁切预览下方的通用孔位布局编辑器。 */
+@Composable
+private fun GridLayoutEditor(
+    preview: GridLocalizationPreview,
+    assignments: Map<Int, GridLayoutAssignmentDraft>,
+    onAssignmentsChange: (Map<Int, GridLayoutAssignmentDraft>) -> Unit,
+    onPaintAssignments: (GridLayoutPaintIntent) -> GridPaintMergeResult,
+    onBackToLocalization: () -> Unit,
+    onFinalize: () -> Unit,
+    onUseManualConfiguration: () -> Unit,
+    onApplyTemplate: (String) -> Unit,
+    onSelectQuantitationAnalyte: (String) -> Unit,
+    onSetQuantitationMode: (String, GridAnalyteQuantitationMode) -> Unit,
+    onSelectAnalysisModel: (String, String) -> Unit,
+    onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit,
+    onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit,
+    onPreviewOnsiteFit: (String) -> Unit,
+    onConfirmQuantitationAnalyte: (String) -> Unit,
+    onSaveOnsiteCurve: (String, String) -> Unit,
+    onSaveTemplate: (String) -> Unit
+) {
+    var selectedAnalyteId by rememberSaveable(preview.runId) {
+        mutableStateOf(preview.analytes.firstOrNull()?.id)
+    }
+    var selectedRole by rememberSaveable(preview.runId) {
+        mutableStateOf(TemplateSiteRole.SAMPLE)
+    }
+    var clearMode by rememberSaveable(preview.runId) { mutableStateOf(false) }
+    var sampleId by rememberSaveable(preview.runId) { mutableStateOf("") }
+    val toastManager = LocalToastManager.current
+    // stringResource 必须在 Composable 上下文提前读取，点击回调中只使用已经解析的字符串。
+    val occupiedSiteMessage = stringResource(R.string.grid_layout_occupied_site_protected)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        WorkflowStepHeader(currentStep = 2)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.grid_layout_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(R.string.grid_layout_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            OutlinedButton(onClick = onBackToLocalization) {
+                Text(stringResource(R.string.grid_layout_review_localization))
+            }
+        }
+
+        LayoutSectionTitle(stringResource(R.string.grid_layout_real_preview))
+        RealSiteCropGrid(preview = preview)
+
+        LayoutSectionTitle(stringResource(R.string.grid_layout_analyte))
+        GridAnalyteSelector(
+            analytes = preview.analytes,
+            selectedAnalyteId = selectedAnalyteId,
+            onSelected = { analyteId ->
+                clearMode = false
+                selectedAnalyteId = analyteId
+            }
+        )
+
+        LayoutSectionTitle(stringResource(R.string.array_site_role))
+        GridRolePalette(
+            selectedRole = selectedRole,
+            clearMode = clearMode,
+            onRoleSelected = { role ->
+                clearMode = false
+                selectedRole = role
+            },
+            onClearSelected = { clearMode = true }
+        )
+
+        if (!clearMode && selectedRole == TemplateSiteRole.SAMPLE) {
+            OutlinedTextField(
+                value = sampleId,
+                onValueChange = { sampleId = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.grid_layout_sample_id_optional)) },
+                singleLine = true
+            )
+        }
+
+        LayoutSectionTitle(
+            stringResource(
+                R.string.grid_layout_virtual_grid,
+                assignments.size,
+                preview.siteCount
+            )
+        )
+        /*
+         * 点击单孔和拖动画笔统一经过这一条批量意图路径。一次手势只提交一次位点集合，
+         * ViewModel 在最新完整草稿上原子合并，避免连续重组和旧 UI Map 覆盖前一笔。
+         */
+        fun paintIndices(indices: Set<Int>) {
+            if (indices.isEmpty()) return
+            val analyteId = selectedAnalyteId
+            if (!clearMode && analyteId == null && selectedRole != TemplateSiteRole.DISABLED) return
+
+            val mergeResult = onPaintAssignments(
+                GridLayoutPaintIntent(
+                    paintedSiteIndices = indices,
+                    analyteId = analyteId,
+                    role = selectedRole,
+                    // 标准孔只在布局阶段标记角色；真实浓度统一在现场拟合工作台逐孔录入。
+                    standardConcentration = null,
+                    sampleId = sampleId,
+                    clearMode = clearMode
+                )
+            )
+            if (mergeResult.protectedSiteCount > 0) {
+                // 已有科学归属不能被另一分析物或角色静默覆盖；用户可先切换清除画笔。
+                toastManager.showToast(occupiedSiteMessage, ToastType.WARNING)
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            CompactVirtualLayoutGrid(
+                preview = preview,
+                assignments = assignments,
+                onPaintIndices = ::paintIndices
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedButton(
+                onClick = { onAssignmentsChange(emptyMap()) },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(stringResource(R.string.grid_layout_clear_all))
+            }
+            OutlinedButton(
+                onClick = {
+                    paintIndices(
+                        (0 until preview.siteCount)
+                            .filterNot(assignments::containsKey)
+                            .toSet()
+                    )
+                },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(stringResource(R.string.grid_layout_fill_unassigned))
+            }
+        }
+
+        GridExperimentConfigurationSection(
+            preview = preview,
+            assignments = assignments,
+            onUseManualConfiguration = onUseManualConfiguration,
+            onApplyTemplate = onApplyTemplate,
+            onSelectQuantitationAnalyte = onSelectQuantitationAnalyte,
+            onSetQuantitationMode = onSetQuantitationMode,
+            onSelectAnalysisModel = onSelectAnalysisModel,
+            onUpdateOnsiteAdvanced = onUpdateOnsiteAdvanced,
+            onUpdateStandardConcentrations = onUpdateStandardConcentrations,
+            onPreviewOnsiteFit = onPreviewOnsiteFit,
+            onConfirmQuantitationAnalyte = onConfirmQuantitationAnalyte,
+            onSaveOnsiteCurve = onSaveOnsiteCurve,
+            onSaveTemplate = onSaveTemplate
+        )
+
+        Button(
+            onClick = onFinalize,
+            enabled = assignments.isNotEmpty() && preview.hasCompleteQuantitationConfiguration(
+                assignments
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.AutoFixHigh, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.grid_layout_analyze_results))
+        }
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+/**
+ * 最终分析按钮只检查用户方案是否完整，不重复科学预检。
+ * 现场拟合允许不先点预览，但必须已有两个浓度水平；曲线/模型必须明确选中资源。
+ */
+private fun GridLocalizationPreview.hasCompleteQuantitationConfiguration(
+    assignments: Map<Int, GridLayoutAssignmentDraft>
+): Boolean {
+    return assignments.isNotEmpty() &&
+        quantitationDrafts.isNotEmpty() &&
+        quantitationDrafts.all { draft -> draft.configurationConfirmed }
+}
+
+/** 把行列草稿转换为虚拟布局板使用的行优先索引，避免各调用方重复坐标公式。 */
+private fun List<GridLayoutAssignmentDraft>.toIndexedAssignmentMap(
+    columns: Int
+): Map<Int, GridLayoutAssignmentDraft> {
+    return associateBy { draft -> draft.rowIndex * columns + draft.columnIndex }
+}
+
+
+@Composable
+private fun WorkflowStepHeader(currentStep: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        listOf(
+            R.string.grid_workflow_step_localization,
+            R.string.grid_workflow_step_layout
+        ).forEachIndexed { index, labelRes ->
+            val selected = currentStep == index + 1
+            Surface(
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                }
+            ) {
+                Text(
+                    text = stringResource(labelRes),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocalizationMetric(modifier: Modifier, value: String, label: String) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(28.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            CircularProgressIndicator()
-            Spacer(Modifier.height(20.dp))
-            Text(title, style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(8.dp))
+            Text(value, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             Text(
-                stringResource(R.string.grid_detection_processing_description),
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
         }
     }
 }
 
 @Composable
-private fun CompletedCard(
-    state: GridDetectionUiState.Completed,
-    onBack: () -> Unit,
-    onViewResults: (String) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
-        )
+private fun LayoutSectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold
+    )
+}
+
+@Composable
+private fun CenteredProcessing(title: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(14.dp))
-            Text(
-                stringResource(R.string.grid_detection_completed_title),
-                style = MaterialTheme.typography.titleLarge
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(
-                    R.string.grid_detection_completed_message,
-                    state.measurementCount
-                ),
-                textAlign = TextAlign.Center
-            )
-            if (state.signalOnlyAnalyteIds.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    stringResource(R.string.grid_detection_signal_only_warning),
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center
-                )
-            }
-            if (state.frameQcIssueCount > 0) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    stringResource(
-                        R.string.grid_detection_quality_review_warning,
-                        state.frameQcIssueCount
-                    ),
-                    color = MaterialTheme.colorScheme.tertiary,
-                    textAlign = TextAlign.Center
-                )
-            }
-            Spacer(Modifier.height(24.dp))
-            Row(Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.go_back))
-                }
-                Spacer(Modifier.width(12.dp))
-                Button(
-                    onClick = { onViewResults(state.runId) },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.GridView, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.view_grid_results))
-                }
-            }
-        }
+        CircularProgressIndicator()
+        Spacer(Modifier.height(20.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            stringResource(R.string.grid_detection_processing_description),
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -225,37 +659,40 @@ private fun CompletedCard(
 private fun MessageCard(
     title: String,
     message: String,
-    isError: Boolean,
     primaryLabel: String,
     onPrimary: () -> Unit,
     onBack: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                if (isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(title, style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(8.dp))
-            Text(message, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(20.dp))
-            Row(Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.go_back))
-                }
-                Spacer(Modifier.width(12.dp))
-                Button(onClick = onPrimary, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(primaryLabel)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.ErrorOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Text(message, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(20.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.go_back))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Button(onClick = onPrimary, modifier = Modifier.weight(1f)) {
+                        Text(primaryLabel)
+                    }
                 }
             }
         }
@@ -263,25 +700,54 @@ private fun MessageCard(
 }
 
 @Composable
-private fun BlockedCard(reasons: Set<GridDetectionBlockReason>, onBack: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(24.dp)) {
-            Text(
-                stringResource(R.string.grid_detection_blocked_title),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.error
-            )
-            Spacer(Modifier.height(12.dp))
-            reasons.forEach { reason ->
-                Text(text = "• ${blockReasonText(reason)}")
-                Spacer(Modifier.height(6.dp))
-            }
-            Spacer(Modifier.height(18.dp))
-            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.go_back))
+private fun BlockedCard(
+    reasons: Set<GridDetectionBlockReason>,
+    onRetry: () -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(24.dp)) {
+                Text(
+                    stringResource(R.string.grid_detection_blocked_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Spacer(Modifier.height(12.dp))
+                reasons.forEach { reason ->
+                    Text(
+                        text = stringResource(
+                            R.string.grid_block_reason_item,
+                            blockReasonText(reason)
+                        )
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
+                HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.grid_layout_return_to_edit))
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.go_back))
+                }
             }
         }
     }
+}
+
+@Composable
+private fun evidenceRoleLabel(role: CaptureRole): String = when (role) {
+    CaptureRole.PROCESS_ORIGINAL_GEOMETRY -> stringResource(R.string.grid_evidence_original)
+    CaptureRole.PROCESS_RECTIFIED -> stringResource(R.string.grid_evidence_rectified)
+    CaptureRole.PROCESS_GRID_OVERLAY -> stringResource(R.string.grid_evidence_overlay)
+    else -> stringResource(R.string.grid_evidence_process)
 }
 
 @Composable
@@ -306,8 +772,6 @@ private fun blockReasonText(reason: GridDetectionBlockReason): String = when (re
     GridDetectionBlockReason.MISSING_COLORIMETRIC_REFERENCE -> stringResource(R.string.grid_block_missing_reference)
     GridDetectionBlockReason.MISSING_FLUORESCENCE_CHANNEL -> stringResource(R.string.grid_block_missing_fluorescence_channel)
     GridDetectionBlockReason.INVALID_PRIMARY_FEATURE -> stringResource(R.string.grid_block_invalid_feature)
-    // 以下原因都表示冻结快照的科学结构已损坏，必须向用户明确指出具体配置问题，
-    // 不能合并成笼统的“快照无效”，否则用户无法回到模板配置中进行针对性修复。
     GridDetectionBlockReason.EMPTY_ANALYTE_SNAPSHOT -> stringResource(R.string.grid_block_empty_analyte_snapshot)
     GridDetectionBlockReason.DUPLICATE_ANALYTE_SNAPSHOT -> stringResource(R.string.grid_block_duplicate_analyte_snapshot)
     GridDetectionBlockReason.INCONSISTENT_ANALYTE_SNAPSHOT -> stringResource(R.string.grid_block_inconsistent_analyte_snapshot)

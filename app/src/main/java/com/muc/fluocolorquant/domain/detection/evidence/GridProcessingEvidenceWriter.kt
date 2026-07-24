@@ -6,12 +6,15 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import com.google.gson.Gson
 import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
+import com.muc.fluocolorquant.domain.detection.grid.PgGridImageRectifier
 import com.muc.fluocolorquant.domain.detection.grid.PgGridResult
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.FileOutputStream
@@ -26,7 +29,6 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import org.opencv.android.Utils
 import org.opencv.core.Core
-import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.Scalar
 import org.opencv.core.Size
@@ -90,7 +92,7 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
             "无法创建处理证据目录：${outputDirectory.absolutePath}"
         }
         val records = mutableListOf<GridProcessingEvidenceRecord>()
-        val rectified = rectify(sourceBitmap, grid)
+        val rectified = PgGridImageRectifier.rectify(sourceBitmap, grid)
         try {
             records += writeEvidence(
                 outputDirectory,
@@ -136,7 +138,9 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
                     extra = mapOf(
                         "roiRadiusPx" to quant.roiRadiusPx,
                         "annulusInnerPx" to quant.annulusInnerPx,
-                        "annulusOuterPx" to quant.annulusOuterPx
+                        "annulusOuterPx" to quant.annulusOuterPx,
+                        "segmentedUnitCount" to quant.unitSegmentation?.segmentedCount,
+                        "fallbackUnitCount" to quant.unitSegmentation?.fallbackCount
                     )
                 )
                 records += writeEvidence(
@@ -194,33 +198,6 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
             return records
         } finally {
             rectified.recycle()
-        }
-    }
-
-    /** 使用冻结正向单应矩阵生成真实矫正图，不重新运行芯片区域检测。 */
-    private fun rectify(source: Bitmap, grid: PgGridResult): Bitmap {
-        val input = Mat()
-        val output = Mat()
-        val matrix = Mat(3, 3, CvType.CV_64F)
-        return try {
-            Utils.bitmapToMat(source, input)
-            matrix.put(0, 0, *grid.homography.forward.toDoubleArray())
-            Imgproc.warpPerspective(
-                input,
-                output,
-                matrix,
-                Size(grid.rectifiedWidth.toDouble(), grid.rectifiedHeight.toDouble()),
-                Imgproc.INTER_CUBIC
-            )
-            Bitmap.createBitmap(
-                grid.rectifiedWidth,
-                grid.rectifiedHeight,
-                Bitmap.Config.ARGB_8888
-            ).also { Utils.matToBitmap(output, it) }
-        } finally {
-            matrix.release()
-            output.release()
-            input.release()
         }
     }
 
@@ -337,7 +314,7 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
         return bitmap
     }
 
-    /** 冻结每个位点的圆形 ROI 与背景环边界，半径直接来自本次 PG-Quant 结果。 */
+    /** 冻结每个位点的真实紧致前景边界与背景环，供用户核对科学采样区域。 */
     private fun drawRoiAndBackgroundRings(
         rectified: Bitmap,
         grid: PgGridResult,
@@ -358,7 +335,24 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
         grid.sites.forEach { site ->
             val x = site.rectified.x.toFloat()
             val y = site.rectified.y.toFloat()
-            canvas.drawCircle(x, y, quant.roiRadiusPx.toFloat(), roiPaint)
+            val region = quant.unitSegmentation?.regions?.getOrNull(site.siteIndex)
+            if (region == null) {
+                // 旧量化结果继续按 v1 圆形 ROI 绘制，确保历史处理证据可解释。
+                canvas.drawCircle(x, y, quant.roiRadiusPx.toFloat(), roiPaint)
+            } else {
+                val bounds = region.bounds
+                val rect = RectF(
+                    bounds.left.toFloat(),
+                    bounds.top.toFloat(),
+                    bounds.right.toFloat(),
+                    bounds.bottom.toFloat()
+                )
+                if (region.shape == ArrayUnitShape.CIRCLE || region.shape == ArrayUnitShape.POINT) {
+                    canvas.drawOval(rect, roiPaint)
+                } else {
+                    canvas.drawRect(rect, roiPaint)
+                }
+            }
             canvas.drawCircle(x, y, quant.annulusInnerPx.toFloat(), annulusPaint)
             canvas.drawCircle(x, y, quant.annulusOuterPx.toFloat(), annulusPaint)
         }

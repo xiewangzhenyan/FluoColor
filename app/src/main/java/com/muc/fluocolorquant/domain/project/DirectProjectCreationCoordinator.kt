@@ -11,8 +11,6 @@ import com.muc.fluocolorquant.data.enums.ReadoutLayout
 import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.enums.SiteShape
 import com.muc.fluocolorquant.data.enums.TemplateLifecycleStatus
-import com.muc.fluocolorquant.data.enums.TemplateReferenceScope
-import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.data.model.AcquisitionProfile
 import com.muc.fluocolorquant.data.model.AnalysisModel
 import com.muc.fluocolorquant.data.model.Analyte
@@ -22,14 +20,9 @@ import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.ProjectAnalyteJoin
 import com.muc.fluocolorquant.data.model.StandardCurveDefinition
 import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
-import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
-import com.muc.fluocolorquant.data.repository.AnalysisModelRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
-import com.muc.fluocolorquant.domain.detection.AnalysisFeaturePolicy
-import com.muc.fluocolorquant.domain.detection.AnalysisModelCompatibilityChecker
-import com.muc.fluocolorquant.domain.detection.ModelCompatibilityRequest
-import com.muc.fluocolorquant.domain.detection.ModelCompatibilityResult
+import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
 import com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
 import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR_NAME
@@ -46,8 +39,7 @@ import javax.inject.Singleton
 /**
  * 普通新建项目可直接选择的载体规格。
  *
- * 这些规格只负责给用户提供清楚的实验对象，不再要求用户先进入“载体档案”创建、发布或
- * 归档资源。自定义规格仍按规则微流控阵列处理，因此可以继续复用 PG-Grid 定位器。
+ * 这些预设只描述本次实验使用的物理载体，不要求用户先创建或发布“载体档案”。
  */
 enum class DirectCarrierPreset {
     PLATE_96,
@@ -56,6 +48,13 @@ enum class DirectCarrierPreset {
     MICROFLUIDIC_CUSTOM
 }
 
+/** 单个分析物随项目创建请求提交的用户可理解配置。 */
+data class DirectProjectAnalyteRequest(
+    val analyte: Analyte,
+    val concentrationUnit: String,
+    val maxConcentration: Double = 100.0
+)
+
 /** 普通用户直接创建项目时真正需要提供的运行信息。 */
 data class DirectProjectCreateRequest(
     val name: String,
@@ -63,14 +62,9 @@ data class DirectProjectCreateRequest(
     val carrierPreset: DirectCarrierPreset,
     val customRows: Int? = null,
     val customColumns: Int? = null,
-    val analyte: Analyte,
+    val analytes: List<DirectProjectAnalyteRequest>,
     val imageUri: String,
-    val userId: String,
-    val concentrationUnit: String,
-    val analysisModelId: String? = null,
-    val sampleId: String = "",
-    val colorReferenceRow: Int? = null,
-    val colorReferenceColumn: Int? = null
+    val userId: String
 )
 
 /** 直接创建项目的稳定结果，页面只需要处理成功或输入不完整两种情况。 */
@@ -86,15 +80,13 @@ sealed interface DirectProjectCreationOutcome {
 /**
  * 无模板项目创建协调器。
  *
- * 协调器不会向模板、载体、设备或分析模型表写入一次性记录，而是构造一份只属于当前项目的
- * 冻结快照。这样普通用户可以直接创建项目，历史结果仍然拥有 PG-Grid 和科研导出需要的完整
- * 行列、处理器、位点角色和采集配置。没有定量模型时使用一个明确不可执行的内部标准曲线
- * 定义，使检测协调器安全回退为“仅信号模式”，绝不生成虚假浓度。
+ * 创建阶段为每个分析物保存独立单位和内部“仅信号”占位模型，但不预先把任何物理位点
+ * 指派给第一个分析物。真实孔位角色、分析物归属及定量方案必须等定位完成后由布局页面
+ * 冻结，避免多分析物项目在创建瞬间就产生错误的全阵列归属。
  */
 @Singleton
 class DirectProjectCreationCoordinator @Inject constructor(
-    private val projectRepository: ProjectRepository,
-    private val analysisModelRepository: AnalysisModelRepository
+    private val projectRepository: ProjectRepository
 ) {
     private val gson = Gson()
 
@@ -102,35 +94,42 @@ class DirectProjectCreationCoordinator @Inject constructor(
         val normalizedName = request.name.trim()
         val normalizedImageUri = request.imageUri.trim()
         val normalizedUserId = request.userId.trim()
+        val normalizedAnalytes = request.analytes.map { selection ->
+            selection.copy(concentrationUnit = selection.concentrationUnit.trim())
+        }
+        val analyteIds = normalizedAnalytes.map { it.analyte.id }
         if (
             normalizedName.isEmpty() ||
             normalizedImageUri.isEmpty() ||
             normalizedUserId.isEmpty() ||
-            request.concentrationUnit.isBlank()
+            normalizedAnalytes.isEmpty() ||
+            normalizedAnalytes.any {
+                it.analyte.id.isBlank() ||
+                    it.concentrationUnit.isBlank() ||
+                    !it.maxConcentration.isFinite() ||
+                    it.maxConcentration <= 0.0
+            } ||
+            analyteIds.distinct().size != analyteIds.size
         ) {
             return DirectProjectCreationOutcome.InvalidRequest
         }
 
         if (request.detectionModality == DetectionModality.SPECTRUM) {
-            return createSpectrumProject(request, normalizedName, normalizedImageUri, normalizedUserId)
+            return createSpectrumProject(
+                request = request.copy(analytes = normalizedAnalytes),
+                normalizedName = normalizedName,
+                normalizedImageUri = normalizedImageUri,
+                normalizedUserId = normalizedUserId
+            )
         }
 
         val geometry = resolveGeometry(request) ?: return DirectProjectCreationOutcome.InvalidRequest
-        val referenceCoordinate = resolveColorReference(request, geometry)
-            ?: if (
-                request.detectionModality == DetectionModality.COLORIMETRIC &&
-                geometry.carrierType == CarrierType.MICROFLUIDIC_CHIP
-            ) {
-                return DirectProjectCreationOutcome.InvalidRequest
-            } else {
-                null
-            }
-
         val now = Date()
         val projectId = UUID.randomUUID().toString()
         val templateId = "direct-template-$projectId"
         val carrierId = "direct-carrier-$projectId"
         val acquisitionId = "direct-acquisition-$projectId"
+        val legacyPrimaryAnalyte = normalizedAnalytes.first()
 
         val carrier = CarrierProfile(
             id = carrierId,
@@ -161,13 +160,14 @@ class DirectProjectCreationCoordinator @Inject constructor(
         val template = ExperimentTemplate(
             id = templateId,
             templateName = normalizedName,
-            analyteId = request.analyte.id,
+            // 旧字段仅用于兼容旧页面；多分析物真值以 analytes 子快照为准。
+            analyteId = legacyPrimaryAnalyte.analyte.id,
             reagentAntigenId = null,
             reagentAntibodyId = null,
             fkCurveModelId = null,
             reliableRangeMin = 0.0,
-            reliableRangeMax = 1.0,
-            concentrationUnit = request.concentrationUnit.trim(),
+            reliableRangeMax = legacyPrimaryAnalyte.maxConcentration,
+            concentrationUnit = legacyPrimaryAnalyte.concentrationUnit,
             defaultLayoutJson = null,
             createdAt = now,
             updatedAt = now,
@@ -192,71 +192,54 @@ class DirectProjectCreationCoordinator @Inject constructor(
                 FLUORESCENCE_PROCESSOR_NAME to FLUORESCENCE_PROCESSOR_VERSION
             DetectionModality.SPECTRUM -> error("光谱项目由独立分支创建")
         }
-        val selectedBundle = resolveSelectedModel(
-            modelId = request.analysisModelId,
-            request = request,
-            carrierType = geometry.carrierType,
-            acquisitionId = acquisitionId,
-            processor = processor
-        ) ?: if (request.analysisModelId.isNullOrBlank()) {
-            null
-        } else {
-            return DirectProjectCreationOutcome.InvalidRequest
+
+        val analyteSnapshots = normalizedAnalytes.mapIndexed { index, selection ->
+            val modelBundle = createSignalOnlyBundle(
+                projectId = projectId,
+                selection = selection,
+                modality = request.detectionModality,
+                carrierType = geometry.carrierType,
+                acquisitionId = acquisitionId,
+                primaryFeature = defaultPrimaryFeature,
+                processor = processor,
+                now = now
+            )
+            TemplateProjectAnalyteSnapshot(
+                analyte = selection.analyte,
+                templateConfig = TemplateAnalyteConfig(
+                    id = "direct-analyte-config-$projectId-${selection.analyte.id}",
+                    templateId = templateId,
+                    analyteId = selection.analyte.id,
+                    analysisModelId = modelBundle.model.id,
+                    concentrationUnit = selection.concentrationUnit,
+                    reliableRangeMin = 0.0,
+                    reliableRangeMax = selection.maxConcentration,
+                    displayOrder = index,
+                    displayConfigJson = if (
+                        request.detectionModality == DetectionModality.FLUORESCENCE
+                    ) {
+                        ScientificDetectionConfigCodec.encodeFluorescenceDisplay(
+                            FluorescenceChannel.GREEN
+                        )
+                    } else {
+                        null
+                    }
+                ),
+                analysisModel = modelBundle,
+                // 直接新建延续“有标准孔就自动推荐曲线”的低门槛默认值；用户仍可在布局页
+                // 为每个分析物切换为已有曲线、深度学习或仅查看信号。
+                quantitationMode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code
+            )
         }
-        val modelBundle = selectedBundle ?: createSignalOnlyBundle(
-            projectId = projectId,
-            request = request,
-            carrierType = geometry.carrierType,
-            acquisitionId = acquisitionId,
-            primaryFeature = defaultPrimaryFeature,
-            processor = processor,
-            now = now
-        )
-        val model = modelBundle.model
-        val modelId = model.id
-        val templateAnalyte = TemplateAnalyteConfig(
-            id = "direct-analyte-config-$projectId",
-            templateId = templateId,
-            analyteId = request.analyte.id,
-            analysisModelId = modelId,
-            concentrationUnit = request.concentrationUnit.trim(),
-            reliableRangeMin = selectedBundle?.model?.reliableRangeMin,
-            reliableRangeMax = selectedBundle?.model?.reliableRangeMax,
-            displayConfigJson = if (request.detectionModality == DetectionModality.FLUORESCENCE) {
-                ScientificDetectionConfigCodec.encodeFluorescenceDisplay(FluorescenceChannel.GREEN)
-            } else {
-                null
-            }
-        )
-        val assignments = buildAssignments(
-            projectId = projectId,
-            templateId = templateId,
-            analyteId = request.analyte.id,
-            rows = geometry.rows,
-            columns = geometry.columns,
-            sampleId = request.sampleId.trim(),
-            colorReference = referenceCoordinate
-        )
         val snapshot = TemplateProjectSnapshot(
             frozenAtEpochMillis = now.time,
             template = template,
             carrierProfile = carrier,
             acquisitionProfile = acquisition,
-            analytes = listOf(
-                TemplateProjectAnalyteSnapshot(
-                    analyte = request.analyte,
-                    templateConfig = templateAnalyte,
-                    analysisModel = modelBundle
-                )
-            ),
-            siteAssignments = assignments
+            analytes = analyteSnapshots,
+            // 创建时不再把全部位点错误绑定到第一个分析物；布局完成后再写入真实分配。
+            siteAssignments = emptyList()
         )
-        val sampleMapping = assignments
-            .filter { it.roleType == TemplateSiteRole.SAMPLE.code && !it.defaultSampleSlot.isNullOrBlank() }
-            .associate { assignment ->
-                TemplateSiteKey.format(assignment.rowIndex, assignment.columnIndex) to
-                    requireNotNull(assignment.defaultSampleSlot)
-            }
         val project = Project(
             id = projectId,
             name = normalizedName,
@@ -268,24 +251,26 @@ class DirectProjectCreationCoordinator @Inject constructor(
             createTime = now,
             userId = normalizedUserId,
             lastRunTimestamp = null,
-            analysisMethod = if (selectedBundle == null) "SIGNAL_ONLY" else "CURVE_FIT",
+            analysisMethod = "SIGNAL_ONLY",
             templateId = templateId,
             templateVersion = 1,
             templateSnapshotJson = TemplateProjectSnapshotCodec.encode(snapshot),
             overrideJson = TemplateProjectOverrideCodec.encode(
-                TemplateProjectOverrideSnapshot(sampleSlotMapping = sampleMapping)
+                TemplateProjectOverrideSnapshot(sampleSlotMapping = emptyMap())
             )
         )
-        val join = ProjectAnalyteJoin(
-            projectId = projectId,
-            analyteId = request.analyte.id,
-            maxConcentration = null,
-            concentrationUnit = request.concentrationUnit.trim(),
-            fkTemplateId = null,
-            dlModelName = null,
-            fkCurveModelId = null
-        )
-        projectRepository.createProjectWithAnalytes(project, listOf(join))
+        val joins = normalizedAnalytes.map { selection ->
+            ProjectAnalyteJoin(
+                projectId = projectId,
+                analyteId = selection.analyte.id,
+                maxConcentration = selection.maxConcentration,
+                concentrationUnit = selection.concentrationUnit,
+                fkTemplateId = null,
+                dlModelName = null,
+                fkCurveModelId = null
+            )
+        }
+        projectRepository.createProjectWithAnalytes(project, joins)
         return DirectProjectCreationOutcome.Created(
             project = project,
             destination = ProjectDetectionDestination.GRID_ENDPOINT
@@ -293,74 +278,35 @@ class DirectProjectCreationCoordinator @Inject constructor(
     }
 
     /**
-     * 读取并验证用户选择的真实标准曲线。
-     *
-     * 主特征以模型自身声明为准，但必须属于当前模态、使用当前生产处理器，并通过分析物、
-     * 单位、载体和设备兼容检查。任一字段不一致都返回失败，绝不偷偷换成“相似曲线”。
+     * 为尚未选择定量方案的分析物构造不可执行模型。
+     * 空参数对象会被量化器识别为仅信号，绝不会生成伪造浓度。
      */
-    private suspend fun resolveSelectedModel(
-        modelId: String?,
-        request: DirectProjectCreateRequest,
-        carrierType: CarrierType,
-        acquisitionId: String,
-        processor: Pair<String, String>
-    ): AnalysisModelBundle? {
-        val normalizedId = modelId?.trim()?.takeIf(String::isNotEmpty) ?: return null
-        val bundle = analysisModelRepository.getBundle(normalizedId) ?: return null
-        val model = bundle.model
-        val feature = AnalysisPrimaryFeature.fromCode(model.primaryFeature) ?: return null
-        if (
-            AnalysisModelType.fromCode(model.modelType) != AnalysisModelType.STANDARD_CURVE ||
-            bundle.standardCurve == null ||
-            bundle.deepLearning != null ||
-            bundle.calibrationPoints.size < 2 ||
-            model.concentrationUnit != request.concentrationUnit.trim() ||
-            !AnalysisFeaturePolicy.isCompatible(request.detectionModality, feature)
-        ) {
-            return null
-        }
-        val compatibility = AnalysisModelCompatibilityChecker.check(
-            model = model,
-            request = ModelCompatibilityRequest(
-                analyteId = request.analyte.id,
-                modality = request.detectionModality,
-                inputProtocol = InputProtocol.ENDPOINT_ONLY,
-                primaryFeature = feature,
-                carrierType = carrierType,
-                acquisitionProfileId = acquisitionId,
-                processorName = processor.first,
-                processorVersion = processor.second
-            )
-        )
-        return bundle.takeIf { compatibility == ModelCompatibilityResult.Compatible }
-    }
-
-    /** 构造不可执行的内部模型，使无曲线项目仍能复用同一快照结构并安全回退为仅信号。 */
     private fun createSignalOnlyBundle(
         projectId: String,
-        request: DirectProjectCreateRequest,
+        selection: DirectProjectAnalyteRequest,
+        modality: DetectionModality,
         carrierType: CarrierType,
         acquisitionId: String,
         primaryFeature: AnalysisPrimaryFeature,
         processor: Pair<String, String>,
         now: Date
     ): AnalysisModelBundle {
-        val modelId = "direct-signal-only-$projectId"
+        val modelId = "direct-signal-only-$projectId-${selection.analyte.id}"
         val model = AnalysisModel(
             id = modelId,
             name = "signal-only",
             modelType = AnalysisModelType.STANDARD_CURVE.code,
-            analyteId = request.analyte.id,
-            detectionMode = request.detectionModality.code,
+            analyteId = selection.analyte.id,
+            detectionMode = modality.code,
             inputProtocol = InputProtocol.ENDPOINT_ONLY.code,
             primaryFeature = primaryFeature.code,
             processorName = processor.first,
             processorVersion = processor.second,
             compatibleCarrierTypesJson = gson.toJson(listOf(carrierType.code)),
             compatibleAcquisitionProfileIdsJson = gson.toJson(listOf(acquisitionId)),
-            concentrationUnit = request.concentrationUnit.trim(),
+            concentrationUnit = selection.concentrationUnit,
             reliableRangeMin = 0.0,
-            reliableRangeMax = 1.0,
+            reliableRangeMax = selection.maxConcentration,
             status = AnalysisModelLifecycleStatus.PUBLISHED.code,
             version = 1,
             createdAt = now,
@@ -371,15 +317,13 @@ class DirectProjectCreationCoordinator @Inject constructor(
             standardCurve = StandardCurveDefinition(
                 analysisModelId = modelId,
                 fittingFunction = "linear",
-                // 空参数对象是有意的：量化器会将其识别为不可执行模型并回退为仅信号，
-                // 而不是把任意默认斜率伪装成真实标准曲线。
                 parametersJson = "{}",
                 monotonicDirection = "AUTO"
             )
         )
     }
 
-    /** 光谱仍沿用现有单图标定链，不要求构造规则阵列快照。 */
+    /** 光谱继续沿用现有单图标定链，但项目与数据库关联仍完整保存全部分析物。 */
     private suspend fun createSpectrumProject(
         request: DirectProjectCreateRequest,
         normalizedName: String,
@@ -401,14 +345,16 @@ class DirectProjectCreationCoordinator @Inject constructor(
             lastRunTimestamp = null,
             analysisMethod = "SIGNAL_ONLY"
         )
-        val join = ProjectAnalyteJoin(
-            projectId = projectId,
-            analyteId = request.analyte.id,
-            maxConcentration = null,
-            concentrationUnit = request.concentrationUnit.trim(),
-            fkTemplateId = null
-        )
-        projectRepository.createProjectWithAnalytes(project, listOf(join))
+        val joins = request.analytes.map { selection ->
+            ProjectAnalyteJoin(
+                projectId = projectId,
+                analyteId = selection.analyte.id,
+                maxConcentration = selection.maxConcentration,
+                concentrationUnit = selection.concentrationUnit,
+                fkTemplateId = null
+            )
+        }
+        projectRepository.createProjectWithAnalytes(project, joins)
         return DirectProjectCreationOutcome.Created(
             project = project,
             destination = ProjectDetectionDestination.SPECTRUM_SINGLE
@@ -425,6 +371,7 @@ class DirectProjectCreationCoordinator @Inject constructor(
                 siteShape = SiteShape.CIRCLE,
                 polarity = null
             )
+
             DirectCarrierPreset.MICROFLUIDIC_10_X_10 -> DirectGeometry(
                 displayName = "microfluidic-10x10",
                 carrierType = CarrierType.MICROFLUIDIC_CHIP,
@@ -433,20 +380,23 @@ class DirectProjectCreationCoordinator @Inject constructor(
                 siteShape = SiteShape.SQUARE,
                 polarity = GridTargetPolarity.DARK
             )
+
             DirectCarrierPreset.MICROFLUIDIC_15_X_15 -> DirectGeometry(
                 displayName = "microfluidic-15x15",
                 carrierType = CarrierType.MICROFLUIDIC_CHIP,
                 rows = 15,
                 columns = 15,
                 siteShape = SiteShape.SQUARE,
-                // 当前用户提供的 15×15 EL 背光实物与 10×10 一样，都是亮背景上的暗单元。
-                // 定位器仍会自动裁决极性；这里修复直接新建流程遗留的错误默认值，避免旧偏好
-                // 在日志、快照和兼容工具中继续误导用户。
                 polarity = GridTargetPolarity.DARK
             )
+
             DirectCarrierPreset.MICROFLUIDIC_CUSTOM -> {
-                val rows = request.customRows?.takeIf(GridLayoutPolicy::isValidDimension) ?: return null
-                val columns = request.customColumns?.takeIf(GridLayoutPolicy::isValidDimension) ?: return null
+                val rows = request.customRows
+                    ?.takeIf(GridLayoutPolicy::isValidDimension)
+                    ?: return null
+                val columns = request.customColumns
+                    ?.takeIf(GridLayoutPolicy::isValidDimension)
+                    ?: return null
                 DirectGeometry(
                     displayName = "microfluidic-${rows}x$columns",
                     carrierType = CarrierType.MICROFLUIDIC_CHIP,
@@ -455,62 +405,6 @@ class DirectProjectCreationCoordinator @Inject constructor(
                     siteShape = SiteShape.SQUARE,
                     polarity = GridTargetPolarity.DARK
                 )
-            }
-        }
-    }
-
-    private fun resolveColorReference(
-        request: DirectProjectCreateRequest,
-        geometry: DirectGeometry
-    ): Pair<Int, Int>? {
-        if (
-            request.detectionModality != DetectionModality.COLORIMETRIC ||
-            geometry.carrierType != CarrierType.MICROFLUIDIC_CHIP
-        ) {
-            return null
-        }
-        val row = request.colorReferenceRow ?: return null
-        val column = request.colorReferenceColumn ?: return null
-        return (row to column).takeIf {
-            row in 0 until geometry.rows && column in 0 until geometry.columns
-        }
-    }
-
-    private fun buildAssignments(
-        projectId: String,
-        templateId: String,
-        analyteId: String,
-        rows: Int,
-        columns: Int,
-        sampleId: String,
-        colorReference: Pair<Int, Int>?
-    ): List<TemplateSiteAssignment> {
-        return buildList(rows * columns) {
-            repeat(rows) { row ->
-                repeat(columns) { column ->
-                    val isReference = colorReference == (row to column)
-                    add(
-                        TemplateSiteAssignment(
-                            id = "direct-site-$projectId-$row-$column",
-                            templateId = templateId,
-                            rowIndex = row,
-                            columnIndex = column,
-                            analyteId = analyteId,
-                            roleType = if (isReference) {
-                                TemplateSiteRole.REFERENCE.code
-                            } else {
-                                TemplateSiteRole.SAMPLE.code
-                            },
-                            defaultSampleSlot = sampleId.takeIf(String::isNotBlank),
-                            referenceScope = if (isReference) {
-                                TemplateReferenceScope.ANALYTE.code
-                            } else {
-                                null
-                            },
-                            enabled = true
-                        )
-                    )
-                }
             }
         }
     }

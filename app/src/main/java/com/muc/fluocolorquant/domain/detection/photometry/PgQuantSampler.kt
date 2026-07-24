@@ -5,9 +5,12 @@ import android.graphics.Color
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
 import com.muc.fluocolorquant.domain.detection.grid.PgGridResult
 import com.muc.fluocolorquant.domain.detection.grid.RegularGridGeometry
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitRegion
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitSegmentationResult
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.roundToInt
 import org.apache.commons.math3.linear.MatrixUtils
 import org.apache.commons.math3.linear.SingularValueDecomposition
@@ -24,10 +27,21 @@ object PgQuantSampler {
     fun sample(
         bitmap: Bitmap,
         grid: PgGridResult,
-        config: PgQuantConfig = PgQuantConfig()
+        config: PgQuantConfig = PgQuantConfig(),
+        unitSegmentation: ArrayUnitSegmentationResult? = null
     ): PgQuantResult {
         grid.requireValid()
         require(bitmap.width > 0 && bitmap.height > 0) { "原始定量图尺寸无效" }
+        unitSegmentation?.let { segmentation ->
+            segmentation.requireValid()
+            require(segmentation.rows == grid.rows && segmentation.columns == grid.columns) {
+                "单元分割规格必须与定位结果一致"
+            }
+            require(
+                segmentation.imageWidth == grid.rectifiedWidth &&
+                    segmentation.imageHeight == grid.rectifiedHeight
+            ) { "单元分割坐标系必须与定位矫正图一致" }
+        }
 
         val rectifiedPoints = grid.sites.map { it.rectified }
         val pitch = RegularGridGeometry.estimatePitch(
@@ -51,7 +65,7 @@ object PgQuantSampler {
         val inverse = grid.homography.inverse.toDoubleArray()
 
         // 第一遍只提取原始 ROI 和背景环统计；全阵列背景准备好后才能拟合平场。
-        val rawUnits = grid.sites.map { site ->
+        val rawUnits = grid.sites.mapIndexed { index, site ->
             extractRawUnit(
                 image = image,
                 rectifiedCenter = site.rectified,
@@ -61,7 +75,8 @@ object PgQuantSampler {
                 roiRadius = roiRadius,
                 annulusInner = annulusInner,
                 annulusOuter = annulusOuter,
-                config = config
+                config = config,
+                unitRegion = unitSegmentation?.regions?.get(index)
             )
         }
         val valid = rawUnits.map { !it.outOfBounds }
@@ -154,6 +169,11 @@ object PgQuantSampler {
         }
 
         return PgQuantResult(
+            processorVersion = if (unitSegmentation == null) {
+                PG_QUANT_LEGACY_PROCESSOR_VERSION
+            } else {
+                PG_QUANT_PROCESSOR_VERSION
+            },
             rows = grid.rows,
             columns = grid.columns,
             pitchPx = representativePitch,
@@ -163,7 +183,8 @@ object PgQuantSampler {
             illuminationModel = illumination.model,
             illuminationUniformity = illuminationUniformity,
             config = config,
-            sites = sites
+            sites = sites,
+            unitSegmentation = unitSegmentation
         ).requireValid()
     }
 
@@ -180,9 +201,16 @@ object PgQuantSampler {
         roiRadius: Double,
         annulusInner: Double,
         annulusOuter: Double,
-        config: PgQuantConfig
+        config: PgQuantConfig,
+        unitRegion: ArrayUnitRegion?
     ): RawUnit {
-        val reach = ceil(annulusOuter).toInt() + 1
+        val regionReach = unitRegion?.bounds?.let { bounds ->
+            max(
+                max(abs(bounds.left - rectifiedCenter.x), abs(bounds.right - rectifiedCenter.x)),
+                max(abs(bounds.top - rectifiedCenter.y), abs(bounds.bottom - rectifiedCenter.y))
+            )
+        } ?: 0.0
+        val reach = ceil(max(annulusOuter, regionReach)).toInt() + 1
         val centerFloorX = floorToInt(rectifiedCenter.x)
         val centerFloorY = floorToInt(rectifiedCenter.y)
         val roiPixels = mutableListOf<PixelSample>()
@@ -193,8 +221,10 @@ object PgQuantSampler {
         for (y in centerFloorY - reach..centerFloorY + reach) {
             for (x in centerFloorX - reach..centerFloorX + reach) {
                 val distance = hypot(x - rectifiedCenter.x, y - rectifiedCenter.y)
-                val inRoi = distance <= roiRadius
-                val inAnnulus = distance > annulusInner && distance <= annulusOuter
+                // 有单元分割结果时，信号只读取真实单元本体；旧调用仍保持 v1 圆形 ROI。
+                val inRoi = unitRegion?.contains(x, y) ?: (distance <= roiRadius)
+                // 背景环永远排除前景。圆孔半径较大时也不会把孔内边缘误算成局部背景。
+                val inAnnulus = !inRoi && distance > annulusInner && distance <= annulusOuter
                 if (!inRoi && !inAnnulus) continue
                 if (inRoi) roiIdealCount++ else annulusIdealCount++
 
