@@ -75,12 +75,14 @@ const val ARRAY_RESULT_EXPORT_PROGRESS_TAG: String = "array_result_export_progre
 fun ArrayResultExportCoordinator(
     snapshot: ArrayResultSnapshot,
     visible: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    pdfLabelsOverride: ArrayResultPdfLabels? = null
 ) {
     val context = LocalContext.current
     val toastManager = LocalToastManager.current
     val scope = rememberCoroutineScope()
-    val pdfLabels = arrayResultPdfLabels()
+    val defaultPdfLabels = arrayResultPdfLabels()
+    val pdfLabels = pdfLabelsOverride ?: defaultPdfLabels
     val exportSuccess = stringResource(R.string.array_export_success)
     val exportFailure = stringResource(R.string.array_export_failure)
     var pendingSnapshot by remember { mutableStateOf(snapshot) }
@@ -324,7 +326,7 @@ private fun ArrayExportProgressOverlay() {
 }
 
 @Composable
-private fun arrayResultPdfLabels(): ArrayResultPdfLabels {
+internal fun arrayResultPdfLabels(): ArrayResultPdfLabels {
     return ArrayResultPdfLabels(
         documentTitle = stringResource(R.string.array_pdf_document_title),
         frozenEvidenceNote = stringResource(R.string.array_pdf_frozen_note),

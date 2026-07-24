@@ -490,6 +490,7 @@ object ArrayResultPdfExporter {
             style = Paint.Style.FILL
             color = Color.rgb(2, 136, 209)
         }
+        val circularSites = snapshot.carrier.siteShape.equals("CIRCLE", ignoreCase = true)
         val sitesByIndex = snapshot.sites.associateBy(ArrayPhysicalSiteResult::siteIndex)
         for (row in 0 until snapshot.rows) {
             for (column in 0 until snapshot.columns) {
@@ -502,11 +503,25 @@ object ArrayResultPdfExporter {
                     top + (row + 1) * cellSize
                 )
                 fill.color = site?.let(cellColor) ?: Color.rgb(241, 245, 249)
-                canvas.drawRect(rect, fill)
-                canvas.drawRect(rect, border)
+                if (circularSites) {
+                    val radius = cellSize * 0.43f
+                    canvas.drawCircle(rect.centerX(), rect.centerY(), radius, fill)
+                    canvas.drawCircle(rect.centerX(), rect.centerY(), radius, border)
+                } else {
+                    canvas.drawRect(rect, fill)
+                    canvas.drawRect(rect, border)
+                }
                 when (site?.let { qualityForSite?.invoke(it) }) {
-                    ArrayMeasurementQualityLevel.REVIEW -> canvas.drawRect(rect, reviewBorder)
-                    ArrayMeasurementQualityLevel.UNAVAILABLE -> canvas.drawRect(rect, unavailableBorder)
+                    ArrayMeasurementQualityLevel.REVIEW -> if (circularSites) {
+                        canvas.drawCircle(rect.centerX(), rect.centerY(), cellSize * 0.43f, reviewBorder)
+                    } else {
+                        canvas.drawRect(rect, reviewBorder)
+                    }
+                    ArrayMeasurementQualityLevel.UNAVAILABLE -> if (circularSites) {
+                        canvas.drawCircle(rect.centerX(), rect.centerY(), cellSize * 0.43f, unavailableBorder)
+                    } else {
+                        canvas.drawRect(rect, unavailableBorder)
+                    }
                     ArrayMeasurementQualityLevel.VALID,
                     null -> Unit
                 }

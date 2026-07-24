@@ -1760,6 +1760,11 @@ private fun captureRoleLabel(code: String): String {
         CaptureRole.POST_REACTION_ENDPOINT -> stringResource(R.string.array_capture_role_post_endpoint)
         CaptureRole.PROCESS_ORIGINAL_GEOMETRY,
         CaptureRole.PROCESS_CANDIDATE_RESPONSE,
+        CaptureRole.PROCESS_ORIENTATION_NORMALIZED,
+        CaptureRole.PROCESS_YOLO_OVERLAY,
+        CaptureRole.PROCESS_HOUGH_CIRCLE_OVERLAY,
+        CaptureRole.PROCESS_ORIGINAL_PROJECTION_OVERLAY,
+        CaptureRole.PROCESS_CROP_CONTACT_SHEET,
         CaptureRole.PROCESS_RECTIFIED,
         CaptureRole.PROCESS_GRID_OVERLAY,
         CaptureRole.PROCESS_ROI_BACKGROUND,
