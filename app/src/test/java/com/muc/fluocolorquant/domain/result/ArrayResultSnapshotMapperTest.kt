@@ -258,7 +258,7 @@ class ArrayResultSnapshotMapperTest {
         val detail = result.snapshot.sites[1].measurements.single().detail
             as ArrayMeasurementDetail.Colorimetric
         assertEquals(listOf(0), detail.calibrationContext.referenceIndices)
-        assertEquals(3.5, detail.site.deltaE2000, 0.0)
+        assertEquals(3.5, requireNotNull(detail.site.deltaE2000), 0.0)
         assertEquals(1.1, detail.calibrationContext.whiteBalanceGains.green, 0.0)
     }
 

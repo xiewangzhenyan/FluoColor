@@ -87,18 +87,26 @@ data class CalibrationPolicy(
 
         val DEFAULT_FUNCTIONS: Set<FittingFunction> = linkedSetOf(
             FittingFunction.LINEAR,
+            FittingFunction.QUADRATIC,
+            FittingFunction.EXPONENTIAL,
+            FittingFunction.LOG,
+            FittingFunction.POWER,
             FittingFunction.RODBARD,
             FittingFunction.LOGISTIC
         )
 
         val DEFAULT_COLORIMETRIC_FEATURES: Set<AnalysisPrimaryFeature> = linkedSetOf(
+            // 经典加权灰度是论文和既有96孔板中最常见的比色信号，必须位于推荐池首项。
+            AnalysisPrimaryFeature.GRAY_LUMINOSITY,
             AnalysisPrimaryFeature.DELTA_E_2000,
             AnalysisPrimaryFeature.OPTICAL_DENSITY,
-            AnalysisPrimaryFeature.GRAY_LUMINOSITY,
             AnalysisPrimaryFeature.RED_INTENSITY,
             AnalysisPrimaryFeature.GREEN_INTENSITY,
             AnalysisPrimaryFeature.BLUE_INTENSITY,
-            AnalysisPrimaryFeature.AVERAGE_RGB
+            AnalysisPrimaryFeature.AVERAGE_RGB,
+            AnalysisPrimaryFeature.CIE_L_STAR,
+            AnalysisPrimaryFeature.CIE_A_STAR,
+            AnalysisPrimaryFeature.CIE_B_STAR
         )
 
         val DEFAULT_FLUORESCENCE_FEATURES: Set<AnalysisPrimaryFeature> = linkedSetOf(

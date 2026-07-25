@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -40,6 +41,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -75,6 +77,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.muc.fluocolorquant.R
@@ -99,8 +102,11 @@ import com.muc.fluocolorquant.domain.detection.GridExperimentTemplateOption
 import com.muc.fluocolorquant.domain.detection.GridLayoutConfigurationSource
 import com.muc.fluocolorquant.domain.detection.isConfigurationComplete
 import com.muc.fluocolorquant.domain.detection.isReadyForConfirmation
+import com.muc.fluocolorquant.domain.signal.SignalFeatureTier
 import com.muc.fluocolorquant.ui.components.LatexAlignment
 import com.muc.fluocolorquant.ui.components.LatexView
+import com.muc.fluocolorquant.ui.components.analysisFeatureIcon
+import com.muc.fluocolorquant.ui.components.analysisFeatureLabel
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
 import com.muc.fluocolorquant.ui.viewmodels.GridLayoutAssignmentDraft
 import com.muc.fluocolorquant.ui.viewmodels.GridLocalizationAnalyte
@@ -123,7 +129,11 @@ internal fun GridExperimentConfigurationSection(
     onSelectQuantitationAnalyte: (String) -> Unit = {},
     onSetQuantitationMode: (String, GridAnalyteQuantitationMode) -> Unit,
     onSelectAnalysisModel: (String, String) -> Unit,
-    onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit,
+    onUpdateOnsiteAdvanced: (
+        String,
+        Set<AnalysisPrimaryFeature>,
+        Set<FittingFunction>
+    ) -> Unit,
     onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit = { _, _ -> },
     onPreviewOnsiteFit: (String) -> Unit,
     onSelectOnsiteCandidate: (String, String) -> Unit = { _, _ -> },
@@ -347,8 +357,8 @@ internal fun GridExperimentConfigurationSection(
                 draft = draft,
                 assignments = assignments,
                 detectionMode = DetectionModality.fromCode(preview.detectionMode),
-                onUpdateAdvanced = { feature, function ->
-                    onUpdateOnsiteAdvanced(analyteId, feature, function)
+                onUpdateAdvanced = { features, functions ->
+                    onUpdateOnsiteAdvanced(analyteId, features, functions)
                 },
                 onUpdateConcentrations = { values ->
                     onUpdateStandardConcentrations(analyteId, values)
@@ -847,7 +857,7 @@ private fun OnsiteCalibrationDialog(
     draft: GridAnalyteQuantitationDraft,
     assignments: Map<Int, GridLayoutAssignmentDraft>,
     detectionMode: DetectionModality?,
-    onUpdateAdvanced: (AnalysisPrimaryFeature?, FittingFunction?) -> Unit,
+    onUpdateAdvanced: (Set<AnalysisPrimaryFeature>, Set<FittingFunction>) -> Unit,
     onUpdateConcentrations: (Map<Int, Double?>) -> Unit,
     onPreviewFit: () -> Unit,
     onSelectCandidate: (String) -> Unit,
@@ -870,6 +880,8 @@ private fun OnsiteCalibrationDialog(
     }
     var showBatchFill by rememberSaveable(analyte.id) { mutableStateOf(false) }
     var showAdvancedSignal by rememberSaveable(analyte.id) { mutableStateOf(false) }
+    var showFunctionPicker by rememberSaveable(analyte.id) { mutableStateOf(false) }
+    var showSignalPicker by rememberSaveable(analyte.id) { mutableStateOf(false) }
     var gradientStart by rememberSaveable(analyte.id) { mutableStateOf("") }
     var gradientStep by rememberSaveable(analyte.id) { mutableStateOf("") }
     val crops = remember(preview.runId, preview.rectifiedImagePath, preview.sites) {
@@ -1058,11 +1070,21 @@ private fun OnsiteCalibrationDialog(
                     }
 
                     item {
-                        FittingFunctionDropdown(
-                            selectedFunction = draft.selectedFunction,
-                            onSelected = { function ->
-                                onUpdateAdvanced(draft.selectedFeature, function)
-                            }
+                        CalibrationSelectionField(
+                            title = stringResource(R.string.grid_quant_function_title),
+                            summary = if (draft.selectedFunctions.isEmpty()) {
+                                stringResource(
+                                    R.string.grid_quant_function_auto_summary,
+                                    com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
+                                        .DEFAULT_FUNCTIONS.size
+                                )
+                            } else {
+                                stringResource(
+                                    R.string.grid_quant_selected_count,
+                                    draft.selectedFunctions.size
+                                )
+                            },
+                            onClick = { showFunctionPicker = true }
                         )
                     }
 
@@ -1076,12 +1098,25 @@ private fun OnsiteCalibrationDialog(
 
                     if (showAdvancedSignal) {
                         item {
-                            SignalFeatureDropdown(
-                                detectionMode = detectionMode,
-                                selectedFeature = draft.selectedFeature,
-                                onSelected = { feature ->
-                                    onUpdateAdvanced(feature, draft.selectedFunction)
-                                }
+                            CalibrationSelectionField(
+                                title = stringResource(R.string.grid_quant_signal_title),
+                                summary = if (draft.selectedFeatures.isEmpty()) {
+                                    stringResource(
+                                        R.string.grid_quant_signal_auto_summary,
+                                        detectionMode?.let {
+                                            AnalysisFeaturePolicy.recommendedFeatures(it).size
+                                        } ?: 0
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.grid_quant_selected_count,
+                                        draft.selectedFeatures.size
+                                    )
+                                },
+                                supportingText = stringResource(
+                                    R.string.grid_quant_classic_gray_formula
+                                ),
+                                onClick = { showSignalPicker = true }
                             )
                         }
                     }
@@ -1180,6 +1215,28 @@ private fun OnsiteCalibrationDialog(
             }
         }
     }
+
+    if (showFunctionPicker) {
+        FittingFunctionMultiSelectDialog(
+            selected = draft.selectedFunctions,
+            onConfirm = { functions ->
+                showFunctionPicker = false
+                onUpdateAdvanced(draft.selectedFeatures, functions)
+            },
+            onDismiss = { showFunctionPicker = false }
+        )
+    }
+    if (showSignalPicker && detectionMode != null) {
+        SignalFeatureMultiSelectDialog(
+            detectionMode = detectionMode,
+            selected = draft.selectedFeatures,
+            onConfirm = { features ->
+                showSignalPicker = false
+                onUpdateAdvanced(features, draft.selectedFunctions)
+            },
+            onDismiss = { showSignalPicker = false }
+        )
+    }
 }
 
 @Composable
@@ -1266,92 +1323,334 @@ private fun CompactDecimalField(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 现场标定首屏只显示紧凑摘要，完整候选放入多选弹窗，避免31种信号和近20种函数挤占
+ * 浓度录入区域。卡片使用同一视觉结构，96孔板与微流控不会出现两套不同交互。
+ */
 @Composable
-private fun FittingFunctionDropdown(
-    selectedFunction: FittingFunction?,
-    onSelected: (FittingFunction?) -> Unit
+private fun CalibrationSelectionField(
+    title: String,
+    summary: String,
+    onClick: () -> Unit,
+    supportingText: String? = null
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    // 自动推荐保持线性、4PL、5PL的稳健集合；用户主动选择时开放项目已有的全部
-    // 可拟合方程。插值依赖专门的分段点定义，不属于现场参数拟合，因此不在此处展示。
-    val options = remember {
-        listOf<FittingFunction?>(null) +
-            FittingFunction.entries.filter { it != FittingFunction.INTERPOLATION }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                supportingText?.let { text ->
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-        OutlinedTextField(
-            value = selectedFunction?.let { fittingFunctionLabel(it) }
-                ?: stringResource(R.string.grid_quant_automatic),
-            onValueChange = {},
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            readOnly = true,
-            singleLine = true,
-            label = { Text(stringResource(R.string.grid_quant_function_title)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) }
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { function ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            function?.let { fittingFunctionLabel(it) }
-                                ?: stringResource(R.string.grid_quant_automatic)
+}
+
+/** 函数多选弹窗：默认池与专家池分层，公式由项目既有 jlatexmath 组件真实排版。 */
+@Composable
+private fun FittingFunctionMultiSelectDialog(
+    selected: Set<FittingFunction>,
+    onConfirm: (Set<FittingFunction>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var pending by remember(selected) { mutableStateOf(selected) }
+    val automaticFunctions = com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
+        .DEFAULT_FUNCTIONS
+    val expertFunctions = remember {
+        FittingFunction.entries.filter { function ->
+            function != FittingFunction.INTERPOLATION && function !in automaticFunctions
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.grid_quant_function_picker_title)) },
+        text = {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 520.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    AutomaticSelectionRow(
+                        selected = pending.isEmpty(),
+                        title = stringResource(R.string.grid_quant_function_auto_title),
+                        description = stringResource(
+                            R.string.grid_quant_function_auto_summary,
+                            automaticFunctions.size
+                        ),
+                        onClick = { pending = emptySet() }
+                    )
+                }
+                item { PickerGroupTitle(stringResource(R.string.grid_quant_recommended_group)) }
+                items(automaticFunctions.toList(), key = FittingFunction::identifier) { function ->
+                    FunctionSelectionRow(
+                        function = function,
+                        checked = function in pending,
+                        onToggle = {
+                            pending = pending.toggle(function)
+                        }
+                    )
+                }
+                item { PickerGroupTitle(stringResource(R.string.grid_quant_expert_group)) }
+                items(expertFunctions, key = FittingFunction::identifier) { function ->
+                    FunctionSelectionRow(
+                        function = function,
+                        checked = function in pending,
+                        onToggle = { pending = pending.toggle(function) }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(pending) }) {
+                Text(stringResource(R.string.confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
+}
+
+/** 信号多选弹窗：按推荐、扩展、兼容和实验分层，经典灰度始终位于推荐组首项。 */
+@Composable
+private fun SignalFeatureMultiSelectDialog(
+    detectionMode: DetectionModality,
+    selected: Set<AnalysisPrimaryFeature>,
+    onConfirm: (Set<AnalysisPrimaryFeature>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var pending by remember(selected, detectionMode) { mutableStateOf(selected) }
+    val allowed = remember(detectionMode) { AnalysisFeaturePolicy.allowedFeatures(detectionMode) }
+    val groups = remember(detectionMode) {
+        SignalFeatureTier.entries.mapNotNull { tier ->
+            val features = allowed.filter { AnalysisFeaturePolicy.featureTier(it) == tier }
+            (tier to features).takeIf { features.isNotEmpty() }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.grid_quant_signal_picker_title)) },
+        text = {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 520.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    AutomaticSelectionRow(
+                        selected = pending.isEmpty(),
+                        title = stringResource(R.string.grid_quant_signal_auto_title),
+                        description = stringResource(
+                            R.string.grid_quant_signal_auto_summary,
+                            AnalysisFeaturePolicy.recommendedFeatures(detectionMode).size
+                        ),
+                        onClick = { pending = emptySet() }
+                    )
+                }
+                groups.forEach { (tier, features) ->
+                    item { PickerGroupTitle(signalTierLabel(tier)) }
+                    items(features, key = AnalysisPrimaryFeature::code) { feature ->
+                        SignalSelectionRow(
+                            feature = feature,
+                            checked = feature in pending,
+                            onToggle = { pending = pending.toggle(feature) }
                         )
-                    },
-                    onClick = {
-                        expanded = false
-                        onSelected(function)
                     }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(pending) }) {
+                Text(stringResource(R.string.confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
+}
+
+@Composable
+private fun AutomaticSelectionRow(
+    selected: Boolean,
+    title: String,
+    description: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = selected, onCheckedChange = { onClick() })
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SignalFeatureDropdown(
-    detectionMode: DetectionModality?,
-    selectedFeature: AnalysisPrimaryFeature?,
-    onSelected: (AnalysisPrimaryFeature?) -> Unit
+private fun PickerGroupTitle(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+private fun FunctionSelectionRow(
+    function: FittingFunction,
+    checked: Boolean,
+    onToggle: () -> Unit
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    val options = listOf<AnalysisPrimaryFeature?>(null) +
-        detectionMode?.let(AnalysisFeaturePolicy::allowedFeatures).orEmpty()
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-        OutlinedTextField(
-            value = selectedFeature?.let { primaryFeatureLabel(it) }
-                ?: stringResource(R.string.grid_quant_automatic),
-            onValueChange = {},
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            readOnly = true,
-            singleLine = true,
-            label = { Text(stringResource(R.string.grid_quant_signal_title)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) }
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { feature ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            feature?.let { primaryFeatureLabel(it) }
-                                ?: stringResource(R.string.grid_quant_automatic)
-                        )
-                    },
-                    onClick = {
-                        expanded = false
-                        onSelected(feature)
-                    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onToggle,
+        shape = RoundedCornerShape(14.dp),
+        color = if (checked) {
+            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = checked, onCheckedChange = { onToggle() })
+            Column(modifier = Modifier.weight(1f)) {
+                Text(fittingFunctionLabel(function), fontWeight = FontWeight.SemiBold)
+                Text(
+                    stringResource(
+                        R.string.grid_quant_function_min_levels,
+                        minimumConcentrationLevels(function)
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                LatexView(
+                    latex = function.latexFormula,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 30.dp),
+                    textSize = 13.sp,
+                    alignment = LatexAlignment.START
                 )
             }
         }
     }
 }
+
+@Composable
+private fun SignalSelectionRow(
+    feature: AnalysisPrimaryFeature,
+    checked: Boolean,
+    onToggle: () -> Unit
+) {
+    // 信号选择器是高频操作界面，不是信号定义手册。这里只保留稳定短名称；经典灰度的
+    // 数学公式已经包含在名称资源中。完整定义、处理器版本和适用条件继续由用户手册、
+    // 曲线详情及运行快照承担，避免三十余项特征的重复说明拖慢科研用户的选择效率。
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onToggle,
+        shape = RoundedCornerShape(14.dp),
+        color = if (checked) {
+            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Checkbox(checked = checked, onCheckedChange = { onToggle() })
+            Surface(
+                shape = RoundedCornerShape(9.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
+            ) {
+                Icon(
+                    imageVector = analysisFeatureIcon(feature),
+                    contentDescription = null,
+                    modifier = Modifier.padding(7.dp).size(18.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            Text(
+                text = analysisFeatureLabel(feature),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun signalTierLabel(tier: SignalFeatureTier): String = stringResource(
+    when (tier) {
+        SignalFeatureTier.RECOMMENDED -> R.string.grid_quant_recommended_group
+        SignalFeatureTier.EXTENDED -> R.string.grid_quant_extended_group
+        SignalFeatureTier.LEGACY -> R.string.grid_quant_compatibility_group
+        SignalFeatureTier.EXPERIMENTAL -> R.string.grid_quant_experimental_group
+    }
+)
+
+private fun minimumConcentrationLevels(function: FittingFunction): Int = when (function) {
+    FittingFunction.RODBARD -> 5
+    FittingFunction.LOGISTIC -> 6
+    FittingFunction.LINEAR -> 2
+    else -> maxOf(2, function.requiredParams.size + 1)
+}
+
+private fun <T> Set<T>.toggle(value: T): Set<T> =
+    if (value in this) this - value else this + value
 
 internal fun parseStandardConcentration(value: String, maximum: Double?): Double? {
     if (value.isBlank()) return null
@@ -1693,6 +1992,7 @@ private fun calibrationFailureReasonResource(reason: CalibrationFailureReason): 
         CalibrationFailureReason.INSUFFICIENT_STANDARD_LEVELS ->
             R.string.grid_quant_failure_levels
         CalibrationFailureReason.NO_VALID_SIGNAL -> R.string.grid_quant_failure_signal
+        CalibrationFailureReason.INVALID_FUNCTION_DOMAIN -> R.string.grid_quant_failure_domain
         CalibrationFailureReason.FIT_DID_NOT_CONVERGE -> R.string.grid_quant_failure_convergence
         CalibrationFailureReason.PARAMETERS_NOT_FINITE -> R.string.grid_quant_failure_parameters
         CalibrationFailureReason.CURVE_NOT_MONOTONIC -> R.string.grid_quant_failure_monotonic
@@ -1925,23 +2225,8 @@ private fun quantitationModeIcon(mode: GridAnalyteQuantitationMode): ImageVector
 }
 
 @Composable
-private fun primaryFeatureLabel(feature: AnalysisPrimaryFeature): String = stringResource(
-    when (feature) {
-        AnalysisPrimaryFeature.DELTA_E_2000 -> R.string.grid_feature_delta_e
-        AnalysisPrimaryFeature.OPTICAL_DENSITY -> R.string.grid_feature_optical_density
-        AnalysisPrimaryFeature.GRAY_LUMINOSITY -> R.string.grid_feature_gray
-        AnalysisPrimaryFeature.RED_INTENSITY -> R.string.grid_feature_red
-        AnalysisPrimaryFeature.GREEN_INTENSITY -> R.string.grid_feature_green
-        AnalysisPrimaryFeature.BLUE_INTENSITY -> R.string.grid_feature_blue
-        AnalysisPrimaryFeature.AVERAGE_RGB -> R.string.grid_feature_average_rgb
-        AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY -> R.string.grid_feature_net_fluorescence
-        AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY ->
-            R.string.grid_feature_integrated_fluorescence
-        AnalysisPrimaryFeature.FLUORESCENCE_SNR -> R.string.grid_feature_fluorescence_snr
-        AnalysisPrimaryFeature.PEAK_WAVELENGTH_NM,
-        AnalysisPrimaryFeature.DELTA_PEAK_WAVELENGTH_NM -> R.string.grid_feature_gray
-    }
-)
+private fun primaryFeatureLabel(feature: AnalysisPrimaryFeature): String =
+    analysisFeatureLabel(feature)
 
 @Composable
 private fun fittingFunctionLabel(function: FittingFunction): String = stringResource(

@@ -22,6 +22,7 @@ import com.muc.fluocolorquant.data.repository.AnalysisModelRepository
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
 import com.muc.fluocolorquant.data.repository.ConcentrationUnitPreferences
 import com.muc.fluocolorquant.data.repository.CalibrationPolicyPreferences
+import com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
 import com.muc.fluocolorquant.domain.calibration.CalibrationRankingMetrics
 import com.muc.fluocolorquant.domain.calibration.CalibrationRecommendationEngine
 import com.muc.fluocolorquant.domain.detection.AnalysisFeaturePolicy
@@ -409,32 +410,18 @@ class StandardCurveBuilderViewModel @Inject constructor(
             val policy = calibrationPolicyPreferences.policyFlow.first()
             val generated = sources.flatMap { source ->
                 val uniqueLevels = source.points.map { it.first }.distinct().size
-                val requestedFunction = state.selectedFunction
-                val results = if (requestedFunction != null &&
-                    requestedFunction !in FittingEngine.automaticCalibrationFunctions()
-                ) {
-                    listOfNotNull(
-                        runCatching {
-                            FittingEngine.fitSingle(source.points, requestedFunction)
-                        }.getOrNull()?.takeIf(FittingResult::isSuccess)
-                    )
-                } else {
-                    val requested = requestedFunction?.let(::setOf) ?: policy.allowedFunctions
-                    val allowed = requested.filterTo(linkedSetOf()) { function ->
-                        when (function) {
-                            FittingFunction.RODBARD ->
-                                uniqueLevels >= policy.minimumFourParameterLevels
-                            FittingFunction.LOGISTIC ->
-                                uniqueLevels >= policy.minimumFiveParameterLevels
-                            else -> true
-                        }
-                    }
-                    FittingEngine.fitCalibrationCandidates(source.points, allowed)
-                        .filter { result ->
-                            (result.metrics["Weighting Scheme"]?.toInt() ?: 0) in
-                                policy.enabledWeightingCodes
-                        }
+                val requested = state.selectedFunction?.let(::setOf) ?: policy.allowedFunctions
+                val allowed = requested.filterTo(linkedSetOf()) { function ->
+                    uniqueLevels >= minimumConcentrationLevels(function, policy)
                 }
+                // 标准曲线库与96孔板/微流控现场标定共用同一候选生成入口。此前这里把
+                // 系统设置中的二次、指数、对数和幂函数再次求交为三大函数，造成设置看似
+                // 生效、实际仍只计算线性/4PL/5PL；现在不再静默丢弃用户允许的函数。
+                val results = FittingEngine.fitRequestedCalibrationFunctions(source.points, allowed)
+                    .filter { result ->
+                        (result.metrics["Weighting Scheme"]?.toInt() ?: 0) in
+                            policy.enabledWeightingCodes
+                    }
                 results.map { result ->
                     val weighting = result.metrics["Weighting Scheme"]?.toInt() ?: 0
                     StandardCurveFitCandidate(
@@ -447,18 +434,18 @@ class StandardCurveBuilderViewModel @Inject constructor(
                 }
             }
 
-            // 普通页面每个函数只保留最佳“信号+权重”组合，最多展示线性、4PL、5PL三项。
+            // 普通页面每个函数只保留最佳“信号+权重”组合，避免同一函数重复占满结果页。
             val bestPerFunction = generated.groupBy { it.result.function }.mapNotNull { (_, group) ->
                 CalibrationRecommendationEngine.rankByMetrics(
                     candidates = group,
                     policy = policy,
-                    metricsOf = ::rankingMetrics
+                    metricsOf = { candidate -> rankingMetrics(candidate, policy) }
                 ).firstOrNull()
             }
             val candidates = CalibrationRecommendationEngine.rankByMetrics(
                 candidates = bestPerFunction,
                 policy = policy,
-                metricsOf = ::rankingMetrics
+                metricsOf = { candidate -> rankingMetrics(candidate, policy) }
             )
             _uiState.update {
                 it.copy(
@@ -747,8 +734,22 @@ class StandardCurveBuilderViewModel @Inject constructor(
             FittingFunction.LOGISTIC
         )
 
+        /** 标准曲线库使用与阵列现场标定一致的函数最低浓度水平。 */
+        private fun minimumConcentrationLevels(
+            function: FittingFunction,
+            policy: CalibrationPolicy
+        ): Int = when (function) {
+            FittingFunction.RODBARD -> policy.minimumFourParameterLevels
+            FittingFunction.LOGISTIC -> policy.minimumFiveParameterLevels
+            FittingFunction.LINEAR -> 2
+            else -> maxOf(2, function.requiredParams.size + 1)
+        }
+
         /** 将旧 FittingResult 适配到全应用统一推荐引擎。 */
-        private fun rankingMetrics(candidate: StandardCurveFitCandidate): CalibrationRankingMetrics {
+        private fun rankingMetrics(
+            candidate: StandardCurveFitCandidate,
+            policy: CalibrationPolicy
+        ): CalibrationRankingMetrics {
             val result = candidate.result
             val signalMinimum = candidate.points.minOfOrNull { it.second }
             val signalMaximum = candidate.points.maxOfOrNull { it.second }
@@ -758,10 +759,20 @@ class StandardCurveBuilderViewModel @Inject constructor(
                 0.0
             }
             val rmse = result.metrics["RMSE"]
+            val hasBackCalculationDecision = result.metrics.containsKey("ICH M10 Accepted")
+            val backCalculationAccepted = if (hasBackCalculationDecision) {
+                (result.metrics["ICH M10 Accepted"] ?: 0.0) >= 1.0
+            } else {
+                // 通用函数目前没有ICH专用字段，但仍必须通过R²质量门槛；缺字段不能等价
+                // 于失败，也不能让R²很低、反算接受率偶然为100%的候选被标记为合格。
+                true
+            }
             return CalibrationRankingMetrics(
                 function = result.function,
                 rSquared = result.rSquared,
-                accepted = (result.metrics["ICH M10 Accepted"] ?: 0.0) >= 1.0,
+                accepted = backCalculationAccepted &&
+                    result.rSquared.isFinite() &&
+                    result.rSquared >= policy.lowQualityRSquaredThreshold,
                 backCalculatedRmsePercent = result.metrics["Back-calculated RMSE (%)"],
                 acceptedStandardRatio = result.metrics["Accepted Standard Ratio"],
                 normalizedRmse = rmse?.takeIf { signalRange > 1e-12 }?.div(signalRange),

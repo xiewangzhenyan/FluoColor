@@ -6,6 +6,8 @@ import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR
 import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR_VERSION
 import com.muc.fluocolorquant.domain.detection.photometry.FLUORESCENCE_PROCESSOR_NAME
 import com.muc.fluocolorquant.domain.detection.photometry.FLUORESCENCE_PROCESSOR_VERSION
+import com.muc.fluocolorquant.domain.signal.SignalFeatureCatalog
+import com.muc.fluocolorquant.domain.signal.SignalFeatureTier
 
 /**
  * 用户输入校验能够安全使用的信号范围。
@@ -35,15 +37,59 @@ data class AnalysisSignalRange(
  */
 object AnalysisFeaturePolicy {
 
-    private val colorimetricFeatures = linkedSetOf(
+    /**
+     * 普通自动推荐池。
+     *
+     * 经典加权灰度放在首位并明确采用 0.299R + 0.587G + 0.114B。ΔE2000和相对光密度
+     * 在存在参考位时参加比较；没有参考位时只跳过这两项，不得连带删除RGB、Lab等直接信号。
+     */
+    private val recommendedColorimetricFeatures = linkedSetOf(
+        AnalysisPrimaryFeature.GRAY_LUMINOSITY,
         AnalysisPrimaryFeature.DELTA_E_2000,
         AnalysisPrimaryFeature.OPTICAL_DENSITY,
-        AnalysisPrimaryFeature.GRAY_LUMINOSITY,
         AnalysisPrimaryFeature.RED_INTENSITY,
         AnalysisPrimaryFeature.GREEN_INTENSITY,
         AnalysisPrimaryFeature.BLUE_INTENSITY,
-        AnalysisPrimaryFeature.AVERAGE_RGB
+        AnalysisPrimaryFeature.AVERAGE_RGB,
+        AnalysisPrimaryFeature.CIE_L_STAR,
+        AnalysisPrimaryFeature.CIE_A_STAR,
+        AnalysisPrimaryFeature.CIE_B_STAR
     )
+
+    private val extendedColorimetricFeatures = linkedSetOf(
+        AnalysisPrimaryFeature.EUCLIDEAN_RGB_NORM,
+        AnalysisPrimaryFeature.RED_GREEN_RATIO,
+        AnalysisPrimaryFeature.RED_BLUE_RATIO,
+        AnalysisPrimaryFeature.GREEN_BLUE_RATIO,
+        AnalysisPrimaryFeature.HSV_HUE,
+        AnalysisPrimaryFeature.HSV_SATURATION,
+        AnalysisPrimaryFeature.HSV_VALUE,
+        AnalysisPrimaryFeature.HSL_SATURATION,
+        AnalysisPrimaryFeature.HSL_LIGHTNESS,
+        AnalysisPrimaryFeature.CIE_X_CHROMATICITY,
+        AnalysisPrimaryFeature.CIE_Y_CHROMATICITY,
+        AnalysisPrimaryFeature.YCBCR_Y,
+        AnalysisPrimaryFeature.YCBCR_CB,
+        AnalysisPrimaryFeature.YCBCR_CR
+    )
+
+    private val compatibilityColorimetricFeatures = linkedSetOf(
+        AnalysisPrimaryFeature.INVERSE_RB_AVERAGE,
+        AnalysisPrimaryFeature.RED_BLUE_DIFFERENCE,
+        AnalysisPrimaryFeature.CIE_X_TRISTIMULUS,
+        AnalysisPrimaryFeature.CIE_Y_TRISTIMULUS,
+        AnalysisPrimaryFeature.CIE_Z_TRISTIMULUS,
+        AnalysisPrimaryFeature.CMYK_CYAN,
+        AnalysisPrimaryFeature.CMYK_MAGENTA,
+        AnalysisPrimaryFeature.CMYK_YELLOW,
+        AnalysisPrimaryFeature.CMYK_BLACK
+    )
+
+    private val colorimetricFeatures = linkedSetOf<AnalysisPrimaryFeature>().apply {
+        addAll(recommendedColorimetricFeatures)
+        addAll(extendedColorimetricFeatures)
+        addAll(compatibilityColorimetricFeatures)
+    }
 
     private val fluorescenceFeatures = linkedSetOf(
         AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
@@ -60,6 +106,27 @@ object AnalysisFeaturePolicy {
             AnalysisPrimaryFeature.DELTA_PEAK_WAVELENGTH_NM
         )
     }
+
+    /** 普通自动标定默认只比较推荐层，扩展和兼容信号由用户在高级设置中主动加入。 */
+    fun recommendedFeatures(modality: DetectionModality): Set<AnalysisPrimaryFeature> = when (modality) {
+        DetectionModality.COLORIMETRIC -> recommendedColorimetricFeatures
+        DetectionModality.FLUORESCENCE -> fluorescenceFeatures
+        DetectionModality.SPECTRUM -> linkedSetOf(AnalysisPrimaryFeature.PEAK_WAVELENGTH_NM)
+    }
+
+    /** 供现场选择器和设置页分组显示，不把兼容经验公式混入默认推荐。 */
+    fun featureTier(feature: AnalysisPrimaryFeature): SignalFeatureTier = when (feature) {
+        AnalysisPrimaryFeature.DELTA_E_2000,
+        AnalysisPrimaryFeature.OPTICAL_DENSITY -> SignalFeatureTier.RECOMMENDED
+        else -> SignalFeatureCatalog.definitionForPrimaryFeature(feature)?.tier
+            ?: SignalFeatureTier.RECOMMENDED
+    }
+
+    /** 只有必须与明确参考信号比较的特征才强制要求空白/参考位。 */
+    fun requiresReference(feature: AnalysisPrimaryFeature): Boolean = feature in setOf(
+        AnalysisPrimaryFeature.DELTA_E_2000,
+        AnalysisPrimaryFeature.OPTICAL_DENSITY
+    )
 
     /** 普通用户不选择时使用的科学默认特征。 */
     fun defaultFeature(modality: DetectionModality): AnalysisPrimaryFeature = when (modality) {
@@ -96,7 +163,39 @@ object AnalysisFeaturePolicy {
         AnalysisPrimaryFeature.RED_INTENSITY,
         AnalysisPrimaryFeature.GREEN_INTENSITY,
         AnalysisPrimaryFeature.BLUE_INTENSITY,
-        AnalysisPrimaryFeature.AVERAGE_RGB -> AnalysisSignalRange(0.0, 255.0)
+        AnalysisPrimaryFeature.AVERAGE_RGB,
+        AnalysisPrimaryFeature.EUCLIDEAN_RGB_NORM,
+        AnalysisPrimaryFeature.INVERSE_RB_AVERAGE,
+        AnalysisPrimaryFeature.RED_BLUE_DIFFERENCE,
+        AnalysisPrimaryFeature.RED_GREEN_RATIO,
+        AnalysisPrimaryFeature.RED_BLUE_RATIO,
+        AnalysisPrimaryFeature.GREEN_BLUE_RATIO,
+        AnalysisPrimaryFeature.HSV_HUE,
+        AnalysisPrimaryFeature.HSV_SATURATION,
+        AnalysisPrimaryFeature.HSV_VALUE,
+        AnalysisPrimaryFeature.HSL_SATURATION,
+        AnalysisPrimaryFeature.HSL_LIGHTNESS,
+        AnalysisPrimaryFeature.CIE_X_TRISTIMULUS,
+        AnalysisPrimaryFeature.CIE_Y_TRISTIMULUS,
+        AnalysisPrimaryFeature.CIE_Z_TRISTIMULUS,
+        AnalysisPrimaryFeature.CIE_X_CHROMATICITY,
+        AnalysisPrimaryFeature.CIE_Y_CHROMATICITY,
+        AnalysisPrimaryFeature.CIE_L_STAR,
+        AnalysisPrimaryFeature.CIE_A_STAR,
+        AnalysisPrimaryFeature.CIE_B_STAR,
+        AnalysisPrimaryFeature.YCBCR_Y,
+        AnalysisPrimaryFeature.YCBCR_CB,
+        AnalysisPrimaryFeature.YCBCR_CR,
+        AnalysisPrimaryFeature.CMYK_CYAN,
+        AnalysisPrimaryFeature.CMYK_MAGENTA,
+        AnalysisPrimaryFeature.CMYK_YELLOW,
+        AnalysisPrimaryFeature.CMYK_BLACK -> {
+            val range = SignalFeatureCatalog.definitionForPrimaryFeature(feature)?.valueRange
+            AnalysisSignalRange(
+                minimum = range?.minimum,
+                maximum = range?.maximum
+            )
+        }
         AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY -> AnalysisSignalRange()
         AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY -> AnalysisSignalRange()
         AnalysisPrimaryFeature.FLUORESCENCE_SNR -> AnalysisSignalRange(0.0, 9999.0)

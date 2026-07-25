@@ -51,6 +51,10 @@ data class GridAnalyteQuantitationDraft(
     val selectedAnalysisModelId: String? = null,
     val selectedFeature: AnalysisPrimaryFeature? = null,
     val selectedFunction: FittingFunction? = null,
+    /** 空集合表示后台自动比较推荐信号；非空时仅比较用户明确选择的候选。 */
+    val selectedFeatures: Set<AnalysisPrimaryFeature> = emptySet(),
+    /** 空集合表示后台自动比较默认函数；非空时逐一计算用户选择的候选函数。 */
+    val selectedFunctions: Set<FittingFunction> = emptySet(),
     /** 现场拟合使用明确状态机，禁止继续组合“加载中/预览为空/已确认”等互斥布尔值。 */
     val onsiteState: OnsiteCalibrationState = OnsiteCalibrationState.Editing,
     /**

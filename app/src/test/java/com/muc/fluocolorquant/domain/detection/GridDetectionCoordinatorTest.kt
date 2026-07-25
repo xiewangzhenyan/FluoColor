@@ -7,6 +7,7 @@ import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.InputProtocol
+import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.ReadoutLayout
 import com.muc.fluocolorquant.data.enums.TemplateLifecycleStatus
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
@@ -16,6 +17,7 @@ import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.CarrierProfile
 import com.muc.fluocolorquant.data.model.CalibrationPoint
 import com.muc.fluocolorquant.domain.calibration.CalibrationFailureReason
+import com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
 import com.muc.fluocolorquant.data.model.DeepLearningModelDefinition
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.Project
@@ -32,6 +34,8 @@ import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.PgGridLocator
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
 import com.muc.fluocolorquant.domain.detection.photometry.BaseSitePhotometry
+import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR_NAME
+import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR_VERSION
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantConfig
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
 import com.muc.fluocolorquant.domain.detection.photometry.RgbPhotometry
@@ -639,10 +643,89 @@ class GridDetectionCoordinatorTest {
 
         assertNull(resultSet.recommendedCandidateId)
         assertTrue(resultSet.candidates.isEmpty())
-        assertEquals(3, resultSet.functionResults.size)
+        assertEquals(CalibrationPolicy.DEFAULT_FUNCTIONS.size, resultSet.functionResults.size)
         assertTrue(resultSet.functionResults.all { result ->
             CalibrationFailureReason.INSUFFICIENT_STANDARD_LEVELS in result.failureReasons
         })
+    }
+
+    @Test
+    fun `无参考孔的比色现场标定保留经典灰度并只跳过DeltaE`() {
+        val base = validSnapshot()
+        val templateId = base.template.id
+        val colorimetricAnalyte = base.analytes.single().let { source ->
+            source.copy(
+                templateConfig = source.templateConfig.copy(displayConfigJson = null),
+                analysisModel = source.analysisModel.copy(
+                    model = source.analysisModel.model.copy(
+                        detectionMode = DetectionModality.COLORIMETRIC.code,
+                        primaryFeature = AnalysisPrimaryFeature.GRAY_LUMINOSITY.code,
+                        processorName = COLORIMETRIC_PROCESSOR_NAME,
+                        processorVersion = COLORIMETRIC_PROCESSOR_VERSION
+                    )
+                ),
+                onsiteSelectedFeatures = listOf(
+                    AnalysisPrimaryFeature.DELTA_E_2000.code,
+                    AnalysisPrimaryFeature.GRAY_LUMINOSITY.code
+                ),
+                onsiteSelectedFunctions = listOf(FittingFunction.LINEAR.identifier)
+            )
+        }
+        val snapshot = base.copy(
+            template = base.template.copy(detectionMode = DetectionModality.COLORIMETRIC.code),
+            acquisitionProfile = base.acquisitionProfile.copy(
+                supportedModesJson = "[\"COLORIMETRIC\"]"
+            ),
+            analytes = listOf(colorimetricAnalyte),
+            // 故意不设置空白或参考位：三个标准孔足以验证经典灰度直接信号。
+            siteAssignments = listOf(
+                standardAssignment(templateId, "standard-0", 0, 0, "cea", 0.0),
+                standardAssignment(templateId, "standard-1", 0, 1, "cea", 10.0),
+                standardAssignment(templateId, "standard-2", 1, 0, "cea", 20.0),
+                sampleAssignment(templateId, "sample", 1, 1, "cea")
+            )
+        )
+
+        val resultSet = coordinator().previewOnsiteCalibration(
+            snapshot = snapshot,
+            quant = quantResult(2, 2, listOf(10.0, 20.0, 30.0, 40.0)),
+            analyteId = "cea"
+        )
+
+        assertEquals(listOf(FittingFunction.LINEAR), resultSet.functionResults.map { it.function })
+        assertTrue(resultSet.candidates.isNotEmpty())
+        assertTrue(resultSet.candidates.all {
+            it.primaryFeature == AnalysisPrimaryFeature.GRAY_LUMINOSITY
+        })
+
+        // 用户应用候选后，正式运行必须冻结同一主特征和同一处理器身份；否则兼容门控会在
+        // “开始分析”阶段把刚刚拟合成功的曲线错误降级成仅信号。
+        val selected = requireNotNull(resultSet.candidates.first())
+        val frozen = coordinator().applyOnsiteCalibrationSelection(
+            snapshot = snapshot,
+            resultSet = resultSet,
+            selectedCandidateId = selected.id,
+            runId = "run-colorimetric-no-reference"
+        ).analytes.single()
+        assertEquals(AnalysisPrimaryFeature.GRAY_LUMINOSITY.code, frozen.analysisModel.model.primaryFeature)
+        assertEquals(COLORIMETRIC_PROCESSOR_NAME, frozen.analysisModel.model.processorName)
+        assertEquals(COLORIMETRIC_PROCESSOR_VERSION, frozen.analysisModel.model.processorVersion)
+        assertEquals(
+            ModelCompatibilityResult.Compatible,
+            AnalysisModelCompatibilityChecker.check(
+                model = frozen.analysisModel.model,
+                request = ModelCompatibilityRequest(
+                    analyteId = "cea",
+                    modality = DetectionModality.COLORIMETRIC,
+                    inputProtocol = InputProtocol.ENDPOINT_ONLY,
+                    primaryFeature = AnalysisPrimaryFeature.GRAY_LUMINOSITY,
+                    carrierType = CarrierType.MICROFLUIDIC_CHIP,
+                    acquisitionProfileId = snapshot.acquisitionProfile.id,
+                    processorName = COLORIMETRIC_PROCESSOR_NAME,
+                    processorVersion = COLORIMETRIC_PROCESSOR_VERSION
+                )
+            )
+        )
     }
 
     @Test

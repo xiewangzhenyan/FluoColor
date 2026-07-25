@@ -750,6 +750,8 @@ class GridDetectionViewModel @Inject constructor(
                         quantitationMode = effectiveMode.code,
                         onsiteSelectedFeature = null,
                         onsiteSelectedFunction = null,
+                        onsiteSelectedFeatures = null,
+                        onsiteSelectedFunctions = null,
                         analyteQuantitationSnapshot = current.buildResourceQuantitationSnapshot(
                             mode = effectiveMode,
                             bundle = effectiveBundle
@@ -806,6 +808,8 @@ class GridDetectionViewModel @Inject constructor(
                     quantitationMode = mode.code,
                     onsiteSelectedFeature = null,
                     onsiteSelectedFunction = null,
+                    onsiteSelectedFeatures = null,
+                    onsiteSelectedFunctions = null,
                     analyteQuantitationSnapshot = null
                 )
 
@@ -858,6 +862,8 @@ class GridDetectionViewModel @Inject constructor(
                         quantitationMode = actualMode.code,
                         onsiteSelectedFeature = null,
                         onsiteSelectedFunction = null,
+                        onsiteSelectedFeatures = null,
+                        onsiteSelectedFunctions = null,
                         analyteQuantitationSnapshot = null
                     )
                 }
@@ -883,18 +889,21 @@ class GridDetectionViewModel @Inject constructor(
         }
     }
 
-    /** 更新现场拟合高级选择；null 表示继续由后台自动推荐。 */
+    /** 更新现场拟合高级多选；空集合表示继续由后台自动推荐。 */
     fun updateOnsiteAdvanced(
         analyteId: String,
-        feature: AnalysisPrimaryFeature?,
-        function: FittingFunction?
+        features: Set<AnalysisPrimaryFeature>,
+        functions: Set<FittingFunction>
     ) {
         val session = localizationSession ?: return
         val snapshot = session.request.snapshot
         val analytes = snapshot.analytes.map { analyte ->
             if (analyte.analyte.id != analyteId) analyte else analyte.copy(
-                onsiteSelectedFeature = feature?.code,
-                onsiteSelectedFunction = function?.identifier,
+                // 单选字段仅用于旧快照兼容；新版真实状态由多选列表保存。
+                onsiteSelectedFeature = features.singleOrNull()?.code,
+                onsiteSelectedFunction = functions.singleOrNull()?.identifier,
+                onsiteSelectedFeatures = features.map(AnalysisPrimaryFeature::code),
+                onsiteSelectedFunctions = functions.map(FittingFunction::identifier),
                 quantitationMode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code,
                 analyteQuantitationSnapshot = null
             )
@@ -903,8 +912,10 @@ class GridDetectionViewModel @Inject constructor(
         val current = quantitationDrafts[analyteId] ?: return
         quantitationDrafts = quantitationDrafts + (
             analyteId to current.copy(
-                selectedFeature = feature,
-                selectedFunction = function,
+                selectedFeature = features.singleOrNull(),
+                selectedFunction = functions.singleOrNull(),
+                selectedFeatures = features,
+                selectedFunctions = functions,
                 onsiteState = OnsiteCalibrationState.Editing,
                 appliedSnapshot = null
             )
@@ -1425,7 +1436,9 @@ class GridDetectionViewModel @Inject constructor(
         analysisModel = bundle,
         quantitationMode = bundle.toQuantitationMode().code,
         onsiteSelectedFeature = null,
-        onsiteSelectedFunction = null
+        onsiteSelectedFunction = null,
+        onsiteSelectedFeatures = null,
+        onsiteSelectedFunctions = null
     )
 
     /** 直接新建项目的内存载体若尚未入库，则复用同规格资源或创建一条真实外键记录。 */
@@ -1994,6 +2007,18 @@ private fun TemplateProjectAnalyteSnapshot.toSignalOnlyBundle(): AnalysisModelBu
 /** 从冻结分析物快照恢复 ViewModel 定量草稿。 */
 private fun TemplateProjectAnalyteSnapshot.toQuantitationDraft(): GridAnalyteQuantitationDraft {
     val mode = resolvedGridQuantitationMode()
+    val restoredFeatures = onsiteSelectedFeatures.orEmpty()
+        .mapNotNull(AnalysisPrimaryFeature::fromCode)
+        .toCollection(linkedSetOf())
+        .ifEmpty {
+            onsiteSelectedFeature?.let(AnalysisPrimaryFeature::fromCode)?.let(::setOf).orEmpty()
+        }
+    val restoredFunctions = onsiteSelectedFunctions.orEmpty()
+        .mapNotNull(FittingFunction::fromIdentifier)
+        .filterTo(linkedSetOf()) { it != FittingFunction.INTERPOLATION }
+        .ifEmpty {
+            onsiteSelectedFunction?.let(FittingFunction::fromIdentifier)?.let(::setOf).orEmpty()
+        }
     return GridAnalyteQuantitationDraft(
         analyteId = analyte.id,
         mode = mode,
@@ -2007,6 +2032,8 @@ private fun TemplateProjectAnalyteSnapshot.toQuantitationDraft(): GridAnalyteQua
             onsiteSelectedFeature ?: analysisModel.model.primaryFeature
         ),
         selectedFunction = onsiteSelectedFunction?.let(FittingFunction::fromIdentifier),
+        selectedFeatures = restoredFeatures,
+        selectedFunctions = restoredFunctions,
         appliedSnapshot = analyteQuantitationSnapshot,
         onsiteState = if (
             mode == GridAnalyteQuantitationMode.ONSITE_AUTO_FIT &&

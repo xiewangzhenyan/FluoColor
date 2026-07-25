@@ -99,6 +99,41 @@ class CalibrationModelSelectorTest {
     }
 
     @Test
+    fun `统一候选入口不会静默丢弃二次指数对数和幂函数`() {
+        val points = listOf(1.0, 2.0, 3.0, 4.0, 5.0, 6.0).map { concentration ->
+            concentration to (2.0 * concentration * concentration + 3.0 * concentration + 4.0)
+        }
+        val requested = linkedSetOf(
+            FittingFunction.LINEAR,
+            FittingFunction.QUADRATIC,
+            FittingFunction.EXPONENTIAL,
+            FittingFunction.LOG,
+            FittingFunction.POWER
+        )
+
+        val candidates = FittingEngine.fitRequestedCalibrationFunctions(points, requested)
+
+        assertEquals(requested, candidates.mapTo(linkedSetOf(), FittingResult::function))
+    }
+
+    @Test
+    fun `统一候选入口不会为零浓度静默删除对数和幂函数标准点`() {
+        val points = listOf(
+            0.0 to 2.0,
+            1.0 to 3.0,
+            2.0 to 5.0,
+            4.0 to 9.0
+        )
+
+        val candidates = FittingEngine.fitRequestedCalibrationFunctions(
+            points,
+            linkedSetOf(FittingFunction.LOG, FittingFunction.POWER)
+        )
+
+        assertTrue(candidates.isEmpty())
+    }
+
+    @Test
     fun `浓度水平不足时不会用参数数目等于样本数的非线性模型强行过拟合`() {
         val points = listOf(
             1.0 to 2.0,

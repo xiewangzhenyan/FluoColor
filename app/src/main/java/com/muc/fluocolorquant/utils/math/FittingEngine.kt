@@ -373,6 +373,42 @@ object FittingEngine {
         }
     }
 
+    /**
+     * 为统一阵列标定和标准曲线库生成用户明确允许的全部函数候选。
+     *
+     * 线性、4PL、5PL继续使用成熟的加权标定选择器；二次、指数、对数、幂函数以及
+     * 专家函数使用项目既有单函数拟合器。调用方仍负责浓度水平门槛和曲线单调性验收，
+     * 本入口只保证不同页面不会把系统设置中的非三大函数悄悄丢弃。
+     */
+    fun fitRequestedCalibrationFunctions(
+        dataPoints: List<Pair<Double, Double>>,
+        allowedFunctions: Set<FittingFunction>
+    ): List<FittingResult> {
+        val normalizedPoints = dataPoints.filter { (concentration, signal) ->
+            concentration.isFinite() && concentration >= 0.0 && signal.isFinite()
+        }.sortedBy { it.first }
+        return allowedFunctions.flatMap { function ->
+            // 对数与幂函数的旧拟合器会过滤定义域外点。统一入口必须整条拒绝，不能让
+            // 标准曲线库和现场标定在用户不知情时使用不同数量的标准点。
+            val domainValid = when (function) {
+                FittingFunction.LOG -> normalizedPoints.all { (concentration, _) ->
+                    concentration > 0.0
+                }
+                FittingFunction.POWER -> normalizedPoints.all { (concentration, signal) ->
+                    concentration > 0.0 && signal > 0.0
+                }
+                else -> true
+            }
+            if (!domainValid) {
+                emptyList()
+            } else if (function in CalibrationModelSelector.automaticFunctions) {
+                fitCalibrationCandidates(normalizedPoints, setOf(function))
+            } else {
+                listOf(fitSingle(normalizedPoints, function)).filter(FittingResult::isSuccess)
+            }
+        }
+    }
+
     /** 普通自动模式支持的成熟曲线集合，供旧96孔板选择界面复用。 */
     fun automaticCalibrationFunctions(): Set<FittingFunction> =
         CalibrationModelSelector.automaticFunctions

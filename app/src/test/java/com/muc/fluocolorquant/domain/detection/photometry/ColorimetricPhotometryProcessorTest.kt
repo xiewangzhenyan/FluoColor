@@ -30,10 +30,14 @@ class ColorimetricPhotometryProcessorTest {
         val reference = result.sites[0]
         val shallow = result.sites[1]
         val deep = result.sites[2]
-        assertEquals(0.0, reference.deltaE2000, 1e-8)
-        assertTrue(deep.deltaE2000 > shallow.deltaE2000)
-        assertTrue(deep.opticalDensity > shallow.opticalDensity)
-        assertEquals(deep.deltaE2000, deep.primaryFeatureValue, 1e-9)
+        assertEquals(0.0, requireNotNull(reference.deltaE2000), 1e-8)
+        assertTrue(requireNotNull(deep.deltaE2000) > requireNotNull(shallow.deltaE2000))
+        assertTrue(requireNotNull(deep.opticalDensity) > requireNotNull(shallow.opticalDensity))
+        assertEquals(
+            requireNotNull(deep.deltaE2000),
+            requireNotNull(deep.primaryFeatureValue),
+            1e-9
+        )
     }
 
     @Test
@@ -56,7 +60,73 @@ class ColorimetricPhotometryProcessorTest {
         assertTrue(result.whiteBalanceGains.red != result.whiteBalanceGains.blue)
         // 样本经同一全局增益后仍保留明显蓝色分量，证明没有逐位点单独中和颜色。
         assertTrue(result.sites[1].whiteBalancedRgb.blue > result.sites[1].whiteBalancedRgb.red)
-        assertEquals(result.sites[1].opticalDensity, result.sites[1].primaryFeatureValue, 1e-9)
+        assertEquals(
+            requireNotNull(result.sites[1].opticalDensity),
+            requireNotNull(result.sites[1].primaryFeatureValue),
+            1e-9
+        )
+    }
+
+    @Test
+    fun `没有参考位时经典灰度和绿色通道仍能直接计算`() {
+        val rgb = RgbPhotometry(120.0, 180.0, 60.0)
+        val quant = quantResult(listOf(baseSite(0, rgb)))
+
+        val gray = ColorimetricPhotometryProcessor.process(
+            quant,
+            ColorimetricProcessorConfig(
+                referenceSiteIndices = emptySet(),
+                primaryFeature = AnalysisPrimaryFeature.GRAY_LUMINOSITY
+            )
+        )
+        val green = ColorimetricPhotometryProcessor.process(
+            quant,
+            ColorimetricProcessorConfig(
+                referenceSiteIndices = emptySet(),
+                primaryFeature = AnalysisPrimaryFeature.GREEN_INTENSITY
+            )
+        )
+
+        // 经典公式必须作为真实计算契约锁定，不能只在UI中显示公式却使用另一套权重。
+        assertEquals(
+            0.299 * rgb.red + 0.587 * rgb.green + 0.114 * rgb.blue,
+            requireNotNull(gray.sites.single().primaryFeatureValue),
+            1e-9
+        )
+        assertEquals(rgb.green, requireNotNull(green.sites.single().primaryFeatureValue), 1e-9)
+        assertTrue(gray.referenceRgb == null && gray.referenceLab == null)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `没有参考位时DeltaE明确拒绝而不是连带删除全部直接信号`() {
+        ColorimetricPhotometryProcessor.process(
+            quantResult(listOf(baseSite(0, RgbPhotometry(120.0, 180.0, 60.0)))),
+            ColorimetricProcessorConfig(
+                referenceSiteIndices = emptySet(),
+                primaryFeature = AnalysisPrimaryFeature.DELTA_E_2000
+            )
+        )
+    }
+
+    @Test
+    fun `扩展颜色空间信号由统一处理器产生有限值`() {
+        val quant = quantResult(listOf(baseSite(0, RgbPhotometry(80.0, 140.0, 210.0))))
+        val features = listOf(
+            AnalysisPrimaryFeature.CIE_L_STAR,
+            AnalysisPrimaryFeature.CIE_A_STAR,
+            AnalysisPrimaryFeature.CIE_B_STAR,
+            AnalysisPrimaryFeature.HSV_HUE,
+            AnalysisPrimaryFeature.YCBCR_CB,
+            AnalysisPrimaryFeature.RED_GREEN_RATIO
+        )
+
+        features.forEach { feature ->
+            val value = ColorimetricPhotometryProcessor.process(
+                quant,
+                ColorimetricProcessorConfig(emptySet(), feature)
+            ).sites.single().primaryFeatureValue
+            assertTrue("$feature 应输出有限信号", value?.isFinite() == true)
+        }
     }
 
     private fun quantResult(sites: List<BaseSitePhotometry>): PgQuantResult {

@@ -66,8 +66,20 @@ class CalibrationSettingsViewModel @Inject constructor(
         copy(colorimetricFeatures = colorimetricFeatures.toggleKeepingAtLeastOne(feature))
     }
 
+    /** 设置页弹窗一次提交完整集合，避免逐项写DataStore造成中间状态闪烁。 */
+    fun setColorimetricFeatures(features: Set<AnalysisPrimaryFeature>) = update {
+        if (features.isEmpty()) return@update this
+        copy(colorimetricFeatures = features)
+    }
+
     fun toggleFluorescenceFeature(feature: AnalysisPrimaryFeature) = update {
         copy(fluorescenceFeatures = fluorescenceFeatures.toggleKeepingAtLeastOne(feature))
+    }
+
+    /** 荧光候选同样以一次原子提交写入策略快照。 */
+    fun setFluorescenceFeatures(features: Set<AnalysisPrimaryFeature>) = update {
+        if (features.isEmpty()) return@update this
+        copy(fluorescenceFeatures = features)
     }
 
     fun toggleWeighting(code: Int) = update {

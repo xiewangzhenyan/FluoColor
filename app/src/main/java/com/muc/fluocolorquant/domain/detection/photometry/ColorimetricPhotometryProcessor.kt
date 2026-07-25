@@ -1,6 +1,10 @@
 package com.muc.fluocolorquant.domain.detection.photometry
 
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
+import com.muc.fluocolorquant.domain.detection.AnalysisFeaturePolicy
+import com.muc.fluocolorquant.domain.signal.RgbSignalSample
+import com.muc.fluocolorquant.domain.signal.SignalFeatureCatalog
+import com.muc.fluocolorquant.domain.signal.SignalFeatureV2Extractor
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -32,16 +36,13 @@ data class ColorimetricProcessorConfig(
     val specularHighlightRatioLimit: Double = 0.02
 ) {
     init {
-        require(referenceSiteIndices.isNotEmpty()) { "比色处理必须至少指定一个模板参考位" }
         require(
-            primaryFeature in setOf(
-                AnalysisPrimaryFeature.DELTA_E_2000,
-                AnalysisPrimaryFeature.OPTICAL_DENSITY,
-                AnalysisPrimaryFeature.GRAY_LUMINOSITY,
-                AnalysisPrimaryFeature.RED_INTENSITY,
-                AnalysisPrimaryFeature.GREEN_INTENSITY,
-                AnalysisPrimaryFeature.BLUE_INTENSITY,
-                AnalysisPrimaryFeature.AVERAGE_RGB
+            referenceSiteIndices.isNotEmpty() || !AnalysisFeaturePolicy.requiresReference(primaryFeature)
+        ) { "当前比色主特征必须至少指定一个模板参考位" }
+        require(
+            AnalysisFeaturePolicy.isCompatible(
+                com.muc.fluocolorquant.data.enums.DetectionModality.COLORIMETRIC,
+                primaryFeature
             )
         ) { "比色处理器收到不兼容的主特征" }
         require(specularHighlightRatioLimit in 0.0..1.0) { "反光比例阈值必须位于 0 到 1" }
@@ -53,10 +54,11 @@ data class ColorimetricSitePhotometry(
     val base: BaseSitePhotometry,
     val whiteBalancedRgb: RgbPhotometry,
     val lab: LabPhotometry,
-    val deltaE2000: Double,
-    val opticalDensity: Double,
+    val deltaE2000: Double?,
+    val opticalDensity: Double?,
     val primaryFeature: AnalysisPrimaryFeature,
-    val primaryFeatureValue: Double,
+    /** 低饱和度Hue、低分母比率等不稳定特征不伪造为0，而是明确返回空值。 */
+    val primaryFeatureValue: Double?,
     val qc: SitePhotometryQc
 )
 
@@ -64,8 +66,9 @@ data class ColorimetricSitePhotometry(
 data class ColorimetricPhotometryResult(
     val processorVersion: String,
     val whiteBalanceGains: RgbPhotometry,
-    val referenceRgb: RgbPhotometry,
-    val referenceLab: LabPhotometry,
+    /** 直接RGB/Lab等特征可以没有模板参考位，因此参考上下文必须允许为空。 */
+    val referenceRgb: RgbPhotometry?,
+    val referenceLab: LabPhotometry?,
     val sites: List<ColorimetricSitePhotometry>
 )
 
@@ -87,26 +90,33 @@ object ColorimetricPhotometryProcessor {
             "比色参考位索引超出阵列范围"
         }
 
-        val referenceSites = config.referenceSiteIndices.sorted().map(quant.sites::get)
-        val rawReference = medianRgb(referenceSites.map(BaseSitePhotometry::correctedMedianRgb))
-        val referenceMean = (rawReference.red + rawReference.green + rawReference.blue) / 3.0
-        val gains = RgbPhotometry(
-            red = (referenceMean / maxOf(rawReference.red, EPSILON)).coerceIn(MIN_GAIN, MAX_GAIN),
-            green = (referenceMean / maxOf(rawReference.green, EPSILON)).coerceIn(MIN_GAIN, MAX_GAIN),
-            blue = (referenceMean / maxOf(rawReference.blue, EPSILON)).coerceIn(MIN_GAIN, MAX_GAIN)
-        )
-        val balancedReference = applyGains(rawReference, gains)
-        val referenceLab = rgbToLab(balancedReference)
-        val referenceLuminance = luminance(balancedReference)
+        val rawReference = config.referenceSiteIndices.takeIf(Set<Int>::isNotEmpty)
+            ?.sorted()
+            ?.map(quant.sites::get)
+            ?.map(BaseSitePhotometry::correctedMedianRgb)
+            ?.let(::medianRgb)
+        val gains = rawReference?.let { reference ->
+            val referenceMean = (reference.red + reference.green + reference.blue) / 3.0
+            RgbPhotometry(
+                red = (referenceMean / maxOf(reference.red, EPSILON)).coerceIn(MIN_GAIN, MAX_GAIN),
+                green = (referenceMean / maxOf(reference.green, EPSILON)).coerceIn(MIN_GAIN, MAX_GAIN),
+                blue = (referenceMean / maxOf(reference.blue, EPSILON)).coerceIn(MIN_GAIN, MAX_GAIN)
+            )
+        } ?: RgbPhotometry(red = 1.0, green = 1.0, blue = 1.0)
+        val balancedReference = rawReference?.let { applyGains(it, gains) }
+        val referenceLab = balancedReference?.let(::rgbToLab)
+        val referenceLuminance = balancedReference?.let(::luminance)
 
         val sites = quant.sites.map { base ->
             val balanced = applyGains(base.correctedMedianRgb, gains)
             val lab = rgbToLab(balanced)
-            val deltaE = deltaE2000(lab, referenceLab)
-            val opticalDensity = -log10(
-                (luminance(balanced) + EPSILON) /
-                    (referenceLuminance + EPSILON)
-            )
+            val deltaE = referenceLab?.let { deltaE2000(lab, it) }
+            val opticalDensity = referenceLuminance?.let { referenceValue ->
+                -log10(
+                    (luminance(balanced) + EPSILON) /
+                        (referenceValue + EPSILON)
+                )
+            }
             val flags = buildSet {
                 addAll(base.qc.flags)
                 if (base.saturationRatio > config.specularHighlightRatioLimit) {
@@ -122,17 +132,12 @@ object ColorimetricPhotometryProcessor {
                     base.roiClipRatio >= quant.config.severeBorderClipRatioLimit ||
                     base.annulusClipRatio >= quant.config.severeBorderClipRatioLimit
             )
-            val primaryValue = when (config.primaryFeature) {
-                AnalysisPrimaryFeature.DELTA_E_2000 -> deltaE
-                AnalysisPrimaryFeature.OPTICAL_DENSITY -> opticalDensity
-                AnalysisPrimaryFeature.GRAY_LUMINOSITY -> luminance(balanced)
-                AnalysisPrimaryFeature.RED_INTENSITY -> balanced.red
-                AnalysisPrimaryFeature.GREEN_INTENSITY -> balanced.green
-                AnalysisPrimaryFeature.BLUE_INTENSITY -> balanced.blue
-                AnalysisPrimaryFeature.AVERAGE_RGB ->
-                    (balanced.red + balanced.green + balanced.blue) / 3.0
-                else -> error("构造器已经阻止不兼容的比色主特征")
-            }
+            val primaryValue = primaryFeatureValue(
+                feature = config.primaryFeature,
+                balanced = balanced,
+                deltaE2000 = deltaE,
+                opticalDensity = opticalDensity
+            )
             ColorimetricSitePhotometry(
                 base = base,
                 whiteBalancedRgb = balanced,
@@ -152,6 +157,33 @@ object ColorimetricPhotometryProcessor {
             referenceLab = referenceLab,
             sites = sites
         )
+    }
+
+    /**
+     * 从统一白平衡后的RGB生成全部直接颜色特征。
+     *
+     * 96孔板和微流控都在进入本处理器前完成形状感知采样；这里不再关心圆孔或方块，
+     * 只消费位点级RGB观测，因此两种载体能够真正共用同一套信号和标定引擎。
+     */
+    private fun primaryFeatureValue(
+        feature: AnalysisPrimaryFeature,
+        balanced: RgbPhotometry,
+        deltaE2000: Double?,
+        opticalDensity: Double?
+    ): Double? {
+        if (feature == AnalysisPrimaryFeature.DELTA_E_2000) return deltaE2000
+        if (feature == AnalysisPrimaryFeature.OPTICAL_DENSITY) return opticalDensity
+        val pixelType = SignalFeatureCatalog.pixelTypeForPrimaryFeature(feature) ?: return null
+        val extraction = SignalFeatureV2Extractor.extract(
+            listOf(
+                RgbSignalSample(
+                    red = balanced.red,
+                    green = balanced.green,
+                    blue = balanced.blue
+                )
+            )
+        )
+        return extraction.values[SignalFeatureCatalog.v2Code(pixelType)]?.takeIf(Double::isFinite)
     }
 
     private fun applyGains(rgb: RgbPhotometry, gains: RgbPhotometry): RgbPhotometry {

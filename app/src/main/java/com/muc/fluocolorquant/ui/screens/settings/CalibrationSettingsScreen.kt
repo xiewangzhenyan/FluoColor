@@ -12,12 +12,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.ColorLens
@@ -27,6 +30,8 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -40,26 +45,35 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
+import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
 import com.muc.fluocolorquant.domain.calibration.CalibrationStrategy
 import com.muc.fluocolorquant.domain.calibration.LowQualityCalibrationAction
+import com.muc.fluocolorquant.domain.detection.AnalysisFeaturePolicy
+import com.muc.fluocolorquant.domain.signal.SignalFeatureTier
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.components.analysisFeatureLabel
+import com.muc.fluocolorquant.ui.components.analysisFeatureIcon
 import com.muc.fluocolorquant.ui.viewmodels.CalibrationSettingsViewModel
 
 /**
@@ -169,9 +183,9 @@ fun CalibrationSettingsScreen(
                     icon = Icons.Default.ColorLens
                 ) {
                     FeatureSelector(
-                        features = CalibrationPolicy.DEFAULT_COLORIMETRIC_FEATURES,
+                        modality = DetectionModality.COLORIMETRIC,
                         selected = policy.colorimetricFeatures,
-                        onToggle = viewModel::toggleColorimetricFeature
+                        onConfirm = viewModel::setColorimetricFeatures
                     )
                 }
             }
@@ -182,9 +196,9 @@ fun CalibrationSettingsScreen(
                     icon = Icons.Default.Science
                 ) {
                     FeatureSelector(
-                        features = CalibrationPolicy.DEFAULT_FLUORESCENCE_FEATURES,
+                        modality = DetectionModality.FLUORESCENCE,
                         selected = policy.fluorescenceFeatures,
-                        onToggle = viewModel::toggleFluorescenceFeature
+                        onConfirm = viewModel::setFluorescenceFeatures
                     )
                 }
             }
@@ -475,20 +489,167 @@ private fun SettingSwitchRow(
 
 @Composable
 private fun FeatureSelector(
-    features: Set<AnalysisPrimaryFeature>,
+    modality: DetectionModality,
     selected: Set<AnalysisPrimaryFeature>,
-    onToggle: (AnalysisPrimaryFeature) -> Unit
+    onConfirm: (Set<AnalysisPrimaryFeature>) -> Unit
 ) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        features.forEach { feature ->
-            FilterChip(
-                selected = feature in selected,
-                onClick = { onToggle(feature) },
-                label = { Text(analysisFeatureLabel(feature)) }
+    var pickerVisible by remember { mutableStateOf(false) }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = { pickerVisible = true },
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.grid_quant_selected_count, selected.size),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (AnalysisPrimaryFeature.GRAY_LUMINOSITY in selected) {
+                    Text(
+                        text = stringResource(R.string.grid_quant_classic_gray_formula),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
+
+    if (pickerVisible) {
+        SettingsSignalFeatureDialog(
+            modality = modality,
+            selected = selected,
+            onConfirm = { features ->
+                onConfirm(features)
+                pickerVisible = false
+            },
+            onDismiss = { pickerVisible = false }
+        )
+    }
 }
+
+/**
+ * 系统默认候选信号采用分层弹窗管理，避免把三十余种RGB派生量直接铺满设置页。
+ * 推荐、扩展、兼容和实验信号仍全部可见；用户至少保留一项后才能确认。
+ */
+@Composable
+private fun SettingsSignalFeatureDialog(
+    modality: DetectionModality,
+    selected: Set<AnalysisPrimaryFeature>,
+    onConfirm: (Set<AnalysisPrimaryFeature>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var pending by remember(modality, selected) { mutableStateOf(selected) }
+    val groupedFeatures = remember(modality) {
+        val allowed = AnalysisFeaturePolicy.allowedFeatures(modality)
+        SignalFeatureTier.entries.mapNotNull { tier ->
+            val features = allowed.filter { AnalysisFeaturePolicy.featureTier(it) == tier }
+            (tier to features).takeIf { features.isNotEmpty() }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.grid_quant_signal_picker_title)) },
+        text = {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 520.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                groupedFeatures.forEach { (tier, features) ->
+                    item(key = "tier-${tier.name}") {
+                        Text(
+                            text = signalTierLabel(tier),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                    items(features, key = AnalysisPrimaryFeature::code) { feature ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                pending = if (feature in pending) {
+                                    if (pending.size > 1) pending - feature else pending
+                                } else {
+                                    pending + feature
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Checkbox(
+                                    checked = feature in pending,
+                                    onCheckedChange = null
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(9.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
+                                ) {
+                                    Icon(
+                                        imageVector = analysisFeatureIcon(feature),
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(7.dp).size(18.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Text(
+                                    text = analysisFeatureLabel(feature),
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(pending) }, enabled = pending.isNotEmpty()) {
+                Text(stringResource(R.string.confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
+}
+
+/** 信号等级只显示短标签，详细科学解释由用户手册和具体信号说明承担。 */
+@Composable
+private fun signalTierLabel(tier: SignalFeatureTier): String = stringResource(
+    when (tier) {
+        SignalFeatureTier.RECOMMENDED -> R.string.grid_quant_recommended_group
+        SignalFeatureTier.EXTENDED -> R.string.grid_quant_extended_group
+        SignalFeatureTier.LEGACY -> R.string.grid_quant_compatibility_group
+        SignalFeatureTier.EXPERIMENTAL -> R.string.grid_quant_experimental_group
+    }
+)
 
 @Composable
 private fun WeightingSelector(
@@ -547,21 +708,33 @@ private fun CalibrationRulePreview(policy: CalibrationPolicy) {
     }
 }
 
-/** 固定示例为线性0.9940、4PL 0.9994、5PL 0.9996。 */
+/**
+ * 使用固定、无科研数据含义的演示分数预览当前推荐规则。
+ *
+ * 这里必须覆盖默认函数池中的每一种函数。默认函数池扩展后若仍使用 getValue 读取旧的
+ * 三函数映射，用户一打开设置页就会发生崩溃，因此演示数据与默认函数集合需要同步维护。
+ */
 private fun previewRecommendation(policy: CalibrationPolicy): FittingFunction {
     val rSquared = mapOf(
         FittingFunction.LINEAR to 0.9940,
+        FittingFunction.QUADRATIC to 0.9974,
+        FittingFunction.EXPONENTIAL to 0.9968,
+        FittingFunction.LOG to 0.9910,
+        FittingFunction.POWER to 0.9970,
         FittingFunction.RODBARD to 0.9994,
         FittingFunction.LOGISTIC to 0.9996
     )
     val available = CalibrationPolicy.DEFAULT_FUNCTIONS.filter { it in policy.allowedFunctions }
     if (available.isEmpty()) return FittingFunction.LINEAR
     return when (policy.strategy) {
-        CalibrationStrategy.R_SQUARED_FIRST -> available.maxBy { rSquared.getValue(it) }
+        CalibrationStrategy.R_SQUARED_FIRST -> available.maxBy { rSquared[it] ?: Double.NEGATIVE_INFINITY }
         CalibrationStrategy.SIMPLE_MODEL_FIRST -> available.minBy(::modelComplexity)
         CalibrationStrategy.ROBUST -> {
-            val best = available.maxOf { rSquared.getValue(it) }
-            available.filter { best - rSquared.getValue(it) <= policy.rSquaredSimplicityTolerance }
+            val best = available.maxOf { rSquared[it] ?: Double.NEGATIVE_INFINITY }
+            available.filter {
+                best - (rSquared[it] ?: Double.NEGATIVE_INFINITY) <=
+                    policy.rSquaredSimplicityTolerance
+            }
                 .minBy(::modelComplexity)
         }
     }
@@ -578,8 +751,26 @@ private fun modelComplexity(function: FittingFunction): Int = when (function) {
 private fun functionLabel(function: FittingFunction): String = stringResource(
     when (function) {
         FittingFunction.LINEAR -> R.string.fitting_function_linear
-        FittingFunction.RODBARD -> R.string.fitting_function_rodbard_4pl
-        FittingFunction.LOGISTIC -> R.string.fitting_function_logistic_5pl
-        else -> R.string.fitting_function_linear
+        FittingFunction.QUADRATIC -> R.string.fitting_function_quadratic
+        FittingFunction.EXPONENTIAL -> R.string.fitting_function_exponential
+        FittingFunction.LOG -> R.string.fitting_function_log
+        FittingFunction.POWER -> R.string.fitting_function_power
+        FittingFunction.RODBARD -> R.string.fitting_function_rodbard_4pl_short
+        FittingFunction.LOGISTIC -> R.string.fitting_function_logistic_5pl_short
+        // 设置页当前只展示默认七函数，但这里仍为未来扩展提供正确的本地化回退，
+        // 绝不能把未知函数误标为“线性”。
+        FittingFunction.CUBIC -> R.string.fitting_function_cubic
+        FittingFunction.QUARTIC -> R.string.fitting_function_quartic
+        FittingFunction.GAMMA_VARIATE -> R.string.fitting_function_gamma_variate
+        FittingFunction.CUSTOM_LOG -> R.string.fitting_function_custom_log
+        FittingFunction.RODBARD_NIH -> R.string.fitting_function_rodbard_nih
+        FittingFunction.EXPONENTIAL_WITH_OFFSET -> R.string.fitting_function_exponential_offset
+        FittingFunction.GAUSSIAN -> R.string.fitting_function_gaussian
+        FittingFunction.EXPONENTIAL_RECOVERY -> R.string.fitting_function_exponential_recovery
+        FittingFunction.GOMPERTZ -> R.string.fitting_function_gompertz
+        FittingFunction.HILL -> R.string.fitting_function_hill
+        FittingFunction.GENERAL_GOMPERTZ -> R.string.fitting_function_general_gompertz
+        FittingFunction.RICHARDS -> R.string.fitting_function_richards
+        FittingFunction.INTERPOLATION -> R.string.fitting_function_interpolation
     }
 )

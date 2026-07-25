@@ -61,7 +61,7 @@ fun Plate96LayoutScreen(
     onSelectQuantitationAnalyte: (String) -> Unit = {},
     onSetQuantitationMode: (String, GridAnalyteQuantitationMode) -> Unit = { _, _ -> },
     onSelectAnalysisModel: (String, String) -> Unit = { _, _ -> },
-    onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit =
+    onUpdateOnsiteAdvanced: (String, Set<AnalysisPrimaryFeature>, Set<FittingFunction>) -> Unit =
         { _, _, _ -> },
     onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit = { _, _ -> },
     onPreviewOnsiteFit: (String) -> Unit = {},

@@ -1,6 +1,7 @@
 package com.muc.fluocolorquant.domain.signal
 
 import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.PixelType
 
 /**
@@ -136,6 +137,49 @@ object SignalFeatureCatalog {
     private val byCode = definitions.associateBy(SignalFeatureDefinition::code)
     private val byPixelType = definitions.associateBy(SignalFeatureDefinition::legacyPixelType)
 
+    /**
+     * 新阵列主特征与既有 PixelType 的显式映射。
+     *
+     * 这里是96孔板和微流控共享颜色特征的唯一映射表。禁止在页面、协调器和设置页分别
+     * 维护另一套映射，否则旧曲线兼容和新现场拟合很容易再次出现同名不同义。
+     */
+    private val primaryFeatureToPixelType: Map<AnalysisPrimaryFeature, PixelType> = linkedMapOf(
+        AnalysisPrimaryFeature.GRAY_LUMINOSITY to PixelType.GRAY_LUMINOSITY,
+        AnalysisPrimaryFeature.RED_INTENSITY to PixelType.RED,
+        AnalysisPrimaryFeature.GREEN_INTENSITY to PixelType.GREEN,
+        AnalysisPrimaryFeature.BLUE_INTENSITY to PixelType.BLUE,
+        AnalysisPrimaryFeature.AVERAGE_RGB to PixelType.AVERAGE_RGB,
+        AnalysisPrimaryFeature.EUCLIDEAN_RGB_NORM to PixelType.EUCLIDEAN_NORM,
+        AnalysisPrimaryFeature.INVERSE_RB_AVERAGE to PixelType.INVERSE_RB_AVG,
+        AnalysisPrimaryFeature.RED_BLUE_DIFFERENCE to PixelType.RB_DIFF,
+        AnalysisPrimaryFeature.RED_GREEN_RATIO to PixelType.RATIO_RG,
+        AnalysisPrimaryFeature.RED_BLUE_RATIO to PixelType.RATIO_RB,
+        AnalysisPrimaryFeature.GREEN_BLUE_RATIO to PixelType.RATIO_GB,
+        AnalysisPrimaryFeature.HSV_HUE to PixelType.HUE,
+        AnalysisPrimaryFeature.HSV_SATURATION to PixelType.SATURATION_HSV,
+        AnalysisPrimaryFeature.HSV_VALUE to PixelType.VALUE_HSV,
+        AnalysisPrimaryFeature.HSL_SATURATION to PixelType.SATURATION_HSL,
+        AnalysisPrimaryFeature.HSL_LIGHTNESS to PixelType.LIGHTNESS_HSL,
+        AnalysisPrimaryFeature.CIE_X_TRISTIMULUS to PixelType.CIE_X,
+        AnalysisPrimaryFeature.CIE_Y_TRISTIMULUS to PixelType.CIE_Y,
+        AnalysisPrimaryFeature.CIE_Z_TRISTIMULUS to PixelType.CIE_Z,
+        AnalysisPrimaryFeature.CIE_X_CHROMATICITY to PixelType.CIE_x,
+        AnalysisPrimaryFeature.CIE_Y_CHROMATICITY to PixelType.CIE_y,
+        AnalysisPrimaryFeature.CIE_L_STAR to PixelType.CIE_L,
+        AnalysisPrimaryFeature.CIE_A_STAR to PixelType.CIE_a,
+        AnalysisPrimaryFeature.CIE_B_STAR to PixelType.CIE_b,
+        AnalysisPrimaryFeature.YCBCR_Y to PixelType.YCBCR_Y,
+        AnalysisPrimaryFeature.YCBCR_CB to PixelType.YCBCR_CB,
+        AnalysisPrimaryFeature.YCBCR_CR to PixelType.YCBCR_CR,
+        AnalysisPrimaryFeature.CMYK_CYAN to PixelType.CYAN,
+        AnalysisPrimaryFeature.CMYK_MAGENTA to PixelType.MAGENTA,
+        AnalysisPrimaryFeature.CMYK_YELLOW to PixelType.YELLOW,
+        AnalysisPrimaryFeature.CMYK_BLACK to PixelType.BLACK
+    )
+    private val pixelTypeToPrimaryFeature = primaryFeatureToPixelType.entries.associate {
+        (feature, pixelType) -> pixelType to feature
+    }
+
     /** 为新的稳定处理器生成持久化编码。 */
     fun v2Code(pixelType: PixelType): String = "pixel.v2.${pixelType.identifier}"
 
@@ -143,6 +187,17 @@ object SignalFeatureCatalog {
         requireNotNull(byPixelType[pixelType]) { "缺少像素特征定义: ${pixelType.name}" }
 
     fun definitionForCode(code: String?): SignalFeatureDefinition? = code?.let(byCode::get)
+
+    /** 返回阵列主特征对应的版本化像素定义；ΔE、光密度和荧光信号没有 PixelType。 */
+    fun definitionForPrimaryFeature(
+        feature: AnalysisPrimaryFeature
+    ): SignalFeatureDefinition? = primaryFeatureToPixelType[feature]?.let(::definitionFor)
+
+    fun pixelTypeForPrimaryFeature(feature: AnalysisPrimaryFeature): PixelType? =
+        primaryFeatureToPixelType[feature]
+
+    fun primaryFeatureForPixelType(pixelType: PixelType): AnalysisPrimaryFeature? =
+        pixelTypeToPrimaryFeature[pixelType]
 
     /**
      * 从像素 JSON Map 读取冻结曲线要求的信号。

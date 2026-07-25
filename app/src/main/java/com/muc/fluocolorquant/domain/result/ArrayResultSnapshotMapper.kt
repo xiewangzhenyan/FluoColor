@@ -432,14 +432,13 @@ object ArrayResultSnapshotMapper {
             val gains = context.whiteBalanceGains
                 ?: return DetailParseResult.CorruptDeclaredSchema
             val referenceRgb = context.referenceRgb
-                ?: return DetailParseResult.CorruptDeclaredSchema
             val referenceLab = context.referenceLab
-                ?: return DetailParseResult.CorruptDeclaredSchema
             if (
                 site.base.siteIndex != measurement.siteIndex ||
-                indices.isEmpty() ||
                 indices.distinct().size != indices.size ||
-                indices.any { it !in grid.sites.indices }
+                indices.any { it !in grid.sites.indices } ||
+                // 声明了参考位时必须同时保存参考RGB和Lab；直接信号允许三者全部为空。
+                (indices.isNotEmpty() && (referenceRgb == null || referenceLab == null))
             ) {
                 return DetailParseResult.CorruptDeclaredSchema
             }

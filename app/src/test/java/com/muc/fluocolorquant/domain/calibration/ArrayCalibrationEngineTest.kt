@@ -14,18 +14,20 @@ class ArrayCalibrationEngineTest {
     private val engine = ArrayCalibrationEngine()
 
     @Test
-    fun `无法形成有效曲线时仍返回三个函数及失败原因`() {
+    fun `无法形成有效曲线时仍返回全部默认函数及失败原因`() {
         val observations = (0 until 6).map { index ->
             CalibrationStandardObservation(
                 siteIndex = index,
-                concentration = index.toDouble(),
+                // 只有一个浓度水平时，所有默认函数都必须返回结构化失败，
+                // 不能依赖某个通用拟合器是否会为常量响应勉强生成低质量参数。
+                concentration = 1.0,
                 signals = mapOf(AnalysisPrimaryFeature.FLUORESCENCE_SNR to 10.0)
             )
         }
 
         val result = engine.fit(draft(observations))
 
-        assertEquals(3, result.functionResults.size)
+        assertEquals(CalibrationPolicy.DEFAULT_FUNCTIONS.size, result.functionResults.size)
         assertTrue(result.functionResults.all { functionResult ->
             functionResult.candidate == null && functionResult.failureReasons.isNotEmpty()
         })
@@ -91,7 +93,7 @@ class ArrayCalibrationEngineTest {
     }
 
     @Test
-    fun `用户明确选择专家函数时不再被默认三函数集合丢弃`() {
+    fun `用户明确选择专家函数时不再被默认函数集合丢弃`() {
         val observations = (0..5).map { level ->
             CalibrationStandardObservation(
                 siteIndex = level,
@@ -109,6 +111,56 @@ class ArrayCalibrationEngineTest {
 
         assertEquals(listOf(FittingFunction.QUADRATIC), result.functionResults.map { it.function })
         assertEquals(FittingFunction.QUADRATIC, requireNotNull(result.candidates.single()).function)
+    }
+
+    @Test
+    fun `用户多选函数时只生成所选函数槽位`() {
+        val observations = (1..6).map { level ->
+            CalibrationStandardObservation(
+                siteIndex = level - 1,
+                concentration = level.toDouble(),
+                signals = mapOf(
+                    AnalysisPrimaryFeature.FLUORESCENCE_SNR to level.toDouble() * 3.0 + 2.0
+                )
+            )
+        }
+        val selectedFunctions = linkedSetOf(
+            FittingFunction.LINEAR,
+            FittingFunction.EXPONENTIAL,
+            FittingFunction.POWER
+        )
+
+        val result = engine.fit(
+            draft(observations).copy(requestedFunctions = selectedFunctions)
+        )
+
+        assertEquals(selectedFunctions.toList(), result.functionResults.map { it.function })
+        assertTrue(result.functionResults.none { it.function == FittingFunction.RODBARD })
+        assertTrue(result.functionResults.none { it.function == FittingFunction.LOGISTIC })
+    }
+
+    @Test
+    fun `对数和幂函数遇到零浓度时返回定义域失败且不静默丢点`() {
+        val observations = listOf(0.0, 1.0, 2.0).mapIndexed { index, concentration ->
+            CalibrationStandardObservation(
+                siteIndex = index,
+                concentration = concentration,
+                signals = mapOf(
+                    AnalysisPrimaryFeature.FLUORESCENCE_SNR to concentration + 1.0
+                )
+            )
+        }
+
+        val result = engine.fit(
+            draft(observations).copy(
+                requestedFunctions = linkedSetOf(FittingFunction.LOG, FittingFunction.POWER)
+            )
+        )
+
+        assertTrue(result.candidates.isEmpty())
+        assertTrue(result.functionResults.all {
+            CalibrationFailureReason.INVALID_FUNCTION_DOMAIN in it.failureReasons
+        })
     }
 
     @Test

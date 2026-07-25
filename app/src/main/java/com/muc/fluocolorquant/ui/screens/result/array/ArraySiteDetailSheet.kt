@@ -40,6 +40,7 @@ import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
 import com.muc.fluocolorquant.domain.result.resolveQualityLevel
+import com.muc.fluocolorquant.ui.components.analysisFeatureLabel
 
 const val ARRAY_SITE_DETAIL_SHEET_TAG: String = "array_site_detail_sheet"
 const val ARRAY_SITE_DETAIL_LIST_TAG: String = "array_site_detail_list"
@@ -247,14 +248,18 @@ private fun ColorimetricDetailSection(
             stringResource(R.string.array_site_primary_feature),
             primaryFeatureLabel(site.primaryFeature.code)
         )
-        DetailRow(
-            stringResource(R.string.array_site_delta_e),
-            formatArrayHeatmapValue(site.deltaE2000)
-        )
-        DetailRow(
-            stringResource(R.string.array_site_optical_density),
-            formatArrayHeatmapValue(site.opticalDensity)
-        )
+        site.deltaE2000?.let { value ->
+            DetailRow(
+                stringResource(R.string.array_site_delta_e),
+                formatArrayHeatmapValue(value)
+            )
+        }
+        site.opticalDensity?.let { value ->
+            DetailRow(
+                stringResource(R.string.array_site_optical_density),
+                formatArrayHeatmapValue(value)
+            )
+        }
         DetailRow(
             stringResource(R.string.array_site_white_balanced_rgb),
             rgbText(site.whiteBalancedRgb)
@@ -268,29 +273,35 @@ private fun ColorimetricDetailSection(
                 site.lab.b
             )
         )
-        DetailRow(
-            stringResource(R.string.array_site_reference_sites),
-            detail.calibrationContext.referenceIndices.joinToString { index ->
-                snapshot.sites.getOrNull(index)?.siteKey ?: (index + 1).toString()
-            }
-        )
+        if (detail.calibrationContext.referenceIndices.isNotEmpty()) {
+            DetailRow(
+                stringResource(R.string.array_site_reference_sites),
+                detail.calibrationContext.referenceIndices.joinToString { index ->
+                    snapshot.sites.getOrNull(index)?.siteKey ?: (index + 1).toString()
+                }
+            )
+        }
         DetailRow(
             stringResource(R.string.array_site_white_balance_gains),
             rgbText(detail.calibrationContext.whiteBalanceGains)
         )
-        DetailRow(
-            stringResource(R.string.array_site_reference_rgb),
-            rgbText(detail.calibrationContext.referenceRgb)
-        )
-        DetailRow(
-            stringResource(R.string.array_site_reference_lab),
-            stringResource(
-                R.string.array_site_lab_value,
-                detail.calibrationContext.referenceLab.lightness,
-                detail.calibrationContext.referenceLab.a,
-                detail.calibrationContext.referenceLab.b
+        detail.calibrationContext.referenceRgb?.let { referenceRgb ->
+            DetailRow(
+                stringResource(R.string.array_site_reference_rgb),
+                rgbText(referenceRgb)
             )
-        )
+        }
+        detail.calibrationContext.referenceLab?.let { referenceLab ->
+            DetailRow(
+                stringResource(R.string.array_site_reference_lab),
+                stringResource(
+                    R.string.array_site_lab_value,
+                    referenceLab.lightness,
+                    referenceLab.a,
+                    referenceLab.b
+                )
+            )
+        }
         BasePhotometryRows(site.base)
         DetailRow(
             stringResource(R.string.array_site_specular_ratio),
@@ -579,41 +590,8 @@ internal fun arrayGeometryFlagLabel(code: String): String {
 
 @Composable
 internal fun primaryFeatureLabel(code: String): String {
-    return when (AnalysisPrimaryFeature.fromCode(code)) {
-        AnalysisPrimaryFeature.DELTA_E_2000 -> stringResource(R.string.analysis_model_feature_delta_e)
-        AnalysisPrimaryFeature.OPTICAL_DENSITY -> stringResource(R.string.analysis_model_feature_optical_density)
-        AnalysisPrimaryFeature.GRAY_LUMINOSITY -> stringResource(
-            R.string.analysis_model_feature_gray_luminosity
-        )
-        AnalysisPrimaryFeature.RED_INTENSITY -> stringResource(
-            R.string.analysis_model_feature_red_intensity
-        )
-        AnalysisPrimaryFeature.GREEN_INTENSITY -> stringResource(
-            R.string.analysis_model_feature_green_intensity
-        )
-        AnalysisPrimaryFeature.BLUE_INTENSITY -> stringResource(
-            R.string.analysis_model_feature_blue_intensity
-        )
-        AnalysisPrimaryFeature.AVERAGE_RGB -> stringResource(
-            R.string.analysis_model_feature_average_rgb
-        )
-        AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY -> stringResource(
-            R.string.analysis_model_feature_net_fluorescence
-        )
-        AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY -> stringResource(
-            R.string.analysis_model_feature_integrated_fluorescence
-        )
-        AnalysisPrimaryFeature.FLUORESCENCE_SNR -> stringResource(
-            R.string.analysis_model_feature_fluorescence_snr
-        )
-        AnalysisPrimaryFeature.PEAK_WAVELENGTH_NM -> stringResource(
-            R.string.analysis_model_feature_peak_wavelength
-        )
-        AnalysisPrimaryFeature.DELTA_PEAK_WAVELENGTH_NM -> stringResource(
-            R.string.analysis_model_feature_delta_peak
-        )
-        null -> code
-    }
+    val feature = AnalysisPrimaryFeature.fromCode(code) ?: return code
+    return analysisFeatureLabel(feature)
 }
 
 @Composable

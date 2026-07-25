@@ -47,11 +47,17 @@ class ArrayCalibrationEngine @Inject constructor() {
                 if (points.map { it.first }.distinct().size < minimumLevels) {
                     return@flatMap emptyList()
                 }
-                val fittingResults = if (function in FittingEngine.automaticCalibrationFunctions()) {
-                    FittingEngine.fitCalibrationCandidates(points, setOf(function))
-                } else {
-                    listOf(FittingEngine.fitSingle(points, function))
+                // 对数和幂函数的底层拟合器会过滤定义域外点。如果不在这里阻止，用户输入
+                // 0浓度后算法可能悄悄丢掉该标准点并继续拟合，页面却仍让用户误以为全部
+                // 标准点都参与了计算。现场标定必须保持输入集合可审计，因此整条候选不可用。
+                if (!pointsSatisfyFunctionDomain(function, points)) {
+                    return@flatMap emptyList()
                 }
+                // 统一入口确保现场标定与标准曲线库对同一组函数采用同一候选生成规则。
+                val fittingResults = FittingEngine.fitRequestedCalibrationFunctions(
+                    dataPoints = points,
+                    allowedFunctions = setOf(function)
+                )
                 fittingResults
                     .filter(FittingResult::isSuccess)
                     .filter { result ->
@@ -126,7 +132,15 @@ class ArrayCalibrationEngine @Inject constructor() {
         }
         val normalizedRmse = rawRmse?.takeIf { signalRange > SIGNAL_RANGE_EPSILON }
             ?.div(signalRange)
-        val backCalculationAccepted = (metrics["ICH M10 Accepted"] ?: 0.0) >= 1.0
+        val hasBackCalculationDecision = metrics.containsKey("ICH M10 Accepted")
+        val backCalculationAccepted = if (hasBackCalculationDecision) {
+            (metrics["ICH M10 Accepted"] ?: 0.0) >= 1.0
+        } else {
+            // 二次、指数、对数和幂函数目前沿用通用拟合器，不会生成ICH专用诊断字段。
+            // 这些候选仍必须通过参数有限、实验范围单调和后续严格反算门槛；这里不能因为
+            // “缺少某个指标键”就把数学上可执行的专家候选全部误判为低质量。
+            true
+        }
         // 反算通过率只说明标准点落入宽松误差窗，不能替代拟合相关性。本次真实数据
         // R²=0.1774、反算通过率=100% 就是典型反例，因此必须同时通过R²质量门槛。
         val accepted = backCalculationAccepted &&
@@ -180,6 +194,9 @@ class ArrayCalibrationEngine @Inject constructor() {
             points.takeIf { it.map(Pair<Double, Double>::first).distinct().size >= minimumLevels }
         }
         if (featurePoints.isEmpty()) return setOf(CalibrationFailureReason.NO_VALID_SIGNAL)
+        if (featurePoints.all { points -> !pointsSatisfyFunctionDomain(function, points) }) {
+            return setOf(CalibrationFailureReason.INVALID_FUNCTION_DOMAIN)
+        }
         if (functionRequiresMonotonicResponse(function) && featurePoints.all { points ->
                 !levelMeansAreMonotonic(points)
             }
@@ -187,6 +204,23 @@ class ArrayCalibrationEngine @Inject constructor() {
             return setOf(CalibrationFailureReason.CURVE_NOT_MONOTONIC)
         }
         return setOf(CalibrationFailureReason.FIT_DID_NOT_CONVERGE)
+    }
+
+    /**
+     * 校验拟合变换的数学定义域，并保证任何标准点都不会被底层拟合器静默丢弃。
+     *
+     * - 对数函数需要全部浓度严格大于0；
+     * - 幂函数的对数线性化同时要求浓度和响应严格大于0。
+     */
+    private fun pointsSatisfyFunctionDomain(
+        function: FittingFunction,
+        points: List<Pair<Double, Double>>
+    ): Boolean = when (function) {
+        FittingFunction.LOG -> points.all { (concentration, _) -> concentration > 0.0 }
+        FittingFunction.POWER -> points.all { (concentration, signal) ->
+            concentration > 0.0 && signal > 0.0
+        }
+        else -> true
     }
 
     /** 标准浓度水平的均值趋势只用于解释失败，不代替最终曲线的严格数学验证。 */

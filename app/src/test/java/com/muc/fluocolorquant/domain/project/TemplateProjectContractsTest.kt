@@ -5,6 +5,7 @@ import com.muc.fluocolorquant.data.enums.AnalysisModelType
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.data.enums.ReadoutLayout
 import com.muc.fluocolorquant.data.enums.ResourceStatus
@@ -61,6 +62,35 @@ class TemplateProjectContractsTest {
 
         assertEquals("sample-001", decoded.sampleSlotMapping["R01C01"])
         assertEquals("样本管标签与模板默认值不同", decoded.reasons["R01C02"])
+    }
+
+    @Test
+    fun `现场标定多选信号和函数经过快照往返后保持顺序与内容`() {
+        val source = snapshot().let { original ->
+            original.copy(
+                analytes = original.analytes.map { analyte ->
+                    analyte.copy(
+                        onsiteSelectedFeatures = listOf(
+                            AnalysisPrimaryFeature.GRAY_LUMINOSITY.code,
+                            AnalysisPrimaryFeature.GREEN_INTENSITY.code,
+                            AnalysisPrimaryFeature.CIE_A_STAR.code
+                        ),
+                        onsiteSelectedFunctions = listOf(
+                            FittingFunction.LINEAR.identifier,
+                            FittingFunction.QUADRATIC.identifier,
+                            FittingFunction.RODBARD.identifier
+                        )
+                    )
+                }
+            )
+        }
+
+        val restored = TemplateProjectSnapshotCodec.decode(
+            TemplateProjectSnapshotCodec.encode(source)
+        ).analytes.single()
+
+        assertEquals(source.analytes.single().onsiteSelectedFeatures, restored.onsiteSelectedFeatures)
+        assertEquals(source.analytes.single().onsiteSelectedFunctions, restored.onsiteSelectedFunctions)
     }
 
     @Test

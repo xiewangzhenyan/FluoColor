@@ -33,6 +33,8 @@ data class CalibrationDraft(
 enum class CalibrationFailureReason {
     INSUFFICIENT_STANDARD_LEVELS,
     NO_VALID_SIGNAL,
+    /** 标准浓度或响应包含当前函数无法接受的0值/负值。 */
+    INVALID_FUNCTION_DOMAIN,
     FIT_DID_NOT_CONVERGE,
     PARAMETERS_NOT_FINITE,
     CURVE_NOT_MONOTONIC,
@@ -86,7 +88,7 @@ data class CalibrationFunctionResult(
 /**
  * 一次现场拟合的完整结果集。
  *
- * 该对象永远非空。即使所有函数均不可用，也会返回线性、4PL、5PL三个带失败原因的
+ * 该对象永远非空。即使所有函数均不可用，也会为本次请求的每一种函数返回一个带失败原因的
  * [CalibrationFunctionResult]，确保UI进入结果阶段而不是静默退回“开始拟合”。
  */
 data class CalibrationResultSet(

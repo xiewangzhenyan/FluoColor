@@ -755,17 +755,33 @@ class GridDetectionCoordinator @Inject constructor(
             ?: return unavailableCalibrationResult(analyteId, policy)
         val standards = validStandards(snapshot, analyteId)
 
-        val selectedFeature = AnalysisPrimaryFeature.fromCode(analyteSnapshot.onsiteSelectedFeature)
+        val selectedFeatures = analyteSnapshot.onsiteSelectedFeatures.orEmpty()
+            .mapNotNull(AnalysisPrimaryFeature::fromCode)
+            .toCollection(linkedSetOf())
+            .ifEmpty {
+                analyteSnapshot.onsiteSelectedFeature
+                    ?.let(AnalysisPrimaryFeature::fromCode)
+                    ?.let(::setOf)
+                    .orEmpty()
+            }
         val policyFeatures = when (modality) {
             DetectionModality.COLORIMETRIC -> policy.colorimetricFeatures
             DetectionModality.FLUORESCENCE -> policy.fluorescenceFeatures
             DetectionModality.SPECTRUM -> emptySet()
         }
-        val features = selectedFeature?.let(::setOf)
+        val features = selectedFeatures.takeIf(Set<AnalysisPrimaryFeature>::isNotEmpty)
             ?: AnalysisFeaturePolicy.allowedFeatures(modality).intersect(policyFeatures)
-        val selectedFunction = analyteSnapshot.onsiteSelectedFunction
-            ?.let(FittingFunction::fromIdentifier)
-        val functions = selectedFunction?.let(::setOf)
+        val selectedFunctions = analyteSnapshot.onsiteSelectedFunctions.orEmpty()
+            .mapNotNull(FittingFunction::fromIdentifier)
+            .filterTo(linkedSetOf()) { it != FittingFunction.INTERPOLATION }
+            .ifEmpty {
+                analyteSnapshot.onsiteSelectedFunction
+                    ?.let(FittingFunction::fromIdentifier)
+                    ?.takeIf { it != FittingFunction.INTERPOLATION }
+                    ?.let(::setOf)
+                    .orEmpty()
+            }
+        val functions = selectedFunctions.takeIf(Set<FittingFunction>::isNotEmpty)
             ?: policy.allowedFunctions
 
         // 每个信号只提取一次，再按标准孔组装稳定矩阵。拟合函数之间禁止重复执行光度处理。
@@ -852,7 +868,10 @@ class GridDetectionCoordinator @Inject constructor(
 
     /**
      * 按候选主特征执行一次模态专用光度处理。
-     * 比色仍强制使用真实参考位，荧光仍强制读取冻结通道，不会为了拟合候选而绕过科学校正。
+     *
+     * 只有ΔE2000和相对光密度必须依赖真实参考位；经典灰度、RGB、Lab及扩展颜色特征
+     * 没有参考位也可直接计算。此前把所有比色信号统一拦截，是96孔板现场标定出现
+     * “没有有效信号”的根因。
      */
     private fun signalValuesForFeature(
         snapshot: TemplateProjectSnapshot,
@@ -865,11 +884,17 @@ class GridDetectionCoordinator @Inject constructor(
         return when (modality) {
             DetectionModality.COLORIMETRIC -> {
                 val references = referenceIndices(snapshot, analyteSnapshot)
-                if (references.isEmpty()) return null
+                if (references.isEmpty() && AnalysisFeaturePolicy.requiresReference(feature)) {
+                    return null
+                }
                 ColorimetricPhotometryProcessor.process(
                     quant,
                     ColorimetricProcessorConfig(references, feature)
-                ).sites.associate { it.base.siteIndex to it.primaryFeatureValue }
+                ).sites.mapNotNull { site ->
+                    site.primaryFeatureValue?.takeIf(Double::isFinite)?.let { value ->
+                        site.base.siteIndex to value
+                    }
+                }.toMap()
             }
 
             DetectionModality.FLUORESCENCE -> {
@@ -934,7 +959,9 @@ class GridDetectionCoordinator @Inject constructor(
             if (
                 requireSiteAssignments &&
                 modality == DetectionModality.COLORIMETRIC &&
-                referenceIndices(snapshot, analyteSnapshot).isEmpty()
+                feature != null &&
+                AnalysisFeaturePolicy.requiresReference(feature) &&
+                    referenceIndices(snapshot, analyteSnapshot).isEmpty()
             ) {
                 reasons += GridDetectionBlockReason.MISSING_COLORIMETRIC_REFERENCE
             }

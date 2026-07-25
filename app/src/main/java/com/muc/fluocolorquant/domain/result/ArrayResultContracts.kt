@@ -245,8 +245,9 @@ sealed interface ArrayMeasurementDetail {
 data class ArrayColorimetricCalibrationContext(
     val referenceIndices: List<Int>,
     val whiteBalanceGains: RgbPhotometry,
-    val referenceRgb: RgbPhotometry,
-    val referenceLab: LabPhotometry
+    /** RGB/Lab等直接信号可以不使用参考位，此时参考颜色上下文为空。 */
+    val referenceRgb: RgbPhotometry?,
+    val referenceLab: LabPhotometry?
 )
 
 /** 原始采集附件在结果页与导出中的只读证据。 */

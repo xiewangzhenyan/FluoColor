@@ -63,6 +63,13 @@ data class TemplateProjectAnalyteSnapshot(
     /** 现场拟合高级设置；为空时后台自动比较线性、4PL 和 5PL。 */
     val onsiteSelectedFunction: String? = null,
     /**
+     * 新版现场拟合允许用户选择多个候选信号。null或空列表表示使用系统推荐池；旧版单选
+     * 字段继续保留用于历史快照兼容，并在读取时自动合并。
+     */
+    val onsiteSelectedFeatures: List<String>? = null,
+    /** 新版现场拟合允许选择多个候选函数；null或空列表表示使用系统自动候选池。 */
+    val onsiteSelectedFunctions: List<String>? = null,
+    /**
      * 当前分析物已经由用户确认并冻结的定量方案。
      *
      * 旧版本快照没有该字段时仍可通过冻结的 analysisModel 安全执行；新现场拟合必须写入

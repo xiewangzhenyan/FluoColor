@@ -99,7 +99,7 @@ fun GridDetectionGatewayContent(
     onSelectQuantitationAnalyte: (String) -> Unit = {},
     onSetQuantitationMode: (String, GridAnalyteQuantitationMode) -> Unit = { _, _ -> },
     onSelectAnalysisModel: (String, String) -> Unit = { _, _ -> },
-    onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit =
+    onUpdateOnsiteAdvanced: (String, Set<AnalysisPrimaryFeature>, Set<FittingFunction>) -> Unit =
         { _, _, _ -> },
     onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit = { _, _ -> },
     onPreviewOnsiteFit: (String) -> Unit = {},
@@ -225,7 +225,7 @@ private fun LocalizationWorkflow(
     onSelectQuantitationAnalyte: (String) -> Unit,
     onSetQuantitationMode: (String, GridAnalyteQuantitationMode) -> Unit,
     onSelectAnalysisModel: (String, String) -> Unit,
-    onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit,
+    onUpdateOnsiteAdvanced: (String, Set<AnalysisPrimaryFeature>, Set<FittingFunction>) -> Unit,
     onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit,
     onPreviewOnsiteFit: (String) -> Unit,
     onSelectOnsiteCandidate: (String, String) -> Unit,
@@ -406,7 +406,7 @@ internal fun ArrayLayoutEditor(
     onSelectQuantitationAnalyte: (String) -> Unit,
     onSetQuantitationMode: (String, GridAnalyteQuantitationMode) -> Unit,
     onSelectAnalysisModel: (String, String) -> Unit,
-    onUpdateOnsiteAdvanced: (String, AnalysisPrimaryFeature?, FittingFunction?) -> Unit,
+    onUpdateOnsiteAdvanced: (String, Set<AnalysisPrimaryFeature>, Set<FittingFunction>) -> Unit,
     onUpdateStandardConcentrations: (String, Map<Int, Double?>) -> Unit,
     onPreviewOnsiteFit: (String) -> Unit,
     onSelectOnsiteCandidate: (String, String) -> Unit,
