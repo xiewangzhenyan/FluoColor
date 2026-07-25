@@ -26,6 +26,9 @@ import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultLoadResult
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSource
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshot
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshotMapper
+import com.muc.fluocolorquant.domain.result.validation.ResultValidationEngine
+import com.muc.fluocolorquant.domain.result.validation.ResultValidationPoint
+import com.muc.fluocolorquant.domain.result.validation.ResultValidationSnapshot
 import com.muc.fluocolorquant.ui.theme.FluoColorTheme
 import com.muc.fluocolorquant.ui.viewmodels.Plate96ResultUiState
 import org.junit.Assume.assumeTrue
@@ -103,6 +106,34 @@ class Plate96ResultScreenTest {
         Thread.sleep(SCREENSHOT_HOLD_MILLIS)
     }
 
+    /** 保留预测验证页，检查指标卡、回归图和Bland–Altman图的窄屏布局。 */
+    @Test
+    fun visualPlate96Validation_holdsForAdbReview() {
+        val shouldHold = InstrumentationRegistry.getArguments()
+            .getString(ARGUMENT_HOLD_VALIDATION_SCREENSHOT)
+            ?.toBooleanStrictOrNull()
+            ?: false
+        assumeTrue("未请求96孔板验证页ADB视觉自审，跳过保留页面", shouldHold)
+        setResultContent(validations = mapOf("cea" to validation()))
+        composeRule.onNodeWithTag(PLATE96_RESULT_VALIDATION_TAB_TAG).performClick()
+        composeRule.waitForIdle()
+        Thread.sleep(SCREENSHOT_HOLD_MILLIS)
+    }
+
+    /** 保留导出面板，检查CSV、PNG、PDF和ZIP四种格式的图标与信息层级。 */
+    @Test
+    fun visualPlate96Export_holdsForAdbReview() {
+        val shouldHold = InstrumentationRegistry.getArguments()
+            .getString(ARGUMENT_HOLD_EXPORT_SCREENSHOT)
+            ?.toBooleanStrictOrNull()
+            ?: false
+        assumeTrue("未请求96孔板导出面板ADB视觉自审，跳过保留页面", shouldHold)
+        setResultContent(validations = mapOf("cea" to validation()))
+        composeRule.onNodeWithTag(PLATE96_RESULT_EXPORT_TAG).performClick()
+        composeRule.waitForIdle()
+        Thread.sleep(SCREENSHOT_HOLD_MILLIS)
+    }
+
     /** 保留处理过程首屏，检查步骤证据的科研仪器式呈现。 */
     @Test
     fun visualPlate96Process_holdsForAdbReview() {
@@ -131,11 +162,14 @@ class Plate96ResultScreenTest {
         Thread.sleep(SCREENSHOT_HOLD_MILLIS)
     }
 
-    private fun setResultContent(snapshot: Plate96ResultSnapshot = snapshot()) {
+    private fun setResultContent(
+        snapshot: Plate96ResultSnapshot = snapshot(),
+        validations: Map<String, ResultValidationSnapshot> = emptyMap()
+    ) {
         composeRule.setContent {
             FluoColorTheme {
                 Plate96ResultContent(
-                    state = Plate96ResultUiState.Success(snapshot),
+                    state = Plate96ResultUiState.Success(snapshot, validations = validations),
                     onBack = {},
                     onRetry = {}
                 )
@@ -230,6 +264,30 @@ class Plate96ResultScreenTest {
         calibrationRangeMax = 100.0
     )
 
+    private fun validation(): ResultValidationSnapshot {
+        val points = listOf(
+            ResultValidationPoint(10, "A11", 10.5, 10.0),
+            ResultValidationPoint(11, "A12", 21.2, 20.0),
+            ResultValidationPoint(12, "B1", 29.6, 30.0),
+            ResultValidationPoint(13, "B2", 40.8, 40.0),
+            ResultValidationPoint(14, "B3", 49.5, 50.0)
+        )
+        val calculated = ResultValidationEngine.calculate(points)
+        return ResultValidationSnapshot(
+            validationId = "validation-cea",
+            runId = "plate96-result-ui",
+            analyteId = "cea",
+            revision = 2,
+            concentrationUnit = "ng/mL",
+            points = points,
+            regression = calculated.regression,
+            blandAltman = calculated.blandAltman,
+            processorVersion = ResultValidationEngine.PROCESSOR_VERSION,
+            inputFingerprint = "visual-fixture",
+            createdAtEpochMillis = 2_000L
+        )
+    }
+
     private fun site(index: Int, analyte: ArrayAnalyteResult): ArrayPhysicalSiteResult {
         val row = index / 12
         val column = index % 12
@@ -310,6 +368,8 @@ class Plate96ResultScreenTest {
     companion object {
         private const val ARGUMENT_HOLD_SCREENSHOT = "plate96ResultHoldScreenshot"
         private const val ARGUMENT_HOLD_ANALYSIS_SCREENSHOT = "plate96AnalysisHoldScreenshot"
+        private const val ARGUMENT_HOLD_VALIDATION_SCREENSHOT = "plate96ValidationHoldScreenshot"
+        private const val ARGUMENT_HOLD_EXPORT_SCREENSHOT = "plate96ExportHoldScreenshot"
         private const val ARGUMENT_HOLD_PROCESS_SCREENSHOT = "plate96ProcessHoldScreenshot"
         private const val ARGUMENT_HOLD_LEGACY_PROCESS_SCREENSHOT = "plate96LegacyProcessHoldScreenshot"
         private const val SCREENSHOT_HOLD_MILLIS = 55_000L

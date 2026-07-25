@@ -171,6 +171,55 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migrate13To14_addsAppendOnlyResultValidationRecords() {
+        migrationHelper.createDatabase(VALIDATION_DATABASE_NAME, 13).close()
+
+        migrationHelper.runMigrationsAndValidate(
+            VALIDATION_DATABASE_NAME,
+            14,
+            true,
+            DatabaseMigrations.MIGRATION_13_14
+        ).use { database ->
+            val columns = mutableSetOf<String>()
+            database.query("PRAGMA table_info(`result_validation_records`)").use { cursor ->
+                val nameIndex = cursor.getColumnIndexOrThrow("name")
+                while (cursor.moveToNext()) columns += cursor.getString(nameIndex)
+            }
+            assertTrue(
+                columns.containsAll(
+                    setOf(
+                        "validationId",
+                        "runId",
+                        "analyteId",
+                        "revision",
+                        "concentrationUnit",
+                        "validationPointsJson",
+                        "regressionResultJson",
+                        "blandAltmanResultJson",
+                        "processorVersion",
+                        "inputFingerprint",
+                        "createdAt"
+                    )
+                )
+            )
+
+            val indexes = mutableMapOf<String, Boolean>()
+            database.query("PRAGMA index_list(`result_validation_records`)").use { cursor ->
+                val nameIndex = cursor.getColumnIndexOrThrow("name")
+                val uniqueIndex = cursor.getColumnIndexOrThrow("unique")
+                while (cursor.moveToNext()) {
+                    indexes[cursor.getString(nameIndex)] = cursor.getInt(uniqueIndex) == 1
+                }
+            }
+            assertEquals(false, indexes["index_result_validation_records_runId"])
+            assertEquals(
+                true,
+                indexes["index_result_validation_records_runId_analyteId_revision"]
+            )
+        }
+    }
+
     /** 在 Room 11 中写入一条新检测链的真实科学信号，验证迁移不会丢失已有数据。 */
     private fun SupportSQLiteDatabase.insertVersion11SiteMeasurementFixture() {
         execSQL("INSERT INTO analytes (id, name) VALUES ('analyte-v11', 'CEA')")
@@ -388,5 +437,6 @@ class AppDatabaseMigrationTest {
         const val TEMPLATE_DATABASE_NAME = "template-v11-migration-test"
         const val RESULT_DATABASE_NAME = "result-v12-migration-test"
         const val TEMPLATE_BINDING_DATABASE_NAME = "template-binding-v13-migration-test"
+        const val VALIDATION_DATABASE_NAME = "result-validation-v14-migration-test"
     }
 }

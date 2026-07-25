@@ -21,6 +21,7 @@ import com.muc.fluocolorquant.data.dao.UserDao
 import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.dao.AnalyteDao
 import com.muc.fluocolorquant.data.dao.ReagentDao
+import com.muc.fluocolorquant.data.dao.ResultValidationDao
 import com.muc.fluocolorquant.data.dao.CurveModelDao
 import com.muc.fluocolorquant.data.dao.ProjectAnalyteJoinDao
 import com.muc.fluocolorquant.data.dao.ExperimentTemplateDao
@@ -65,7 +66,8 @@ object DatabaseModule {
             DatabaseMigrations.MIGRATION_9_10,
             DatabaseMigrations.MIGRATION_10_11,
             DatabaseMigrations.MIGRATION_11_12,
-            DatabaseMigrations.MIGRATION_12_13
+            DatabaseMigrations.MIGRATION_12_13,
+            DatabaseMigrations.MIGRATION_13_14
         )
         .addCallback(prepopulateCallback)  // 首次建库时预填充分析物与试剂
         .addCallback(DefaultUserDatabaseCallback) // 每次打开时幂等确保默认登录账户存在
@@ -743,5 +745,11 @@ object DatabaseModule {
     @Provides
     fun provideSiteMeasurementDao(appDatabase: AppDatabase): SiteMeasurementDao {
         return appDatabase.siteMeasurementDao()
+    }
+
+    /** 预测精度验证使用独立DAO，禁止通过旧孔位结果表覆盖冻结浓度。 */
+    @Provides
+    fun provideResultValidationDao(appDatabase: AppDatabase): ResultValidationDao {
+        return appDatabase.resultValidationDao()
     }
 }

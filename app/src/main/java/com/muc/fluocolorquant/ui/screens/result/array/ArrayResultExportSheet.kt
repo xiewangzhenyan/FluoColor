@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,10 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,17 +54,23 @@ import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.export.ArrayExportEvidenceReader
 import com.muc.fluocolorquant.domain.result.export.ArrayResultExportFormat
 import com.muc.fluocolorquant.domain.result.export.ArrayResultExporter
+import com.muc.fluocolorquant.domain.result.export.ArrayResultPngExporter
+import com.muc.fluocolorquant.domain.result.export.ArrayResultPngLabels
 import com.muc.fluocolorquant.domain.result.export.ArrayResultPdfExporter
 import com.muc.fluocolorquant.domain.result.export.ArrayResultPdfLabels
+import com.muc.fluocolorquant.domain.result.export.ArrayResultValidationPdfLabels
+import com.muc.fluocolorquant.domain.result.validation.ResultValidationSnapshot
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import java.io.File
+import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 const val ARRAY_RESULT_EXPORT_SHEET_TAG: String = "array_result_export_sheet"
 const val ARRAY_RESULT_EXPORT_CSV_TAG: String = "array_result_export_csv"
+const val ARRAY_RESULT_EXPORT_PNG_TAG: String = "array_result_export_png"
 const val ARRAY_RESULT_EXPORT_PDF_TAG: String = "array_result_export_pdf"
 const val ARRAY_RESULT_EXPORT_ZIP_TAG: String = "array_result_export_zip"
 const val ARRAY_RESULT_EXPORT_PROGRESS_TAG: String = "array_result_export_progress"
@@ -76,6 +86,8 @@ fun ArrayResultExportCoordinator(
     snapshot: ArrayResultSnapshot,
     visible: Boolean,
     onDismiss: () -> Unit,
+    selectedAnalyteId: String? = null,
+    validations: Map<String, ResultValidationSnapshot> = emptyMap(),
     pdfLabelsOverride: ArrayResultPdfLabels? = null
 ) {
     val context = LocalContext.current
@@ -83,6 +95,14 @@ fun ArrayResultExportCoordinator(
     val scope = rememberCoroutineScope()
     val defaultPdfLabels = arrayResultPdfLabels()
     val pdfLabels = pdfLabelsOverride ?: defaultPdfLabels
+    val validationPdfLabels = arrayResultValidationPdfLabels()
+    val pngLabels = ArrayResultPngLabels(
+        concentrationTitleFormat = stringResource(R.string.array_png_title_format),
+        signalTitleFormat = stringResource(R.string.array_png_signal_title_format),
+        concentration = stringResource(R.string.array_png_concentration),
+        signal = stringResource(R.string.array_png_signal),
+        noValue = stringResource(R.string.array_pdf_no_value)
+    )
     val exportSuccess = stringResource(R.string.array_export_success)
     val exportFailure = stringResource(R.string.array_export_failure)
     var pendingSnapshot by remember { mutableStateOf(snapshot) }
@@ -99,15 +119,36 @@ fun ArrayResultExportCoordinator(
                                 ArrayResultExportFormat.CSV -> output.write(
                                     ArrayResultExporter.createMeasurementsCsv(frozenSnapshot)
                                 )
+                                ArrayResultExportFormat.PNG -> output.write(
+                                    ArrayResultPngExporter.createHeatmapPng(
+                                        snapshot = frozenSnapshot,
+                                        analyteId = selectedAnalyteId,
+                                        labels = pngLabels
+                                    )
+                                )
                                 ArrayResultExportFormat.PDF -> output.write(
-                                    ArrayResultPdfExporter.createPdf(context, frozenSnapshot, pdfLabels)
+                                    ArrayResultPdfExporter.createPdf(
+                                        context = context,
+                                        snapshot = frozenSnapshot,
+                                        labels = pdfLabels,
+                                        validations = validations,
+                                        validationLabels = validationPdfLabels
+                                    )
                                 )
                                 ArrayResultExportFormat.ZIP -> ArrayResultExporter.writeArchive(
                                     snapshot = frozenSnapshot,
                                     evidenceReader = ArrayExportEvidenceReader { sourcePath ->
                                         readEvidenceBytes(context, sourcePath)
                                     },
-                                    output = output
+                                    output = output,
+                                    supplementalFiles = buildArchiveSupplementalFiles(
+                                        context = context,
+                                        snapshot = frozenSnapshot,
+                                        pdfLabels = pdfLabels,
+                                        validationPdfLabels = validationPdfLabels,
+                                        pngLabels = pngLabels,
+                                        validations = validations
+                                    )
                                 )
                             }
                             output.flush()
@@ -132,6 +173,11 @@ fun ArrayResultExportCoordinator(
     ) { uri ->
         uri?.let { writeExport(it, ArrayResultExportFormat.PDF, pendingSnapshot) }
     }
+    val pngLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(ArrayResultExportFormat.PNG.mimeType)
+    ) { uri ->
+        uri?.let { writeExport(it, ArrayResultExportFormat.PNG, pendingSnapshot) }
+    }
     val zipLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(ArrayResultExportFormat.ZIP.mimeType)
     ) { uri ->
@@ -145,6 +191,11 @@ fun ArrayResultExportCoordinator(
                 pendingSnapshot = snapshot
                 onDismiss()
                 csvLauncher.launch(exportFileName(snapshot, ArrayResultExportFormat.CSV))
+            },
+            onPngExport = {
+                pendingSnapshot = snapshot
+                onDismiss()
+                pngLauncher.launch(exportFileName(snapshot, ArrayResultExportFormat.PNG))
             },
             onPdfExport = {
                 pendingSnapshot = snapshot
@@ -163,23 +214,29 @@ fun ArrayResultExportCoordinator(
     }
 }
 
-/** 三种格式的职责在说明中明确区分，避免用户把 CSV 当作完整证据归档。 */
+/** 四种格式的职责在说明中明确区分，避免用户把单张图表或CSV误认为完整证据归档。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArrayResultExportSheet(
     onDismiss: () -> Unit,
     onCsvExport: () -> Unit,
+    onPngExport: () -> Unit,
     onPdfExport: () -> Unit,
     onZipExport: () -> Unit
 ) {
+    // 四种科研导出格式都属于一级动作，打开面板时直接完整展开，避免ZIP被半展开状态遮住。
+    // 同时保留纵向滚动，确保更小屏幕或更大系统字体下每个格式仍然可以访问。
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag(ARRAY_RESULT_EXPORT_SHEET_TAG),
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -200,6 +257,14 @@ fun ArrayResultExportSheet(
                 title = stringResource(R.string.array_export_csv_title),
                 description = stringResource(R.string.array_export_csv_description),
                 onClick = onCsvExport
+            )
+            ExportFormatCard(
+                modifier = Modifier.testTag(ARRAY_RESULT_EXPORT_PNG_TAG),
+                icon = Icons.Outlined.Image,
+                iconColor = Color(0xFF0284C7),
+                title = stringResource(R.string.array_export_png_title),
+                description = stringResource(R.string.array_export_png_description),
+                onClick = onPngExport
             )
             ExportFormatCard(
                 modifier = Modifier.testTag(ARRAY_RESULT_EXPORT_PDF_TAG),
@@ -364,6 +429,28 @@ internal fun arrayResultPdfLabels(): ArrayResultPdfLabels {
     )
 }
 
+@Composable
+private fun arrayResultValidationPdfLabels(): ArrayResultValidationPdfLabels {
+    return ArrayResultValidationPdfLabels(
+        title = stringResource(R.string.plate_validation_title),
+        summaryFormat = stringResource(R.string.plate_validation_pdf_summary),
+        regressionTitle = stringResource(R.string.plate_validation_regression_title),
+        blandAltmanTitle = stringResource(R.string.plate_validation_bland_title),
+        referenceAxis = stringResource(R.string.plate_validation_reference_axis),
+        predictedAxis = stringResource(R.string.plate_validation_predicted_axis),
+        meanAxis = stringResource(R.string.plate_validation_mean_axis),
+        differenceAxis = stringResource(R.string.plate_validation_difference_axis),
+        rSquared = stringResource(R.string.plate_validation_metric_r2),
+        slope = stringResource(R.string.plate_validation_metric_slope),
+        rmse = stringResource(R.string.plate_validation_metric_rmse),
+        mae = stringResource(R.string.plate_validation_metric_mae),
+        meanBias = stringResource(R.string.plate_validation_metric_bias),
+        lowerLimit = stringResource(R.string.plate_validation_metric_lower),
+        upperLimit = stringResource(R.string.plate_validation_metric_upper),
+        withinLimits = stringResource(R.string.plate_validation_metric_within)
+    )
+}
+
 private fun exportFileName(
     snapshot: ArrayResultSnapshot,
     format: ArrayResultExportFormat
@@ -386,3 +473,55 @@ private fun readEvidenceBytes(context: Context, sourcePath: String): ByteArray? 
         else -> context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
     }
 }
+
+/**
+ * 为完整证据归档生成可直接阅读的PDF、逐分析物PNG和预测验证JSON。
+ *
+ * 所有内容都在IO线程中从冻结快照生成；文件名只使用清洗后的稳定ID，避免分析物名称中的
+ * 斜杠或特殊字符改变ZIP目录结构。
+ */
+private fun buildArchiveSupplementalFiles(
+    context: Context,
+    snapshot: ArrayResultSnapshot,
+    pdfLabels: ArrayResultPdfLabels,
+    validationPdfLabels: ArrayResultValidationPdfLabels,
+    pngLabels: ArrayResultPngLabels,
+    validations: Map<String, ResultValidationSnapshot>
+): Map<String, ByteArray> = buildMap {
+    put(
+        "report/result-summary.pdf",
+        ArrayResultPdfExporter.createPdf(
+            context = context,
+            snapshot = snapshot,
+            labels = pdfLabels,
+            validations = validations,
+            validationLabels = validationPdfLabels
+        )
+    )
+    snapshot.analytes.sortedBy { analyte -> analyte.displayOrder }
+        .forEachIndexed { index, analyte ->
+            val safeId = exportArchiveSafePart(analyte.analyteId, index)
+            put(
+                "charts/${index.toString().padStart(2, '0')}_${safeId}_heatmap.png",
+                ArrayResultPngExporter.createHeatmapPng(snapshot, analyte.analyteId, pngLabels)
+            )
+            validations[analyte.analyteId]?.let { validation ->
+                val json = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
+                    .toJson(validation)
+                    .toByteArray(Charsets.UTF_8)
+                put(
+                    "validation/${index.toString().padStart(2, '0')}_${safeId}.json",
+                    json
+                )
+            }
+        }
+}
+
+private fun exportArchiveSafePart(value: String, fallbackIndex: Int): String = value
+    .map { character ->
+        if (character.isLetterOrDigit() || character == '-' || character == '_') character else '_'
+    }
+    .joinToString("")
+    .trim('_')
+    .take(64)
+    .ifBlank { "analyte_$fallbackIndex" }

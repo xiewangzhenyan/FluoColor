@@ -304,7 +304,7 @@ class ArrayResultRepositoryTest {
                 projectId = project.id,
                 wellIndex = index,
                 predictedConcentration = index * 0.5,
-                trueConcentration = null,
+                trueConcentration = if (index < 2) index * 0.5 else null,
                 detectedRectLeft = (index % 12 * 10).toFloat(),
                 detectedRectTop = (index / 12 * 10).toFloat(),
                 detectedRectRight = (index % 12 * 10 + 8).toFloat(),
@@ -325,7 +325,9 @@ class ArrayResultRepositoryTest {
         database.wellResultDao().insertWellResults(wells)
 
         // 重新创建只读仓库模拟应用重启；适配器不得回写SiteMeasurement或修改WellResult。
-        val restored = LegacyPlateResultRepositoryImpl(database).loadSnapshot(run.runId)
+        val legacyRepository = LegacyPlateResultRepositoryImpl(database)
+        val restored = legacyRepository.loadSnapshot(run.runId)
+        val validationPoints = legacyRepository.loadValidationPoints(run.runId)
 
         assertTrue(restored is Plate96ResultLoadResult.Success)
         val snapshot = (restored as Plate96ResultLoadResult.Success).snapshot
@@ -333,6 +335,9 @@ class ArrayResultRepositoryTest {
         assertEquals("A1", snapshot.wells.first().wellLabel)
         assertEquals("H12", snapshot.wells.last().wellLabel)
         assertEquals(47.5, snapshot.wells.last().site.measurements.single().concentrationValue)
+        assertEquals(2, validationPoints.getValue(analyte.id).size)
+        assertEquals("A1", validationPoints.getValue(analyte.id).first().siteLabel)
+        assertEquals(0.5, validationPoints.getValue(analyte.id).last().referenceValue, 0.0)
         assertEquals(0, database.siteMeasurementDao().getByRun(run.runId).size)
         assertEquals(96, database.wellResultDao().getWellResultsByRunId(run.runId).size)
     }

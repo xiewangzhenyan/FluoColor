@@ -13,6 +13,7 @@ import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
 import com.muc.fluocolorquant.domain.result.resolveQualityLevel
+import com.muc.fluocolorquant.domain.result.validation.ResultValidationSnapshot
 import com.muc.fluocolorquant.utils.pdf.PdfCoverPageContent
 import com.muc.fluocolorquant.utils.pdf.PdfCoverPageRenderer
 import java.io.ByteArrayOutputStream
@@ -21,6 +22,7 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.min
+import kotlin.math.abs
 
 /**
  * 使用统一 XML 封面模板和 Android 原生 PdfDocument 绘制科研摘要。
@@ -36,21 +38,50 @@ object ArrayResultPdfExporter {
     fun createPdf(
         context: Context,
         snapshot: ArrayResultSnapshot,
-        labels: ArrayResultPdfLabels
+        labels: ArrayResultPdfLabels,
+        validations: Map<String, ResultValidationSnapshot> = emptyMap(),
+        validationLabels: ArrayResultValidationPdfLabels? = null
     ): ByteArray {
         val document = PdfDocument()
-        // 新增统一封面后，页数为：封面 + 总览 + 每个分析物一页 + QC/追溯。
-        val totalPages = snapshot.analytes.size + 3
+        val sortedAnalytes = snapshot.analytes.sortedBy(ArrayAnalyteResult::displayOrder)
+        val validationEntries = if (validationLabels == null) {
+            emptyList()
+        } else {
+            sortedAnalytes.mapNotNull { analyte ->
+                validations[analyte.analyteId]?.let { validation -> analyte to validation }
+            }
+        }
+        // 页数为：封面 + 总览 + 每个分析物一页 + 每个验证结果一页 + QC/追溯。
+        val totalPages = sortedAnalytes.size + validationEntries.size + 3
         try {
-            drawCoverPage(document, context, snapshot, labels, totalPages)
+            drawCoverPage(
+                document = document,
+                context = context,
+                snapshot = snapshot,
+                labels = labels,
+                totalPages = totalPages,
+                validationEntries = validationEntries,
+                validationLabels = validationLabels
+            )
             drawOverviewPage(document, snapshot, labels, pageNumber = 2, totalPages = totalPages)
-            snapshot.analytes.sortedBy(ArrayAnalyteResult::displayOrder).forEachIndexed { index, analyte ->
+            sortedAnalytes.forEachIndexed { index, analyte ->
                 drawAnalytePage(
                     document = document,
                     snapshot = snapshot,
                     analyte = analyte,
                     labels = labels,
                     pageNumber = index + 3,
+                    totalPages = totalPages
+                )
+            }
+            validationEntries.forEachIndexed { index, (analyte, validation) ->
+                drawValidationPage(
+                    document = document,
+                    analyte = analyte,
+                    validation = validation,
+                    labels = requireNotNull(validationLabels),
+                    footerLabels = labels,
+                    pageNumber = sortedAnalytes.size + index + 3,
                     totalPages = totalPages
                 )
             }
@@ -76,7 +107,9 @@ object ArrayResultPdfExporter {
         context: Context,
         snapshot: ArrayResultSnapshot,
         labels: ArrayResultPdfLabels,
-        totalPages: Int
+        totalPages: Int,
+        validationEntries: List<Pair<ArrayAnalyteResult, ResultValidationSnapshot>>,
+        validationLabels: ArrayResultValidationPdfLabels?
     ) {
         val page = document.startPage(pageInfo(1))
         val sortedAnalytes = snapshot.analytes.sortedBy(ArrayAnalyteResult::displayOrder)
@@ -85,10 +118,19 @@ object ArrayResultPdfExporter {
             sortedAnalytes.forEachIndexed { index, analyte ->
                 add(context.getString(R.string.pdf_chapter_title_format, index + 2, analyte.name))
             }
+            validationEntries.forEachIndexed { index, (analyte, _) ->
+                add(
+                    context.getString(
+                        R.string.pdf_chapter_title_format,
+                        sortedAnalytes.size + index + 2,
+                        "${validationLabels?.title.orEmpty()} · ${analyte.name}"
+                    )
+                )
+            }
             add(
                 context.getString(
                     R.string.pdf_chapter_title_format,
-                    sortedAnalytes.size + 2,
+                    sortedAnalytes.size + validationEntries.size + 2,
                     labels.qualitySummary
                 )
             )
@@ -338,6 +380,297 @@ object ArrayResultPdfExporter {
         )
         drawFooter(canvas, pageNumber, totalPages, labels)
         document.finishPage(page)
+    }
+
+    /**
+     * 将保存后的预测精度验证绘制为独立科研图表页。
+     *
+     * 页面同时保留回归图和Bland–Altman图，所有点都来自验证修订中的冻结预测值与参考值，
+     * 不读取当前项目或重新计算浓度。
+     */
+    private fun drawValidationPage(
+        document: PdfDocument,
+        analyte: ArrayAnalyteResult,
+        validation: ResultValidationSnapshot,
+        labels: ArrayResultValidationPdfLabels,
+        footerLabels: ArrayResultPdfLabels,
+        pageNumber: Int,
+        totalPages: Int
+    ) {
+        val page = document.startPage(pageInfo(pageNumber))
+        val canvas = page.canvas
+        canvas.drawText(
+            "${labels.title} · ${analyte.name}",
+            PAGE_MARGIN,
+            54f,
+            textPaint(21f, Color.rgb(28, 44, 61), bold = true)
+        )
+        canvas.drawText(
+            String.format(
+                Locale.getDefault(),
+                labels.summaryFormat,
+                validation.concentrationUnit,
+                validation.revision,
+                validation.points.size
+            ),
+            PAGE_MARGIN,
+            78f,
+            textPaint(10f, Color.rgb(71, 85, 105))
+        )
+
+        val metricWidth = 121f
+        val metricGap = 10f
+        val metricLefts = List(4) { index -> PAGE_MARGIN + index * (metricWidth + metricGap) }
+        val regression = validation.regression
+        drawSummaryMetric(
+            canvas,
+            labels.rSquared,
+            regression.rSquared.pdfNumberOr(footerLabels.noValue),
+            metricLefts[0],
+            96f,
+            metricWidth
+        )
+        drawSummaryMetric(
+            canvas,
+            labels.slope,
+            regression.slope.pdfNumberOr(footerLabels.noValue),
+            metricLefts[1],
+            96f,
+            metricWidth
+        )
+        drawSummaryMetric(
+            canvas,
+            labels.rmse,
+            regression.rmse.pdfNumberWithUnit(validation.concentrationUnit),
+            metricLefts[2],
+            96f,
+            metricWidth
+        )
+        drawSummaryMetric(
+            canvas,
+            labels.mae,
+            regression.mae.pdfNumberWithUnit(validation.concentrationUnit),
+            metricLefts[3],
+            96f,
+            metricWidth
+        )
+        val bland = validation.blandAltman
+        drawSummaryMetric(
+            canvas,
+            labels.meanBias,
+            bland.meanBias.pdfNumberWithUnit(validation.concentrationUnit),
+            metricLefts[0],
+            154f,
+            metricWidth
+        )
+        drawSummaryMetric(
+            canvas,
+            labels.lowerLimit,
+            bland.lowerLimit.pdfNumberWithUnit(validation.concentrationUnit),
+            metricLefts[1],
+            154f,
+            metricWidth
+        )
+        drawSummaryMetric(
+            canvas,
+            labels.upperLimit,
+            bland.upperLimit.pdfNumberWithUnit(validation.concentrationUnit),
+            metricLefts[2],
+            154f,
+            metricWidth
+        )
+        drawSummaryMetric(
+            canvas,
+            labels.withinLimits,
+            "${formatPdfNumber(bland.withinLimitsRatio * 100.0)}%",
+            metricLefts[3],
+            154f,
+            metricWidth
+        )
+
+        val referencePredictionPoints = validation.points.map { point ->
+            point.referenceValue to point.predictedValue
+        }
+        val commonRange = paddedPdfRange(
+            validation.points.flatMap { point -> listOf(point.referenceValue, point.predictedValue) }
+        )
+        val regressionLines = buildList {
+            add(
+                PdfValidationLine(
+                    points = listOf(commonRange.first to commonRange.first, commonRange.second to commonRange.second),
+                    color = Color.rgb(148, 163, 184)
+                )
+            )
+            val slope = regression.slope
+            val intercept = regression.intercept
+            if (slope != null && intercept != null && slope.isFinite() && intercept.isFinite()) {
+                add(
+                    PdfValidationLine(
+                        points = listOf(
+                            commonRange.first to (slope * commonRange.first + intercept),
+                            commonRange.second to (slope * commonRange.second + intercept)
+                        ),
+                        color = Color.rgb(13, 148, 136)
+                    )
+                )
+            }
+        }
+        canvas.drawText(
+            labels.regressionTitle,
+            PAGE_MARGIN,
+            229f,
+            textPaint(13f, Color.rgb(31, 41, 55), true)
+        )
+        drawValidationPlot(
+            canvas = canvas,
+            bounds = RectF(PAGE_MARGIN, 240f, PAGE_WIDTH - PAGE_MARGIN, 472f),
+            points = referencePredictionPoints,
+            xRange = commonRange,
+            yRange = commonRange,
+            lines = regressionLines,
+            xAxisLabel = labels.referenceAxis,
+            yAxisLabel = labels.predictedAxis
+        )
+
+        val blandPoints = validation.points.map { point ->
+            ((point.predictedValue + point.referenceValue) / 2.0) to
+                (point.predictedValue - point.referenceValue)
+        }
+        val blandXRange = paddedPdfRange(blandPoints.map { point -> point.first })
+        val blandYRange = paddedPdfRange(
+            blandPoints.map { point -> point.second } +
+                listOf(bland.meanBias, bland.lowerLimit, bland.upperLimit)
+        )
+        val blandLines = listOf(
+            PdfValidationLine(horizontalPdfLine(blandXRange, bland.meanBias), Color.rgb(13, 148, 136)),
+            PdfValidationLine(horizontalPdfLine(blandXRange, bland.lowerLimit), Color.rgb(234, 88, 12)),
+            PdfValidationLine(horizontalPdfLine(blandXRange, bland.upperLimit), Color.rgb(234, 88, 12))
+        )
+        canvas.drawText(
+            labels.blandAltmanTitle,
+            PAGE_MARGIN,
+            507f,
+            textPaint(13f, Color.rgb(31, 41, 55), true)
+        )
+        drawValidationPlot(
+            canvas = canvas,
+            bounds = RectF(PAGE_MARGIN, 518f, PAGE_WIDTH - PAGE_MARGIN, 750f),
+            points = blandPoints,
+            xRange = blandXRange,
+            yRange = blandYRange,
+            lines = blandLines,
+            xAxisLabel = labels.meanAxis,
+            yAxisLabel = labels.differenceAxis
+        )
+        drawFooter(canvas, pageNumber, totalPages, footerLabels)
+        document.finishPage(page)
+    }
+
+    /** 绘制轻量散点图；固定留白保证中英文轴标签和极值不会覆盖数据点。 */
+    private fun drawValidationPlot(
+        canvas: Canvas,
+        bounds: RectF,
+        points: List<Pair<Double, Double>>,
+        xRange: Pair<Double, Double>,
+        yRange: Pair<Double, Double>,
+        lines: List<PdfValidationLine>,
+        xAxisLabel: String,
+        yAxisLabel: String
+    ) {
+        val framePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(226, 232, 240)
+            style = Paint.Style.FILL
+        }
+        canvas.drawRoundRect(bounds, 10f, 10f, framePaint)
+        val plot = RectF(bounds.left + 46f, bounds.top + 18f, bounds.right - 16f, bounds.bottom - 38f)
+        val axisPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(100, 116, 139)
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+        canvas.drawRect(plot, axisPaint)
+
+        fun mapPoint(point: Pair<Double, Double>): Pair<Float, Float> {
+            val xRatio = ((point.first - xRange.first) / (xRange.second - xRange.first))
+                .coerceIn(0.0, 1.0)
+            val yRatio = ((point.second - yRange.first) / (yRange.second - yRange.first))
+                .coerceIn(0.0, 1.0)
+            return (plot.left + plot.width() * xRatio.toFloat()) to
+                (plot.bottom - plot.height() * yRatio.toFloat())
+        }
+
+        lines.forEach { line ->
+            if (line.points.size >= 2) {
+                val start = mapPoint(line.points.first())
+                val end = mapPoint(line.points.last())
+                canvas.drawLine(
+                    start.first,
+                    start.second,
+                    end.first,
+                    end.second,
+                    Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = line.color
+                        strokeWidth = 2f
+                    }
+                )
+            }
+        }
+        val pointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(37, 99, 235)
+            style = Paint.Style.FILL
+        }
+        points.filter { point -> point.first.isFinite() && point.second.isFinite() }.forEach { point ->
+            val mapped = mapPoint(point)
+            canvas.drawCircle(mapped.first, mapped.second, 3.4f, pointPaint)
+        }
+
+        val labelPaint = textPaint(7.5f, Color.rgb(71, 85, 105))
+        canvas.drawText(formatPdfNumber(xRange.first), plot.left, bounds.bottom - 23f, labelPaint)
+        val xMax = formatPdfNumber(xRange.second)
+        canvas.drawText(xMax, plot.right - labelPaint.measureText(xMax), bounds.bottom - 23f, labelPaint)
+        canvas.drawText(formatPdfNumber(yRange.first), bounds.left + 4f, plot.bottom, labelPaint)
+        canvas.drawText(formatPdfNumber(yRange.second), bounds.left + 4f, plot.top + 7f, labelPaint)
+        val xAxisPaint = textPaint(8.5f, Color.rgb(51, 65, 85), true)
+        canvas.drawText(
+            xAxisLabel,
+            plot.centerX() - xAxisPaint.measureText(xAxisLabel) / 2f,
+            bounds.bottom - 7f,
+            xAxisPaint
+        )
+        canvas.drawText(yAxisLabel, bounds.left + 4f, bounds.top + 12f, xAxisPaint)
+    }
+
+    private data class PdfValidationLine(
+        val points: List<Pair<Double, Double>>,
+        val color: Int
+    )
+
+    private fun horizontalPdfLine(
+        xRange: Pair<Double, Double>,
+        value: Double
+    ): List<Pair<Double, Double>> = listOf(xRange.first to value, xRange.second to value)
+
+    private fun paddedPdfRange(values: List<Double>): Pair<Double, Double> {
+        val finite = values.filter(Double::isFinite)
+        if (finite.isEmpty()) return 0.0 to 1.0
+        val minimum = finite.minOrNull() ?: 0.0
+        val maximum = finite.maxOrNull() ?: 1.0
+        val span = (maximum - minimum).takeIf { it > 0.0 }
+            ?: maxOf(abs(maximum) * 0.2, 1.0)
+        return (minimum - span * 0.1) to (maximum + span * 0.1)
+    }
+
+    private fun Double?.pdfNumberOr(missing: String): String =
+        this?.takeIf(Double::isFinite)?.let(::formatPdfNumber) ?: missing
+
+    private fun Double.pdfNumberWithUnit(unit: String): String =
+        if (unit.isBlank()) formatPdfNumber(this) else "${formatPdfNumber(this)} $unit"
+
+    private fun formatPdfNumber(value: Double): String = when {
+        !value.isFinite() -> "—"
+        abs(value) >= 10_000.0 || (value != 0.0 && abs(value) < 0.001) ->
+            String.format(Locale.US, "%.3e", value)
+        else -> String.format(Locale.US, "%.4f", value).trimEnd('0').trimEnd('.')
     }
 
     private fun drawTraceabilityPage(

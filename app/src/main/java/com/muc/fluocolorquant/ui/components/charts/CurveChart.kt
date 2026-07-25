@@ -102,16 +102,17 @@ fun CurveChart(
     val upperLimitLabel = stringResource(id = R.string.chart_upper_limit)
     val lowerLimitLabel = stringResource(id = R.string.chart_lower_limit)
 
-    // 根据图表类型确定x轴标签显示内容
+    // 回归图允许调用方明确声明坐标语义。旧结果页未传标签时仍使用“预测值/真实值”兜底，
+    // 新96孔板验证页则可按科研惯例显示“参考浓度/预测浓度”，避免通用组件篡改数据含义。
     val xAxisLabelText = when (data.chartType) {
         "BLAND_ALTMAN" -> stringResource(id = R.string.chart_mean)
-        "REGRESSION" -> stringResource(id = R.string.chart_predicted)
+        "REGRESSION" -> data.xAxisLabel.ifEmpty { stringResource(id = R.string.chart_predicted) }
         else -> data.xAxisLabel.ifEmpty { stringResource(id = R.string.chart_concentration) }
     }
 
     val yAxisLabelText = when (data.chartType) {
         "BLAND_ALTMAN" -> stringResource(id = R.string.chart_difference)
-        "REGRESSION" -> stringResource(id = R.string.chart_actual)
+        "REGRESSION" -> data.yAxisLabel.ifEmpty { stringResource(id = R.string.chart_actual) }
         else -> data.yAxisLabel.ifEmpty { stringResource(id = R.string.chart_pixel_value) }
     }
 
@@ -754,10 +755,8 @@ fun CurveChart(
                                     stringResource(id = R.string.chart_mean),
                                     stringResource(id = R.string.chart_difference)
                                 )
-                                "REGRESSION" -> Pair(
-                                    stringResource(id = R.string.chart_predicted),
-                                    stringResource(id = R.string.chart_actual)
-                                )
+                                // 工具提示必须与坐标轴保持同一语义，不能继续回退到旧版固定文案。
+                                "REGRESSION" -> Pair(xAxisLabelText, yAxisLabelText)
                                 else -> Pair(
                                     xAxisLabelText,
                                     yAxisLabelText

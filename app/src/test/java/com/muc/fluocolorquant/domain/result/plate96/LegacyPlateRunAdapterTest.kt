@@ -71,6 +71,38 @@ class LegacyPlateRunAdapterTest {
         assertEquals(1.0, measurement.concentrationValue ?: Double.NaN, 0.0)
     }
 
+    @Test
+    fun `旧样本真值不会被误映射成标准品浓度`() {
+        val fixture = source()
+        val mapped = LegacyPlateRunAdapter.map(
+            fixture.copy(
+                wellResults = fixture.wellResults.map { result ->
+                    if (result.wellIndex == 0) result.copy(trueConcentration = 12.0) else result
+                }
+            )
+        ) as Plate96ResultLoadResult.Success
+
+        assertNull(mapped.snapshot.wells.first().site.standardConcentration)
+    }
+
+    @Test
+    fun `旧标准孔真值仍作为标准浓度恢复`() {
+        val fixture = source()
+        val mapped = LegacyPlateRunAdapter.map(
+            fixture.copy(
+                wellResults = fixture.wellResults.map { result ->
+                    if (result.wellIndex == 0) {
+                        result.copy(roleType = "STANDARD", trueConcentration = 12.0)
+                    } else {
+                        result
+                    }
+                }
+            )
+        ) as Plate96ResultLoadResult.Success
+
+        assertEquals(12.0, mapped.snapshot.wells.first().site.standardConcentration ?: Double.NaN, 0.0)
+    }
+
     private fun source(): LegacyPlateRunSource {
         val project = Project(
             id = "legacy-project",

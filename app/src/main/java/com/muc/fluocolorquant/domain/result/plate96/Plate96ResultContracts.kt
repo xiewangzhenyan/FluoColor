@@ -3,7 +3,7 @@ package com.muc.fluocolorquant.domain.result.plate96
 import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 
-/** 96孔板结果固定采用行业标准的8行×12列语义。 */
+/** 标准96孔板固定采用行业标准的8行×12列语义；自定义圆孔板使用各自冻结行列。 */
 const val PLATE96_RESULT_ROWS: Int = 8
 const val PLATE96_RESULT_COLUMNS: Int = 12
 const val PLATE96_RESULT_SITE_COUNT: Int = PLATE96_RESULT_ROWS * PLATE96_RESULT_COLUMNS
@@ -43,8 +43,8 @@ sealed interface Plate96ResultLoadResult {
 /**
  * 单个标准孔位。
  *
- * [wellLabel] 永远使用A1～H12标准孔号；底层科学测量仍保留在[site]中，避免复制浓度、
- * 信号和质量字段后产生两套互相漂移的数据。
+ * [wellLabel] 使用Excel式行号与一基列号；标准96孔板仍稳定为A1～H12。底层科学测量
+ * 保留在[site]中，避免复制浓度、信号和质量字段后产生两套互相漂移的数据。
  */
 data class Plate96WellResult(
     val wellIndex: Int,
@@ -64,7 +64,7 @@ data class Plate96OrientationEvidence(
 )
 
 /**
- * 独立96孔板结果快照。
+ * 独立圆孔板结果快照。
  *
  * [arraySnapshot] 是冻结科学事实，[wells]与[orientation]是孔板页面需要的专属语义视图。
  * 微流控页面不会依赖本对象，因此孔板统计和视觉可以独立演进。
@@ -84,5 +84,19 @@ data class Plate96ResultSnapshot(
 fun plate96WellLabel(rowIndex: Int, columnIndex: Int): String {
     require(rowIndex in 0 until PLATE96_RESULT_ROWS) { "96孔板行索引越界" }
     require(columnIndex in 0 until PLATE96_RESULT_COLUMNS) { "96孔板列索引越界" }
-    return "${('A'.code + rowIndex).toChar()}${columnIndex + 1}"
+    return plateWellLabel(rowIndex, columnIndex)
+}
+
+/** 自定义圆孔板通用孔号；A～Z之后继续使用AA、AB，列号始终从1开始。 */
+fun plateWellLabel(rowIndex: Int, columnIndex: Int): String {
+    require(rowIndex >= 0) { "圆孔板行索引不能为负数" }
+    require(columnIndex >= 0) { "圆孔板列索引不能为负数" }
+    var value = rowIndex + 1
+    val rowLabel = StringBuilder()
+    while (value > 0) {
+        value -= 1
+        rowLabel.append(('A'.code + value % 26).toChar())
+        value /= 26
+    }
+    return "${rowLabel.reverse()}${columnIndex + 1}"
 }

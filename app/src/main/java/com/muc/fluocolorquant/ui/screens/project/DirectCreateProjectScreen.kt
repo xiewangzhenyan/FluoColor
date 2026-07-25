@@ -103,6 +103,7 @@ import com.muc.fluocolorquant.domain.project.ProjectDetectionDestination
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ScientificPickerSheet
 import com.muc.fluocolorquant.ui.components.ScientificSelectionField
+import com.muc.fluocolorquant.ui.components.ScientificSelectionFieldDensity
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.DirectProjectEvent
@@ -816,7 +817,7 @@ private fun DirectAnalyteSelectionArea(
                     verticalAlignment = Alignment.Top
                 ) {
                     Column(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(0.48f),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
                         /*
@@ -857,7 +858,8 @@ private fun DirectAnalyteSelectionArea(
                         placeholder = stringResource(R.string.direct_create_select_unit),
                         icon = Icons.Default.Straighten,
                         onClick = { onOpenUnitPicker(analyte.id) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(0.52f),
+                        density = ScientificSelectionFieldDensity.COMPACT
                     )
                 }
                 if (selection.maxConcentration == null) {

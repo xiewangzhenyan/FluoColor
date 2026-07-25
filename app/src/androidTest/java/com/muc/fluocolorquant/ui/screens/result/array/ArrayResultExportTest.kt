@@ -1,6 +1,7 @@
 package com.muc.fluocolorquant.ui.screens.result.array
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.content.ContentValues
@@ -28,6 +29,12 @@ import com.muc.fluocolorquant.domain.result.ArraySiteGeometry
 import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
 import com.muc.fluocolorquant.domain.result.export.ArrayResultPdfExporter
 import com.muc.fluocolorquant.domain.result.export.ArrayResultPdfLabels
+import com.muc.fluocolorquant.domain.result.export.ArrayResultPngExporter
+import com.muc.fluocolorquant.domain.result.export.ArrayResultPngLabels
+import com.muc.fluocolorquant.domain.result.export.ArrayResultValidationPdfLabels
+import com.muc.fluocolorquant.domain.result.validation.ResultValidationEngine
+import com.muc.fluocolorquant.domain.result.validation.ResultValidationPoint
+import com.muc.fluocolorquant.domain.result.validation.ResultValidationSnapshot
 import com.muc.fluocolorquant.ui.theme.FluoColorTheme
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -116,13 +123,95 @@ class ArrayResultExportTest {
     }
 
     @Test
-    fun `导出面板同时提供CSVPDF和ZIP且回调独立`() {
+    fun `PNG以固定分辨率导出圆孔与方格热力图`() {
+        val labels = ArrayResultPngLabels(
+            concentrationTitleFormat = "%1\$s concentration heatmap",
+            signalTitleFormat = "%1\$s signal heatmap",
+            concentration = "Concentration",
+            signal = "Signal",
+            noValue = "N/A"
+        )
+        // 同时覆盖旧4×4、自定义6×8、标准8×12圆孔板和15×15微流控，防止导出器
+        // 再次把行列或位点形状写死为某一种载体规格。
+        val cases = listOf(
+            Triple(4 to 4, "CIRCLE", "legacy-4x4"),
+            Triple(6 to 8, "CIRCLE", "custom-6x8"),
+            Triple(8 to 12, "CIRCLE", "plate-8x12"),
+            Triple(15 to 15, "SQUARE", "grid-15x15")
+        )
+        cases.forEach { (layout, shape, caseName) ->
+            val source = snapshot(
+                rows = layout.first,
+                columns = layout.second,
+                siteShape = shape
+            )
+            val bytes = ArrayResultPngExporter.createHeatmapPng(
+                snapshot = source,
+                analyteId = "analyte",
+                labels = labels
+            )
+
+            assertTrue("$caseName 应输出合法PNG", bytes.copyOfRange(0, 8).contentEquals(PNG_SIGNATURE))
+            val bitmap = requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+            try {
+                assertEquals("$caseName 宽度", 1600, bitmap.width)
+                assertEquals("$caseName 高度", 1100, bitmap.height)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    @Test
+    fun `PDF存在验证修订时增加回归与BlandAltman图表页`() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val points = listOf(
+            ResultValidationPoint(0, "A1", 12.5, 12.0),
+            ResultValidationPoint(1, "A2", 25.0, 24.0)
+        )
+        val calculated = ResultValidationEngine.calculate(points)
+        val validation = ResultValidationSnapshot(
+            validationId = "validation",
+            runId = "run-export",
+            analyteId = "analyte",
+            revision = 1,
+            concentrationUnit = "ng/mL",
+            points = points,
+            regression = calculated.regression,
+            blandAltman = calculated.blandAltman,
+            processorVersion = ResultValidationEngine.PROCESSOR_VERSION,
+            inputFingerprint = "fingerprint",
+            createdAtEpochMillis = 1_000L
+        )
+        val bytes = ArrayResultPdfExporter.createPdf(
+            context = context,
+            snapshot = snapshot(),
+            labels = pdfLabels(),
+            validations = mapOf("analyte" to validation),
+            validationLabels = validationPdfLabels()
+        )
+        val file = File(context.cacheDir, "array-result-validation-export-test.pdf")
+        try {
+            file.writeBytes(bytes)
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer ->
+                    assertEquals(5, renderer.pageCount)
+                }
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `导出面板同时提供CSVPNG与PDF和ZIP且回调独立`() {
         var selectedFormat: String? = null
         composeRule.setContent {
             FluoColorTheme {
                 ArrayResultExportSheet(
                     onDismiss = {},
                     onCsvExport = { selectedFormat = "csv" },
+                    onPngExport = { selectedFormat = "png" },
                     onPdfExport = { selectedFormat = "pdf" },
                     onZipExport = { selectedFormat = "zip" }
                 )
@@ -131,12 +220,17 @@ class ArrayResultExportTest {
 
         composeRule.onNodeWithTag(ARRAY_RESULT_EXPORT_SHEET_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag(ARRAY_RESULT_EXPORT_CSV_TAG).assertExists()
+        composeRule.onNodeWithTag(ARRAY_RESULT_EXPORT_PNG_TAG).assertExists()
         composeRule.onNodeWithTag(ARRAY_RESULT_EXPORT_PDF_TAG).assertExists()
         composeRule.onNodeWithTag(ARRAY_RESULT_EXPORT_ZIP_TAG).performClick()
         composeRule.runOnIdle { assertEquals("zip", selectedFormat) }
     }
 
-    private fun snapshot(): ArrayResultSnapshot {
+    private fun snapshot(
+        rows: Int = 1,
+        columns: Int = 1,
+        siteShape: String = "CIRCLE"
+    ): ArrayResultSnapshot {
         val analyte = ArrayAnalyteResult(
             analyteId = "analyte",
             name = "CEA",
@@ -187,7 +281,7 @@ class ArrayResultExportTest {
             ),
             detail = ArrayMeasurementDetail.LegacyUnparsed("{}", "{}")
         )
-        val point = GridPoint(10.0, 10.0)
+        val siteCount = rows * columns
         return ArrayResultSnapshot(
             runId = "run-pdf",
             projectId = "project-pdf",
@@ -197,26 +291,29 @@ class ArrayResultExportTest {
             detectionMode = "COLORIMETRIC",
             carrier = ArrayCarrierResult(
                 id = "carrier",
-                name = "1×1 chip",
-                carrierType = "MICROFLUIDIC_CHIP",
+                name = "${rows}×${columns} array",
+                carrierType = if (siteShape == "CIRCLE") "WELL_PLATE" else "MICROFLUIDIC_CHIP",
                 version = 1,
-                siteShape = "CIRCLE",
+                siteShape = siteShape,
                 orientationMarkerJson = null
             ),
-            rows = 1,
-            columns = 1,
+            rows = rows,
+            columns = columns,
             analytes = listOf(analyte),
-            sites = listOf(
+            sites = List(siteCount) { index ->
+                val row = index / columns
+                val column = index % columns
+                val point = GridPoint(column * 20.0 + 10.0, row * 20.0 + 10.0)
                 ArrayPhysicalSiteResult(
-                    siteIndex = 0,
-                    rowIndex = 0,
-                    columnIndex = 0,
-                    siteKey = "R01C01",
+                    siteIndex = index,
+                    rowIndex = row,
+                    columnIndex = column,
+                    siteKey = "R${(row + 1).toString().padStart(2, '0')}C${(column + 1).toString().padStart(2, '0')}",
                     enabled = true,
                     roleCode = "SAMPLE",
                     analyteId = analyte.analyteId,
-                    defaultSampleSlot = "S1",
-                    sampleSlot = "S1",
+                    defaultSampleSlot = "S${index + 1}",
+                    sampleSlot = "S${index + 1}",
                     overrideReason = null,
                     standardConcentration = null,
                     repeatGroup = null,
@@ -228,21 +325,27 @@ class ArrayResultExportTest {
                         source = GridPointSource.CANDIDATE_REFINED,
                         flags = emptySet()
                     ),
-                    measurements = listOf(measurement)
+                    measurements = listOf(
+                        measurement.copy(
+                            measurementId = index.toLong() + 1L,
+                            primaryFeatureValue = index.toDouble() + 1.0,
+                            concentrationValue = index.toDouble() / maxOf(siteCount - 1, 1) * 100.0
+                        )
+                    )
                 )
-            ),
+            },
             frame = ArrayFrameResult(
                 locatorName = "pg-grid",
                 locatorVersion = "2.1",
-                rectifiedWidth = 20,
-                rectifiedHeight = 20,
+                rectifiedWidth = columns * 20,
+                rectifiedHeight = rows * 20,
                 chipRegionMethod = "test",
                 geometry = GridGeometryDiagnostics(
                     candidateSupportRatio = 1.0,
                     trusted = true,
                     observedRatio = 1.0,
                     geometryRmsePx = 0.1,
-                    inlierCount = 1,
+                    inlierCount = siteCount,
                     outlierCount = 0,
                     meanConfidence = 0.98
                 ),
@@ -256,6 +359,12 @@ class ArrayResultExportTest {
             processingVersionJson = null,
             modelUsageJson = null,
             siteQcSummaryJson = null
+        )
+    }
+
+    private companion object {
+        val PNG_SIGNATURE: ByteArray = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
         )
     }
 
@@ -296,4 +405,23 @@ class ArrayResultExportTest {
             pageFormat = "Page %1\$d / %2\$d"
         )
     }
+
+    private fun validationPdfLabels() = ArrayResultValidationPdfLabels(
+        title = "Prediction validation",
+        summaryFormat = "%1\$s · revision %2\$d · %3\$d points",
+        regressionTitle = "Prediction vs reference",
+        blandAltmanTitle = "Bland-Altman",
+        referenceAxis = "Reference",
+        predictedAxis = "Prediction",
+        meanAxis = "Mean",
+        differenceAxis = "Prediction - reference",
+        rSquared = "R2",
+        slope = "Slope",
+        rmse = "RMSE",
+        mae = "MAE",
+        meanBias = "Bias",
+        lowerLimit = "Lower",
+        upperLimit = "Upper",
+        withinLimits = "Within"
+    )
 }

@@ -61,6 +61,17 @@ data class ScientificPickerOption(
 )
 
 /**
+ * 科研选择字段的视觉密度。
+ *
+ * [STANDARD] 用于全宽资源选择；[COMPACT] 用于“最大浓度 + 单位”等双列场景。紧凑模式
+ * 只缩小装饰空间，不缩小正文可读字号，避免窄屏把 `g/ml`、`μmol/L` 等单位压成省略号。
+ */
+enum class ScientificSelectionFieldDensity {
+    STANDARD,
+    COMPACT
+}
+
+/**
  * 紧凑的章节标题。
  *
  * 只使用图标和短标题建立视觉锚点，不默认渲染说明段落。真正需要解释的内容应放在错误
@@ -122,8 +133,15 @@ fun ScientificSelectionField(
     modifier: Modifier = Modifier,
     supportingValue: String? = null,
     enabled: Boolean = true,
-    isError: Boolean = false
+    isError: Boolean = false,
+    density: ScientificSelectionFieldDensity = ScientificSelectionFieldDensity.STANDARD
 ) {
+    val horizontalPadding = if (density == ScientificSelectionFieldDensity.COMPACT) 9.dp else 13.dp
+    val verticalPadding = if (density == ScientificSelectionFieldDensity.COMPACT) 10.dp else 12.dp
+    val contentSpacing = if (density == ScientificSelectionFieldDensity.COMPACT) 7.dp else 11.dp
+    val iconContainerSize = if (density == ScientificSelectionFieldDensity.COMPACT) 32.dp else 40.dp
+    val iconSize = if (density == ScientificSelectionFieldDensity.COMPACT) 18.dp else 21.dp
+    val arrowSize = if (density == ScientificSelectionFieldDensity.COMPACT) 20.dp else 24.dp
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -157,20 +175,23 @@ fun ScientificSelectionField(
             border = BorderStroke(1.dp, borderColor)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 13.dp, vertical = 12.dp),
+                modifier = Modifier.padding(
+                    horizontal = horizontalPadding,
+                    vertical = verticalPadding
+                ),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(11.dp)
+                horizontalArrangement = Arrangement.spacedBy(contentSpacing)
             ) {
                 Surface(
-                    modifier = Modifier.size(40.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.size(iconContainerSize),
+                    shape = RoundedCornerShape(if (density == ScientificSelectionFieldDensity.COMPACT) 10.dp else 12.dp),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = icon,
                             contentDescription = null,
-                            modifier = Modifier.size(21.dp),
+                            modifier = Modifier.size(iconSize),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -205,6 +226,7 @@ fun ScientificSelectionField(
                 Icon(
                     imageVector = Icons.Default.ExpandMore,
                     contentDescription = null,
+                    modifier = Modifier.size(arrowSize),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

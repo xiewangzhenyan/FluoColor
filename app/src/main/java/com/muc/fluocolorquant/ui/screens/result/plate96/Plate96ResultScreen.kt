@@ -12,12 +12,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.FactCheck
 import androidx.compose.material.icons.outlined.Analytics
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -77,11 +82,13 @@ import com.muc.fluocolorquant.utils.HeatmapColorUtil
 const val PLATE96_RESULT_SCREEN_TAG: String = "plate96_result_screen"
 const val PLATE96_RESULT_EXPORT_TAG: String = "plate96_result_export"
 const val PLATE96_RESULT_ANALYSIS_TAB_TAG: String = "plate96_result_tab_analysis"
+const val PLATE96_RESULT_VALIDATION_TAB_TAG: String = "plate96_result_tab_validation"
 const val PLATE96_RESULT_PROCESS_TAB_TAG: String = "plate96_result_tab_process"
 
 private enum class Plate96ResultTab(val icon: ImageVector) {
     RESULT(Icons.Outlined.GridView),
     ANALYSIS(Icons.Outlined.Analytics),
+    VALIDATION(Icons.AutoMirrored.Outlined.FactCheck),
     PROCESS(Icons.Outlined.Timeline)
 }
 
@@ -101,7 +108,8 @@ fun Plate96ResultScreen(
                 launchSingleTop = true
             }
         },
-        onRetry = viewModel::retry
+        onRetry = viewModel::retry,
+        onSaveValidation = viewModel::saveValidation
     )
 }
 
@@ -109,7 +117,8 @@ fun Plate96ResultScreen(
 fun Plate96ResultContent(
     state: Plate96ResultUiState,
     onBack: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onSaveValidation: (String, Map<Int, Double>) -> Unit = { _, _ -> }
 ) {
     when (state) {
         Plate96ResultUiState.Loading -> Plate96CenteredState(
@@ -132,13 +141,22 @@ fun Plate96ResultContent(
             showProgress = false,
             onRetry = onRetry
         )
-        is Plate96ResultUiState.Success -> Plate96ResultSuccess(state.snapshot, onBack)
+        is Plate96ResultUiState.Success -> Plate96ResultSuccess(
+            state = state,
+            onBack = onBack,
+            onSaveValidation = onSaveValidation
+        )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Plate96ResultSuccess(snapshot: Plate96ResultSnapshot, onBack: () -> Unit) {
+private fun Plate96ResultSuccess(
+    state: Plate96ResultUiState.Success,
+    onBack: () -> Unit,
+    onSaveValidation: (String, Map<Int, Double>) -> Unit
+) {
+    val snapshot = state.snapshot
     var selectedTab by rememberSaveable(snapshot.runId) { mutableIntStateOf(0) }
     var selectedAnalyteId by rememberSaveable(snapshot.runId) {
         mutableStateOf(snapshot.arraySnapshot.analytes.firstOrNull()?.analyteId)
@@ -158,7 +176,11 @@ private fun Plate96ResultSuccess(snapshot: Plate96ResultSnapshot, onBack: () -> 
                     Column {
                         Text(snapshot.projectName, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
-                            text = stringResource(R.string.plate96_result_subtitle),
+                            text = stringResource(
+                                R.string.plate_result_subtitle_format,
+                                snapshot.arraySnapshot.rows,
+                                snapshot.arraySnapshot.columns
+                            ),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -194,19 +216,30 @@ private fun Plate96ResultSuccess(snapshot: Plate96ResultSnapshot, onBack: () -> 
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            Plate96ResultHero(snapshot)
+            Plate96ResultSummaryBar(snapshot)
             if (snapshot.arraySnapshot.analytes.size > 1) {
-                Row(
+                LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 1.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    snapshot.arraySnapshot.analytes.forEach { option ->
+                    items(
+                        items = snapshot.arraySnapshot.analytes,
+                        key = ArrayAnalyteResult::analyteId
+                    ) { option ->
                         FilterChip(
                             selected = option.analyteId == analyte?.analyteId,
                             onClick = { selectedAnalyteId = option.analyteId },
-                            label = { Text(option.name, maxLines = 1) }
+                            label = { Text(option.name, maxLines = 1) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.Science,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
                         )
                     }
                 }
@@ -219,6 +252,7 @@ private fun Plate96ResultSuccess(snapshot: Plate96ResultSnapshot, onBack: () -> 
                         modifier = Modifier.testTag(
                             when (tab) {
                                 Plate96ResultTab.ANALYSIS -> PLATE96_RESULT_ANALYSIS_TAB_TAG
+                                Plate96ResultTab.VALIDATION -> PLATE96_RESULT_VALIDATION_TAB_TAG
                                 Plate96ResultTab.PROCESS -> PLATE96_RESULT_PROCESS_TAB_TAG
                                 Plate96ResultTab.RESULT -> "plate96_result_tab_result"
                             }
@@ -250,6 +284,18 @@ private fun Plate96ResultSuccess(snapshot: Plate96ResultSnapshot, onBack: () -> 
                         }
                     )
                 }
+                Plate96ResultTab.VALIDATION -> analyte?.let { selectedAnalyte ->
+                    Plate96ValidationContent(
+                        snapshot = snapshot,
+                        analyte = selectedAnalyte,
+                        validation = state.validations[selectedAnalyte.analyteId],
+                        saving = state.validationSavingAnalyteId == selectedAnalyte.analyteId,
+                        saveFailed = state.validationSaveFailed,
+                        onSave = { values ->
+                            onSaveValidation(selectedAnalyte.analyteId, values)
+                        }
+                    )
+                }
                 Plate96ResultTab.PROCESS -> Plate96ProcessingContent(snapshot)
             }
         }
@@ -271,6 +317,8 @@ private fun Plate96ResultSuccess(snapshot: Plate96ResultSnapshot, onBack: () -> 
         snapshot = snapshot.arraySnapshot,
         visible = showExport,
         onDismiss = { showExport = false },
+        selectedAnalyteId = analyte?.analyteId,
+        validations = state.validations,
         pdfLabelsOverride = arrayResultPdfLabels().copy(
             documentTitle = stringResource(R.string.plate96_pdf_document_title),
             overviewHeatmap = stringResource(R.string.plate96_pdf_overview_heatmap),
@@ -281,57 +329,89 @@ private fun Plate96ResultSuccess(snapshot: Plate96ResultSnapshot, onBack: () -> 
 }
 
 @Composable
-private fun Plate96ResultHero(snapshot: Plate96ResultSnapshot) {
+private fun Plate96ResultSummaryBar(snapshot: Plate96ResultSnapshot) {
     val measured = snapshot.wells.count { it.site.measurements.isNotEmpty() }
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant
+        )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = stringResource(R.string.plate96_result_standard_plate),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = stringResource(
-                        R.string.plate96_result_run_summary,
-                        snapshot.arraySnapshot.analytes.size,
-                        measured
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        stringResource(R.string.plate96_result_standard_layout),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        stringResource(R.string.plate96_result_wells),
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-            }
+            Plate96SummaryItem(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Outlined.GridView,
+                value = stringResource(
+                    R.string.plate_result_layout_format,
+                    snapshot.arraySnapshot.rows,
+                    snapshot.arraySnapshot.columns
+                ),
+                label = stringResource(R.string.plate96_result_wells)
+            )
+            Plate96SummaryItem(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Outlined.Science,
+                value = snapshot.arraySnapshot.analytes.size.toString(),
+                label = stringResource(R.string.plate96_result_summary_analytes)
+            )
+            Plate96SummaryItem(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Outlined.TaskAlt,
+                value = measured.toString(),
+                label = stringResource(R.string.plate96_result_summary_measured)
+            )
+        }
+    }
+}
+
+@Composable
+private fun Plate96SummaryItem(
+    modifier: Modifier,
+    icon: ImageVector,
+    value: String,
+    label: String
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.padding(7.dp).size(17.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+        Column {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -518,5 +598,6 @@ private fun Plate96CenteredState(text: String, showProgress: Boolean, onRetry: (
 private fun Plate96ResultTab.titleRes(): Int = when (this) {
     Plate96ResultTab.RESULT -> R.string.plate96_result_tab_result
     Plate96ResultTab.ANALYSIS -> R.string.plate96_result_tab_analysis
+    Plate96ResultTab.VALIDATION -> R.string.plate96_result_tab_validation
     Plate96ResultTab.PROCESS -> R.string.plate96_result_tab_process
 }

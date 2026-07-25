@@ -38,6 +38,8 @@ import com.muc.fluocolorquant.data.repository.ArrayResultRepository
 import com.muc.fluocolorquant.data.repository.ArrayResultRepositoryImpl
 import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepository
 import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepositoryImpl
+import com.muc.fluocolorquant.data.repository.ResultValidationRepository
+import com.muc.fluocolorquant.data.repository.ResultValidationRepositoryImpl
 import com.muc.fluocolorquant.utils.camera.CameraEngine
 import com.muc.fluocolorquant.utils.camera.CameraXCameraEngine
 import com.muc.fluocolorquant.domain.project.TemplateProjectCoordinator
@@ -178,6 +180,13 @@ abstract class RepositoryModule {
     abstract fun provideLegacyPlateResultRepository(
         repository: LegacyPlateResultRepositoryImpl
     ): LegacyPlateResultRepository
+
+    /** 结果验证跨孔板和微流控共享同一套修订式持久化。 */
+    @Binds
+    @Singleton
+    abstract fun provideResultValidationRepository(
+        repository: ResultValidationRepositoryImpl
+    ): ResultValidationRepository
 
     /** 微流控主定位器；学习型定位器仅在离线 A/B 证明收益后替换此绑定。 */
     @Binds

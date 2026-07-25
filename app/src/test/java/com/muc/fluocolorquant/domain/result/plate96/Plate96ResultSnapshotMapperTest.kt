@@ -61,7 +61,21 @@ class Plate96ResultSnapshotMapperTest {
         )
     }
 
-    private fun snapshot(): ArrayResultSnapshot {
+    @Test
+    fun `自定义6行8列圆孔板按冻结规格映射`() {
+        val result = Plate96ResultSnapshotMapper.map(
+            snapshot(rows = 6, columns = 8)
+        )
+
+        assertTrue(result is Plate96ResultLoadResult.Success)
+        val plate = (result as Plate96ResultLoadResult.Success).snapshot
+        assertEquals(48, plate.wells.size)
+        assertEquals("A1", plate.wells.first().wellLabel)
+        assertEquals("A8", plate.wells[7].wellLabel)
+        assertEquals("F8", plate.wells.last().wellLabel)
+    }
+
+    private fun snapshot(rows: Int = 8, columns: Int = 12): ArrayResultSnapshot {
         return ArrayResultSnapshot(
             runId = "plate-run",
             projectId = "plate-project",
@@ -77,10 +91,10 @@ class Plate96ResultSnapshotMapperTest {
                 siteShape = "CIRCLE",
                 orientationMarkerJson = null
             ),
-            rows = 8,
-            columns = 12,
+            rows = rows,
+            columns = columns,
             analytes = emptyList(),
-            sites = (0 until 96).map(::site),
+            sites = (0 until rows * columns).map { index -> site(index, columns) },
             frame = ArrayFrameResult(
                 locatorName = "plate96-yolo-circle",
                 locatorVersion = "1.0",
@@ -109,9 +123,9 @@ class Plate96ResultSnapshotMapperTest {
         )
     }
 
-    private fun site(index: Int): ArrayPhysicalSiteResult {
-        val row = index / 12
-        val column = index % 12
+    private fun site(index: Int, columns: Int): ArrayPhysicalSiteResult {
+        val row = index / columns
+        val column = index % columns
         val point = GridPoint(column * 80.0 + 40.0, row * 80.0 + 40.0)
         return ArrayPhysicalSiteResult(
             siteIndex = index,

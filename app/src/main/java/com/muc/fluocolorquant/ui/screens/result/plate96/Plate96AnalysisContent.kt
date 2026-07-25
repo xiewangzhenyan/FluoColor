@@ -10,15 +10,24 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ShowChart
+import androidx.compose.material.icons.outlined.BorderOuter
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material.icons.outlined.TableRows
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -68,15 +77,37 @@ fun Plate96AnalysisContent(
     ) {
         item { Plate96CurveCard(analyte) }
         item { Plate96RepeatabilityCard(records) }
-        item { Plate96DistributionCard(records) }
-        item { Plate96EdgeEffectCard(records) }
+        item {
+            Plate96DistributionCard(
+                records = records,
+                rows = snapshot.arraySnapshot.rows,
+                columns = snapshot.arraySnapshot.columns
+            )
+        }
+        item {
+            Plate96EdgeEffectCard(
+                records = records,
+                rows = snapshot.arraySnapshot.rows,
+                columns = snapshot.arraySnapshot.columns
+            )
+        }
         item { Plate96RoleSummaryCard(snapshot, analyte) }
         item {
-            Text(
-                text = stringResource(R.string.plate96_analysis_sample_table),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.TableRows,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = stringResource(R.string.plate96_analysis_sample_table),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
         item {
             Column(
@@ -102,7 +133,10 @@ fun Plate96AnalysisContent(
 
 @Composable
 private fun Plate96CurveCard(analyte: ArrayAnalyteResult) {
-    Plate96AnalysisCard(title = stringResource(R.string.plate96_analysis_curve)) {
+    Plate96AnalysisCard(
+        title = stringResource(R.string.plate96_analysis_curve),
+        icon = Icons.AutoMirrored.Outlined.ShowChart
+    ) {
         val function = FittingFunction.fromIdentifier(analyte.fittingFunction.orEmpty())
         val points = analyte.calibrationPoints.map { it.concentration to it.signalValue }
         if (function == null || points.size < 2 || analyte.fittingParameters.isEmpty()) {
@@ -161,7 +195,10 @@ private fun Plate96RepeatabilityCard(records: List<Plate96AnalysisRecord>) {
                 Plate96RepeatGroup(name.orEmpty(), values.size, mean, if (mean == 0.0) null else sd / mean * 100.0)
             }
         }
-    Plate96AnalysisCard(title = stringResource(R.string.plate96_analysis_repeatability)) {
+    Plate96AnalysisCard(
+        title = stringResource(R.string.plate96_analysis_repeatability),
+        icon = Icons.Outlined.Repeat
+    ) {
         if (groups.isEmpty()) {
             Plate96EmptyAnalysisText(stringResource(R.string.plate96_analysis_no_repeats))
         } else {
@@ -182,34 +219,58 @@ private fun Plate96RepeatabilityCard(records: List<Plate96AnalysisRecord>) {
 }
 
 @Composable
-private fun Plate96DistributionCard(records: List<Plate96AnalysisRecord>) {
-    val rowMeans = (0 until 8).map { row ->
+private fun Plate96DistributionCard(
+    records: List<Plate96AnalysisRecord>,
+    rows: Int,
+    columns: Int
+) {
+    val safeRows = rows.coerceAtLeast(1)
+    val safeColumns = columns.coerceAtLeast(1)
+    val rowMeans = (0 until safeRows).map { row ->
         records.filter { it.well.rowIndex == row }.mapNotNull { it.concentration }.finiteMean()
     }
-    val columnMeans = (0 until 12).map { column ->
+    val columnMeans = (0 until safeColumns).map { column ->
         records.filter { it.well.columnIndex == column }.mapNotNull { it.concentration }.finiteMean()
     }
-    Plate96AnalysisCard(title = stringResource(R.string.plate96_analysis_distribution)) {
+    Plate96AnalysisCard(
+        title = stringResource(R.string.plate96_analysis_distribution),
+        icon = Icons.Outlined.GridView
+    ) {
         Plate96MiniBars(
             label = stringResource(R.string.plate96_analysis_rows),
             values = rowMeans,
-            labels = (0 until 8).map { ('A'.code + it).toChar().toString() }
+            labels = (0 until safeRows).map(::plateAnalysisRowLabel)
         )
         Plate96MiniBars(
             label = stringResource(R.string.plate96_analysis_columns),
             values = columnMeans,
-            labels = (1..12).map(Int::toString)
+            labels = (1..safeColumns).map(Int::toString)
         )
     }
 }
 
 @Composable
-private fun Plate96EdgeEffectCard(records: List<Plate96AnalysisRecord>) {
-    val edge = records.filter { it.well.rowIndex in setOf(0, 7) || it.well.columnIndex in setOf(0, 11) }
+private fun Plate96EdgeEffectCard(
+    records: List<Plate96AnalysisRecord>,
+    rows: Int,
+    columns: Int
+) {
+    val lastRow = (rows - 1).coerceAtLeast(0)
+    val lastColumn = (columns - 1).coerceAtLeast(0)
+    val edge = records.filter { record ->
+        record.well.rowIndex == 0 || record.well.rowIndex == lastRow ||
+            record.well.columnIndex == 0 || record.well.columnIndex == lastColumn
+    }
         .mapNotNull { it.concentration }.finiteMean()
-    val inner = records.filter { it.well.rowIndex in 1..6 && it.well.columnIndex in 1..10 }
+    val inner = records.filter { record ->
+        record.well.rowIndex in 1 until lastRow &&
+            record.well.columnIndex in 1 until lastColumn
+    }
         .mapNotNull { it.concentration }.finiteMean()
-    Plate96AnalysisCard(title = stringResource(R.string.plate96_analysis_edge_effect)) {
+    Plate96AnalysisCard(
+        title = stringResource(R.string.plate96_analysis_edge_effect),
+        icon = Icons.Outlined.BorderOuter
+    ) {
         Plate96MetricLine(
             label = stringResource(R.string.plate96_analysis_edge_wells),
             value = edge?.let(::formatArrayHeatmapValue)
@@ -235,7 +296,10 @@ private fun Plate96EdgeEffectCard(records: List<Plate96AnalysisRecord>) {
 private fun Plate96RoleSummaryCard(snapshot: Plate96ResultSnapshot, analyte: ArrayAnalyteResult) {
     val wells = snapshot.wells.filter { it.site.analyteId == analyte.analyteId }
     val counts = wells.groupingBy { it.site.roleCode.orEmpty() }.eachCount()
-    Plate96AnalysisCard(title = stringResource(R.string.plate96_analysis_role_summary)) {
+    Plate96AnalysisCard(
+        title = stringResource(R.string.plate96_analysis_role_summary),
+        icon = Icons.Outlined.Science
+    ) {
         val roleCounts: List<Pair<Int, Int>> = listOf(
             R.string.plate96_result_role_standard to (counts["STANDARD"] ?: 0),
             R.string.plate96_result_role_blank to (counts["BLANK"] ?: 0),
@@ -329,7 +393,11 @@ private fun Plate96MiniBars(label: String, values: List<Double?>, labels: List<S
 }
 
 @Composable
-private fun Plate96AnalysisCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+private fun Plate96AnalysisCard(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    content: @Composable ColumnScope.() -> Unit
+) {
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
@@ -338,7 +406,27 @@ private fun Plate96AnalysisCard(title: String, content: @Composable ColumnScope.
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.padding(7.dp).size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             content()
         }
     }
@@ -369,4 +457,16 @@ private fun paddedRange(values: List<Double>): Pair<Double, Double> {
     val maximum = finite.maxOrNull() ?: 1.0
     val span = (maximum - minimum).takeIf { it > 0.0 } ?: maxOf(kotlin.math.abs(maximum) * 0.2, 1.0)
     return (minimum - span * 0.08) to (maximum + span * 0.08)
+}
+
+/** 支持超过26行的自定义圆孔板，A～Z之后继续使用AA、AB。 */
+private fun plateAnalysisRowLabel(rowIndex: Int): String {
+    var value = rowIndex + 1
+    val label = StringBuilder()
+    while (value > 0) {
+        value -= 1
+        label.append(('A'.code + value % 26).toChar())
+        value /= 26
+    }
+    return label.reverse().toString()
 }

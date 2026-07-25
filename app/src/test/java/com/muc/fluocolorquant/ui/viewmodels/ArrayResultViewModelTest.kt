@@ -16,6 +16,7 @@ import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.ArraySiteGeometry
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultErrorCode
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultLoadResult
+import com.muc.fluocolorquant.domain.result.validation.ResultValidationPoint
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshotMapper
 import java.util.Date
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -328,4 +329,8 @@ private class FakeLegacyPlateResultRepository : LegacyPlateResultRepository {
     )
 
     override suspend fun loadSnapshot(runId: String): Plate96ResultLoadResult = loadResult
+
+    override suspend fun loadValidationPoints(
+        runId: String
+    ): Map<String, List<ResultValidationPoint>> = emptyMap()
 }

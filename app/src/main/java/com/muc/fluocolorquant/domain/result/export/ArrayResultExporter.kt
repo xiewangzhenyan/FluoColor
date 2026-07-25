@@ -21,8 +21,8 @@ import java.util.zip.ZipOutputStream
  */
 object ArrayResultExporter {
     const val CSV_SCHEMA_VERSION: String = "array-measurements-csv-v2"
-    const val ARCHIVE_SCHEMA_VERSION: String = "array-result-archive-v1"
-    const val EXPORTER_VERSION: String = "array-result-exporter-v2"
+    const val ARCHIVE_SCHEMA_VERSION: String = "array-result-archive-v2"
+    const val EXPORTER_VERSION: String = "array-result-exporter-v3"
 
     private val gson: Gson = GsonBuilder()
         .disableHtmlEscaping()
@@ -172,10 +172,11 @@ object ArrayResultExporter {
     /** 便于测试和小型调用方直接获得 ZIP 字节；Android 文件保存优先使用 [writeArchive]。 */
     fun createArchive(
         snapshot: ArrayResultSnapshot,
-        evidenceReader: ArrayExportEvidenceReader
+        evidenceReader: ArrayExportEvidenceReader,
+        supplementalFiles: Map<String, ByteArray> = emptyMap()
     ): ByteArray {
         return ByteArrayOutputStream().use { output ->
-            writeArchive(snapshot, evidenceReader, output)
+            writeArchive(snapshot, evidenceReader, output, supplementalFiles)
             output.toByteArray()
         }
     }
@@ -187,7 +188,8 @@ object ArrayResultExporter {
     fun writeArchive(
         snapshot: ArrayResultSnapshot,
         evidenceReader: ArrayExportEvidenceReader,
-        output: OutputStream
+        output: OutputStream,
+        supplementalFiles: Map<String, ByteArray> = emptyMap()
     ) {
         val staticFiles = linkedMapOf<String, ByteArray>()
         val entryRecords = mutableListOf<ArrayArchiveEntryRecord>()
@@ -212,6 +214,11 @@ object ArrayResultExporter {
         addOptionalSnapshot(staticFiles, entryRecords, "snapshots/processing-versions.json", snapshot.processingVersionJson)
         addOptionalSnapshot(staticFiles, entryRecords, "snapshots/model-usage.json", snapshot.modelUsageJson)
         addOptionalSnapshot(staticFiles, entryRecords, "snapshots/site-qc-summary.json", snapshot.siteQcSummaryJson)
+        // Android协调层可注入由同一冻结快照生成的PDF、PNG和验证JSON；导出核心统一校验
+        // 路径安全与重复项，并将其SHA-256写入manifest。
+        supplementalFiles.toSortedMap().forEach { (path, bytes) ->
+            addFile(staticFiles, path, bytes)
+        }
 
         // ZIP 自身需要 close 以释放 Deflater，但不能提前关闭由系统文件选择器提供的外层流。
         ZipOutputStream(NonClosingOutputStream(output), StandardCharsets.UTF_8).use { zip ->

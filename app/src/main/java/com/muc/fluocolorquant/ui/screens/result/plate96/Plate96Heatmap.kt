@@ -33,8 +33,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.muc.fluocolorquant.R
-import com.muc.fluocolorquant.domain.result.plate96.PLATE96_RESULT_COLUMNS
-import com.muc.fluocolorquant.domain.result.plate96.PLATE96_RESULT_ROWS
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapCell
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapModel
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueState
@@ -62,10 +60,16 @@ fun Plate96Heatmap(
     onWellClick: (ArrayHeatmapCell) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    require(model.rows == PLATE96_RESULT_ROWS && model.columns == PLATE96_RESULT_COLUMNS) {
-        "96孔板热力图必须使用标准8×12布局"
+    require(model.rows > 0 && model.columns > 0) {
+        "圆孔板热力图行列必须为正数"
     }
     val cellByIndex = model.cells.associateBy(ArrayHeatmapCell::siteIndex)
+    val axisFontSize = when {
+        model.columns >= 16 -> 7.sp
+        model.columns >= 12 -> 9.sp
+        else -> 10.sp
+    }
+    val rowLabelWidth = if (model.rows > 26) 24.dp else 18.dp
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -77,12 +81,12 @@ fun Plate96Heatmap(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.width(18.dp))
-            repeat(PLATE96_RESULT_COLUMNS) { column ->
+            Box(modifier = Modifier.width(rowLabelWidth))
+            repeat(model.columns) { column ->
                 Text(
                     text = (column + 1).toString(),
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = axisFontSize),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
@@ -90,23 +94,23 @@ fun Plate96Heatmap(
                 )
             }
         }
-        repeat(PLATE96_RESULT_ROWS) { row ->
+        repeat(model.rows) { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = ('A'.code + row).toChar().toString(),
-                    modifier = Modifier.width(18.dp),
+                    text = plateHeatmapRowLabel(row),
+                    modifier = Modifier.width(rowLabelWidth),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
-                repeat(PLATE96_RESULT_COLUMNS) { column ->
-                    val index = row * PLATE96_RESULT_COLUMNS + column
-                    val cell = requireNotNull(cellByIndex[index]) { "96孔板热力图缺少孔位$index" }
+                repeat(model.columns) { column ->
+                    val index = row * model.columns + column
+                    val cell = requireNotNull(cellByIndex[index]) { "圆孔板热力图缺少孔位$index" }
                     Plate96HeatmapWell(
                         cell = cell,
                         model = model,
@@ -118,6 +122,18 @@ fun Plate96Heatmap(
             }
         }
     }
+}
+
+/** 与孔板分析页使用相同的Excel式行标签，支持自定义圆孔板超过26行。 */
+private fun plateHeatmapRowLabel(rowIndex: Int): String {
+    var value = rowIndex + 1
+    val label = StringBuilder()
+    while (value > 0) {
+        value -= 1
+        label.append(('A'.code + value % 26).toChar())
+        value /= 26
+    }
+    return label.reverse().toString()
 }
 
 @Composable

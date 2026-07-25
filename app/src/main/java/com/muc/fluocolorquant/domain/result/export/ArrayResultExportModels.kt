@@ -6,9 +6,19 @@ enum class ArrayResultExportFormat(
     val mimeType: String
 ) {
     CSV("csv", "text/csv"),
+    PNG("png", "image/png"),
     PDF("pdf", "application/pdf"),
     ZIP("zip", "application/zip")
 }
+
+/** PNG图表中的可见文字由Compose层从字符串资源构造，绘制器不硬编码界面语言。 */
+data class ArrayResultPngLabels(
+    val concentrationTitleFormat: String,
+    val signalTitleFormat: String,
+    val concentration: String,
+    val signal: String,
+    val noValue: String
+)
 
 /**
  * ZIP 导出读取附件时使用的最小边界。
@@ -97,4 +107,24 @@ data class ArrayResultPdfLabels(
     val frozenSnapshot: String,
     val noValue: String,
     val pageFormat: String
+)
+
+/** PDF预测验证页的资源化文字，领域绘制器不硬编码中英文。 */
+data class ArrayResultValidationPdfLabels(
+    val title: String,
+    val summaryFormat: String,
+    val regressionTitle: String,
+    val blandAltmanTitle: String,
+    val referenceAxis: String,
+    val predictedAxis: String,
+    val meanAxis: String,
+    val differenceAxis: String,
+    val rSquared: String,
+    val slope: String,
+    val rmse: String,
+    val mae: String,
+    val meanBias: String,
+    val lowerLimit: String,
+    val upperLimit: String,
+    val withinLimits: String
 )

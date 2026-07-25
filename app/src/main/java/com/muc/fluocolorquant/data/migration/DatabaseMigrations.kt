@@ -112,6 +112,46 @@ object DatabaseMigrations {
     }
 
     /**
+     * 版本 13 → 14：新增运行后的预测精度验证修订表。
+     *
+     * 验证记录与检测运行级联关联，但不会回写 DetectionRun 或 SiteMeasurement；用户重新
+     * 输入参考浓度时只追加新修订，从而保持原始科研结果不可变。
+     */
+    val MIGRATION_13_14: Migration = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `result_validation_records` (
+                    `validationId` TEXT NOT NULL,
+                    `runId` TEXT NOT NULL,
+                    `analyteId` TEXT NOT NULL,
+                    `revision` INTEGER NOT NULL,
+                    `concentrationUnit` TEXT NOT NULL,
+                    `validationPointsJson` TEXT NOT NULL,
+                    `regressionResultJson` TEXT NOT NULL,
+                    `blandAltmanResultJson` TEXT NOT NULL,
+                    `processorVersion` TEXT NOT NULL,
+                    `inputFingerprint` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`validationId`),
+                    FOREIGN KEY(`runId`) REFERENCES `detection_runs`(`runId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_result_validation_records_runId` " +
+                    "ON `result_validation_records` (`runId`)"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                    "`index_result_validation_records_runId_analyteId_revision` " +
+                    "ON `result_validation_records` (`runId`, `analyteId`, `revision`)"
+            )
+        }
+    }
+
+    /**
      * 重建模板主表并保持所有外部引用仍指向 `experiment_templates`。
      *
      * `legacy_alter_table` 防止 SQLite 在旧表改名时把子表外键同步改到临时表名；新表

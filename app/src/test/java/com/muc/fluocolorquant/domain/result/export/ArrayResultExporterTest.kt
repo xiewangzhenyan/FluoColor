@@ -111,6 +111,25 @@ class ArrayResultExporterTest {
         assertTrue("manifest.json" in unzip(output.bytes()))
     }
 
+    @Test
+    fun `ZIP补充文件进入清单并参与校验和`() {
+        val png = byteArrayOf(1, 2, 3, 4)
+        val archive = ArrayResultExporter.createArchive(
+            snapshot = snapshot(),
+            evidenceReader = ArrayExportEvidenceReader { null },
+            supplementalFiles = mapOf("charts/cea_heatmap.png" to png)
+        )
+        val entries = unzip(archive)
+        assertArrayEquals(png, entries["charts/cea_heatmap.png"])
+
+        val manifest = Gson().fromJson(
+            String(entries.getValue("manifest.json"), StandardCharsets.UTF_8),
+            ArrayArchiveManifest::class.java
+        )
+        val record = manifest.entries.single { it.archivePath == "charts/cea_heatmap.png" }
+        assertEquals(ArrayResultExporter.sha256(png), record.sha256)
+    }
+
     private fun snapshot(): ArrayResultSnapshot {
         val analyte = ArrayAnalyteResult(
             analyteId = "analyte-cea",

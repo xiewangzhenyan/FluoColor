@@ -28,6 +28,9 @@ import com.muc.fluocolorquant.domain.signal.SignalFeatureCatalog
 import com.muc.fluocolorquant.utils.PixelExtractionUtils
 import kotlin.math.ceil
 
+/** 旧单分析物记录没有外键时使用的稳定占位ID，结果与验证适配必须保持一致。 */
+internal const val LEGACY_DEFAULT_ANALYTE_ID: String = "legacy-default-analyte"
+
 /** 旧96孔板适配所需的同事务只读实体集合。 */
 data class LegacyPlateRunSource(
     val run: DetectionRun,
@@ -49,7 +52,6 @@ data class LegacyPlateRunSource(
 object LegacyPlateRunAdapter {
     private const val ADAPTER_SCHEMA = "legacy-plate96-adapter-v1"
     private const val ADAPTER_PROCESSOR = "legacy-well-result-adapter"
-    private const val LEGACY_DEFAULT_ANALYTE_ID = "legacy-default-analyte"
     private val gson = Gson()
 
     fun map(source: LegacyPlateRunSource): Plate96ResultLoadResult {
@@ -248,7 +250,10 @@ object LegacyPlateRunAdapter {
             defaultSampleSlot = null,
             sampleSlot = null,
             overrideReason = null,
-            standardConcentration = representative?.trueConcentration?.takeIf(Double::isFinite),
+            // 旧表的trueConcentration既曾用于标准孔，也曾用于结果页预测精度验证。
+            // 只有明确标记为标准品的孔位才能映射为标准浓度，样本真值由验证适配层单独读取。
+            standardConcentration = representative?.trueConcentration
+                ?.takeIf { concentration -> role == "STANDARD" && concentration.isFinite() },
             repeatGroup = null,
             referenceScope = null,
             geometry = ArraySiteGeometry(

@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -60,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -112,6 +115,10 @@ import com.muc.fluocolorquant.ui.viewmodels.GridLayoutAssignmentDraft
 import com.muc.fluocolorquant.ui.viewmodels.GridLocalizationAnalyte
 import com.muc.fluocolorquant.ui.viewmodels.GridLocalizationPreview
 import com.muc.fluocolorquant.utils.math.FittingEngine
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.floor
+import kotlin.math.log10
 
 /**
  * 孔位布局页底部的“实验模板 / 手动配置”与逐分析物定量方案。
@@ -1722,6 +1729,15 @@ private fun ColumnScope.OnsiteCalibrationResultStage(
         resultSet.inputFingerprint,
         selectedCandidateId
     ) { mutableStateOf(false) }
+    val functionListState = rememberLazyListState()
+    val selectedFunctionIndex = resultSet.functionResults.indexOfFirst { functionResult ->
+        functionResult.candidate?.id == selectedCandidateId
+    }
+    LaunchedEffect(resultSet.inputFingerprint, selectedFunctionIndex) {
+        if (selectedFunctionIndex >= 0) {
+            functionListState.animateScrollToItem(selectedFunctionIndex)
+        }
+    }
     LazyColumn(
         modifier = Modifier
             .weight(1f)
@@ -1737,11 +1753,20 @@ private fun ColumnScope.OnsiteCalibrationResultStage(
             )
         }
         item {
-            Row(
+            /*
+             * 默认候选已经扩展为七种函数，不能再通过 weight(1f) 强塞进一行。固定宽度的
+             * 横向列表既保证中英文函数名完整，也允许专家模式展示更多函数而不压缩正文。
+             */
+            LazyRow(
                 modifier = Modifier.fillMaxWidth(),
+                state = functionListState,
+                contentPadding = PaddingValues(horizontal = 1.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                resultSet.functionResults.forEach { functionResult ->
+                items(
+                    items = resultSet.functionResults,
+                    key = { functionResult -> functionResult.function.identifier }
+                ) { functionResult ->
                     CalibrationFunctionOption(
                         result = functionResult,
                         selected = functionResult.candidate?.id == selectedCandidateId,
@@ -1750,7 +1775,7 @@ private fun ColumnScope.OnsiteCalibrationResultStage(
                         onClick = {
                             functionResult.candidate?.id?.let(onSelectCandidate)
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.width(86.dp)
                     )
                 }
             }
@@ -2065,33 +2090,22 @@ private fun OnsiteFitCandidateCard(preview: CalibrationCandidate) {
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FitMetric(
                     modifier = Modifier.weight(1f),
                     label = stringResource(R.string.grid_quant_fit_metric_r2),
-                    value = stringResource(R.string.grid_quant_fit_metric_value, preview.rSquared)
+                    value = formatFitMetricValue(preview.rSquared)
                 )
                 FitMetric(
                     modifier = Modifier.weight(1f),
                     label = stringResource(R.string.grid_quant_fit_metric_rmse),
-                    value = preview.rmse?.let {
-                        stringResource(R.string.grid_quant_fit_metric_value, it)
-                    }.orEmpty()
+                    value = formatFitMetricValue(preview.rmse)
                 )
                 FitMetric(
                     modifier = Modifier.weight(1f),
                     label = stringResource(R.string.grid_quant_fit_metric_mae),
-                    value = preview.mae?.let {
-                        stringResource(R.string.grid_quant_fit_metric_value, it)
-                    }.orEmpty()
-                )
-                FitMetric(
-                    modifier = Modifier.weight(1f),
-                    label = stringResource(R.string.grid_quant_fit_metric_acceptance),
-                    value = preview.acceptedStandardRatio?.let {
-                        stringResource(R.string.grid_quant_fit_acceptance_value, it * 100.0)
-                    }.orEmpty()
+                    value = formatFitMetricValue(preview.mae)
                 )
             }
             CurveChart(
@@ -2118,12 +2132,15 @@ private fun FitMetric(modifier: Modifier, label: String, value: String) {
         color = MaterialTheme.colorScheme.surface
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 value.ifBlank { stringResource(R.string.grid_quant_value_unavailable) },
-                style = MaterialTheme.typography.labelLarge
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = label,
@@ -2133,6 +2150,50 @@ private fun FitMetric(modifier: Modifier, label: String, value: String) {
         }
     }
 }
+
+/**
+ * 把原始信号域误差压缩为移动端可读格式。
+ *
+ * RMSE/MAE仍保留真实信号量纲；这里只改变显示格式，不把标准化RMSE冒充原始误差。
+ * 当数值跨度很大或很小时使用科学计数法，避免百万级积分荧光把指标卡撑坏。
+ */
+@Composable
+private fun formatFitMetricValue(value: Double?): String {
+    val finiteValue = value?.takeIf(Double::isFinite) ?: return ""
+    val absoluteValue = abs(finiteValue)
+    if (absoluteValue != 0.0 && (absoluteValue >= 10_000.0 || absoluteValue < 0.001)) {
+        val exponent = floor(log10(absoluteValue)).toInt()
+        val mantissa = finiteValue / Math.pow(10.0, exponent.toDouble())
+        return stringResource(
+            R.string.grid_quant_fit_scientific_value,
+            String.format(Locale.getDefault(), "%.2f", mantissa),
+            exponent.toSuperscriptDigits()
+        )
+    }
+    return when {
+        absoluteValue >= 100.0 -> String.format(Locale.getDefault(), "%.1f", finiteValue)
+        absoluteValue >= 1.0 -> String.format(Locale.getDefault(), "%.3f", finiteValue)
+        else -> String.format(Locale.getDefault(), "%.4f", finiteValue)
+    }
+}
+
+/** 将科学计数法指数转换为不占额外行高的上标字符。 */
+private fun Int.toSuperscriptDigits(): String = toString().map { character ->
+    when (character) {
+        '-' -> '⁻'
+        '0' -> '⁰'
+        '1' -> '¹'
+        '2' -> '²'
+        '3' -> '³'
+        '4' -> '⁴'
+        '5' -> '⁵'
+        '6' -> '⁶'
+        '7' -> '⁷'
+        '8' -> '⁸'
+        '9' -> '⁹'
+        else -> character
+    }
+}.joinToString("")
 
 @Composable
 private fun TemplatePickerDialog(
