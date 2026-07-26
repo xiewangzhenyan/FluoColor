@@ -116,6 +116,4 @@ sealed class Screen(open val route: String) {
         fun createRoute(projectId: String): String = "spectrum_result/$projectId"
     }
 
-    // 带参数的路由
-    class DetailRoute(val id: String) : Screen("detail/$id")
 }

@@ -79,7 +79,9 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             NewProjectScreen(navController = navController)
         }
 
-        // 快速新建只引用已发布模板，不再后台合成或归档一次性模板。
+        // 快速新建路由指向直接新建页。历史上曾存在一个独立的 QuickCreateProjectScreen
+        // （模板优先的一次性合成流程），该页早已不在任何导航路径上，已随死代码清理删除；
+        // 路由名保留是为了不破坏既有跳转与外部深链。
         composable(
             route = Screen.QuickCreateProject.route
         ) {

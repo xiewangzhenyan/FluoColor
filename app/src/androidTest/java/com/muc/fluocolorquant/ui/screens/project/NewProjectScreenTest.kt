@@ -97,65 +97,7 @@ class NewProjectScreenTest {
         composeRule.onAllNodesWithTag(NewProjectTestTags.SAMPLE_SITE_EDITOR).assertCountEquals(0)
     }
 
-    @Test
-    fun quickFlowOnlyShowsRunInputsAndPublishedProtocolSummary() {
-        composeRule.setContent {
-            FluoColorTheme {
-                QuickCreateProjectContent(
-                    state = readyState(),
-                    onNavigateBack = {},
-                    onSelectTemplate = {},
-                    onCopyTemplate = {},
-                    onCreateCustomTemplate = {},
-                    onProjectNameChange = {},
-                    onWholeChipSampleChange = {},
-                    onProjectBatchChange = {},
-                    onSampleBatchChange = {},
-                    onChooseImage = {},
-                    onRemoveImage = {},
-                    onCreateProject = {}
-                )
-            }
-        }
 
-        composeRule.onNodeWithTag(QuickCreateProjectTestTags.TEMPLATE_SELECTOR)
-            .assertIsDisplayed()
-        composeRule.onNodeWithTag(QuickCreateProjectTestTags.TEMPLATE_SUMMARY)
-            .assertIsDisplayed()
-        composeRule.onNodeWithTag(QuickCreateProjectTestTags.PROJECT_NAME)
-            .assertIsDisplayed()
-        composeRule.onNodeWithTag(QuickCreateProjectTestTags.WHOLE_CHIP_SAMPLE)
-            .assertIsDisplayed()
-        composeRule.onAllNodesWithTag("quick_detection_mode_editor").assertCountEquals(0)
-        composeRule.onAllNodesWithTag("quick_grid_layout_editor").assertCountEquals(0)
-    }
-
-    @Test
-    fun copyAndAdjustPassesPublishedTemplateIdToVersionedFlow() {
-        var copiedTemplateId: String? = null
-        composeRule.setContent {
-            FluoColorTheme {
-                QuickCreateProjectContent(
-                    state = readyState(),
-                    onNavigateBack = {},
-                    onSelectTemplate = {},
-                    onCopyTemplate = { copiedTemplateId = it },
-                    onCreateCustomTemplate = {},
-                    onProjectNameChange = {},
-                    onWholeChipSampleChange = {},
-                    onProjectBatchChange = {},
-                    onSampleBatchChange = {},
-                    onChooseImage = {},
-                    onRemoveImage = {},
-                    onCreateProject = {}
-                )
-            }
-        }
-
-        composeRule.onNodeWithTag(QuickCreateProjectTestTags.COPY_TEMPLATE).performClick()
-
-        assertEquals("template-v1", copiedTemplateId)
-    }
 
     private fun readyState(): ProjectUiState {
         val template = ExperimentTemplate(
