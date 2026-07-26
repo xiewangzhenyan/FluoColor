@@ -57,6 +57,7 @@ import com.muc.fluocolorquant.domain.detection.GridLocalizationOutcome
 import com.muc.fluocolorquant.domain.detection.GridLocalizationPresentation
 import com.muc.fluocolorquant.domain.detection.GridLocalizationSession
 import com.muc.fluocolorquant.domain.detection.isConfigurationComplete
+import com.muc.fluocolorquant.domain.detection.isDirectAcquisitionProfileId
 import com.muc.fluocolorquant.domain.detection.isReadyForConfirmation
 import com.muc.fluocolorquant.domain.detection.resolvedGridQuantitationMode
 import com.muc.fluocolorquant.domain.detection.withPersistedOnsiteCurveResource
@@ -193,6 +194,55 @@ data class GridPaintMergeResult(
     val assignments: Map<Int, GridLayoutAssignmentDraft>,
     val protectedSiteCount: Int
 )
+
+/** 孔位布局页进入定量计算前的稳定门控原因。 */
+enum class ArrayLayoutReadinessIssue {
+    NO_ASSIGNED_SITES,
+    NO_QUANTITATION_DRAFTS,
+    QUANTITATION_INCOMPLETE
+}
+
+/**
+ * 孔位布局和逐分析物定量方案的统一完成状态。
+ *
+ * Compose只负责展示该对象，ViewModel提交时再次计算同一规则，防止页面按钮与业务门控
+ * 各自维护一套条件。未分配孔位仍允许存在，但至少要有一个启用孔位参与本次实验。
+ */
+data class ArrayLayoutReadiness(
+    val assignedSiteCount: Int,
+    val totalSiteCount: Int,
+    val completedAnalyteCount: Int,
+    val totalAnalyteCount: Int,
+    val issues: Set<ArrayLayoutReadinessIssue>
+) {
+    val canStart: Boolean get() = issues.isEmpty()
+}
+
+/** 计算孔位与定量方案的双进度；该纯函数供JVM测试、Compose和ViewModel共同使用。 */
+fun evaluateArrayLayoutReadiness(
+    assignments: Collection<GridLayoutAssignmentDraft>,
+    quantitationDrafts: Collection<GridAnalyteQuantitationDraft>,
+    totalSiteCount: Int
+): ArrayLayoutReadiness {
+    val activeAssignments = assignments.count { draft ->
+        draft.role != TemplateSiteRole.DISABLED
+    }
+    val completedAnalytes = quantitationDrafts.count(GridAnalyteQuantitationDraft::isConfigurationComplete)
+    val issues = buildSet {
+        if (activeAssignments == 0) add(ArrayLayoutReadinessIssue.NO_ASSIGNED_SITES)
+        if (quantitationDrafts.isEmpty()) add(ArrayLayoutReadinessIssue.NO_QUANTITATION_DRAFTS)
+        else if (completedAnalytes != quantitationDrafts.size) {
+            add(ArrayLayoutReadinessIssue.QUANTITATION_INCOMPLETE)
+        }
+    }
+    return ArrayLayoutReadiness(
+        assignedSiteCount = activeAssignments,
+        totalSiteCount = totalSiteCount.coerceAtLeast(0),
+        completedAnalyteCount = completedAnalytes,
+        totalAnalyteCount = quantitationDrafts.size,
+        issues = issues
+    )
+}
 
 /** 微流控检测网关 UI 状态；所有用户文案由 Compose 根据枚举读取资源。 */
 sealed interface GridDetectionUiState {
@@ -1358,6 +1408,15 @@ class GridDetectionViewModel @Inject constructor(
             inputProtocol = snapshot.template.inputProtocol,
             primaryFeature = candidate.primaryFeature.code,
             processorVersion = resultSet.processorVersion,
+            // 直接新建项目的采集ID包含项目UUID，不能写入长期曲线资源形成伪设备锁定。
+            // 正式设备档案仍保留精确ID；直接自动采集则用空数组表示运行时记录真实元数据。
+            compatibleAcquisitionProfileIdsJson = if (
+                isDirectAcquisitionProfileId(snapshot.acquisitionProfile.id)
+            ) {
+                gson.toJson(emptyList<String>())
+            } else {
+                gson.toJson(listOf(snapshot.acquisitionProfile.id))
+            },
             concentrationUnit = analyteSnapshot.templateConfig.concentrationUnit,
             reliableRangeMin = minimum,
             reliableRangeMax = maximum,
@@ -1519,10 +1578,12 @@ class GridDetectionViewModel @Inject constructor(
             return
         }
         if (running) return
-        if (
-            quantitationDrafts.isEmpty() ||
-            quantitationDrafts.values.any { !it.isConfigurationComplete() }
-        ) {
+        val readiness = evaluateArrayLayoutReadiness(
+            assignments = drafts,
+            quantitationDrafts = quantitationDrafts.values,
+            totalSiteCount = session.grid.rows * session.grid.columns
+        )
+        if (!readiness.canStart) {
             // Compose 已经禁用“计算结果”，这里继续保留业务层门控，避免未来入口绕过确认流程。
             _configurationEvents.tryEmit(GridConfigurationEvent.OperationFailed)
             return
@@ -1950,7 +2011,8 @@ private fun List<GridLayoutAssignmentDraft>.toTemplateAssignments(
         analyteId = draft.analyteId,
         roleType = draft.role.code,
         standardConcentration = draft.standardConcentration,
-        defaultSampleSlot = draft.sampleId?.trim()?.takeIf(String::isNotEmpty),
+        defaultSampleSlot = draft.sampleId?.trim()?.takeIf(String::isNotEmpty)
+            ?: defaultArraySampleSlot(draft),
         referenceScope = if (isReferenceRole) {
             TemplateReferenceScope.ANALYTE.code
         } else {
@@ -1958,6 +2020,24 @@ private fun List<GridLayoutAssignmentDraft>.toTemplateAssignments(
         },
         enabled = draft.role != TemplateSiteRole.DISABLED
     )
+}
+
+/**
+ * 样本孔未输入样本编号时，用其物理孔号冻结一个可读且稳定的默认编号。
+ *
+ * 这样新运行的分析表、验证录入和导出不再出现含义模糊的“未分配”；如果多个孔属于同一
+ * 样本，用户仍可在布局页输入相同样本编号，将它们明确归为重复孔组。
+ */
+internal fun defaultArraySampleSlot(draft: GridLayoutAssignmentDraft): String? {
+    if (draft.role != TemplateSiteRole.SAMPLE) return null
+    var rowNumber = draft.rowIndex + 1
+    val rowLabel = StringBuilder()
+    while (rowNumber > 0) {
+        rowNumber -= 1
+        rowLabel.append(('A'.code + rowNumber % 26).toChar())
+        rowNumber /= 26
+    }
+    return "${rowLabel.reverse()}${draft.columnIndex + 1}"
 }
 
 /** 根据资源模型类型生成布局页定量方式；损坏或空参数模型安全降为仅信号。 */

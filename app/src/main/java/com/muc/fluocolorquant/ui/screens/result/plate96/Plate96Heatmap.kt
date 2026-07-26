@@ -58,6 +58,7 @@ fun Plate96Heatmap(
     model: ArrayHeatmapModel,
     displayMode: Plate96ResultDisplayMode,
     onWellClick: (ArrayHeatmapCell) -> Unit,
+    selectedSiteIndex: Int? = null,
     modifier: Modifier = Modifier
 ) {
     require(model.rows > 0 && model.columns > 0) {
@@ -115,6 +116,7 @@ fun Plate96Heatmap(
                         cell = cell,
                         model = model,
                         displayMode = displayMode,
+                        selected = cell.siteIndex == selectedSiteIndex,
                         onClick = { onWellClick(cell) },
                         modifier = Modifier.weight(1f)
                     )
@@ -141,12 +143,14 @@ private fun Plate96HeatmapWell(
     cell: ArrayHeatmapCell,
     model: ArrayHeatmapModel,
     displayMode: Plate96ResultDisplayMode,
+    selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier
 ) {
     val baseColor = arrayHeatmapBaseColor(cell.normalizedValue, model.scale.mode)
     val textColor = if (baseColor.luminance() > 0.52f) Color(0xFF172033) else Color.White
     val failureMarkerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.72f)
+    val selectedRingColor = MaterialTheme.colorScheme.primary
     val unavailableText = stringResource(R.string.plate96_result_no_value_short)
     Box(
         modifier = modifier
@@ -207,6 +211,14 @@ private fun Plate96HeatmapWell(
                     color = failureMarkerColor,
                     radius = size.minDimension * 0.10f,
                     center = Offset(size.width * 0.76f, size.height * 0.24f)
+                )
+            }
+            // 选中态只增加一圈清晰但克制的描边，孔内颜色仍完整表达浓度。
+            if (selected) {
+                drawCircle(
+                    color = selectedRingColor,
+                    radius = size.minDimension * 0.43f,
+                    style = Stroke(width = (size.minDimension * 0.075f).coerceAtLeast(1.5f))
                 )
             }
         }

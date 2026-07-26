@@ -174,6 +174,18 @@ object LegacyPlateRunAdapter {
                     originCorner = null,
                     userConfirmed = null
                 ),
+                visualEvidence = Plate96WellVisualEvidence(
+                    normalizedImagePath = null,
+                    sourceImagePath = artifacts.lastOrNull { artifact ->
+                        artifact.captureRole == "ENDPOINT"
+                    }?.let { artifact -> artifact.derivedPath ?: artifact.originalPath },
+                    cropBounds = emptyMap(),
+                    legacyCropPaths = resultsBySite.mapNotNull { (siteIndex, results) ->
+                        results.firstNotNullOfOrNull { result ->
+                            result.croppedImageIdentifier?.takeIf(String::isNotBlank)
+                        }?.let { path -> siteIndex to path }
+                    }.toMap()
+                ),
                 source = Plate96ResultSource.LEGACY_WELL_RESULT
             )
         )

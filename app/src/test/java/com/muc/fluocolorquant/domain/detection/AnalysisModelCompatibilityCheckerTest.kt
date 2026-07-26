@@ -80,6 +80,36 @@ class AnalysisModelCompatibilityCheckerTest {
         assertEquals(ModelCompatibilityResult.Compatible, result)
     }
 
+    @Test
+    fun `不同直接项目的一次性采集ID兼容已有现场曲线`() {
+        val result = AnalysisModelCompatibilityChecker.check(
+            model = compatibleModel().copy(
+                compatibleAcquisitionProfileIdsJson =
+                    "[\"direct-acquisition-old-project\"]"
+            ),
+            request = compatibleRequest().copy(
+                acquisitionProfileId = "direct-acquisition-new-project"
+            )
+        )
+
+        // 两个ID都只表示“直接项目自动采集”，实际设备与曝光元数据由运行快照记录。
+        assertEquals(ModelCompatibilityResult.Compatible, result)
+    }
+
+    @Test
+    fun `正式设备档案仍保持严格ID匹配`() {
+        val result = AnalysisModelCompatibilityChecker.check(
+            model = compatibleModel().copy(
+                compatibleAcquisitionProfileIdsJson = "[\"device-1\"]"
+            ),
+            request = compatibleRequest().copy(acquisitionProfileId = "device-2")
+        )
+
+        assertTrue(result is ModelCompatibilityResult.Incompatible)
+        result as ModelCompatibilityResult.Incompatible
+        assertTrue(ModelCompatibilityReason.ACQUISITION_PROFILE_MISMATCH in result.reasons)
+    }
+
     private fun compatibleModel(): AnalysisModel {
         return AnalysisModel(
             id = "model-1",

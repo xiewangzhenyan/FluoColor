@@ -2,6 +2,7 @@ package com.muc.fluocolorquant.domain.result.plate96
 
 import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBounds
 
 /** 标准96孔板固定采用行业标准的8行×12列语义；自定义圆孔板使用各自冻结行列。 */
 const val PLATE96_RESULT_ROWS: Int = 8
@@ -54,6 +55,25 @@ data class Plate96WellResult(
     val site: ArrayPhysicalSiteResult
 )
 
+/** 单个圆孔在标准方向图和原图中的冻结紧致裁切边界。 */
+data class Plate96WellCropBounds(
+    val normalized: ArrayUnitBounds?,
+    val source: ArrayUnitBounds?
+)
+
+/**
+ * 96孔板结果页使用的真实图像证据。
+ *
+ * 这里只保存运行时已有路径与冻结边界；UI加载缩略图时不得重新定位。旧运行没有完整几何，
+ * 因而通过[legacyCropPaths]直接读取当时保存的圆孔裁切文件。
+ */
+data class Plate96WellVisualEvidence(
+    val normalizedImagePath: String?,
+    val sourceImagePath: String?,
+    val cropBounds: Map<Int, Plate96WellCropBounds>,
+    val legacyCropPaths: Map<Int, String> = emptyMap()
+)
+
 /** 原图方向证据；旧运行缺少字段时只显示“未记录”，不会重新猜测历史图片。 */
 data class Plate96OrientationEvidence(
     val sourceRows: Int?,
@@ -73,6 +93,7 @@ data class Plate96ResultSnapshot(
     val arraySnapshot: ArrayResultSnapshot,
     val wells: List<Plate96WellResult>,
     val orientation: Plate96OrientationEvidence,
+    val visualEvidence: Plate96WellVisualEvidence,
     val source: Plate96ResultSource = Plate96ResultSource.MODERN_SNAPSHOT
 ) {
     val runId: String get() = arraySnapshot.runId

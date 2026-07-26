@@ -199,7 +199,6 @@ class DirectProjectCreationCoordinator @Inject constructor(
                 selection = selection,
                 modality = request.detectionModality,
                 carrierType = geometry.carrierType,
-                acquisitionId = acquisitionId,
                 primaryFeature = defaultPrimaryFeature,
                 processor = processor,
                 now = now
@@ -286,7 +285,6 @@ class DirectProjectCreationCoordinator @Inject constructor(
         selection: DirectProjectAnalyteRequest,
         modality: DetectionModality,
         carrierType: CarrierType,
-        acquisitionId: String,
         primaryFeature: AnalysisPrimaryFeature,
         processor: Pair<String, String>,
         now: Date
@@ -303,7 +301,9 @@ class DirectProjectCreationCoordinator @Inject constructor(
             processorName = processor.first,
             processorVersion = processor.second,
             compatibleCarrierTypesJson = gson.toJson(listOf(carrierType.code)),
-            compatibleAcquisitionProfileIdsJson = gson.toJson(listOf(acquisitionId)),
+            // 直接项目的采集档案ID包含项目UUID，只用于冻结本次运行，不是长期设备身份。
+            // 空数组表示由手机在每次拍摄时记录真实元数据，避免保存现场曲线后无法跨项目复用。
+            compatibleAcquisitionProfileIdsJson = gson.toJson(emptyList<String>()),
             concentrationUnit = selection.concentrationUnit,
             reliableRangeMin = 0.0,
             reliableRangeMax = selection.maxConcentration,

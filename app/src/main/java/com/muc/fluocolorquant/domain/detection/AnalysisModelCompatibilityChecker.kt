@@ -97,9 +97,7 @@ object AnalysisModelCompatibilityChecker {
             if (request.carrierType.code !in carrierTypes) {
                 reasons += ModelCompatibilityReason.CARRIER_TYPE_MISMATCH
             }
-            if (acquisitionProfiles.isNotEmpty() &&
-                request.acquisitionProfileId !in acquisitionProfiles
-            ) {
+            if (!isAcquisitionProfileCompatible(acquisitionProfiles, request.acquisitionProfileId)) {
                 reasons += ModelCompatibilityReason.ACQUISITION_PROFILE_MISMATCH
             }
         }
@@ -129,4 +127,28 @@ object AnalysisModelCompatibilityChecker {
             null
         }
     }
+
+    /**
+     * 判断分析模型与本次采集档案是否兼容。
+     *
+     * `direct-acquisition-<projectId>` 是直接新建项目生成的一次性会话标识，不是用户维护的
+     * 真实设备型号。早期现场曲线把该临时ID写进了长期资源，导致同一手机创建下一个项目时
+     * 仅因项目UUID变化就被误判为设备不兼容。这里保留显式设备档案的严格匹配，同时把所有
+     * 旧版直接采集会话视为同一类“手机自动记录元数据”协议，兼容已有曲线且不放宽正式设备。
+     */
+    private fun isAcquisitionProfileCompatible(
+        compatibleProfileIds: Set<String>,
+        requestProfileId: String
+    ): Boolean {
+        if (compatibleProfileIds.isEmpty() || requestProfileId in compatibleProfileIds) return true
+        return isDirectAcquisitionProfileId(requestProfileId) &&
+            compatibleProfileIds.any(::isDirectAcquisitionProfileId)
+    }
 }
+
+/** 直接新建项目的一次性采集档案使用的保留前缀。 */
+internal const val DIRECT_ACQUISITION_PROFILE_PREFIX: String = "direct-acquisition-"
+
+/** 一次性直接采集档案不等同于用户维护的固定设备档案。 */
+internal fun isDirectAcquisitionProfileId(profileId: String): Boolean =
+    profileId.startsWith(DIRECT_ACQUISITION_PROFILE_PREFIX)

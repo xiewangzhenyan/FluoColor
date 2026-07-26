@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,17 +20,20 @@ import androidx.compose.material.icons.outlined.AddChart
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Science
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -128,7 +131,9 @@ private fun PlateValidationHeaderCard(
 ) {
     Card(
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.30f)
+        )
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -332,7 +337,9 @@ private fun PlateValidationChartCard(
 ) {
     Card(
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.30f)
+        )
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -359,7 +366,7 @@ private fun PlateValidationMetricGrid(
                     Surface(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainer
+                        color = MaterialTheme.colorScheme.surface
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
@@ -399,6 +406,7 @@ private fun PlateValidationMetricGrid(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlateValidationInputDialog(
     snapshot: Plate96ResultSnapshot,
@@ -427,48 +435,116 @@ private fun PlateValidationInputDialog(
     val parsedValues = inputs.mapNotNull { (siteIndex, value) ->
         value.toDoubleOrNull()?.takeIf(Double::isFinite)?.let { siteIndex to it }
     }.toMap()
-    AlertDialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.plate_validation_input_title)) },
-        text = {
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+        dragHandle = null
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.padding(11.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.plate_validation_input_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.plate_validation_input_subtitle,
+                            analyte.name,
+                            analyte.concentrationUnit
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.plate_validation_entered_progress,
+                            parsedValues.size,
+                            candidates.size
+                        ),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             LazyColumn(
-                modifier = Modifier.heightIn(max = 480.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
                 items(candidates, key = { candidate -> candidate.well.wellIndex }) { candidate ->
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 1.dp
                     ) {
                         Row(
-                            modifier = Modifier.padding(10.dp),
+                            modifier = Modifier.padding(11.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = MaterialTheme.colorScheme.primaryContainer
-                            ) {
+                            Plate96WellThumbnail(
+                                snapshot = snapshot,
+                                well = candidate.well,
+                                size = 50.dp
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = candidate.well.wellLabel,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-                                    style = MaterialTheme.typography.labelMedium,
+                                    style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
-                            }
-                            Column(modifier = Modifier.weight(0.8f)) {
                                 Text(
-                                    text = stringResource(R.string.plate_validation_predicted_short),
+                                    text = candidate.well.site.sampleSlot
+                                        ?: candidate.well.site.defaultSampleSlot
+                                        ?: stringResource(
+                                            R.string.plate96_result_default_sample,
+                                            candidate.well.wellLabel
+                                        ),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = stringResource(
-                                        R.string.plate_validation_unit_value,
+                                        R.string.plate_validation_predicted_value,
                                         formatValidationNumber(candidate.predicted),
                                         analyte.concentrationUnit
                                     ),
-                                    style = MaterialTheme.typography.bodySmall,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -482,7 +558,9 @@ private fun PlateValidationInputDialog(
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
-                                label = { Text(stringResource(R.string.plate_validation_reference_short)) },
+                                label = {
+                                    Text(stringResource(R.string.plate_validation_reference_short))
+                                },
                                 suffix = { Text(analyte.concentrationUnit) },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true
@@ -491,22 +569,35 @@ private fun PlateValidationInputDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onSave(parsedValues) },
-                enabled = parsedValues.size >= 2 && !saving
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (saving) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                else Text(stringResource(R.string.plate_validation_calculate_action))
+                TextButton(
+                    onClick = onDismiss,
+                    enabled = !saving,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+                Button(
+                    onClick = { onSave(parsedValues) },
+                    enabled = parsedValues.size >= 2 && !saving,
+                    modifier = Modifier.weight(1.6f)
+                ) {
+                    if (saving) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.AutoMirrored.Outlined.FactCheck, contentDescription = null)
+                        Spacer(Modifier.size(8.dp))
+                        Text(stringResource(R.string.plate_validation_calculate_action))
+                    }
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !saving) {
-                Text(stringResource(R.string.cancel))
-            }
+            Spacer(Modifier.height(8.dp))
         }
-    )
+    }
 }
 
 private data class PlateValidationCandidate(

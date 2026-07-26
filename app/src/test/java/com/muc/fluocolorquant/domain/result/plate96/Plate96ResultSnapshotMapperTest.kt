@@ -4,6 +4,7 @@ import com.muc.fluocolorquant.domain.detection.grid.GridGeometryDiagnostics
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.result.ArrayCarrierResult
+import com.muc.fluocolorquant.domain.result.ArrayCaptureEvidence
 import com.muc.fluocolorquant.domain.result.ArrayFrameResult
 import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
@@ -73,6 +74,34 @@ class Plate96ResultSnapshotMapperTest {
         assertEquals("A1", plate.wells.first().wellLabel)
         assertEquals("A8", plate.wells[7].wellLabel)
         assertEquals("F8", plate.wells.last().wellLabel)
+    }
+
+    @Test
+    fun `现代结果只引用本次运行的真实输入图作为缩略图回退`() {
+        val source = snapshot().copy(
+            artifacts = listOf(
+                ArrayCaptureEvidence(
+                    artifactId = "endpoint",
+                    captureRole = "ENDPOINT",
+                    originalPath = "content://plate96/endpoint",
+                    derivedPath = null,
+                    capturedAtEpochMillis = 1_000L,
+                    operatorId = null,
+                    actualMetadataJson = null,
+                    profileSnapshotJson = null,
+                    imageQcJson = null,
+                    checksumSha256 = null,
+                    locked = true,
+                    revision = 1
+                )
+            )
+        )
+
+        val plate = (Plate96ResultSnapshotMapper.map(source) as Plate96ResultLoadResult.Success).snapshot
+
+        assertEquals("content://plate96/endpoint", plate.visualEvidence.sourceImagePath)
+        assertTrue(plate.visualEvidence.cropBounds.isEmpty())
+        assertTrue(plate.visualEvidence.legacyCropPaths.isEmpty())
     }
 
     private fun snapshot(rows: Int = 8, columns: Int = 12): ArrayResultSnapshot {

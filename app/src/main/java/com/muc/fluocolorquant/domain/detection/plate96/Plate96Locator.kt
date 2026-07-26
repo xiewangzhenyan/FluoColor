@@ -28,7 +28,9 @@ class Plate96Locator @Inject constructor(
         /** 保存当前方向下未经人工修改的定位基线，供单孔“恢复自动”精确回退。 */
         val automaticResult: ArrayLocalizationResult = result,
         /** 保存算法最初的方向裁决，用户修改A1后仍可以恢复自动建议。 */
-        val automaticOrientationResolution: Plate96OrientationResolution = orientationResolution
+        val automaticOrientationResolution: Plate96OrientationResolution = orientationResolution,
+        /** 冻结本次用户选择的定位模式，供过程页和运行记录准确追溯。 */
+        val locatorMode: ArrayLocatorMode = ArrayLocatorMode.AUTO
     )
 
     override suspend fun locate(
@@ -59,7 +61,9 @@ class Plate96Locator @Inject constructor(
         }
         var resolvedCircles = circles
         var orientation = resolveOrientation(resolvedCircles)
-        if (config.mode != ArrayLocatorMode.OBJECT_DETECTION &&
+        // 自动融合才执行第二轮缺孔恢复；“YOLO+圆孔”保留首轮局部霍夫/轮廓结果，
+        // 让用户能够真实比较是否启用晶格引导的二次恢复，而不是两个按钮跑同一条链路。
+        if (config.mode == ArrayLocatorMode.AUTO &&
             orientation.recommended.assignments.size < Plate96LayoutContract.SITE_COUNT
         ) {
             val missingProposals = buildMissingGridProposals(
@@ -85,7 +89,14 @@ class Plate96Locator @Inject constructor(
             circles = resolvedCircles,
             resolution = orientation
         )
-        return Session(resolvedCircles, orientation, result, result, orientation)
+        return Session(
+            circles = resolvedCircles,
+            orientationResolution = orientation,
+            result = result,
+            automaticResult = result,
+            automaticOrientationResolution = orientation,
+            locatorMode = config.mode
+        )
     }
 
     /** 用户确认A1角落后只重建坐标和标准晶格，不重复执行YOLO或霍夫圆。 */

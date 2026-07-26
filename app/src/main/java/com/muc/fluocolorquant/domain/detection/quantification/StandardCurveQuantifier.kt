@@ -674,7 +674,18 @@ object StandardCurveQuantifier {
                 FittingFunction.CUSTOM_LOG -> minimum > value("c")
                 FittingFunction.RODBARD,
                 FittingFunction.RODBARD_NIH,
-                FittingFunction.LOGISTIC -> minimum > 0.0 && value("c") > 0.0
+                FittingFunction.LOGISTIC -> {
+                    val slope = value("b")
+
+                    // 4PL/5PL 的标准形式在 x=0 且 b>0 时有明确有限值：
+                    // (0 / c)^b = 0，因此 y 正好等于低浓度渐近值 a。项目常见量程
+                    // 会从 0 开始，不能因为标定点从正浓度起步，就把整条可执行曲线
+                    // 误判为无效。只有负浓度，或 x=0 且 b<=0 导致零的非正幂时，
+                    // 才属于不能安全覆盖的定义域。
+                    minimum >= 0.0 &&
+                        value("c") > 0.0 &&
+                        (minimum > 0.0 || slope > 0.0)
+                }
                 FittingFunction.GAMMA_VARIATE ->
                     value("a") > 0.0 &&
                         value("c") > 0.0 &&

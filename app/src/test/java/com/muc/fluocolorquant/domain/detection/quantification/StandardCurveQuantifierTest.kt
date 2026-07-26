@@ -46,6 +46,79 @@ class StandardCurveQuantifierTest {
     }
 
     @Test
+    fun `五参数逻辑曲线允许项目量程从零开始并反算真实孔位信号`() {
+        val bundle = linearBundle(
+            fittingFunction = "logistic_5pl",
+            parametersJson = """{"a":361625.78152999684,"b":8.547083392401774,"c":34.921194891259134,"d":1113444.9059174429,"g":0.4861663820746118}""",
+            reliableRangeMin = 26.0,
+            reliableRangeMax = 85.0,
+            monotonicDirection = "AUTO"
+        )
+
+        val ready = StandardCurveQuantifier.prepare(
+            bundle = bundle,
+            projectRangeMin = 0.0,
+            projectRangeMax = 100.0
+        ) as PreparedStandardCurveQuantifier.Ready
+        val quantified = ready.quantify(756000.0) as PreparedEndpointQuantificationResult.Quantified
+
+        // 该参数和信号来自用户本次96孔板现场标定运行。回归测试固定真实故障样例，
+        // 防止以后再次把“量程从0开始”的有效5PL整批降级为仅信号。
+        assertEquals(40.58720368279272, quantified.concentration, 1e-6)
+        assertEquals("ng/mL", quantified.unit)
+        assertEquals(ReliableRangeStatus.WITHIN_RANGE, quantified.rangeStatus)
+    }
+
+    @Test
+    fun `四参数逻辑曲线允许项目量程从零开始`() {
+        val bundle = linearBundle(
+            fittingFunction = "rodbard_4pl",
+            parametersJson = """{"a":100.0,"b":2.0,"c":10.0,"d":0.0}""",
+            reliableRangeMin = 2.0,
+            reliableRangeMax = 20.0,
+            monotonicDirection = "AUTO"
+        )
+
+        val ready = StandardCurveQuantifier.prepare(
+            bundle = bundle,
+            projectRangeMin = 0.0,
+            projectRangeMax = 100.0
+        ) as PreparedStandardCurveQuantifier.Ready
+        val quantified = ready.quantify(50.0) as PreparedEndpointQuantificationResult.Quantified
+
+        assertEquals(10.0, quantified.concentration, 1e-6)
+        assertEquals(ReliableRangeStatus.WITHIN_RANGE, quantified.rangeStatus)
+    }
+
+    @Test
+    fun `逻辑曲线零浓度端点仍拒绝非正斜率幂`() {
+        listOf("rodbard_4pl", "rodbard_nih", "logistic_5pl").forEach { function ->
+            val parameters = when (function) {
+                "rodbard_4pl" -> """{"a":100.0,"b":-1.0,"c":10.0,"d":0.0}"""
+                "rodbard_nih" -> """{"a":100.0,"b":-1.0,"c":10.0}"""
+                else -> """{"a":100.0,"b":-1.0,"c":10.0,"d":0.0,"g":1.0}"""
+            }
+            val preparation = StandardCurveQuantifier.prepare(
+                bundle = linearBundle(
+                    fittingFunction = function,
+                    parametersJson = parameters,
+                    reliableRangeMin = 1.0,
+                    reliableRangeMax = 20.0,
+                    monotonicDirection = "AUTO"
+                ),
+                projectRangeMin = 0.0,
+                projectRangeMax = 100.0
+            )
+
+            assertEquals(
+                function,
+                EndpointQuantificationReason.INVALID_MODEL_DEFINITION,
+                (preparation as PreparedStandardCurveQuantifier.SignalOnly).reason
+            )
+        }
+    }
+
+    @Test
     fun `线性曲线y等于2x加1时信号21反算浓度10`() {
         val result = StandardCurveQuantifier.quantify(
             bundle = linearBundle(parametersJson = """{"a":2.0,"b":1.0}"""),

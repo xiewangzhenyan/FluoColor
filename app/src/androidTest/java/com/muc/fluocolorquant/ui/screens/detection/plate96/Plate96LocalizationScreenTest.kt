@@ -73,9 +73,12 @@ class Plate96LocalizationScreenTest {
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.ALGORITHM_SELECTOR)
             .performScrollTo()
             .assertIsDisplayed()
+        // LazyColumn只组合当前视口附近的节点。算法选择器前移后，必须先滚到摘要索引，
+        // 不能对尚未组合的底部节点直接调用performScrollTo()。
+        composeRule.onNodeWithTag(Plate96LocalizationTestTags.CONTENT_LIST)
+            .performScrollToIndex(6)
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.SUMMARY)
-            .performScrollTo()
-            .assertExists()
+            .assertIsDisplayed()
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.CONTENT_LIST)
             .performScrollToIndex(7)
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.CONTINUE_BUTTON)

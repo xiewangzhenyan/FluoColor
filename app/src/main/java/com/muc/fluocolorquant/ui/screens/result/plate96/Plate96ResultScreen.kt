@@ -5,12 +5,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -19,14 +19,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.FactCheck
 import androidx.compose.material.icons.outlined.Analytics
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Science
-import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Timeline
+import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -34,14 +38,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,7 +55,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -70,6 +69,7 @@ import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshot
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapCell
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapModel
+import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapScaleMode
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueState
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayResultExportCoordinator
 import com.muc.fluocolorquant.ui.screens.result.array.arrayResultPdfLabels
@@ -161,17 +161,20 @@ private fun Plate96ResultSuccess(
     var selectedAnalyteId by rememberSaveable(snapshot.runId) {
         mutableStateOf(snapshot.arraySnapshot.analytes.firstOrNull()?.analyteId)
     }
-    var selectedCell by remember(snapshot.runId) { mutableStateOf<ArrayHeatmapCell?>(null) }
+    var selectedWellIndex by rememberSaveable(snapshot.runId) { mutableStateOf<Int?>(null) }
     var showExport by remember { mutableStateOf(false) }
     val analyte = snapshot.arraySnapshot.analytes.firstOrNull { it.analyteId == selectedAnalyteId }
         ?: snapshot.arraySnapshot.analytes.firstOrNull()
     val tabs = Plate96ResultTab.entries
 
+    // 切换分析物后清除旧孔位选择，避免把上一分析物的状态错误显示在当前结果中。
+    LaunchedEffect(analyte?.analyteId) { selectedWellIndex = null }
+
     Scaffold(
         modifier = Modifier.testTag(PLATE96_RESULT_SCREEN_TAG),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
                     Column {
                         Text(snapshot.projectName, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -267,7 +270,15 @@ private fun Plate96ResultSuccess(
                     Plate96OverviewContent(
                         snapshot = snapshot,
                         analyte = selectedAnalyte,
-                        onWellClick = { selectedCell = it }
+                        selectedWellIndex = selectedWellIndex,
+                        onWellClick = { cell ->
+                            selectedWellIndex = if (selectedWellIndex == cell.siteIndex) {
+                                null
+                            } else {
+                                cell.siteIndex
+                            }
+                        },
+                        onClearWellSelection = { selectedWellIndex = null }
                     )
                 } ?: Plate96CenteredState(
                     text = stringResource(R.string.plate96_result_no_analyte),
@@ -277,11 +288,7 @@ private fun Plate96ResultSuccess(
                 Plate96ResultTab.ANALYSIS -> analyte?.let { selectedAnalyte ->
                     Plate96AnalysisContent(
                         snapshot = snapshot,
-                        analyte = selectedAnalyte,
-                        onWellClick = { wellIndex ->
-                            val model = buildAnalyteHeatmapModel(snapshot.arraySnapshot, selectedAnalyte)
-                            selectedCell = model.cells.firstOrNull { it.siteIndex == wellIndex }
-                        }
+                        analyte = selectedAnalyte
                     )
                 }
                 Plate96ResultTab.VALIDATION -> analyte?.let { selectedAnalyte ->
@@ -301,18 +308,6 @@ private fun Plate96ResultSuccess(
         }
     }
 
-    if (analyte != null) {
-        selectedCell?.let { cell ->
-            snapshot.wells.firstOrNull { it.wellIndex == cell.siteIndex }?.let { well ->
-                Plate96WellDetailSheet(
-                    well = well,
-                    analyte = analyte,
-                    valueState = cell.valueState,
-                    onDismiss = { selectedCell = null }
-                )
-            }
-        }
-    }
     ArrayResultExportCoordinator(
         snapshot = snapshot.arraySnapshot,
         visible = showExport,
@@ -334,100 +329,97 @@ private fun Plate96ResultSummaryBar(snapshot: Plate96ResultSnapshot) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant
-        )
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Plate96SummaryItem(
+            Column(
                 modifier = Modifier.weight(1f),
-                icon = Icons.Outlined.GridView,
-                value = stringResource(
-                    R.string.plate_result_layout_format,
-                    snapshot.arraySnapshot.rows,
-                    snapshot.arraySnapshot.columns
-                ),
-                label = stringResource(R.string.plate96_result_wells)
-            )
-            Plate96SummaryItem(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Outlined.Science,
-                value = snapshot.arraySnapshot.analytes.size.toString(),
-                label = stringResource(R.string.plate96_result_summary_analytes)
-            )
-            Plate96SummaryItem(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Outlined.TaskAlt,
-                value = measured.toString(),
-                label = stringResource(R.string.plate96_result_summary_measured)
-            )
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = snapshot.arraySnapshot.carrier.name.ifBlank {
+                        stringResource(R.string.plate96_result_default_carrier_name)
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = stringResource(
+                        R.string.plate96_result_summary_line,
+                        snapshot.arraySnapshot.analytes.size,
+                        measured,
+                        snapshot.wells.size
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Plate96SummaryChip(
+                    text = stringResource(
+                        R.string.plate_result_layout_format,
+                        snapshot.arraySnapshot.rows,
+                        snapshot.arraySnapshot.columns
+                    )
+                )
+                Plate96SummaryChip(
+                    text = stringResource(R.string.plate96_result_shape_circle)
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun Plate96SummaryItem(
-    modifier: Modifier,
-    icon: ImageVector,
-    value: String,
-    label: String
-) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp)
+private fun Plate96SummaryChip(text: String) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f)
     ) {
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.padding(7.dp).size(17.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-        Column {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Plate96OverviewContent(
     snapshot: Plate96ResultSnapshot,
     analyte: ArrayAnalyteResult,
-    onWellClick: (ArrayHeatmapCell) -> Unit
+    selectedWellIndex: Int?,
+    onWellClick: (ArrayHeatmapCell) -> Unit,
+    onClearWellSelection: () -> Unit
 ) {
     var displayMode by rememberSaveable(snapshot.runId, analyte.analyteId) {
         mutableStateOf(Plate96ResultDisplayMode.HEATMAP)
     }
     val model = remember(snapshot.runId, analyte.analyteId) {
         buildAnalyteHeatmapModel(snapshot.arraySnapshot, analyte)
+    }
+    val selectedCell = selectedWellIndex?.let { index ->
+        model.cells.firstOrNull { it.siteIndex == index }
+    }
+    val selectedWell = selectedWellIndex?.let { index ->
+        snapshot.wells.firstOrNull { it.wellIndex == index }
     }
     LazyColumn(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -436,43 +428,36 @@ private fun Plate96OverviewContent(
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(analyte.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    Text(
+                        text = analyte.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                     Text(
                         text = stringResource(
-                            if (model.scale.mode.name == "CONCENTRATION") {
+                            if (model.scale.mode == ArrayHeatmapScaleMode.CONCENTRATION) {
                                 R.string.plate96_result_concentration_heatmap
                             } else {
                                 R.string.plate96_result_signal_heatmap
                             }
                         ),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                SingleChoiceSegmentedButtonRow {
-                    Plate96ResultDisplayMode.entries.forEachIndexed { index, mode ->
-                        SegmentedButton(
-                            selected = displayMode == mode,
-                            onClick = { displayMode = mode },
-                            shape = SegmentedButtonDefaults.itemShape(index, Plate96ResultDisplayMode.entries.size),
-                            label = {
-                                Text(
-                                    stringResource(
-                                        if (mode == Plate96ResultDisplayMode.HEATMAP) {
-                                            R.string.plate96_result_view_heatmap
-                                        } else R.string.plate96_result_view_values
-                                    ),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    maxLines = 1
-                                )
-                            }
-                        )
-                    }
-                }
+                Plate96DisplayModeToggle(
+                    displayMode = displayMode,
+                    onDisplayModeChange = { displayMode = it }
+                )
             }
         }
         item {
@@ -484,20 +469,103 @@ private fun Plate96OverviewContent(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Plate96Heatmap(model, displayMode, onWellClick)
+                    Plate96Heatmap(
+                        model = model,
+                        displayMode = displayMode,
+                        onWellClick = onWellClick,
+                        selectedSiteIndex = selectedWellIndex
+                    )
                     Plate96ScaleLegend(model)
                     Plate96StateLegend(model)
                 }
             }
         }
         item { Plate96ResultMetrics(model) }
+        if (selectedCell != null && selectedWell != null) {
+            item(key = "selected-well-${selectedWell.wellIndex}") {
+                Plate96InlineWellDetailCard(
+                    snapshot = snapshot,
+                    well = selectedWell,
+                    analyte = analyte,
+                    valueState = selectedCell.valueState,
+                    scaleMode = model.scale.mode,
+                    onDismiss = onClearWellSelection
+                )
+            }
+        }
         item {
-            Text(
-                text = stringResource(R.string.plate96_result_open_analysis_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                Text(
+                    text = stringResource(
+                        if (model.scale.mode == ArrayHeatmapScaleMode.CONCENTRATION) {
+                            R.string.plate96_result_note
+                        } else {
+                            R.string.plate96_result_signal_note
+                        }
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 结果页专用的紧凑双态切换器。
+ *
+ * Material默认分段按钮在英文界面占宽过大，会挤压分析物标题；这里保留同样的选中语义，
+ * 但使用科研仪器常见的短标签胶囊，确保360dp中英文首屏都保持一行。
+ */
+@Composable
+private fun Plate96DisplayModeToggle(
+    displayMode: Plate96ResultDisplayMode,
+    onDisplayModeChange: (Plate96ResultDisplayMode) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .width(132.dp)
+            .height(38.dp),
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
+        Row(modifier = Modifier.padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Plate96ResultDisplayMode.entries.forEach { mode ->
+                Surface(
+                    onClick = { onDisplayModeChange(mode) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(50),
+                    color = if (displayMode == mode) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        androidx.compose.ui.graphics.Color.Transparent
+                    }
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (mode == Plate96ResultDisplayMode.HEATMAP) {
+                                R.string.plate96_result_view_heatmap_short
+                            } else {
+                                R.string.plate96_result_view_values
+                            }
+                        ),
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        maxLines = 1
+                    )
+                }
+            }
         }
     }
 }
@@ -524,27 +592,43 @@ private fun Plate96ScaleLegend(model: ArrayHeatmapModel) {
 
 @Composable
 private fun Plate96StateLegend(model: ArrayHeatmapModel) {
-    val items = buildList {
-        if (model.calibrationExtrapolatedCount > 0) add(R.string.plate96_result_legend_extrapolated)
+    val items = buildList<Pair<ImageVector, Int>> {
+        if (model.calibrationExtrapolatedCount > 0) {
+            add(Icons.Outlined.TrendingUp to R.string.plate96_result_legend_extrapolated)
+        }
         if (model.cells.any { it.valueState == ArrayHeatmapValueState.BELOW_PROJECT_RANGE }) {
-            add(R.string.plate96_result_legend_below)
+            add(Icons.Outlined.ArrowDownward to R.string.plate96_result_legend_below)
         }
         if (model.cells.any { it.valueState == ArrayHeatmapValueState.ABOVE_PROJECT_RANGE }) {
-            add(R.string.plate96_result_legend_above)
+            add(Icons.Outlined.ArrowUpward to R.string.plate96_result_legend_above)
         }
-        if (model.missingCount > 0) add(R.string.plate96_result_legend_unavailable)
+        if (model.missingCount > 0) {
+            add(Icons.Outlined.RemoveCircleOutline to R.string.plate96_result_legend_unavailable)
+        }
     }
     if (items.isNotEmpty()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            items.take(4).forEach { label ->
-                Text(
-                    text = stringResource(label),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            items.take(4).forEach { (icon, label) ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = stringResource(label),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }
@@ -552,6 +636,7 @@ private fun Plate96StateLegend(model: ArrayHeatmapModel) {
 
 @Composable
 private fun Plate96ResultMetrics(model: ArrayHeatmapModel) {
+    val concentrationMode = model.scale.mode == ArrayHeatmapScaleMode.CONCENTRATION
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -559,26 +644,62 @@ private fun Plate96ResultMetrics(model: ArrayHeatmapModel) {
         Plate96MetricCard(
             modifier = Modifier.weight(1f),
             value = model.calculatedCount.toString(),
-            label = stringResource(R.string.plate96_result_calculated)
+            label = stringResource(
+                if (concentrationMode) R.string.plate96_result_calculated
+                else R.string.plate96_result_signal_available
+            )
         )
         Plate96MetricCard(
             modifier = Modifier.weight(1f),
-            value = model.withinCalibrationRangeCount.toString(),
-            label = stringResource(R.string.plate96_result_within_curve)
+            value = if (concentrationMode) model.withinCalibrationRangeCount.toString() else "0",
+            label = stringResource(
+                if (concentrationMode) R.string.plate96_result_within_curve
+                else R.string.plate96_result_concentration_available
+            )
         )
         Plate96MetricCard(
             modifier = Modifier.weight(1f),
-            value = model.outsideProjectRangeCount.toString(),
-            label = stringResource(R.string.plate96_result_outside_range)
+            value = if (concentrationMode) {
+                model.outsideProjectRangeCount.toString()
+            } else {
+                model.calculatedCount.toString()
+            },
+            label = stringResource(
+                if (concentrationMode) R.string.plate96_result_outside_range
+                else R.string.plate96_result_signal_only
+            ),
+            valueColor = if (concentrationMode && model.outsideProjectRangeCount > 0) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            }
         )
     }
 }
 
 @Composable
-private fun Plate96MetricCard(modifier: Modifier, value: String, label: String) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+private fun Plate96MetricCard(
+    modifier: Modifier,
+    value: String,
+    label: String,
+    valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
         Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = valueColor
+            )
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

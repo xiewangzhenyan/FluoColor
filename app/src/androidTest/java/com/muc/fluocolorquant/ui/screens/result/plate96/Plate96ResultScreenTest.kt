@@ -4,7 +4,11 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -39,19 +43,34 @@ import org.junit.runner.RunWith
 /** 96孔板独立结果页的圆孔视觉、标签和一级信息架构回归。 */
 @RunWith(AndroidJUnit4::class)
 class Plate96ResultScreenTest {
+    @Test
+    fun validationInput_showsPhysicalWellThumbnailAndReferenceField() {
+        setResultContent()
+
+        composeRule.onNodeWithTag(PLATE96_RESULT_VALIDATION_TAB_TAG).performClick()
+        composeRule.onNodeWithText(string(R.string.plate_validation_input_action)).performClick()
+
+        composeRule.onNodeWithTag("${PLATE96_WELL_THUMBNAIL_TAG_PREFIX}0").assertExists()
+        composeRule.onNodeWithText("A1").assertExists()
+        composeRule.onAllNodesWithText(
+            string(R.string.plate_validation_reference_short)
+        ).onFirst().assertExists()
+    }
+
     @get:Rule
     val composeRule = createComposeRule()
 
     @Test
-    fun `结果页显示标准圆孔热力图并可打开H12详情`() {
+    fun `结果页显示标准圆孔热力图并在页面内展开H12详情`() {
         setResultContent()
 
         composeRule.onNodeWithTag(PLATE96_RESULT_SCREEN_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag(PLATE96_HEATMAP_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag("${PLATE96_WELL_TAG_PREFIX}0").assertExists()
         composeRule.onNodeWithTag("${PLATE96_WELL_TAG_PREFIX}95").assertExists().performClick()
-        composeRule.onNodeWithTag(PLATE96_WELL_DETAIL_SHEET_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(PLATE96_INLINE_WELL_DETAIL_TAG).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("H12").assertIsDisplayed()
+        composeRule.onNodeWithTag("plate96_well_detail_sheet").assertDoesNotExist()
     }
 
     @Test
@@ -62,7 +81,15 @@ class Plate96ResultScreenTest {
         composeRule.onNodeWithTag("${PLATE96_WELL_TAG_PREFIX}20").assertExists()
         composeRule.onNodeWithTag(PLATE96_RESULT_ANALYSIS_TAB_TAG).performClick()
         composeRule.onNodeWithTag(PLATE96_ANALYSIS_TAG).assertIsDisplayed()
-        composeRule.onNodeWithText(string(R.string.plate96_analysis_curve)).assertExists()
+        composeRule.onNodeWithTag(PLATE96_CURVE_CARD_TAG).assertExists()
+        composeRule.onNodeWithTag(PLATE96_FIT_METRICS_TAG).assertExists()
+        composeRule.onNodeWithText("0.9980").assertExists()
+        composeRule.onNodeWithTag(PLATE96_ANALYSIS_TAG).performScrollToIndex(2)
+        composeRule.onNodeWithTag(PLATE96_REPEATABILITY_TAG).assertExists()
+        composeRule.onNodeWithTag(PLATE96_ANALYSIS_TAG).performScrollToIndex(3)
+        composeRule.onNodeWithTag(PLATE96_DISTRIBUTION_TAG).assertExists()
+        composeRule.onNodeWithTag(PLATE96_ANALYSIS_TAG).performScrollToIndex(4)
+        composeRule.onNodeWithTag(PLATE96_SAMPLE_TABLE_TAG).assertExists()
         composeRule.onNodeWithTag(PLATE96_RESULT_PROCESS_TAB_TAG).performClick()
         composeRule.onNodeWithTag(PLATE96_PROCESSING_TAG).assertIsDisplayed()
     }
@@ -257,7 +284,11 @@ class Plate96ResultScreenTest {
             ArrayCalibrationPointResult(75.0, 62.0, 0),
             ArrayCalibrationPointResult(100.0, 82.0, 0)
         ),
-        validationMetrics = mapOf("R2" to 0.998),
+        validationMetrics = mapOf(
+            "R2" to 0.998,
+            "RMSE" to 2.41,
+            "MAE" to 1.86
+        ),
         projectRangeMin = 0.0,
         projectRangeMax = 100.0,
         calibrationRangeMin = 0.0,

@@ -4,6 +4,8 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.SiteShape
+import com.muc.fluocolorquant.data.enums.CaptureRole
+import com.muc.fluocolorquant.domain.detection.plate96.Plate96RunGeometryCodec
 import com.muc.fluocolorquant.domain.result.ArrayResultLoadResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 
@@ -62,8 +64,36 @@ object Plate96ResultSnapshotMapper {
             Plate96ResultSnapshot(
                 arraySnapshot = source,
                 wells = wells,
-                orientation = parseOrientation(source.acquisitionMetadataJson)
+                orientation = parseOrientation(source.acquisitionMetadataJson),
+                visualEvidence = parseVisualEvidence(source)
             )
+        )
+    }
+
+    /**
+     * 现代运行从frameQc中的冻结几何恢复裁切边界，并只引用本次运行的原始/标准方向证据。
+     * 几何缺失时保持空映射，结果页显示占位图而不是重新执行定位。
+     */
+    private fun parseVisualEvidence(source: ArrayResultSnapshot): Plate96WellVisualEvidence {
+        val geometry = runCatching {
+            val root = gson.fromJson(source.frame.frameQcJson, JsonObject::class.java)
+            val element = root?.get("plate96Geometry") ?: return@runCatching null
+            Plate96RunGeometryCodec.decode(gson.toJson(element))
+        }.getOrNull()
+        fun evidencePath(role: CaptureRole): String? = source.artifacts
+            .lastOrNull { artifact -> artifact.captureRole == role.code }
+            ?.let { artifact -> artifact.derivedPath ?: artifact.originalPath }
+            ?.takeIf(String::isNotBlank)
+
+        return Plate96WellVisualEvidence(
+            normalizedImagePath = evidencePath(CaptureRole.PROCESS_ORIENTATION_NORMALIZED),
+            sourceImagePath = evidencePath(CaptureRole.ENDPOINT),
+            cropBounds = geometry?.sites.orEmpty().associate { site ->
+                site.siteIndex to Plate96WellCropBounds(
+                    normalized = site.normalizedCropBounds,
+                    source = site.sourceCropBounds
+                )
+            }
         )
     }
 

@@ -208,6 +208,13 @@ internal fun Plate96ReadyContent(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item { Plate96StepHeader() }
+            // 算法选择放在预览之前。切换后页面会重新定位，用户先明确方法，再复核方向和孔位。
+            item {
+                Plate96AlgorithmSelector(
+                    selected = state.locatorMode,
+                    onSelected = onLocatorModeChange
+                )
+            }
             item {
                 Plate96OrientationCard(
                     state = state,
@@ -249,12 +256,6 @@ internal fun Plate96ReadyContent(
                     onShowOutlinesChange = onShowOutlinesChange,
                     onShowLabelsChange = onShowLabelsChange,
                     onOpenAdjustment = { adjustmentSiteIndex = state.selectedSiteIndex }
-                )
-            }
-            item {
-                Plate96AlgorithmSelector(
-                    selected = state.locatorMode,
-                    onSelected = onLocatorModeChange
                 )
             }
             item {

@@ -31,6 +31,7 @@ import com.muc.fluocolorquant.domain.calibration.CalibrationInputFingerprint
 import com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
 import com.muc.fluocolorquant.domain.calibration.CalibrationResultSet
 import com.muc.fluocolorquant.domain.calibration.CalibrationStandardObservation
+import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
 import com.muc.fluocolorquant.domain.detection.grid.PG_GRID_SCHEMA_V2_1
@@ -551,6 +552,11 @@ class GridDetectionCoordinator @Inject constructor(
                 exifFlipped = exifFlipped
             )
         )
+        val locatorModeName = when (locatorSession.locatorMode) {
+            ArrayLocatorMode.AUTO -> "AUTO_YOLO_HOUGH_CONTOUR_GRID"
+            ArrayLocatorMode.OBJECT_DETECTION -> "YOLO_ONLY"
+            ArrayLocatorMode.GEOMETRIC_SHAPE -> "YOLO_HOUGH_CONTOUR"
+        }
         return GridLocalizationOutcome.Ready(
             GridLocalizationSession(
                 request = requestWithOrientation,
@@ -565,9 +571,10 @@ class GridDetectionCoordinator @Inject constructor(
                     schemaVersion = PLATE96_RUN_GEOMETRY_SCHEMA_V1,
                     json = Plate96RunGeometryCodec.encode(geometry)
                 ),
-                detectionModelUsed = "Plate96 YOLO + circular-grid ${localization.locatorVersion}",
+                detectionModelUsed = "Plate96 $locatorModeName ${localization.locatorVersion}",
                 processingVersions = linkedMapOf(
                     "geometry" to PLATE96_RUN_GEOMETRY_SCHEMA_V1,
+                    "locatorMode" to locatorSession.locatorMode.name,
                     "orientation" to localization.orientation.schemaVersion,
                     "imageTransform" to localization.imageTransform.processorVersion,
                     "basePhotometry" to PG_QUANT_PROCESSOR_VERSION,

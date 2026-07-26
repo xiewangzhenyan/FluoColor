@@ -10,6 +10,13 @@ import com.muc.fluocolorquant.domain.detection.plate96.Plate96OrientationResolve
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 import com.muc.fluocolorquant.ui.screens.detection.siteCoordinateLabel
 import com.muc.fluocolorquant.ui.viewmodels.GridLocalizationAnalyte
+import com.muc.fluocolorquant.ui.viewmodels.GridLayoutAssignmentDraft
+import com.muc.fluocolorquant.ui.viewmodels.evaluateArrayLayoutReadiness
+import com.muc.fluocolorquant.ui.viewmodels.defaultArraySampleSlot
+import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationDraft
+import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationMethod
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationSnapshot
 import com.muc.fluocolorquant.ui.viewmodels.mergePaintedAssignments
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -17,6 +24,64 @@ import org.junit.Test
 
 /** 96孔板布局页对通用阵列工作台的关键契约回归。 */
 class Plate96LayoutWorkflowTest {
+    @Test
+    fun `样本未填写编号时使用物理孔号作为稳定默认编号`() {
+        assertEquals(
+            "A1",
+            defaultArraySampleSlot(
+                GridLayoutAssignmentDraft(0, 0, "cea", TemplateSiteRole.SAMPLE)
+            )
+        )
+        assertEquals(
+            "H12",
+            defaultArraySampleSlot(
+                GridLayoutAssignmentDraft(7, 11, "cea", TemplateSiteRole.SAMPLE)
+            )
+        )
+        assertEquals(
+            null,
+            defaultArraySampleSlot(
+                GridLayoutAssignmentDraft(0, 0, "cea", TemplateSiteRole.STANDARD)
+            )
+        )
+    }
+
+    @Test
+    fun `标准曲线完成但孔位为空时明确阻止开始分析`() {
+        val completed = GridAnalyteQuantitationDraft(
+            analyteId = "cea",
+            mode = GridAnalyteQuantitationMode.EXISTING_STANDARD_CURVE,
+            selectedAnalysisModelId = "curve-cea",
+            appliedSnapshot = AnalyteQuantitationSnapshot(
+                analyteId = "cea",
+                method = AnalyteQuantitationMethod.STANDARD_CURVE_RESOURCE,
+                concentrationUnit = "g/ml",
+                sourceResourceId = "curve-cea",
+                processorVersion = "test",
+                inputFingerprint = "fingerprint"
+            )
+        )
+
+        val emptyLayout = evaluateArrayLayoutReadiness(emptyList(), listOf(completed), 96)
+        assertEquals(0, emptyLayout.assignedSiteCount)
+        assertEquals(1, emptyLayout.completedAnalyteCount)
+        assertTrue(!emptyLayout.canStart)
+
+        val assignedLayout = evaluateArrayLayoutReadiness(
+            assignments = listOf(
+                GridLayoutAssignmentDraft(
+                    rowIndex = 0,
+                    columnIndex = 0,
+                    analyteId = "cea",
+                    role = TemplateSiteRole.SAMPLE
+                )
+            ),
+            quantitationDrafts = listOf(completed),
+            totalSiteCount = 96
+        )
+        assertTrue(assignedLayout.canStart)
+    }
+
     @Test
     fun `定位结果适配后保持标准8乘12圆孔和完整双位数标签`() {
         val circles = buildPlateCircles()

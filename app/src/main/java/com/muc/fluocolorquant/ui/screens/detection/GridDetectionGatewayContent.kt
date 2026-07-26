@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -36,6 +37,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -63,7 +65,6 @@ import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
-import com.muc.fluocolorquant.domain.detection.isConfigurationComplete
 import com.muc.fluocolorquant.domain.detection.GridDetectionBlockReason
 import com.muc.fluocolorquant.domain.detection.GridDetectionStage
 import com.muc.fluocolorquant.domain.detection.GridLocalizationPresentation
@@ -71,10 +72,13 @@ import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiError
 import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiState
+import com.muc.fluocolorquant.ui.viewmodels.ArrayLayoutReadiness
+import com.muc.fluocolorquant.ui.viewmodels.ArrayLayoutReadinessIssue
 import com.muc.fluocolorquant.ui.viewmodels.GridLayoutAssignmentDraft
 import com.muc.fluocolorquant.ui.viewmodels.GridLayoutPaintIntent
 import com.muc.fluocolorquant.ui.viewmodels.GridLocalizationPreview
 import com.muc.fluocolorquant.ui.viewmodels.GridPaintMergeResult
+import com.muc.fluocolorquant.ui.viewmodels.evaluateArrayLayoutReadiness
 import java.io.File
 
 /**
@@ -432,6 +436,13 @@ internal fun ArrayLayoutEditor(
     val toastManager = LocalToastManager.current
     // stringResource 必须在 Composable 上下文提前读取，点击回调中只使用已经解析的字符串。
     val occupiedSiteMessage = stringResource(R.string.grid_layout_occupied_site_protected)
+    val readiness = remember(assignments, preview.quantitationDrafts, preview.siteCount) {
+        evaluateArrayLayoutReadiness(
+            assignments = assignments.values,
+            quantitationDrafts = preview.quantitationDrafts,
+            totalSiteCount = preview.siteCount
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -616,11 +627,40 @@ internal fun ArrayLayoutEditor(
             onSaveTemplate = onSaveTemplate
         )
 
+        ArrayLayoutReadinessCard(readiness = readiness)
+
+        if (
+            assignments.isEmpty() &&
+            preview.analytes.size == 1
+        ) {
+            val onlyAnalyte = preview.analytes.single()
+            Button(
+                onClick = {
+                    // 单分析物项目提供显式快捷入口；它只填充当前空白布局，不会在后台
+                    // 猜测标准品、空白或质控孔，用户之后仍可用清除画笔局部调整。
+                    clearMode = false
+                    selectedRole = TemplateSiteRole.SAMPLE
+                    selectedAnalyteId = onlyAnalyte.id
+                    onPaintAssignments(
+                        GridLayoutPaintIntent(
+                            paintedSiteIndices = (0 until preview.siteCount).toSet(),
+                            analyteId = onlyAnalyte.id,
+                            role = TemplateSiteRole.SAMPLE,
+                            sampleId = null
+                        )
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.GridView, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.grid_layout_fill_all_samples, onlyAnalyte.name))
+            }
+        }
+
         Button(
             onClick = onFinalize,
-            enabled = assignments.isNotEmpty() && preview.hasCompleteQuantitationConfiguration(
-                assignments
-            ),
+            enabled = readiness.canStart,
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Default.AutoFixHigh, contentDescription = null)
@@ -632,15 +672,98 @@ internal fun ArrayLayoutEditor(
 }
 
 /**
- * 最终分析按钮只检查用户方案是否完整，不重复科学预检。
- * 现场拟合允许不先点预览，但必须已有两个浓度水平；曲线/模型必须明确选中资源。
+ * 在主按钮之前并排展示“孔位布局”和“定量方案”两个进度，禁用原因不再依赖用户猜测。
  */
-private fun GridLocalizationPreview.hasCompleteQuantitationConfiguration(
-    assignments: Map<Int, GridLayoutAssignmentDraft>
-): Boolean {
-    return assignments.isNotEmpty() &&
-        quantitationDrafts.isNotEmpty() &&
-        quantitationDrafts.all { draft -> draft.isConfigurationComplete() }
+@Composable
+private fun ArrayLayoutReadinessCard(readiness: ArrayLayoutReadiness) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.20f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(11.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                LayoutReadinessMetric(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Default.GridView,
+                    label = stringResource(R.string.grid_layout_progress_sites),
+                    completed = readiness.assignedSiteCount,
+                    total = readiness.totalSiteCount
+                )
+                LayoutReadinessMetric(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Default.AutoFixHigh,
+                    label = stringResource(R.string.grid_layout_progress_quantitation),
+                    completed = readiness.completedAnalyteCount,
+                    total = readiness.totalAnalyteCount
+                )
+            }
+            val reason = when {
+                ArrayLayoutReadinessIssue.NO_ASSIGNED_SITES in readiness.issues ->
+                    stringResource(R.string.grid_layout_no_sites_reason)
+                ArrayLayoutReadinessIssue.NO_QUANTITATION_DRAFTS in readiness.issues ||
+                    ArrayLayoutReadinessIssue.QUANTITATION_INCOMPLETE in readiness.issues ->
+                    stringResource(R.string.grid_layout_quantitation_incomplete_reason)
+                else -> null
+            }
+            reason?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LayoutReadinessMetric(
+    modifier: Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    completed: Int,
+    total: Int
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = stringResource(R.string.grid_layout_progress_value, completed, total),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        LinearProgressIndicator(
+            progress = { if (total <= 0) 0f else completed.toFloat() / total },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(5.dp),
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+        )
+    }
 }
 
 /** 把行列草稿转换为虚拟布局板使用的行优先索引，避免各调用方重复坐标公式。 */

@@ -1,7 +1,7 @@
 package com.muc.fluocolorquant.domain.detection.quantification
 
 /** 端点量化决策和快照结构的稳定版本号，用于历史运行复算审计。 */
-const val ENDPOINT_QUANTIFIER_VERSION: String = "endpoint-quantifier-v2"
+const val ENDPOINT_QUANTIFIER_VERSION: String = "endpoint-quantifier-v3"
 
 /** 与旧 FittingEngine 共享正向公式时记录的公式引擎版本。 */
 const val FORMULA_ENGINE_VERSION: String = "fitting-engine-v1"

@@ -165,6 +165,15 @@ fun ScientificSelectionField(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
+                // 紧凑选择器与同一行的最大浓度输入框保持统一触控高度，避免标签对齐后
+                // 仍出现控件底边错位。STANDARD 保留自适应高度，不影响其他资源选择页。
+                .then(
+                    if (density == ScientificSelectionFieldDensity.COMPACT) {
+                        Modifier.heightIn(min = 64.dp)
+                    } else {
+                        Modifier
+                    }
+                )
                 .clickable(enabled = enabled, onClick = onClick),
             shape = RoundedCornerShape(16.dp),
             color = if (value.isNullOrBlank()) {

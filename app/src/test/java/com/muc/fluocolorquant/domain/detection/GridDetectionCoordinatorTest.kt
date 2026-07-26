@@ -341,6 +341,108 @@ class GridDetectionCoordinatorTest {
     }
 
     @Test
+    fun `真实五参数现场曲线在零起点项目量程中不会整批降级`() {
+        val source = validSnapshot().analytes.single()
+        val model = source.analysisModel.model.copy(
+            primaryFeature = AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY.code,
+            concentrationUnit = "g/ml",
+            reliableRangeMin = 26.0,
+            reliableRangeMax = 85.0
+        )
+        val analyteSnapshot = source.copy(
+            templateConfig = source.templateConfig.copy(
+                concentrationUnit = "g/ml",
+                // 项目量程来自用户新建项目时填写的0～100，不等同于现场标定点范围。
+                reliableRangeMin = 0.0,
+                reliableRangeMax = 100.0
+            ),
+            analysisModel = AnalysisModelBundle(
+                model = model,
+                standardCurve = StandardCurveDefinition(
+                    analysisModelId = model.id,
+                    fittingFunction = "logistic_5pl",
+                    parametersJson = """{"a":361625.78152999684,"b":8.547083392401774,"c":34.921194891259134,"d":1113444.9059174429,"g":0.4861663820746118}""",
+                    monotonicDirection = "AUTO"
+                )
+            )
+        )
+        val coordinator = coordinator()
+
+        val batch = coordinator.applyQuantification(
+            measurements = listOf(
+                measurement(siteIndex = 0, primaryFeatureValue = 756000.0),
+                measurement(siteIndex = 1, primaryFeatureValue = 8560.0),
+                measurement(siteIndex = 2, primaryFeatureValue = 1175518.0)
+            ),
+            analyteSnapshot = analyteSnapshot,
+            compatibility = ModelCompatibilityResult.Compatible
+        )
+
+        assertTrue(batch.modelExecutable)
+        assertEquals(1, batch.quantifiedCount)
+        assertEquals(2, batch.outOfRangeCount)
+        assertEquals(40.58720368279272, requireNotNull(batch.measurements[0].concentrationValue), 1e-6)
+        assertEquals("g/ml", batch.measurements[0].concentrationUnit)
+        assertEquals("WITHIN_RANGE", batch.measurements[0].reliableRangeStatus)
+        assertEquals("BELOW_PROJECT_RANGE", batch.measurements[1].reliableRangeStatus)
+        assertEquals("ABOVE_PROJECT_RANGE", batch.measurements[2].reliableRangeStatus)
+    }
+
+    @Test
+    fun `旧直接项目现场曲线可在新96孔板直接项目中继续定量`() {
+        val source = validSnapshot().analytes.single()
+        val model = source.analysisModel.model.copy(
+            primaryFeature = AnalysisPrimaryFeature.FLUORESCENCE_SNR.code,
+            compatibleCarrierTypesJson = "[\"PLATE\"]",
+            // 旧版把项目UUID拼入采集档案ID；它只代表一次直接采集会话，并不代表另一台设备。
+            compatibleAcquisitionProfileIdsJson = "[\"direct-acquisition-old-project\"]",
+            reliableRangeMin = 0.0,
+            reliableRangeMax = 100.0
+        )
+        val analyteSnapshot = source.copy(
+            templateConfig = source.templateConfig.copy(
+                reliableRangeMin = 0.0,
+                reliableRangeMax = 100.0
+            ),
+            analysisModel = AnalysisModelBundle(
+                model = model,
+                standardCurve = StandardCurveDefinition(
+                    analysisModelId = model.id,
+                    fittingFunction = "linear",
+                    parametersJson = """{"a":1.0,"b":0.0}""",
+                    monotonicDirection = "INCREASING"
+                )
+            )
+        )
+        val compatibility = AnalysisModelCompatibilityChecker.check(
+            model = model,
+            request = ModelCompatibilityRequest(
+                analyteId = source.analyte.id,
+                modality = DetectionModality.FLUORESCENCE,
+                inputProtocol = InputProtocol.ENDPOINT_ONLY,
+                primaryFeature = AnalysisPrimaryFeature.FLUORESCENCE_SNR,
+                carrierType = CarrierType.PLATE,
+                acquisitionProfileId = "direct-acquisition-new-project",
+                processorName = model.processorName,
+                processorVersion = model.processorVersion
+            )
+        )
+
+        // 回归契约不只验证“兼容”枚举，还必须证明协调器最终真的写出了浓度。
+        assertEquals(ModelCompatibilityResult.Compatible, compatibility)
+        val batch = coordinator().applyQuantification(
+            measurements = listOf(measurement(siteIndex = 0, primaryFeatureValue = 10.0)),
+            analyteSnapshot = analyteSnapshot,
+            compatibility = compatibility
+        )
+
+        assertTrue(batch.modelExecutable)
+        assertEquals(1, batch.quantifiedCount)
+        assertEquals(10.0, requireNotNull(batch.measurements.single().concentrationValue), 1e-9)
+        assertEquals("WITHIN_RANGE", batch.measurements.single().reliableRangeStatus)
+    }
+
+    @Test
     fun `深度学习成功批次同时保存范围内浓度并抑制超范围数值`() {
         val coordinator = coordinator()
         val analyte = deepLearningAnalyteSnapshot()
