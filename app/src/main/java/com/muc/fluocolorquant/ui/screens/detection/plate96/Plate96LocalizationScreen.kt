@@ -829,7 +829,7 @@ private fun Plate96ImagePreview(
     val labelColor = MaterialTheme.colorScheme.onPrimary
     val labelBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
     val contentDescription = stringResource(R.string.plate96_preview_content_description)
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+    FluoSectionCard(contentPadding = 0.dp) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val imageAspectRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
             val previewHeight = (maxWidth / imageAspectRatio).coerceIn(220.dp, 420.dp)
@@ -837,7 +837,9 @@ private fun Plate96ImagePreview(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(previewHeight)
-                    .background(Color.Black.copy(alpha = 0.04f))
+                    // 图片按比例缩放后的 letterbox 留白底色。原实现用 4% 纯黑，深色模式下
+                    // 几乎不可见，留白与图片边界分不清；改用主题表面色后明暗都有明确边界。
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .testTag(Plate96LocalizationTestTags.PREVIEW)
                     .semantics { this.contentDescription = contentDescription }
                     .pointerInput(bitmap, normalized, sites) {
