@@ -1,5 +1,12 @@
 package com.muc.fluocolorquant.ui.screens.result.plate96
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +30,7 @@ import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Timeline
@@ -66,6 +74,8 @@ import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshot
+import com.muc.fluocolorquant.ui.components.FluoStatePlaceholder
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapCell
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapModel
@@ -75,6 +85,9 @@ import com.muc.fluocolorquant.ui.screens.result.array.ArrayResultExportCoordinat
 import com.muc.fluocolorquant.ui.screens.result.array.arrayResultPdfLabels
 import com.muc.fluocolorquant.ui.screens.result.array.buildAnalyteHeatmapModel
 import com.muc.fluocolorquant.ui.screens.result.array.formatArrayHeatmapValue
+import com.muc.fluocolorquant.ui.theme.FluoMotion
+import com.muc.fluocolorquant.ui.theme.FluoRadius
+import com.muc.fluocolorquant.ui.theme.FluoSpacing
 import com.muc.fluocolorquant.ui.viewmodels.Plate96ResultUiState
 import com.muc.fluocolorquant.ui.viewmodels.Plate96ResultViewModel
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
@@ -174,29 +187,14 @@ private fun Plate96ResultSuccess(
         modifier = Modifier.testTag(PLATE96_RESULT_SCREEN_TAG),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Column {
-                        Text(snapshot.projectName, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            text = stringResource(
-                                R.string.plate_result_subtitle_format,
-                                snapshot.arraySnapshot.rows,
-                                snapshot.arraySnapshot.columns
-                            ),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.cd_navigate_back)
-                        )
-                    }
-                },
+            FluoTopBar(
+                title = snapshot.projectName,
+                subtitle = stringResource(
+                    R.string.plate_result_subtitle_format,
+                    snapshot.arraySnapshot.rows,
+                    snapshot.arraySnapshot.columns
+                ),
+                onBack = onBack,
                 actions = {
                     IconButton(
                         onClick = { showExport = true },
@@ -207,10 +205,7 @@ private fun Plate96ResultSuccess(
                             contentDescription = stringResource(R.string.array_export_open)
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                }
             )
         }
     ) { paddingValues ->
@@ -265,45 +260,75 @@ private fun Plate96ResultSuccess(
                     )
                 }
             }
-            when (tabs[selectedTab]) {
-                Plate96ResultTab.RESULT -> analyte?.let { selectedAnalyte ->
-                    Plate96OverviewContent(
-                        snapshot = snapshot,
-                        analyte = selectedAnalyte,
-                        selectedWellIndex = selectedWellIndex,
-                        onWellClick = { cell ->
-                            selectedWellIndex = if (selectedWellIndex == cell.siteIndex) {
-                                null
-                            } else {
-                                cell.siteIndex
+            // 四个一级页共用同一块区域，切换时用横向滑动 + 淡入表达"同层平移"关系：
+            // 向右选择标签时新内容自右进入，向左选择时相反，方向与标签顺序一致。
+            // 不使用缩放或纵向位移，避免热力图和曲线在过渡期间出现视觉形变。
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    val forward = targetState > initialState
+                    val offset: (Int) -> Int = { width ->
+                        if (forward) width / 6 else -width / 6
+                    }
+                    val exitOffset: (Int) -> Int = { width ->
+                        if (forward) -width / 6 else width / 6
+                    }
+                    (slideInHorizontally(
+                        animationSpec = tween(FluoMotion.STANDARD_MS, easing = FluoMotion.Standard),
+                        initialOffsetX = offset
+                    ) + fadeIn(
+                        animationSpec = tween(FluoMotion.STANDARD_MS, easing = FluoMotion.Decelerate)
+                    )).togetherWith(
+                        slideOutHorizontally(
+                            animationSpec = tween(FluoMotion.STANDARD_MS, easing = FluoMotion.Standard),
+                            targetOffsetX = exitOffset
+                        ) + fadeOut(
+                            animationSpec = tween(FluoMotion.MICRO_MS, easing = FluoMotion.Accelerate)
+                        )
+                    )
+                },
+                label = "plate96ResultTabContent"
+            ) { tabIndex ->
+                when (tabs[tabIndex]) {
+                    Plate96ResultTab.RESULT -> analyte?.let { selectedAnalyte ->
+                        Plate96OverviewContent(
+                            snapshot = snapshot,
+                            analyte = selectedAnalyte,
+                            selectedWellIndex = selectedWellIndex,
+                            onWellClick = { cell ->
+                                selectedWellIndex = if (selectedWellIndex == cell.siteIndex) {
+                                    null
+                                } else {
+                                    cell.siteIndex
+                                }
+                            },
+                            onClearWellSelection = { selectedWellIndex = null }
+                        )
+                    } ?: Plate96CenteredState(
+                        text = stringResource(R.string.plate96_result_no_analyte),
+                        showProgress = false,
+                        onRetry = null
+                    )
+                    Plate96ResultTab.ANALYSIS -> analyte?.let { selectedAnalyte ->
+                        Plate96AnalysisContent(
+                            snapshot = snapshot,
+                            analyte = selectedAnalyte
+                        )
+                    }
+                    Plate96ResultTab.VALIDATION -> analyte?.let { selectedAnalyte ->
+                        Plate96ValidationContent(
+                            snapshot = snapshot,
+                            analyte = selectedAnalyte,
+                            validation = state.validations[selectedAnalyte.analyteId],
+                            saving = state.validationSavingAnalyteId == selectedAnalyte.analyteId,
+                            saveFailed = state.validationSaveFailed,
+                            onSave = { values ->
+                                onSaveValidation(selectedAnalyte.analyteId, values)
                             }
-                        },
-                        onClearWellSelection = { selectedWellIndex = null }
-                    )
-                } ?: Plate96CenteredState(
-                    text = stringResource(R.string.plate96_result_no_analyte),
-                    showProgress = false,
-                    onRetry = null
-                )
-                Plate96ResultTab.ANALYSIS -> analyte?.let { selectedAnalyte ->
-                    Plate96AnalysisContent(
-                        snapshot = snapshot,
-                        analyte = selectedAnalyte
-                    )
+                        )
+                    }
+                    Plate96ResultTab.PROCESS -> Plate96ProcessingContent(snapshot)
                 }
-                Plate96ResultTab.VALIDATION -> analyte?.let { selectedAnalyte ->
-                    Plate96ValidationContent(
-                        snapshot = snapshot,
-                        analyte = selectedAnalyte,
-                        validation = state.validations[selectedAnalyte.analyteId],
-                        saving = state.validationSavingAnalyteId == selectedAnalyte.analyteId,
-                        saveFailed = state.validationSaveFailed,
-                        onSave = { values ->
-                            onSaveValidation(selectedAnalyte.analyteId, values)
-                        }
-                    )
-                }
-                Plate96ResultTab.PROCESS -> Plate96ProcessingContent(snapshot)
             }
         }
     }
@@ -329,20 +354,20 @@ private fun Plate96ResultSummaryBar(snapshot: Plate96ResultSnapshot) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 7.dp),
-        shape = RoundedCornerShape(18.dp),
+            .padding(horizontal = FluoSpacing.lg, vertical = FluoSpacing.sm),
+        shape = RoundedCornerShape(FluoRadius.card),
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = FluoSpacing.lg, vertical = FluoSpacing.md),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(FluoSpacing.md)
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                verticalArrangement = Arrangement.spacedBy(FluoSpacing.xs)
             ) {
                 Text(
                     text = snapshot.arraySnapshot.carrier.name.ifBlank {
@@ -643,33 +668,33 @@ private fun Plate96ResultMetrics(model: ArrayHeatmapModel) {
     ) {
         Plate96MetricCard(
             modifier = Modifier.weight(1f),
-            value = model.calculatedCount.toString(),
+            value = if (concentrationMode) model.quantifiedCount.toString() else model.calculatedCount.toString(),
             label = stringResource(
-                if (concentrationMode) R.string.plate96_result_calculated
+                if (concentrationMode) R.string.plate96_result_quantified
                 else R.string.plate96_result_signal_available
             )
         )
         Plate96MetricCard(
             modifier = Modifier.weight(1f),
-            value = if (concentrationMode) model.withinCalibrationRangeCount.toString() else "0",
+            value = if (concentrationMode) model.estimatedCount.toString() else "0",
             label = stringResource(
-                if (concentrationMode) R.string.plate96_result_within_curve
+                if (concentrationMode) R.string.plate96_result_estimated
                 else R.string.plate96_result_concentration_available
             )
         )
         Plate96MetricCard(
             modifier = Modifier.weight(1f),
             value = if (concentrationMode) {
-                model.outsideProjectRangeCount.toString()
+                model.retestCount.toString()
             } else {
                 model.calculatedCount.toString()
             },
             label = stringResource(
-                if (concentrationMode) R.string.plate96_result_outside_range
+                if (concentrationMode) R.string.plate96_result_retest
                 else R.string.plate96_result_signal_only
             ),
-            valueColor = if (concentrationMode && model.outsideProjectRangeCount > 0) {
-                MaterialTheme.colorScheme.error
+            valueColor = if (concentrationMode && model.retestCount > 0) {
+                MaterialTheme.colorScheme.tertiary
             } else {
                 MaterialTheme.colorScheme.onSurface
             }
@@ -705,14 +730,20 @@ private fun Plate96MetricCard(
     }
 }
 
+/**
+ * 加载 / 空数据 / 失败共用同一占位实现，与其他页面保持一致的状态反馈。
+ *
+ * 非加载态显示明确图标而不是只有一行文字：用户需要立刻区分"还在算"和"没有结果"。
+ */
 @Composable
 private fun Plate96CenteredState(text: String, showProgress: Boolean, onRetry: (() -> Unit)?) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (showProgress) CircularProgressIndicator(modifier = Modifier.size(32.dp))
-            Text(text, style = MaterialTheme.typography.bodyLarge)
-            if (onRetry != null) Button(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
-        }
+        FluoStatePlaceholder(
+            text = text,
+            icon = if (showProgress) null else Icons.Outlined.Info,
+            actionText = onRetry?.let { stringResource(R.string.action_retry) },
+            onAction = onRetry
+        )
     }
 }
 

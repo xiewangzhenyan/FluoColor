@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -100,11 +101,20 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.domain.project.DirectCarrierPreset
 import com.muc.fluocolorquant.domain.project.ProjectDetectionDestination
+import com.muc.fluocolorquant.ui.components.FluoAnimatedSection
+import com.muc.fluocolorquant.ui.components.FluoScreenScaffold
+import com.muc.fluocolorquant.ui.components.FluoScrollableContent
+import com.muc.fluocolorquant.ui.components.FluoSectionCard
+import com.muc.fluocolorquant.ui.components.FluoSectionHeader
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ScientificPickerSheet
 import com.muc.fluocolorquant.ui.components.ScientificSelectionField
 import com.muc.fluocolorquant.ui.components.ScientificSelectionFieldDensity
 import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.theme.FluoIconSize
+import com.muc.fluocolorquant.ui.theme.FluoMotion
+import com.muc.fluocolorquant.ui.theme.FluoRadius
+import com.muc.fluocolorquant.ui.theme.FluoSpacing
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.DirectProjectEvent
 import com.muc.fluocolorquant.ui.viewmodels.DirectProjectUiState
@@ -330,69 +340,45 @@ private fun DirectCreateProjectContent(
         }
     }
 
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.direct_create_title),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        },
+    FluoScreenScaffold(
+        title = stringResource(R.string.direct_create_title),
+        onBack = onBack,
         bottomBar = {
             DirectCreateBottomBar(
                 canSubmit = state.form.canSubmit,
                 isSubmitting = state.form.isSubmitting,
                 onCreate = onCreate
             )
-        },
-        containerColor = MaterialTheme.colorScheme.background
+        }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            OutlinedTextField(
-                value = state.form.projectName,
-                onValueChange = onProjectNameChange,
-                label = { Text(stringResource(R.string.project_name_label)) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.EditNote,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                ),
-                singleLine = true
-            )
+        FluoScrollableContent(padding = padding) {
+            // 三个区块按 0/60/120ms 错峰入场，建立"名称 → 配置 → 图片"的阅读顺序。
+            // 总延迟控制在 120ms 内，用户不会感到页面响应变慢（AGENTS.md 9.2）。
+            FluoAnimatedSection {
+                OutlinedTextField(
+                    value = state.form.projectName,
+                    onValueChange = onProjectNameChange,
+                    label = { Text(stringResource(R.string.project_name_label)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.EditNote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(FluoRadius.control),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    singleLine = true
+                )
+            }
 
+            FluoAnimatedSection(delayMillis = 60) {
             DirectConfigurationCard {
                 DirectFormSectionHeader(
                     icon = Icons.Default.Science,
@@ -465,21 +451,22 @@ private fun DirectCreateProjectContent(
                     onRemoveAnalyte = onRemoveAnalyte
                 )
             }
-
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                DirectFormSectionHeader(
-                    icon = Icons.Default.AddPhotoAlternate,
-                    title = stringResource(R.string.project_image),
-                    subtitle = stringResource(R.string.direct_create_image_help)
-                )
-                DirectImageCard(
-                    imageUri = state.form.imageUri,
-                    onChooseImage = onChooseImage,
-                    onRemoveImage = onRemoveImage
-                )
             }
 
-            Spacer(Modifier.height(8.dp))
+            FluoAnimatedSection(delayMillis = 120) {
+                Column(verticalArrangement = Arrangement.spacedBy(FluoSpacing.md)) {
+                    DirectFormSectionHeader(
+                        icon = Icons.Default.AddPhotoAlternate,
+                        title = stringResource(R.string.project_image),
+                        subtitle = stringResource(R.string.direct_create_image_help)
+                    )
+                    DirectImageCard(
+                        imageUri = state.form.imageUri,
+                        onChooseImage = onChooseImage,
+                        onRemoveImage = onRemoveImage
+                    )
+                }
+            }
         }
     }
 
@@ -516,24 +503,10 @@ private fun DirectCreateProjectContent(
     }
 }
 
-/** 单张实验配置工作单，取代原页面多层重复卡片。 */
+/** 单张实验配置工作单，取代原页面多层重复卡片。形状与内边距统一取自设计令牌。 */
 @Composable
 private fun DirectConfigurationCard(content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 17.dp),
-            verticalArrangement = Arrangement.spacedBy(13.dp),
-            content = content
-        )
-    }
+    FluoSectionCard(content = content)
 }
 
 /** 章节标题只负责建立阅读锚点，说明文字压缩为一行，避免标题与卡片层级重复。 */
@@ -543,44 +516,7 @@ private fun DirectFormSectionHeader(
     title: String,
     subtitle: String
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Surface(
-            modifier = Modifier.size(36.dp),
-            shape = RoundedCornerShape(11.dp),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(19.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+    FluoSectionHeader(title = title, icon = icon, subtitle = subtitle)
 }
 
 /** 三等分检测方式选择器，继承旧版分段控件的直接性，同时支持图标和暗色主题。 */
@@ -591,42 +527,56 @@ private fun DirectDetectionModeSelector(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
+        shape = RoundedCornerShape(FluoRadius.card),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Row(
-            modifier = Modifier.padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.padding(FluoSpacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(FluoSpacing.xs)
         ) {
             DetectionModality.entries.forEach { modality ->
                 val isSelected = selected == modality
+                // 选中态在 180ms 内完成颜色过渡，避免三个分段在切换瞬间同时"跳色"。
+                // 只做颜色变化，不加缩放或弹跳，防止分段控件在快速切换时抖动。
+                val containerColor by animateColorAsState(
+                    targetValue = if (isSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        Color.Transparent
+                    },
+                    animationSpec = FluoMotion.micro(),
+                    label = "detectionModeContainer"
+                )
+                val contentColor by animateColorAsState(
+                    targetValue = if (isSelected) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    animationSpec = FluoMotion.micro(),
+                    label = "detectionModeContent"
+                )
                 Surface(
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 68.dp)
                         .clickable { onSelect(modality) },
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        Color.Transparent
-                    },
-                    contentColor = if (isSelected) {
-                        MaterialTheme.colorScheme.onPrimary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    shadowElevation = if (isSelected) 2.dp else 0.dp
+                    shape = RoundedCornerShape(FluoRadius.control),
+                    color = containerColor,
+                    contentColor = contentColor
                 ) {
                     Column(
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 9.dp),
+                        modifier = Modifier.padding(
+                            horizontal = FluoSpacing.xs,
+                            vertical = FluoSpacing.sm
+                        ),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                        verticalArrangement = Arrangement.spacedBy(FluoSpacing.xs)
                     ) {
                         Icon(
                             imageVector = detectionModeIcon(modality),
                             contentDescription = null,
-                            modifier = Modifier.size(21.dp)
+                            modifier = Modifier.size(FluoIconSize.medium)
                         )
                         Text(
                             text = detectionModeLabel(modality),
@@ -649,11 +599,11 @@ private fun DirectCarrierPresetGrid(
     customColumns: String,
     onSelect: (DirectCarrierPreset) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(FluoSpacing.sm)) {
         DirectCarrierPreset.entries.chunked(2).forEach { rowPresets ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(9.dp)
+                horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
             ) {
                 rowPresets.forEach { preset ->
                     DirectCarrierPresetTile(
@@ -678,44 +628,61 @@ private fun DirectCarrierPresetTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier
-            .heightIn(min = 82.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) {
+    // 选中反馈只用底色、描边和字重表达，不用缩放或位移：载体预设是一次性配置动作，
+    // 网格里同时出现的弹跳会干扰"比较规格"这件真正的任务（AGENTS.md 9.3）。
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
         } else {
             MaterialTheme.colorScheme.surface
         },
+        animationSpec = FluoMotion.micro(),
+        label = "carrierTileContainer"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.outlineVariant
+        },
+        animationSpec = FluoMotion.micro(),
+        label = "carrierTileBorder"
+    )
+    val iconContainerColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        animationSpec = FluoMotion.micro(),
+        label = "carrierTileIconContainer"
+    )
+    Surface(
+        modifier = modifier
+            .heightIn(min = 82.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(FluoRadius.control),
+        color = containerColor,
         border = BorderStroke(
             width = if (selected) 1.5.dp else 1.dp,
-            color = if (selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.outlineVariant
-            }
+            color = borderColor
         )
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(FluoSpacing.md),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(9.dp)
+            horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
         ) {
             Surface(
-                modifier = Modifier.size(38.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
-                }
+                modifier = Modifier.size(FluoIconSize.badgeContainer),
+                shape = RoundedCornerShape(FluoRadius.badge),
+                color = iconContainerColor
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = carrierPresetIcon(preset),
                         contentDescription = null,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(FluoIconSize.medium),
                         tint = if (selected) {
                             MaterialTheme.colorScheme.onPrimary
                         } else {
