@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -74,16 +75,22 @@ import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshot
+import com.muc.fluocolorquant.ui.components.FluoNumericText
+import com.muc.fluocolorquant.ui.components.FluoScientificMetric
 import com.muc.fluocolorquant.ui.components.FluoStatePlaceholder
 import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapCell
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapModel
+import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapRangeSource
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapScaleMode
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueState
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayResultExportCoordinator
 import com.muc.fluocolorquant.ui.screens.result.array.arrayResultPdfLabels
+import com.muc.fluocolorquant.ui.screens.result.ResultQualityBar
 import com.muc.fluocolorquant.ui.screens.result.array.buildAnalyteHeatmapModel
+import com.muc.fluocolorquant.ui.screens.result.array.buildResultQualitySummary
+import com.muc.fluocolorquant.ui.screens.result.array.buildSignalDistribution
 import com.muc.fluocolorquant.ui.screens.result.array.formatArrayHeatmapValue
 import com.muc.fluocolorquant.ui.theme.FluoMotion
 import com.muc.fluocolorquant.ui.theme.FluoRadius
@@ -214,7 +221,21 @@ private fun Plate96ResultSuccess(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            Plate96ResultSummaryBar(snapshot)
+            // 运行质量裁决固定在顶栏下方、四个一级页之上：用户翻到"过程"页核对证据时，
+            // 仍能同时看到"这批数据能不能用"的总判定。裁决按当前分析物计算——同一次运行
+            // 里不同分析物的曲线质量可以差别很大，用整版一个判定会掩盖问题。
+            analyte?.let { current ->
+                val qualityModel = remember(snapshot.runId, current.analyteId) {
+                    buildAnalyteHeatmapModel(snapshot.arraySnapshot, current)
+                }
+                val qualitySummary = remember(snapshot.runId, current.analyteId) {
+                    buildResultQualitySummary(snapshot.arraySnapshot, current, qualityModel)
+                }
+                ResultQualityBar(
+                    summary = qualitySummary,
+                    formatValue = ::formatArrayHeatmapValue
+                )
+            }
             if (snapshot.arraySnapshot.analytes.size > 1) {
                 LazyRow(
                     modifier = Modifier
@@ -349,84 +370,6 @@ private fun Plate96ResultSuccess(
 }
 
 @Composable
-private fun Plate96ResultSummaryBar(snapshot: Plate96ResultSnapshot) {
-    val measured = snapshot.wells.count { it.site.measurements.isNotEmpty() }
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = FluoSpacing.lg, vertical = FluoSpacing.sm),
-        shape = RoundedCornerShape(FluoRadius.card),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = FluoSpacing.lg, vertical = FluoSpacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(FluoSpacing.md)
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(FluoSpacing.xs)
-            ) {
-                Text(
-                    text = snapshot.arraySnapshot.carrier.name.ifBlank {
-                        stringResource(R.string.plate96_result_default_carrier_name)
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = stringResource(
-                        R.string.plate96_result_summary_line,
-                        snapshot.arraySnapshot.analytes.size,
-                        measured,
-                        snapshot.wells.size
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                Plate96SummaryChip(
-                    text = stringResource(
-                        R.string.plate_result_layout_format,
-                        snapshot.arraySnapshot.rows,
-                        snapshot.arraySnapshot.columns
-                    )
-                )
-                Plate96SummaryChip(
-                    text = stringResource(R.string.plate96_result_shape_circle)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun Plate96SummaryChip(text: String) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f)
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1
-        )
-    }
-}
-
-@Composable
 private fun Plate96OverviewContent(
     snapshot: Plate96ResultSnapshot,
     analyte: ArrayAnalyteResult,
@@ -505,7 +448,7 @@ private fun Plate96OverviewContent(
                 }
             }
         }
-        item { Plate96ResultMetrics(model) }
+        item { Plate96ScientificMetrics(snapshot = snapshot, analyte = analyte, model = model) }
         if (selectedCell != null && selectedWell != null) {
             item(key = "selected-well-${selectedWell.wellIndex}") {
                 Plate96InlineWellDetailCard(
@@ -595,22 +538,71 @@ private fun Plate96DisplayModeToggle(
     }
 }
 
+/**
+ * 浓度/信号色带图例。
+ *
+ * 原实现只有"最小值 | 单位 | 最大值"三个标签，中间大片色带没有任何刻度——用户看到一格
+ * 偏橙的孔，无法判断它대概是多少。这里补到五个等距刻度，并单独标出色带覆盖范围的来源
+ * （项目量程 / 实测范围 / 标定范围），让颜色可以被读成数值而不只是"深浅"。
+ *
+ * 刻度按线性插值：热力图着色本身就是线性归一化，刻度必须与之一致，否则读数会系统性偏移。
+ */
 @Composable
 private fun Plate96ScaleLegend(model: ArrayHeatmapModel) {
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    val scale = model.scale
+    val ticks = remember(scale.minimum, scale.maximum) {
+        val span = scale.maximum - scale.minimum
+        if (!span.isFinite() || span <= 0.0) {
+            listOf(scale.minimum)
+        } else {
+            (0..4).map { index -> scale.minimum + span * index / 4.0 }
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(FluoSpacing.xs)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(8.dp)
+                .height(10.dp)
                 .background(
                     Brush.horizontalGradient(HeatmapColorUtil.getLegendColors(7)),
-                    RoundedCornerShape(50)
+                    RoundedCornerShape(FluoRadius.chip)
                 )
         )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatArrayHeatmapValue(model.scale.minimum), style = MaterialTheme.typography.labelSmall)
-            Text(model.scale.unit, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-            Text(formatArrayHeatmapValue(model.scale.maximum), style = MaterialTheme.typography.labelSmall)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            ticks.forEach { tick ->
+                FluoNumericText(
+                    text = formatArrayHeatmapValue(tick),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        // 单位与色带范围来源单独一行：单位属于整条色带而不是某个刻度，
+        // 放在刻度之间会被误读成"该刻度的单位"。
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = scale.unit,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = stringResource(scale.rangeSource.labelRes()),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -659,46 +651,87 @@ private fun Plate96StateLegend(model: ArrayHeatmapModel) {
     }
 }
 
+/**
+ * 首屏科学指标带。
+ *
+ * 原实现是"已定量 / 估算 / 需复测"三个计数卡——那是处理状态统计，不是科学结论。
+ * 研究者扫一眼结果页要得到的是量级与离散度：测出来多少、集中在哪、重复得怎么样。
+ * 计数信息降级到裁决条的支撑数字行，不再占据首屏黄金位置。
+ *
+ * 仅信号运行没有浓度，指标换成信号分布并使用信号特征名作单位；绝不复用浓度标签，
+ * 避免把原始信号伪装成浓度（AGENTS.md 11）。
+ */
 @Composable
-private fun Plate96ResultMetrics(model: ArrayHeatmapModel) {
+private fun Plate96ScientificMetrics(
+    snapshot: Plate96ResultSnapshot,
+    analyte: ArrayAnalyteResult,
+    model: ArrayHeatmapModel
+) {
     val concentrationMode = model.scale.mode == ArrayHeatmapScaleMode.CONCENTRATION
-    Row(
+    val summary = remember(snapshot.runId, analyte.analyteId) {
+        buildResultQualitySummary(snapshot.arraySnapshot, analyte, model)
+    }
+    val signal = remember(snapshot.runId, analyte.analyteId) {
+        buildSignalDistribution(model)
+    }
+
+    val minimum = if (concentrationMode) summary.concentrationMinimum else signal.minimum
+    val maximum = if (concentrationMode) summary.concentrationMaximum else signal.maximum
+    val median = if (concentrationMode) summary.concentrationMedian else signal.median
+    val unit = model.scale.unit.takeIf(String::isNotBlank)
+
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        shape = RoundedCornerShape(FluoRadius.card),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant
+        )
     ) {
-        Plate96MetricCard(
-            modifier = Modifier.weight(1f),
-            value = if (concentrationMode) model.quantifiedCount.toString() else model.calculatedCount.toString(),
-            label = stringResource(
-                if (concentrationMode) R.string.plate96_result_quantified
-                else R.string.plate96_result_signal_available
+        Row(
+            modifier = Modifier.padding(FluoSpacing.lg),
+            horizontalArrangement = Arrangement.spacedBy(FluoSpacing.lg)
+        ) {
+            FluoScientificMetric(
+                modifier = Modifier.weight(1f),
+                label = stringResource(
+                    if (concentrationMode) R.string.result_metric_range
+                    else R.string.result_metric_signal_range
+                ),
+                value = if (minimum != null && maximum != null) {
+                    stringResource(
+                        R.string.result_metric_range_format,
+                        formatArrayHeatmapValue(minimum),
+                        formatArrayHeatmapValue(maximum)
+                    )
+                } else {
+                    null
+                },
+                unit = unit
             )
-        )
-        Plate96MetricCard(
-            modifier = Modifier.weight(1f),
-            value = if (concentrationMode) model.estimatedCount.toString() else "0",
-            label = stringResource(
-                if (concentrationMode) R.string.plate96_result_estimated
-                else R.string.plate96_result_concentration_available
+            FluoScientificMetric(
+                modifier = Modifier.weight(1f),
+                label = stringResource(
+                    if (concentrationMode) R.string.result_metric_median
+                    else R.string.result_metric_signal_median
+                ),
+                value = median?.let(::formatArrayHeatmapValue),
+                unit = unit
             )
-        )
-        Plate96MetricCard(
-            modifier = Modifier.weight(1f),
-            value = if (concentrationMode) {
-                model.retestCount.toString()
+            // 重复孔 CV 只在浓度模式下有意义：信号的重复性受曝光与背景影响，
+            // 与浓度重复性不是同一回事，不放在同一格里比较。
+            if (concentrationMode) {
+                FluoScientificMetric(
+                    modifier = Modifier.weight(1f),
+                    label = stringResource(R.string.result_metric_replicate_cv),
+                    value = summary.repeatCvPercent?.let(::formatArrayHeatmapValue),
+                    unit = "%"
+                )
             } else {
-                model.calculatedCount.toString()
-            },
-            label = stringResource(
-                if (concentrationMode) R.string.plate96_result_retest
-                else R.string.plate96_result_signal_only
-            ),
-            valueColor = if (concentrationMode && model.retestCount > 0) {
-                MaterialTheme.colorScheme.tertiary
-            } else {
-                MaterialTheme.colorScheme.onSurface
+                Spacer(Modifier.weight(1f))
             }
-        )
+        }
     }
 }
 
@@ -752,4 +785,12 @@ private fun Plate96ResultTab.titleRes(): Int = when (this) {
     Plate96ResultTab.ANALYSIS -> R.string.plate96_result_tab_analysis
     Plate96ResultTab.VALIDATION -> R.string.plate96_result_tab_validation
     Plate96ResultTab.PROCESS -> R.string.plate96_result_tab_process
+}
+
+/** 色带覆盖范围的来源。让用户知道颜色是按项目量程还是按实测极值归一化的。 */
+private fun ArrayHeatmapRangeSource.labelRes(): Int = when (this) {
+    ArrayHeatmapRangeSource.FIXED_PERCENTAGE -> R.string.result_scale_source_fixed
+    ArrayHeatmapRangeSource.RELIABLE_RANGE -> R.string.result_scale_source_range
+    ArrayHeatmapRangeSource.OBSERVED_VALUES -> R.string.result_scale_source_observed
+    ArrayHeatmapRangeSource.EMPTY_FALLBACK -> R.string.result_scale_source_empty
 }

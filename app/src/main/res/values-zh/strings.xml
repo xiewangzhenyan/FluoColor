@@ -277,8 +277,7 @@
     <string name="result_heatmap_tab_title">热图</string>
     <string name="result_data_table_tab_title">数据表</string>
     <string name="result_well_id_header">孔ID</string>
-    <!-- The following was replaced by result_header_concentration_unit
-    <string name="result_concentration_header">浓度</string> -->
+    <!-- The following was replaced by result_header_concentration_unit -->
     <string name="result_gray_value_header">灰度值</string>
     <string name="result_r_value_header">R值</string>
     <string name="result_g_value_header">G值</string>
@@ -896,6 +895,25 @@
     <string name="pdf_header_concentration_distribution">浓度分布图</string>
     <string name="pdf_header_result_data">结果数据</string>
     <string name="pdf_table_header_well">孔位</string>
+    <!-- PDF 报告：原始数据附录表头与角色标签。此前这几项在 ExportViewModel 中硬编码为中文，
+         导致英文界面导出的报告夹带中文，且会随附件流入论文。 -->
+    <string name="pdf_table_header_analysis_method">分析方法</string>
+    <string name="pdf_table_header_role">角色</string>
+    <string name="pdf_table_header_predicted_concentration">预测浓度</string>
+    <string name="pdf_table_header_true_concentration">真实浓度</string>
+    <string name="pdf_table_header_unit">单位</string>
+    <string name="pdf_well_role_standard">标准品</string>
+    <string name="pdf_well_role_sample">样本</string>
+    <string name="pdf_well_role_blank">空白对照</string>
+    <string name="pdf_well_role_quality_control">质控品</string>
+    <string name="pdf_well_role_unknown">未知</string>
+    <string name="pdf_reagent_unknown_name">未知</string>
+    <string name="pdf_reagent_unknown_manufacturer">未知厂商</string>
+    <string name="pdf_reagent_antigen_format">抗原: %1$s (%2$s)</string>
+    <string name="pdf_reagent_antibody_format">抗体: %1$s (%2$s)</string>
+    <string name="pdf_reagent_section_title">试剂信息:</string>
+    <string name="pdf_spectrum_source_image_title">原始光谱图像</string>
+    <string name="pdf_spectrum_curve_title">光谱曲线分析</string>
     <string name="pdf_table_header_row">行</string>
     <string name="pdf_table_header_column">列</string>
     <string name="pdf_table_header_raw_value">原始值</string>
@@ -2370,6 +2388,11 @@
     <string name="direct_create_form_incomplete">请完成项目名称、检测方式、载体，至少选择一个分析物并设置最大浓度和单位，再选择图片</string>
     <string name="direct_create_detection_section">检测方式</string>
     <string name="direct_create_carrier_section">载体与规格</string>
+    <string name="direct_create_spectrum_channel_section">光谱通道</string>
+    <string name="direct_create_spectrum_channel_help">每个分析物占一条通道，顺序与所选一致</string>
+    <string name="direct_create_spectrum_channel_count">将检测 %1$d 条通道</string>
+    <string name="direct_create_spectrum_channel_label">通道 %1$d</string>
+    <string name="direct_create_spectrum_channel_empty">请先选择分析物，每个分析物占用一条光谱通道</string>
     <string name="direct_create_analysis_section">分析设置</string>
     <string name="direct_create_rows">行数</string>
     <string name="direct_create_columns">列数</string>
@@ -2960,4 +2983,30 @@
     <string name="plate96_pdf_overview_heatmap">圆孔板浓度总览</string>
     <string name="plate96_pdf_physical_wells">物理圆孔</string>
     <string name="plate96_pdf_analyte_section">分析物结果</string>
+    <!-- 结果页运行质量裁决与科学指标 -->
+    <string name="result_quality_good">质量良好</string>
+    <string name="result_quality_review">需复核</string>
+    <string name="result_quality_unreliable">不建议使用</string>
+    <string name="result_quality_unknown">仅信号</string>
+    <string name="result_quality_unknown_detail">无标准曲线，未建立浓度</string>
+    <string name="result_quality_issue_r2">曲线拟合低于阈值</string>
+    <string name="result_quality_issue_cv">重复孔变异偏大</string>
+    <string name="result_quality_issue_retest">需复测孔位偏多</string>
+    <string name="result_quality_issue_extrapolation">外推浓度占比偏高</string>
+    <string name="result_quality_metric_r2">R² %1$s</string>
+    <string name="result_quality_metric_cv">CV %1$s%%</string>
+    <string name="result_quality_metric_in_range">%1$d/%2$d 在量程内</string>
+    <string name="result_quality_metric_retest">%1$d 需复测</string>
+    <string name="result_metric_range">浓度范围</string>
+    <string name="result_metric_median">中位数</string>
+    <string name="result_metric_replicate_cv">重复孔 CV</string>
+    <string name="result_metric_signal_range">信号范围</string>
+    <string name="result_metric_signal_median">信号中位数</string>
+    <string name="result_metric_range_format">%1$s–%2$s</string>
+    <string name="result_scale_project_min">量程下限</string>
+    <string name="result_scale_project_max">量程上限</string>
+    <string name="result_scale_source_fixed">固定 0–100%</string>
+    <string name="result_scale_source_range">项目量程</string>
+    <string name="result_scale_source_observed">实测范围</string>
+    <string name="result_scale_source_empty">无数据</string>
 </resources>

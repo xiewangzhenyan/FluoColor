@@ -863,6 +863,25 @@
     <string name="pdf_header_concentration_distribution">Concentration Distribution</string>
     <string name="pdf_header_result_data">Result Data</string>
     <string name="pdf_table_header_well">Well</string>
+    <!-- PDF 报告：原始数据附录表头与角色标签。此前这几项在 ExportViewModel 中硬编码为中文，
+         导致英文界面导出的报告夹带中文，且会随附件流入论文。 -->
+    <string name="pdf_table_header_analysis_method">Analysis Method</string>
+    <string name="pdf_table_header_role">Role</string>
+    <string name="pdf_table_header_predicted_concentration">Predicted</string>
+    <string name="pdf_table_header_true_concentration">Reference</string>
+    <string name="pdf_table_header_unit">Unit</string>
+    <string name="pdf_well_role_standard">Standard</string>
+    <string name="pdf_well_role_sample">Sample</string>
+    <string name="pdf_well_role_blank">Blank</string>
+    <string name="pdf_well_role_quality_control">Quality Control</string>
+    <string name="pdf_well_role_unknown">Unknown</string>
+    <string name="pdf_reagent_unknown_name">Unknown</string>
+    <string name="pdf_reagent_unknown_manufacturer">Unknown manufacturer</string>
+    <string name="pdf_reagent_antigen_format">Antigen: %1$s (%2$s)</string>
+    <string name="pdf_reagent_antibody_format">Antibody: %1$s (%2$s)</string>
+    <string name="pdf_reagent_section_title">Reagent information:</string>
+    <string name="pdf_spectrum_source_image_title">Raw spectral image</string>
+    <string name="pdf_spectrum_curve_title">Spectral curve analysis</string>
     <string name="pdf_table_header_row">Row</string>
     <string name="pdf_table_header_column">Column</string>
     <string name="pdf_table_header_raw_value">Raw Value</string>
@@ -2367,6 +2386,11 @@
     <string name="direct_create_form_incomplete">Complete the project name, detection mode, carrier, at least one analyte with its maximum concentration and unit, and image</string>
     <string name="direct_create_detection_section">Detection mode</string>
     <string name="direct_create_carrier_section">Carrier and layout</string>
+    <string name="direct_create_spectrum_channel_section">Spectral channels</string>
+    <string name="direct_create_spectrum_channel_help">One channel per analyte, in the order selected</string>
+    <string name="direct_create_spectrum_channel_count">%1$d channels will be detected</string>
+    <string name="direct_create_spectrum_channel_label">Channel %1$d</string>
+    <string name="direct_create_spectrum_channel_empty">Select analytes first; each one takes a spectral channel</string>
     <string name="direct_create_analysis_section">Analysis</string>
     <string name="direct_create_rows">Rows</string>
     <string name="direct_create_columns">Columns</string>
@@ -2957,4 +2981,30 @@
     <string name="plate96_pdf_overview_heatmap">Circular plate concentration overview</string>
     <string name="plate96_pdf_physical_wells">Physical wells</string>
     <string name="plate96_pdf_analyte_section">Analyte result</string>
+    <!-- 结果页运行质量裁决与科学指标 -->
+    <string name="result_quality_good">Quality good</string>
+    <string name="result_quality_review">Needs review</string>
+    <string name="result_quality_unreliable">Not recommended</string>
+    <string name="result_quality_unknown">Signal only</string>
+    <string name="result_quality_unknown_detail">No standard curve; concentration not established</string>
+    <string name="result_quality_issue_r2">Curve fit below threshold</string>
+    <string name="result_quality_issue_cv">Replicate variation high</string>
+    <string name="result_quality_issue_retest">Many wells need retest</string>
+    <string name="result_quality_issue_extrapolation">Many values extrapolated</string>
+    <string name="result_quality_metric_r2">R² %1$s</string>
+    <string name="result_quality_metric_cv">CV %1$s%%</string>
+    <string name="result_quality_metric_in_range">%1$d/%2$d in range</string>
+    <string name="result_quality_metric_retest">%1$d to retest</string>
+    <string name="result_metric_range">Range</string>
+    <string name="result_metric_median">Median</string>
+    <string name="result_metric_replicate_cv">Replicate CV</string>
+    <string name="result_metric_signal_range">Signal range</string>
+    <string name="result_metric_signal_median">Signal median</string>
+    <string name="result_metric_range_format">%1$s–%2$s</string>
+    <string name="result_scale_project_min">Range min</string>
+    <string name="result_scale_project_max">Range max</string>
+    <string name="result_scale_source_fixed">Fixed 0–100%</string>
+    <string name="result_scale_source_range">Project range</string>
+    <string name="result_scale_source_observed">Observed range</string>
+    <string name="result_scale_source_empty">No data</string>
 </resources>
