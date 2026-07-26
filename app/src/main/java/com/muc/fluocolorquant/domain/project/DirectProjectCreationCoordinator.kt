@@ -332,6 +332,10 @@ class DirectProjectCreationCoordinator @Inject constructor(
     ): DirectProjectCreationOutcome {
         val now = Date()
         val projectId = UUID.randomUUID().toString()
+        // 光谱通道数与所选分析物一一对应：一个分析物占一条光谱轨道。此前这里从未写入
+        // spectrumColumnCount，Project 只能落到默认值 1，导致标定页无论选了几个分析物都
+        // 只按单通道检测轨道；逐通道的分析物归属也随之丢失（映射为 null）。
+        val channelCount = request.analytes.size.coerceAtLeast(1)
         val project = Project(
             id = projectId,
             name = normalizedName,
@@ -340,6 +344,8 @@ class DirectProjectCreationCoordinator @Inject constructor(
             imageUri = normalizedImageUri,
             rows = 1,
             columns = 1,
+            spectrumColumnCount = channelCount,
+            spectrumColumnMappingJson = encodeSpectrumColumnMapping(request.analytes),
             createTime = now,
             userId = normalizedUserId,
             lastRunTimestamp = null,
@@ -359,6 +365,26 @@ class DirectProjectCreationCoordinator @Inject constructor(
             project = project,
             destination = ProjectDetectionDestination.SPECTRUM_SINGLE
         )
+    }
+
+    /**
+     * 生成“光谱通道 → 分析物”映射。
+     *
+     * 键是**1 基通道号的字符串**，值是分析物 ID：`SpectrumCalibrationViewModel` 在保存
+     * 逐通道结果时按 `analyteMapping[(index + 1).toString()]` 取用，键型改成 0 基或数值
+     * 都会让整张映射静默失配、逐通道分析物归属全部丢失。
+     *
+     * 顺序即绑定关系：第 n 个被选中的分析物对应第 n 条光谱轨道，与创建页展示给用户的
+     * 顺序一致。
+     */
+    private fun encodeSpectrumColumnMapping(
+        analytes: List<DirectProjectAnalyteRequest>
+    ): String? {
+        if (analytes.isEmpty()) return null
+        val mapping = analytes.mapIndexed { index, selection ->
+            (index + 1).toString() to selection.analyte.id
+        }.toMap()
+        return Gson().toJson(mapping)
     }
 
     private fun resolveGeometry(request: DirectProjectCreateRequest): DirectGeometry? {

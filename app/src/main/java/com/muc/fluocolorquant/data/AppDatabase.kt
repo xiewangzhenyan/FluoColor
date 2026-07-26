@@ -73,7 +73,7 @@ import com.muc.fluocolorquant.data.model.WellResult
         SiteMeasurement::class,
         ResultValidationRecord::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

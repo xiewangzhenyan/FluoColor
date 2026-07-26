@@ -102,5 +102,14 @@ data class SiteMeasurement(
     val concentrationUnit: String? = null,
     val reliableRangeStatus: String? = null,
     val modelSnapshotJson: String? = null,
-    val quantificationQcJson: String? = null
+    val quantificationQcJson: String? = null,
+
+    // Room 15 新增：点估计、区间和单侧界限必须使用结构化字段保存，不能只埋在 QC JSON 中。
+    // 旧运行这些字段均为 null，历史结果继续按照原有 concentrationValue/rangeStatus 只读展示。
+    val quantificationState: String? = null,
+    val concentrationLowerBound: Double? = null,
+    val concentrationUpperBound: Double? = null,
+    val intervalConfidenceLevel: Double? = null,
+    val censoringDirection: String? = null,
+    val quantificationVersion: String? = null
 )

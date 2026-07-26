@@ -18,11 +18,9 @@ import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfDouble
-import org.opencv.core.MatOfPoint
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Point
 import org.opencv.core.Rect
-import org.opencv.core.RotatedRect
 import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
@@ -34,6 +32,11 @@ import javax.inject.Inject
  * 实现坚持“物理规则晶格优先”：OpenCV 只负责芯片区域和局部候选证据，最终点位由
  * 全局单应晶格约束；没有局部证据的位点明确标记为模型补位。该类不执行任何比色或
  * 荧光增强，防止显示处理污染后续科学定量。
+ *
+ * V2.1 起主区域不再按固定优先级取一条：三条区域检测路径各有系统性偏好，因此改为
+ * **惰性枚举多个假设 → 每个假设各自走完晶格链路 → 用图像证据仲裁**。仲裁分融合
+ * 包围率、支撑率、观测率三项互补证据并按晶格残差扣分，另设切换保护，避免噪声证据
+ * 上零点几个百分点的领先就推翻按可靠性排序的首选。
  */
 class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
 
@@ -51,29 +54,76 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
                 else -> error("不支持的图片通道数：${rgba.channels()}")
             }
 
-            val region = detectChipRegion(originalBgr)
             val rectifiedWidth = config.resolvedRectifiedWidth()
             val rectifiedHeight = config.resolvedRectifiedHeight()
-            val rectification = rectifyChip(
-                image = originalBgr,
-                region = region,
-                outputWidth = rectifiedWidth,
-                outputHeight = rectifiedHeight
+            // 闸值换算所用的行列数必须与矫正图较短边配对，见 gateCountFor 说明。
+            val gateCount = PgGridCandidateDetector.gateCountFor(
+                rows = config.rows,
+                columns = config.columns,
+                width = rectifiedWidth,
+                height = rectifiedHeight
             )
+            // 原图候选检测跨假设复用：各假设的区域跨度接近，闸值区间又有数倍余量，
+            // 因此按极性缓存一次即可，不必为每个假设重复一遍全图形态学检测。
+            val coverageCache = hashMapOf<GridTargetPolarity, List<GridCandidate>>()
+            val solutions = mutableListOf<RegionSolution>()
             try {
-                val polarityFit = fitLatticeWithAutomaticPolarity(
-                    rectified = rectification.image,
-                    rows = config.rows,
-                    columns = config.columns,
-                    width = rectifiedWidth,
-                    height = rectifiedHeight,
-                    marginRatio = config.marginRatio,
-                    maximumResidualPitchRatio = config.maximumResidualPitchRatio,
-                    supportDistancePitchRatio = config.candidateSupportDistancePitchRatio,
-                    preferredPolarity = config.targetPolarity
-                )
-                val actualPolarity = polarityFit.polarity
-                val lattice = polarityFit.lattice
+                for (candidateRegion in PgGridRegionDetector.iterateHypotheses(originalBgr)) {
+                    val solution = solveWithRegion(
+                        original = originalBgr,
+                        region = candidateRegion,
+                        config = config,
+                        rectifiedWidth = rectifiedWidth,
+                        rectifiedHeight = rectifiedHeight,
+                        gateCount = gateCount,
+                        coverageCache = coverageCache
+                    )
+                    solutions += solution
+                    // 短路：证据已经很强时不再展开后续假设。区域假设是惰性产出的，
+                    // 因此这里提前结束会连带省下后面几个检测器的全部计算。
+                    if (solution.coverage >= REGION_SHORT_CIRCUIT_COVERAGE &&
+                        solution.lattice.candidateSupportRatio >= REGION_SHORT_CIRCUIT_SUPPORT
+                    ) {
+                        break
+                    }
+                }
+                if (solutions.isEmpty()) {
+                    // 三条证据路径全部失败：只能使用中央兜底框，并由 QC 如实告警。
+                    solutions += solveWithRegion(
+                        original = originalBgr,
+                        region = PgGridRegionDetector.fallbackCenterRegion(
+                            originalBgr.cols(),
+                            originalBgr.rows()
+                        ),
+                        config = config,
+                        rectifiedWidth = rectifiedWidth,
+                        rectifiedHeight = rectifiedHeight,
+                        gateCount = gateCount,
+                        coverageCache = coverageCache
+                    )
+                }
+
+                val best = selectRegionSolution(solutions)
+                val region = best.region
+                val rectification = best.rectification
+                val actualPolarity = best.polarity
+                val lattice = best.lattice
+                val hypotheses = solutions.map { solution ->
+                    GridRegionHypothesis(
+                        method = solution.region.method,
+                        coverage = solution.coverage,
+                        support = solution.lattice.candidateSupportRatio,
+                        score = solution.score,
+                        selected = solution === best
+                    )
+                }
+                // 包围率参与信任判定，但只用很保守的门限。它的绝对值有图像相关的基线：
+                // 单元之外还有连接器、通道线等结构的版型天然低于纯净版型，因此高门限会
+                // 误伤正确结果。0.55 只拦截“网格漏掉了近半已检出单元”这类明显截断；
+                // 细粒度的优劣留给假设之间的相对比较。
+                val coverageTruncated = best.coverage < REGION_MINIMUM_COVERAGE &&
+                    lattice.supportCheck != GridSupportCheck.UNAVAILABLE
+                val trusted = lattice.trusted && !coverageTruncated
 
                 val inverseMatrix = matToRowMajor(rectification.inverseMatrix)
                 val localizedSites = lattice.points.mapIndexed { index, localizedPoint ->
@@ -123,7 +173,13 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
                         "perspectiveVariation=${frameQuality.perspectiveVariation} " +
                         "geometryRmsePitch=${frameQuality.geometryRmsePitchRatio}"
                 )
-                val frameQc = buildFrameQc(region, lattice, frameQuality)
+                val frameQc = buildFrameQc(
+                    region = region,
+                    lattice = lattice,
+                    quality = frameQuality,
+                    coverage = best.coverage,
+                    coverageTruncated = coverageTruncated
+                )
 
                 return PgGridResult(
                     rows = config.rows,
@@ -140,19 +196,24 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
                     sites = localizedSites,
                     geometry = GridGeometryDiagnostics(
                         candidateSupportRatio = lattice.candidateSupportRatio,
-                        trusted = lattice.trusted,
+                        trusted = trusted,
                         observedRatio = lattice.observedRatio,
                         geometryRmsePx = lattice.geometryRmsePx,
                         inlierCount = lattice.inlierCount,
                         outlierCount = lattice.outlierCount,
-                        meanConfidence = localizedSites.map(GridLocalizedSite::confidence).average()
+                        meanConfidence = localizedSites.map(GridLocalizedSite::confidence).average(),
+                        supportCheck = lattice.supportCheck,
+                        gridCoverageRatio = best.coverage,
+                        regionHypotheses = hypotheses,
+                        phantomEdge = lattice.phantomEdge
                     ),
                     frameQc = frameQc,
                     locatorName = LOCATOR_NAME,
                     locatorVersion = LOCATOR_VERSION
                 ).requireValid()
             } finally {
-                rectification.release()
+                // 未被选中的假设同样持有矫正图和两组矩阵，必须一并释放。
+                solutions.forEach { solution -> solution.rectification.release() }
             }
         } finally {
             rgba.release()
@@ -161,181 +222,207 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
     }
 
     /**
-     * 两档芯片区域检测：先尝试高分位亮区，再用 Otsu 宽区域兜底。
-     * 两档都失败时只返回中央区域并产生 QC 警告，不把兜底伪装成可靠芯片检测。
+     * 在给定主区域假设下走完整条几何链路，并给出可比较的证据分。
+     *
+     * 评分融合三项互补证据（都已归一到 0~1）：
+     * - **包围率**：原图中已检出单元被网格覆盖的比例，抓“区域框截断”；
+     * - **支撑率**：网格点有真实单元支撑的比例，抓“网格整体错位/虚构”；
+     * - **观测率**：获得局部图像证据的点位比例，抓“拟合缺乏观测支撑”。
+     *
+     * 再按晶格残差（相对间距）扣分，抓“勉强拟合但几何变形”。
      */
-    private fun detectChipRegion(image: Mat): ChipRegionCandidate {
-        val height = image.rows()
-        val width = image.cols()
-        val gray = Mat()
-        val blurred = Mat()
-        try {
-            Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY)
-            Imgproc.GaussianBlur(gray, blurred, Size(9.0, 9.0), 0.0)
-            val percentileThreshold = percentile(blurred, 0.94)
-            val otsuMask = Mat()
-            val otsuThreshold = try {
-                Imgproc.threshold(
-                    blurred,
-                    otsuMask,
-                    0.0,
-                    255.0,
-                    Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU
-                )
-            } finally {
-                otsuMask.release()
-            }
-
-            val attempts = listOf(
-                RegionAttempt(
-                    threshold = maxOf(MIN_BRIGHTNESS_THRESHOLD, percentileThreshold),
-                    maximumAreaRatio = 0.20,
-                    method = "opencv_bright_region"
-                ),
-                RegionAttempt(
-                    threshold = maxOf(
-                        MIN_BRIGHTNESS_THRESHOLD,
-                        minOf(percentileThreshold, otsuThreshold)
-                    ),
-                    maximumAreaRatio = 0.65,
-                    method = "opencv_bright_region_wide"
-                )
-            )
-
-            val kernelSize = oddAtLeast(
-                minimum = 7,
-                raw = (minOf(width, height) * 0.008).toInt()
-            )
-            val kernel = Imgproc.getStructuringElement(
-                Imgproc.MORPH_ELLIPSE,
-                Size(kernelSize.toDouble(), kernelSize.toDouble())
-            )
-            try {
-                attempts.forEach { attempt ->
-                    findBestRegionContour(
-                        gray = gray,
-                        blurred = blurred,
-                        kernel = kernel,
-                        width = width,
-                        height = height,
-                        attempt = attempt
-                    )?.let { points ->
-                        return ChipRegionCandidate(
-                            points = expandAndClip(points, width, height, 1.10),
-                            method = attempt.method
-                        )
-                    }
-                }
-            } finally {
-                kernel.release()
-            }
-        } finally {
-            gray.release()
-            blurred.release()
-        }
-        return fallbackCenterRegion(width, height)
-    }
-
-    /** 为某一阈值档位选择面积与亮度综合得分最高的主区域。 */
-    private fun findBestRegionContour(
-        gray: Mat,
-        blurred: Mat,
-        kernel: Mat,
-        width: Int,
-        height: Int,
-        attempt: RegionAttempt
-    ): List<GridPoint>? {
-        val mask = Mat()
-        val hierarchy = Mat()
-        val contours = arrayListOf<MatOfPoint>()
-        try {
-            Imgproc.threshold(blurred, mask, attempt.threshold, 255.0, Imgproc.THRESH_BINARY)
-            Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, kernel)
-            Imgproc.dilate(mask, mask, kernel)
-            Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
-
-            val imageArea = width.toDouble() * height
-            var bestScore = Double.NEGATIVE_INFINITY
-            var bestPoints: Array<Point>? = null
-            contours.forEach { contour ->
-                val area = Imgproc.contourArea(contour)
-                if (area < imageArea * 0.002 || area > imageArea * attempt.maximumAreaRatio) {
-                    return@forEach
-                }
-                val bounds = Imgproc.boundingRect(contour)
-                val aspect = bounds.width.toDouble() / maxOf(bounds.height, 1)
-                if (aspect !in 0.35..2.8) return@forEach
-
-                val contourMask = Mat.zeros(gray.size(), CvType.CV_8UC1)
-                val meanBrightness = try {
-                    Imgproc.drawContours(contourMask, listOf(contour), -1, Scalar(255.0), -1)
-                    Core.mean(gray, contourMask).`val`[0]
-                } finally {
-                    contourMask.release()
-                }
-                val score = sqrt(area) * (meanBrightness + 1.0)
-                if (score > bestScore) {
-                    bestScore = score
-                    bestPoints = contour.toArray()
-                }
-            }
-
-            val points = bestPoints ?: return null
-            val contour2f = MatOfPoint2f(*points)
-            return try {
-                orderQuad(Imgproc.minAreaRect(contour2f))
-            } finally {
-                contour2f.release()
-            }
-        } finally {
-            contours.forEach(MatOfPoint::release)
-            hierarchy.release()
-            mask.release()
-        }
-    }
-
-    /** 把旋转矩形四角排序为左上、右上、右下、左下。 */
-    private fun orderQuad(rectangle: RotatedRect): List<GridPoint> {
-        val raw = Array(4) { Point() }
-        rectangle.points(raw)
-        val points = raw.map { GridPoint(it.x, it.y) }
-        val topLeft = points.minBy { it.x + it.y }
-        val bottomRight = points.maxBy { it.x + it.y }
-        val topRight = points.maxBy { it.x - it.y }
-        val bottomLeft = points.minBy { it.x - it.y }
-        return listOf(topLeft, topRight, bottomRight, bottomLeft)
-    }
-
-    private fun expandAndClip(
-        points: List<GridPoint>,
-        width: Int,
-        height: Int,
-        scale: Double
-    ): List<GridPoint> {
-        val centerX = points.map(GridPoint::x).average()
-        val centerY = points.map(GridPoint::y).average()
-        return points.map { point ->
-            GridPoint(
-                x = (centerX + (point.x - centerX) * scale).coerceIn(0.0, width - 1.0),
-                y = (centerY + (point.y - centerY) * scale).coerceIn(0.0, height - 1.0)
-            )
-        }
-    }
-
-    private fun fallbackCenterRegion(width: Int, height: Int): ChipRegionCandidate {
-        val sideWidth = width * 0.45
-        val sideHeight = height * 0.45
-        val centerX = width / 2.0
-        val centerY = height / 2.0
-        return ChipRegionCandidate(
-            points = listOf(
-                GridPoint(centerX - sideWidth / 2.0, centerY - sideHeight / 2.0),
-                GridPoint(centerX + sideWidth / 2.0, centerY - sideHeight / 2.0),
-                GridPoint(centerX + sideWidth / 2.0, centerY + sideHeight / 2.0),
-                GridPoint(centerX - sideWidth / 2.0, centerY + sideHeight / 2.0)
-            ),
-            method = "fallback_center"
+    private fun solveWithRegion(
+        original: Mat,
+        region: ChipRegionCandidate,
+        config: PgGridLocatorConfig,
+        rectifiedWidth: Int,
+        rectifiedHeight: Int,
+        gateCount: Int,
+        coverageCache: MutableMap<GridTargetPolarity, List<GridCandidate>>
+    ): RegionSolution {
+        val rectification = rectifyChip(
+            image = original,
+            region = region,
+            outputWidth = rectifiedWidth,
+            outputHeight = rectifiedHeight
         )
+        val polarityFit = fitLatticeWithAutomaticPolarity(
+            rectified = rectification.image,
+            rows = config.rows,
+            columns = config.columns,
+            width = rectifiedWidth,
+            height = rectifiedHeight,
+            marginRatio = config.marginRatio,
+            maximumResidualPitchRatio = config.maximumResidualPitchRatio,
+            supportDistancePitchRatio = config.candidateSupportDistancePitchRatio,
+            preferredPolarity = config.targetPolarity,
+            gateCount = gateCount
+        )
+        val lattice = polarityFit.lattice
+
+        // 包围率必须在比区域框更大的视野里测量，否则看不到被框切掉的单元。做法是在
+        // **原图**里检测一次单元，再把网格点反投影到原图坐标系比较，而不是为每个假设
+        // 生成一张放大的矫正图——后者要多付一次透视变换加一次重复检测。
+        val inverseMatrix = matToRowMajor(rectification.inverseMatrix)
+        val projected = lattice.points.map { localized ->
+            RegularGridGeometry.project(inverseMatrix, localized.point)
+        }
+        val originalPitch = RegularGridGeometry.estimatePitch(projected, config.rows, config.columns)
+        val originalRepresentativePitch = minimumPositivePitch(
+            pitch = originalPitch,
+            width = original.cols(),
+            height = original.rows(),
+            rows = config.rows,
+            columns = config.columns
+        )
+        val originalCandidates = cachedOriginalCandidates(
+            original = original,
+            polarity = polarityFit.polarity,
+            region = region,
+            gateCount = gateCount,
+            cache = coverageCache
+        )
+        val coverage = measureGridCoverageRatio(
+            gridPoints = projected,
+            candidates = originalCandidates,
+            pitch = maxOf(originalRepresentativePitch, 1.0)
+        )
+
+        val score = PgGridRegionArbiter.score(
+            coverage = coverage,
+            support = lattice.candidateSupportRatio,
+            observed = lattice.observedRatio,
+            residualRatio = (lattice.geometryRmsePx ?: 0.0) / maxOf(lattice.pitchPx, 1e-6)
+        )
+
+        return RegionSolution(
+            region = region,
+            rectification = rectification,
+            polarity = polarityFit.polarity,
+            lattice = lattice,
+            coverage = coverage,
+            score = score
+        )
+    }
+
+    /**
+     * 在多个区域假设的求解结果中择优，带切换保护。
+     *
+     * [solutions] 按可靠性顺序给出（首项为默认假设）。仲裁分是几项带噪证据的加权和，
+     * 零点几个百分点的领先不足以支持切换；最优分低于最低证据线时说明没有任何假设拿到
+     * 足够证据——通常是候选检测在该图上整体失效，让包围率与支撑率同时归零。
+     * “证据缺失”不等于“证据为负”，此时切换是赌博，应保留按可靠性排序的首选。
+     */
+    private fun selectRegionSolution(solutions: List<RegionSolution>): RegionSolution {
+        return PgGridRegionArbiter.select(solutions, RegionSolution::score)
+    }
+
+    /**
+     * 在原图坐标系检测单元候选，跨区域假设复用。
+     *
+     * 检测器的几何闸值是相对“标准矫正图边长”定义的，而原图里单元要小得多（实拍图
+     * 4000px 幅面上单元只有约 20px），直接套用会把真实单元全部过滤掉。因此用区域框在
+     * 原图中的跨度作为尺度参考——它正是矫正图边长对应的原图长度。
+     *
+     * 包围率的判定容差是 0.35 个间距，用不着全分辨率：手机原图动辄 4000px 幅面，直接
+     * 在上面做形态学检测会成为单图耗时的大头。先降采样再检测，最后把坐标缩放回原图尺度。
+     */
+    private fun cachedOriginalCandidates(
+        original: Mat,
+        polarity: GridTargetPolarity,
+        region: ChipRegionCandidate,
+        gateCount: Int,
+        cache: MutableMap<GridTargetPolarity, List<GridCandidate>>
+    ): List<GridCandidate> {
+        cache[polarity]?.let { return it }
+
+        val width = original.cols()
+        val height = original.rows()
+        val scale = minOf(1.0, COVERAGE_DETECT_MAX_SIDE / maxOf(width, height).toDouble())
+        val scaled = Mat()
+        val candidates = try {
+            val source = if (scale < 1.0) {
+                Imgproc.resize(
+                    original,
+                    scaled,
+                    Size(
+                        maxOf(1.0, floor(width * scale)),
+                        maxOf(1.0, floor(height * scale))
+                    ),
+                    0.0,
+                    0.0,
+                    Imgproc.INTER_AREA
+                )
+                scaled
+            } else {
+                original
+            }
+            val xs = region.points.map(GridPoint::x)
+            val ys = region.points.map(GridPoint::y)
+            val span = maxOf(
+                maxOf(xs.max() - xs.min(), ys.max() - ys.min()),
+                1.0
+            ) * scale
+            val detected = when (polarity) {
+                GridTargetPolarity.DARK -> PgGridCandidateDetector.detectDarkSquareCandidates(
+                    bgr = source,
+                    scaleSide = span,
+                    gateCount = gateCount
+                )
+
+                GridTargetPolarity.BRIGHT -> PgGridCandidateDetector.detectBrightDotCandidates(
+                    bgr = source,
+                    scaleSide = span,
+                    gateCount = gateCount
+                )
+            }
+            if (scale < 1.0) {
+                detected.map { candidate ->
+                    candidate.copy(
+                        point = GridPoint(candidate.point.x / scale, candidate.point.y / scale)
+                    )
+                }
+            } else {
+                detected
+            }
+        } finally {
+            scaled.release()
+        }
+        cache[polarity] = candidates
+        return candidates
+    }
+
+    /**
+     * 图中被检测到的单元有多大比例被网格覆盖。
+     *
+     * 这是候选支撑率的**反方向**判据，两者合起来才完整：支撑率问“网格点旁边有没有真实
+     * 单元”，对被区域框切掉的整行无感——那些单元根本没进矫正图，也就不会有网格点去问
+     * 它们；包围率问“图里检测到的单元有没有被网格覆盖”，因此能直接抓住区域框截断。
+     *
+     * 只统计紧邻网格的候选：判据要回答的是“区域框外还有没有本该属于阵列的单元”，而不是
+     * “图里还有没有别的亮/暗结构”。远处的连接器、螺丝、反光与阵列无关，把它们计入会让
+     * 包围率无谓地偏低。
+     */
+    private fun measureGridCoverageRatio(
+        gridPoints: List<GridPoint>,
+        candidates: List<GridCandidate>,
+        pitch: Double
+    ): Double {
+        if (gridPoints.isEmpty() || candidates.isEmpty()) return 0.0
+        val minimumX = gridPoints.minOf(GridPoint::x) - COVERAGE_NEIGHBOURHOOD_PITCH * pitch
+        val maximumX = gridPoints.maxOf(GridPoint::x) + COVERAGE_NEIGHBOURHOOD_PITCH * pitch
+        val minimumY = gridPoints.minOf(GridPoint::y) - COVERAGE_NEIGHBOURHOOD_PITCH * pitch
+        val maximumY = gridPoints.maxOf(GridPoint::y) + COVERAGE_NEIGHBOURHOOD_PITCH * pitch
+        val near = candidates.filter { candidate ->
+            candidate.point.x in minimumX..maximumX && candidate.point.y in minimumY..maximumY
+        }
+        if (near.isEmpty()) return 0.0
+
+        val tolerance = maxOf(3.0, pitch * COVERAGE_TOLERANCE_PITCH_RATIO)
+        val covered = near.count { candidate ->
+            gridPoints.any { point -> distance(point, candidate.point) <= tolerance }
+        }
+        return covered.toDouble() / near.size
     }
 
     /** 根据芯片四角生成原图→矫正图和矫正图→原图两组矩阵。 */
@@ -370,99 +457,6 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
         }
     }
 
-    /** black-hat 增强“小而暗”的方形反应区，再按面积、尺寸和长宽比过滤。 */
-    private fun detectDarkSquareCandidates(rectified: Mat): List<GridCandidate> {
-        val gray = Mat()
-        val response = Mat()
-        val mask = Mat()
-        try {
-            Imgproc.cvtColor(rectified, gray, Imgproc.COLOR_BGR2GRAY)
-            val side = minOf(gray.cols(), gray.rows())
-            val kernelSize = oddAtLeast(31, (side * 0.065).toInt())
-            val kernel = Imgproc.getStructuringElement(
-                Imgproc.MORPH_RECT,
-                Size(kernelSize.toDouble(), kernelSize.toDouble())
-            )
-            try {
-                Imgproc.morphologyEx(gray, response, Imgproc.MORPH_BLACKHAT, kernel)
-            } finally {
-                kernel.release()
-            }
-            Imgproc.threshold(
-                response,
-                mask,
-                0.0,
-                255.0,
-                Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU
-            )
-            return connectedComponentCandidates(
-                response = response,
-                mask = mask,
-                minimumBox = maxOf(8, (side * 0.010).toInt()),
-                maximumBox = maxOf(24, (side * 0.055).toInt()),
-                minimumArea = maxOf(50, (side * side * 0.00012).toInt()),
-                maximumArea = maxOf(450, (side * side * 0.00120).toInt())
-            )
-        } finally {
-            gray.release()
-            response.release()
-            mask.release()
-        }
-    }
-
-    /** top-hat 增强“小而亮”的点阵，Otsu 阈值只从内部区域估计以避开边缘亮带。 */
-    private fun detectBrightDotCandidates(rectified: Mat): List<GridCandidate> {
-        val gray = Mat()
-        val response = Mat()
-        val mask = Mat()
-        try {
-            Imgproc.cvtColor(rectified, gray, Imgproc.COLOR_BGR2GRAY)
-            val side = minOf(gray.cols(), gray.rows())
-            val kernelSize = oddAtLeast(25, (side * 0.050).toInt())
-            val kernel = Imgproc.getStructuringElement(
-                Imgproc.MORPH_RECT,
-                Size(kernelSize.toDouble(), kernelSize.toDouble())
-            )
-            try {
-                Imgproc.morphologyEx(gray, response, Imgproc.MORPH_TOPHAT, kernel)
-            } finally {
-                kernel.release()
-            }
-
-            val x0 = (response.cols() * 0.10).toInt()
-            val x1 = (response.cols() * 0.90).toInt()
-            val y0 = (response.rows() * 0.10).toInt()
-            val y1 = (response.rows() * 0.90).toInt()
-            val interior = response.submat(y0, y1, x0, x1)
-            val thresholdProbe = Mat()
-            val otsu = try {
-                Imgproc.threshold(
-                    interior,
-                    thresholdProbe,
-                    0.0,
-                    255.0,
-                    Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU
-                )
-            } finally {
-                thresholdProbe.release()
-                interior.release()
-            }
-            Imgproc.threshold(response, mask, otsu, 255.0, Imgproc.THRESH_BINARY)
-            return connectedComponentCandidates(
-                response = response,
-                mask = mask,
-                minimumBox = maxOf(5, (side * 0.006).toInt()),
-                maximumBox = maxOf(16, (side * 0.045).toInt()),
-                minimumArea = maxOf(20, (side * side * 0.00004).toInt()),
-                maximumArea = maxOf(240, (side * side * 0.00110).toInt())
-            )
-        } finally {
-            gray.release()
-            response.release()
-            mask.release()
-        }
-    }
-
     /**
      * 同时尝试暗目标与亮目标，并用真实候选晶格是否成立裁决单元极性。
      *
@@ -470,11 +464,15 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
      * 强制按亮点处理。实际极性取决于成像方式：同一规格既可能是亮背景上的暗单元，也
      * 可能是暗背景上的亮单元。这里与 Python 参考实现保持同一决策顺序：
      *
-     * 1. 暗/亮候选都提取，候选数量越接近理论位点数越优先；
-     * 2. 数量接近时使用内部灰度“均值与中位数”提示消除互补晶格歧义；
-     * 3. 只有候选轴与稳健单应真正成立才立即裁决；
-     * 4. 两侧候选都无法形成晶格时，只使用统计提示的一侧走投影兜底，避免反极性的
-     *    规则间隙产生看似可信、实际偏移半格的结果。
+     * 1. 暗/亮候选都提取，按[综合证据][orderPolaritiesByEvidence]排序后依次尝试；
+     * 2. 只有候选轴与稳健单应真正成立才立即裁决——形状过滤过的候选无法从反极性的
+     *    间隙结构里凑出合法晶格，误判风险低；
+     * 3. 候选路径两极都失败时进入投影兜底，并用“点位 vs 间隙”对比度直接仲裁；
+     * 4. 对比度也给不出正向证据时，保留排序首选的结果，由候选支撑率检查标记低置信。
+     *
+     * 第 3 步不能只信排序：候选拟合都失败说明候选证据本身不可靠（重模糊下两极候选数
+     * 都远离理论值），此时排序依据已失去意义；而对比度是在候选网格位置上读取的图像
+     * 证据，恰好能区分真实晶格与互补晶格。
      *
      * [preferredPolarity] 仅作为证据完全并列时的最后偏好，保留旧项目兼容性，但不能再
      * 覆盖图像本身给出的极性证据。
@@ -488,80 +486,176 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
         marginRatio: Double,
         maximumResidualPitchRatio: Double,
         supportDistancePitchRatio: Double,
-        preferredPolarity: GridTargetPolarity
+        preferredPolarity: GridTargetPolarity,
+        gateCount: Int
     ): PolarityFit {
         val expectedCount = rows * columns
-        val statisticalHint = estimatePolarityHint(rectified)
-        val options = listOf(
-            PolarityCandidates(
-                polarity = GridTargetPolarity.DARK,
-                candidates = detectDarkSquareCandidates(rectified)
-            ),
-            PolarityCandidates(
-                polarity = GridTargetPolarity.BRIGHT,
-                candidates = detectBrightDotCandidates(rectified)
-            )
-        ).sortedWith(
-            compareBy<PolarityCandidates> { option ->
-                abs(option.candidates.size - expectedCount)
-            }.thenBy { option ->
-                if (option.polarity == statisticalHint) 0 else 1
-            }.thenBy { option ->
-                if (option.polarity == preferredPolarity) 0 else 1
+        val hint = polarityHintWithStrength(rectified)
+
+        // 候选检测按需求值并记忆化。亮点检测器现在是六档多阈值提取，是整条链路里最贵的
+        // 一步；而提示显著时排序只看提示、根本不看候选数量，此时把两种极性都算出来纯属
+        // 浪费。首选极性直接拟合成功（常规成像的主路径）时，另一极性一次都不会被检测。
+        val candidateCache = HashMap<GridTargetPolarity, List<GridCandidate>>(2)
+        fun candidatesFor(polarity: GridTargetPolarity): List<GridCandidate> =
+            candidateCache.getOrPut(polarity) {
+                when (polarity) {
+                    GridTargetPolarity.DARK -> PgGridCandidateDetector.detectDarkSquareCandidates(
+                        bgr = rectified,
+                        gateCount = gateCount
+                    )
+
+                    GridTargetPolarity.BRIGHT -> PgGridCandidateDetector.detectBrightDotCandidates(
+                        bgr = rectified,
+                        gateCount = gateCount
+                    )
+                }
             }
+
+        val order = orderPolaritiesByEvidence(
+            expectedCount = expectedCount,
+            hint = hint,
+            preferredPolarity = preferredPolarity,
+            candidateCountFor = { polarity -> candidatesFor(polarity).size }
         )
 
-        var hintFallback: LatticeFit? = null
-        options.forEach { option ->
+        order.forEach { polarity ->
             val fitted = fitLattice(
                 rectified = rectified,
-                candidates = option.candidates,
-                polarity = option.polarity,
+                candidates = candidatesFor(polarity),
+                polarity = polarity,
                 rows = rows,
                 columns = columns,
                 width = width,
                 height = height,
                 marginRatio = marginRatio,
                 maximumResidualPitchRatio = maximumResidualPitchRatio,
-                supportDistancePitchRatio = supportDistancePitchRatio
+                supportDistancePitchRatio = supportDistancePitchRatio,
+                useProjectionFallback = false
             )
-            if (option.polarity == statisticalHint) hintFallback = fitted
             if (fitted.candidateLatticeApplied) {
                 return PolarityFit(
-                    polarity = option.polarity,
+                    polarity = polarity,
                     lattice = recoverLocalEvidence(
                         rectified = rectified,
                         lattice = fitted,
-                        polarity = option.polarity,
+                        candidates = candidatesFor(polarity),
+                        polarity = polarity,
                         rows = rows,
-                        columns = columns
+                        columns = columns,
+                        supportDistancePitchRatio = supportDistancePitchRatio
                     )
                 )
             }
         }
 
-        val fallback = requireNotNull(hintFallback) {
-            "暗/亮候选列表必须包含统计提示对应的极性"
+        // 投影兜底：两个极性各拟合一次，用“点位 vs 间隙”对比度直接仲裁。
+        val gray = Mat()
+        val projections = try {
+            Imgproc.cvtColor(rectified, gray, Imgproc.COLOR_BGR2GRAY)
+            order.mapNotNull { polarity ->
+                val projected = fitProjectionGrid(
+                    rectified = rectified,
+                    polarity = polarity,
+                    rows = rows,
+                    columns = columns,
+                    marginRatio = marginRatio
+                ) ?: return@mapNotNull null
+                val contrast = measureGridPolarityContrast(gray, projected, rows, columns)
+                // 对比度符号与该极性一致时才算作正向证据。
+                val evidence = if (polarity == GridTargetPolarity.BRIGHT) contrast else -contrast
+                ProjectionEvidence(polarity = polarity, points = projected, evidence = evidence)
+            }
+        } finally {
+            gray.release()
         }
+
+        val chosen = projections.maxByOrNull(ProjectionEvidence::evidence)
+        // 两个极性都没有正向对比度证据时保留排序首选，由支撑率检查标记低置信；
+        // 完全没有投影结果时退回均分网格。
+        val resolved = when {
+            chosen != null && chosen.evidence > 0.0 -> chosen
+            else -> projections.firstOrNull { it.polarity == order.first() } ?: chosen
+        }
+        val fallbackPolarity = resolved?.polarity ?: order.first()
+        val fallbackPoints = resolved?.points ?: RegularGridGeometry.generate(
+            rows = rows,
+            columns = columns,
+            width = width.toDouble(),
+            height = height.toDouble(),
+            marginRatio = marginRatio
+        )
+        val fallbackCandidates = candidatesFor(fallbackPolarity)
         return PolarityFit(
-            polarity = statisticalHint,
+            polarity = fallbackPolarity,
             lattice = recoverLocalEvidence(
                 rectified = rectified,
-                lattice = fallback,
-                polarity = statisticalHint,
+                lattice = unadjustedLattice(
+                    points = fallbackPoints,
+                    candidates = fallbackCandidates,
+                    rows = rows,
+                    columns = columns,
+                    supportDistancePitchRatio = supportDistancePitchRatio
+                ),
+                candidates = fallbackCandidates,
+                polarity = fallbackPolarity,
                 rows = rows,
-                columns = columns
+                columns = columns,
+                supportDistancePitchRatio = supportDistancePitchRatio
             )
         )
     }
 
     /**
-     * 用阵列内部区域的灰度分布估计极性提示。
+     * 按证据强度给两种极性排序，返回优先尝试顺序。
      *
-     * 单元只占面板少数面积，背景主导中位数；暗单元会把均值向低灰度方向拉动，亮单元
-     * 则相反。忽略外围 10% 可避免透视矫正边带、边框和固定装置干扰统计。
+     * 两条证据的可靠性并不对等：
+     * - **候选数量接近理论单元数**：直觉上合理，但形态学过滤的偶然性让它在实拍图上
+     *   噪声很大（同一张图不同裁切下亮候选实测 79→164）；
+     * - **内部“均值 vs 中位数”统计**：物理依据扎实（单元占面积远小于一半），实测符号
+     *   在全部样例上都正确，但强度可能很弱。
+     *
+     * 因此提示显著时以提示为主键、候选数为次键；提示微弱时反过来。最终裁决仍是“晶格
+     * 能否拟合成功”，本函数只决定尝试顺序。
+     *
+     * [candidateCountFor] 刻意设计为惰性回调而不是直接接收候选集合：提示显著时排序
+     * 只依赖提示，一次都不会调用它，从而让调用方跳过另一极性的候选检测。
      */
-    private fun estimatePolarityHint(rectified: Mat): GridTargetPolarity {
+    private fun orderPolaritiesByEvidence(
+        candidateCountFor: (GridTargetPolarity) -> Int,
+        expectedCount: Int,
+        hint: PolarityHint,
+        preferredPolarity: GridTargetPolarity
+    ): List<GridTargetPolarity> {
+        val other = if (hint.polarity == GridTargetPolarity.DARK) {
+            GridTargetPolarity.BRIGHT
+        } else {
+            GridTargetPolarity.DARK
+        }
+        if (hint.strength >= POLARITY_HINT_SIGNIFICANT) return listOf(hint.polarity, other)
+        return listOf(GridTargetPolarity.DARK, GridTargetPolarity.BRIGHT).sortedWith(
+            compareBy<GridTargetPolarity> { polarity ->
+                abs(candidateCountFor(polarity) - expectedCount)
+            }.thenBy { polarity ->
+                if (polarity == hint.polarity) 0 else 1
+            }.thenBy { polarity ->
+                // 载体档案的历史偏好只在图像证据完全并列时才起作用。
+                if (polarity == preferredPolarity) 0 else 1
+            }
+        )
+    }
+
+    /**
+     * 用阵列内部区域的灰度分布估计极性提示及其强度。
+     *
+     * 单元只占面板少数面积（10×10 约 11%、15×15 约 18%），背景决定灰度中位数，单元把
+     * 均值拉向自己一侧（暗单元 → 均值 < 中位数）。忽略外围 10% 可避免透视矫正边带、
+     * 边框和固定装置干扰统计。该统计量对模糊不敏感，是候选检测器整体失效时仍然可用的
+     * 极性证据。
+     *
+     * 强度取 `|均值 − 中位数|`。实测全部样例的符号都正确，但强度差异很大（实拍暗单元
+     * 8.9~34.3；小亮点合成图仅 0.9），因此强度决定这条证据能否压过候选数量证据。
+     */
+    private fun polarityHintWithStrength(rectified: Mat): PolarityHint {
         val gray = Mat()
         try {
             Imgproc.cvtColor(rectified, gray, Imgproc.COLOR_BGR2GRAY)
@@ -576,8 +670,12 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
             }
             return try {
                 val mean = Core.mean(interior).`val`[0]
-                val median = percentile(interior, 0.50)
-                if (mean < median) GridTargetPolarity.DARK else GridTargetPolarity.BRIGHT
+                val median = PgGridGrayHistogram.of(interior).median()
+                val delta = mean - median
+                PolarityHint(
+                    strength = abs(delta),
+                    polarity = if (delta < 0.0) GridTargetPolarity.DARK else GridTargetPolarity.BRIGHT
+                )
             } finally {
                 if (interior !== gray) interior.release()
             }
@@ -586,64 +684,55 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
         }
     }
 
-    /** 从二值连通域提取候选中心及形态响应权重。 */
-    private fun connectedComponentCandidates(
-        response: Mat,
-        mask: Mat,
-        minimumBox: Int,
-        maximumBox: Int,
-        minimumArea: Int,
-        maximumArea: Int
-    ): List<GridCandidate> {
-        val labels = Mat()
-        val stats = Mat()
-        val centroids = Mat()
-        try {
-            val componentCount = Imgproc.connectedComponentsWithStats(
-                mask,
-                labels,
-                stats,
-                centroids,
-                8,
-                CvType.CV_32S
-            )
-            val width = mask.cols()
-            val height = mask.rows()
-            val edgeGuardX = width * 0.035
-            val edgeGuardY = height * 0.035
-            val candidates = mutableListOf<GridCandidate>()
-
-            for (index in 1 until componentCount) {
-                val componentWidth = stats.get(index, Imgproc.CC_STAT_WIDTH)[0].toInt()
-                val componentHeight = stats.get(index, Imgproc.CC_STAT_HEIGHT)[0].toInt()
-                val area = stats.get(index, Imgproc.CC_STAT_AREA)[0].toInt()
-                val centerX = centroids.get(index, 0)[0]
-                val centerY = centroids.get(index, 1)[0]
-                val aspect = componentWidth.toDouble() / maxOf(componentHeight, 1)
-
-                if (area !in minimumArea..maximumArea) continue
-                if (componentWidth !in minimumBox..maximumBox) continue
-                if (componentHeight !in minimumBox..maximumBox) continue
-                if (aspect !in 0.45..1.80) continue
-                if (centerX !in edgeGuardX..(width - edgeGuardX)) continue
-                if (centerY !in edgeGuardY..(height - edgeGuardY)) continue
-
-                val componentMask = Mat()
-                val meanResponse = try {
-                    Core.compare(labels, Scalar(index.toDouble()), componentMask, Core.CMP_EQ)
-                    Core.mean(response, componentMask).`val`[0]
-                } finally {
-                    componentMask.release()
+    /**
+     * 测量候选网格的“点位 vs 间隙”对比度。
+     *
+     * 正值表示网格点比相邻点位的中点更亮（亮单元），负值表示更暗（暗单元）。
+     *
+     * 这是极性歧义的最终仲裁依据：暗单元阵列的亮间隙本身也构成规则晶格（互补晶格），
+     * 投影峰同样整齐，仅凭规则性无法区分；但两者的点位落处对比度符号恰好相反。相比
+     * 候选数量或全局灰度统计，本判据直接读取图像在候选网格位置上的证据，因此在候选
+     * 检测退化（重模糊）时仍然可用。
+     */
+    private fun measureGridPolarityContrast(
+        gray: Mat,
+        points: List<GridPoint>,
+        rows: Int,
+        columns: Int
+    ): Double {
+        if (rows < 2 || columns < 2 || points.size != rows * columns) return 0.0
+        val gaps = buildList {
+            for (row in 0 until rows) {
+                for (column in 0 until columns - 1) {
+                    val left = points[row * columns + column]
+                    val right = points[row * columns + column + 1]
+                    add(GridPoint((left.x + right.x) / 2.0, (left.y + right.y) / 2.0))
                 }
-                val weight = maxOf(1e-6, meanResponse * sqrt(area.toDouble()))
-                candidates += GridCandidate(GridPoint(centerX, centerY), weight)
             }
-            return candidates
-        } finally {
-            labels.release()
-            stats.release()
-            centroids.release()
+            for (row in 0 until rows - 1) {
+                for (column in 0 until columns) {
+                    val top = points[row * columns + column]
+                    val bottom = points[(row + 1) * columns + column]
+                    add(GridPoint((top.x + bottom.x) / 2.0, (top.y + bottom.y) / 2.0))
+                }
+            }
         }
+        return sampleMedianGray(gray, points) - sampleMedianGray(gray, gaps)
+    }
+
+    /** 取一组采样点处灰度的中位数；越界点直接跳过，全部越界时返回 0。 */
+    private fun sampleMedianGray(gray: Mat, points: List<GridPoint>): Double {
+        val buffer = ByteArray(1)
+        val values = mutableListOf<Double>()
+        points.forEach { point ->
+            val x = point.x.roundToInt()
+            val y = point.y.roundToInt()
+            if (x in 0 until gray.cols() && y in 0 until gray.rows()) {
+                gray.get(y, x, buffer)
+                values += (buffer[0].toInt() and 0xFF).toDouble()
+            }
+        }
+        return medianDouble(values)
     }
 
     /**
@@ -782,6 +871,10 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
     /**
      * 从候选点建立规则轴，再用 Tukey 单应平差吸收残余旋转、剪切和透视。
      * 候选不足时仍输出固定点数，但全部标记 unadjusted 且 trusted=false。
+     *
+     * [useProjectionFallback] 为 false 时，候选路径失败只如实返回“候选晶格未成立”，
+     * 由调用方统一进入带对比度仲裁的投影兜底；这样避免在极性尚未裁决前就用某一极性的
+     * 投影结果污染判断。
      */
     private fun fitLattice(
         rectified: Mat,
@@ -793,17 +886,23 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
         height: Int,
         marginRatio: Double,
         maximumResidualPitchRatio: Double,
-        supportDistancePitchRatio: Double
+        supportDistancePitchRatio: Double,
+        useProjectionFallback: Boolean = true
     ): LatticeFit {
         val expectedCount = rows * columns
         fun fallbackPoints(): List<GridPoint> {
-            return fitProjectionGrid(
-                rectified = rectified,
-                polarity = polarity,
-                rows = rows,
-                columns = columns,
-                marginRatio = marginRatio
-            ) ?: RegularGridGeometry.generate(
+            val projected = if (useProjectionFallback) {
+                fitProjectionGrid(
+                    rectified = rectified,
+                    polarity = polarity,
+                    rows = rows,
+                    columns = columns,
+                    marginRatio = marginRatio
+                )
+            } else {
+                null
+            }
+            return projected ?: RegularGridGeometry.generate(
                 rows = rows,
                 columns = columns,
                 width = width.toDouble(),
@@ -913,22 +1012,76 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
             }
         }
 
-        val supportRatio = candidateSupportRatio(
-            points = finalPoints.map(LocalizedPoint::point),
-            candidates = candidates,
-            maximumDistance = matchingThreshold
-        )
         val inlierCount = finalPoints.count { it.source == GridPointSource.CANDIDATE_REFINED }
         val outlierCount = expectedCount - inlierCount
+        val trust = evaluateLatticeTrust(
+            points = finalPoints.map(LocalizedPoint::point),
+            candidates = candidates,
+            rows = rows,
+            columns = columns,
+            pitch = matchingPitch,
+            supportDistance = matchingThreshold
+        )
         return LatticeFit(
             points = finalPoints,
-            candidateSupportRatio = supportRatio,
-            trusted = supportRatio >= TRUSTED_SUPPORT_RATIO,
+            candidateSupportRatio = trust.supportRatio,
+            supportCheck = trust.supportCheck,
+            trusted = trust.trusted,
             observedRatio = inlierCount.toDouble() / expectedCount,
             geometryRmsePx = fit.inlierRmsePx,
+            pitchPx = matchingPitch,
             inlierCount = inlierCount,
             outlierCount = outlierCount,
-            candidateLatticeApplied = true
+            candidateLatticeApplied = true,
+            phantomEdge = trust.phantomEdge
+        )
+    }
+
+    /**
+     * 支撑率三态判定 + 幻影边缘一票否决。
+     *
+     * 支撑率三态：
+     * - `UNAVAILABLE`：该规格没有候选检测器，检查不适用；
+     * - `INCONCLUSIVE`：检测器整体几乎无候选（如重模糊、单元尺寸超出闸值），而能走到
+     *   这里说明逐点精修证据已充分——缺席的是**检查手段**而非网格质量，不据此判不可信；
+     * - `OK`：候选充足，支撑率低于门限即判不可信（防规则但错误的网格）。
+     *
+     * 幻影边缘不参与三态判定而是直接推翻信任：它抓的正是支撑率结构性看不见的那种错误。
+     */
+    private fun evaluateLatticeTrust(
+        points: List<GridPoint>,
+        candidates: List<GridCandidate>,
+        rows: Int,
+        columns: Int,
+        pitch: Double,
+        supportDistance: Double
+    ): LatticeTrust {
+        val expectedCount = rows * columns
+        val supportRatio = candidateSupportRatio(points, candidates, supportDistance)
+        val minimumCheckCandidates = maxOf(
+            MINIMUM_SUPPORT_CHECK_CANDIDATES,
+            (expectedCount * MINIMUM_SUPPORT_CHECK_CANDIDATE_RATIO).toInt()
+        )
+        val supportCheck = when {
+            candidates.size < minimumCheckCandidates -> GridSupportCheck.INCONCLUSIVE
+            else -> GridSupportCheck.OK
+        }
+        val phantomEdge = PgGridLatticeIntegrity.detectPhantomEdge(
+            points = points,
+            rows = rows,
+            columns = columns,
+            candidates = candidates,
+            pitch = pitch
+        )
+        val trustedBySupport = when (supportCheck) {
+            GridSupportCheck.OK -> supportRatio >= TRUSTED_SUPPORT_RATIO
+            else -> true
+        }
+        return LatticeTrust(
+            supportRatio = supportRatio,
+            supportCheck = supportCheck,
+            phantomEdge = phantomEdge,
+            trusted = trustedBySupport && phantomEdge.flagged == null
         )
     }
 
@@ -947,10 +1100,13 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
             rows,
             columns
         )
-        val support = candidateSupportRatio(
-            points,
-            candidates,
-            representative * supportDistancePitchRatio
+        val trust = evaluateLatticeTrust(
+            points = points,
+            candidates = candidates,
+            rows = rows,
+            columns = columns,
+            pitch = representative,
+            supportDistance = representative * supportDistancePitchRatio
         )
         return LatticeFit(
             points = points.map { point ->
@@ -961,13 +1117,18 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
                     flags = setOf(GridSiteFlag.LOW_LOCAL_EVIDENCE)
                 )
             },
-            candidateSupportRatio = support,
+            candidateSupportRatio = trust.supportRatio,
+            supportCheck = trust.supportCheck,
+            // 平差未执行时不能给出信任背书：这里只保留支撑与幻影证据，信任状态由
+            // recoverLocalEvidence 在真正找回局部证据后重新判定。
             trusted = false,
             observedRatio = 0.0,
             geometryRmsePx = null,
+            pitchPx = representative,
             inlierCount = 0,
             outlierCount = 0,
-            candidateLatticeApplied = false
+            candidateLatticeApplied = false,
+            phantomEdge = trust.phantomEdge
         )
     }
 
@@ -981,9 +1142,11 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
     private fun recoverLocalEvidence(
         rectified: Mat,
         lattice: LatticeFit,
+        candidates: List<GridCandidate>,
         polarity: GridTargetPolarity,
         rows: Int,
-        columns: Int
+        columns: Int,
+        supportDistancePitchRatio: Double
     ): LatticeFit {
         if (lattice.points.none { it.source != GridPointSource.CANDIDATE_REFINED }) return lattice
         val pitch = RegularGridGeometry.estimatePitch(
@@ -1022,13 +1185,25 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
                 it.source == GridPointSource.CANDIDATE_REFINED
             }
             val recoveredObservedRatio = inlierCount.toDouble() / recoveredPoints.size
+            // 点位在精修中会移动，因此支撑率与幻影边缘必须基于恢复后的点位重算，
+            // 不能沿用初始晶格的旧结论。
+            val trust = evaluateLatticeTrust(
+                points = recoveredPoints.map(LocalizedPoint::point),
+                candidates = candidates,
+                rows = rows,
+                columns = columns,
+                pitch = representativePitch,
+                supportDistance = representativePitch * supportDistancePitchRatio
+            )
             return lattice.copy(
                 points = recoveredPoints,
+                candidateSupportRatio = trust.supportRatio,
+                supportCheck = trust.supportCheck,
+                phantomEdge = trust.phantomEdge,
                 // 轴候选不足时初始对象会标记 trusted=false；如果投影初值让局部重采样
                 // 找回了足够多的真实结构，必须重新判定可信度，不能把旧降级状态永久
-                // 带到最终结果。候选支撑与局部观测两项都达标才恢复可信。
-                trusted = lattice.candidateSupportRatio >= TRUSTED_SUPPORT_RATIO &&
-                    recoveredObservedRatio >= MINIMUM_OBSERVED_RATIO,
+                // 带到最终结果。支撑三态与局部观测两项都通过才恢复可信。
+                trusted = trust.trusted && recoveredObservedRatio >= MINIMUM_OBSERVED_RATIO,
                 observedRatio = recoveredObservedRatio,
                 inlierCount = inlierCount,
                 outlierCount = recoveredPoints.size - inlierCount
@@ -1096,13 +1271,34 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
         height: Int
     ): Double {
         if (candidates.size < 8) return 0.0
+        val centerX = width / 2.0
+        val centerY = height / 2.0
+        // 候选坐标只读一次并去中心化：角度扫描共 49 档，逐档重建 GridPoint 列表会在
+        // 一次定位里产生十万量级的短命对象，GC 抖动比三角函数本身还贵。这里改为在
+        // 复用的 DoubleArray 上就地旋转，数值与逐点 rotate() 完全一致。
+        val count = candidates.size
+        val offsetX = DoubleArray(count)
+        val offsetY = DoubleArray(count)
+        candidates.forEachIndexed { index, candidate ->
+            offsetX[index] = candidate.point.x - centerX
+            offsetY[index] = candidate.point.y - centerY
+        }
+        val rotatedX = DoubleArray(count)
+        val rotatedY = DoubleArray(count)
+
         var bestAngle = 0.0
         var bestScore = Double.NEGATIVE_INFINITY
         var angle = -MAX_ROTATION_DEGREES
         while (angle <= MAX_ROTATION_DEGREES + 1e-9) {
-            val rotated = candidates.map { rotate(it.point, angle, width / 2.0, height / 2.0) }
-            val score = histogramSharpness(rotated.map(GridPoint::x), width.toDouble()) +
-                histogramSharpness(rotated.map(GridPoint::y), height.toDouble())
+            val radians = Math.toRadians(angle)
+            val cosine = cos(radians)
+            val sine = sin(radians)
+            for (index in 0 until count) {
+                rotatedX[index] = offsetX[index] * cosine - offsetY[index] * sine + centerX
+                rotatedY[index] = offsetX[index] * sine + offsetY[index] * cosine + centerY
+            }
+            val score = histogramSharpness(rotatedX, width.toDouble()) +
+                histogramSharpness(rotatedY, height.toDouble())
             if (score > bestScore) {
                 bestScore = score
                 bestAngle = angle
@@ -1112,11 +1308,11 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
         return bestAngle
     }
 
-    private fun histogramSharpness(values: List<Double>, length: Double): Double {
+    private fun histogramSharpness(values: DoubleArray, length: Double): Double {
         val binWidth = maxOf(4.0, length * 0.01)
         val binCount = maxOf(4, (length / binWidth).toInt())
         val histogram = IntArray(binCount)
-        values.forEach { value ->
+        for (value in values) {
             if (value in 0.0..<length) {
                 val index = floor(value / length * binCount).toInt().coerceIn(0, binCount - 1)
                 histogram[index]++
@@ -1198,8 +1394,11 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
             inputClusters.sortedBy(AxisCluster::center)
         }
 
-        val minimumPitch = length * MINIMUM_AXIS_PITCH_RATIO
-        val maximumPitch = length * MAXIMUM_AXIS_PITCH_RATIO
+        // 间距接受区间按**行列数**而不是画幅边长定义：间距正比于 length/(count-1)，
+        // 按边长定区间就隐含了 count≈15，会让 10×10 的合法轴被整体拒绝并退化为均分网格。
+        val pitchBounds = PgGridCandidateDetector.axisPitchBounds(length.toDouble(), count)
+        val minimumPitch = pitchBounds.start
+        val maximumPitch = pitchBounds.endInclusive
         val minimumStart = length * MINIMUM_AXIS_START_RATIO
         val maximumStart = length * MAXIMUM_AXIS_START_RATIO
         val maximumEnd = length * MAXIMUM_AXIS_END_RATIO
@@ -1501,12 +1700,41 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
     private fun buildFrameQc(
         region: ChipRegionCandidate,
         lattice: LatticeFit,
-        quality: FrameQualityMetrics
+        quality: FrameQualityMetrics,
+        coverage: Double,
+        coverageTruncated: Boolean
     ): List<GridFrameQcIssue> = buildList {
-        if (region.method == "fallback_center") {
+        if (region.method == PgGridRegionDetector.METHOD_FALLBACK_CENTER) {
             add(GridFrameQcIssue(GridFrameQcCode.CHIP_REGION_FALLBACK, GridQcSeverity.WARNING))
         }
-        if (lattice.candidateSupportRatio < TRUSTED_SUPPORT_RATIO) {
+        if (coverageTruncated) {
+            add(
+                GridFrameQcIssue(
+                    code = GridFrameQcCode.GRID_COVERAGE_LOW,
+                    severity = GridQcSeverity.FAILURE,
+                    measuredValue = coverage,
+                    threshold = REGION_MINIMUM_COVERAGE
+                )
+            )
+        }
+        lattice.phantomEdge.flagged?.let { edge ->
+            // 幻影边缘是独立的一票否决，必须以 FAILURE 呈现：定位可能整体错位一个间距，
+            // 此时逐孔信号会系统性地取自相邻单元。
+            add(
+                GridFrameQcIssue(
+                    code = GridFrameQcCode.PHANTOM_LATTICE_EDGE,
+                    severity = GridQcSeverity.FAILURE,
+                    measuredValue = lattice.phantomEdge.flaggedOverhang,
+                    threshold = PHANTOM_EDGE_OVERHANG_THRESHOLD
+                )
+            )
+            Log.w(FRAME_QUALITY_LOG_TAG, "疑似整体错位一个间距：edge=$edge phantom=${lattice.phantomEdge}")
+        }
+        // 支撑率三态：检查手段缺席（INCONCLUSIVE）时不能报“支撑不足”，否则会把
+        // “没法检查”误传达为“网格错了”。
+        if (lattice.supportCheck == GridSupportCheck.OK &&
+            lattice.candidateSupportRatio < TRUSTED_SUPPORT_RATIO
+        ) {
             add(
                 GridFrameQcIssue(
                     code = GridFrameQcCode.GRID_SUPPORT_LOW,
@@ -1683,15 +1911,35 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
         return if (candidate % 2 == 0) candidate + 1 else candidate
     }
 
-    private data class ChipRegionCandidate(
-        val points: List<GridPoint>,
-        val method: String
+    /** 一个区域假设走完整条几何链路后的完整结果与可比较的证据分。 */
+    private data class RegionSolution(
+        val region: ChipRegionCandidate,
+        val rectification: RectificationResult,
+        val polarity: GridTargetPolarity,
+        val lattice: LatticeFit,
+        val coverage: Double,
+        val score: Double
     )
 
-    private data class RegionAttempt(
-        val threshold: Double,
-        val maximumAreaRatio: Double,
-        val method: String
+    /** 极性统计提示及其强度；强度决定这条证据能否压过候选数量证据。 */
+    private data class PolarityHint(
+        val strength: Double,
+        val polarity: GridTargetPolarity
+    )
+
+    /** 一个极性下的投影兜底网格及其“点位 vs 间隙”对比度证据。 */
+    private data class ProjectionEvidence(
+        val polarity: GridTargetPolarity,
+        val points: List<GridPoint>,
+        val evidence: Double
+    )
+
+    /** 支撑率三态、幻影边缘与最终信任结论。 */
+    private data class LatticeTrust(
+        val supportRatio: Double,
+        val supportCheck: GridSupportCheck,
+        val phantomEdge: GridPhantomEdgeDiagnostics,
+        val trusted: Boolean
     )
 
     private data class RectificationResult(
@@ -1705,11 +1953,6 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
             inverseMatrix.release()
         }
     }
-
-    private data class GridCandidate(
-        val point: GridPoint,
-        val weight: Double
-    )
 
     /** 单个候选在某一坐标轴上的坐标与形态学响应权重。 */
     private data class WeightedAxisValue(
@@ -1748,19 +1991,17 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
     private data class LatticeFit(
         val points: List<LocalizedPoint>,
         val candidateSupportRatio: Double,
+        val supportCheck: GridSupportCheck,
         val trusted: Boolean,
         val observedRatio: Double,
         val geometryRmsePx: Double?,
+        /** 矫正图中的代表性单元间距，供区域仲裁把残差归一化到间距单位。 */
+        val pitchPx: Double,
         val inlierCount: Int,
         val outlierCount: Int,
         /** true 表示候选轴和稳健单应均真实成立；false 表示投影或规则均分兜底。 */
-        val candidateLatticeApplied: Boolean
-    )
-
-    /** 单一极性的候选集合，供自动裁决时按证据强度排序。 */
-    private data class PolarityCandidates(
-        val polarity: GridTargetPolarity,
-        val candidates: List<GridCandidate>
+        val candidateLatticeApplied: Boolean,
+        val phantomEdge: GridPhantomEdgeDiagnostics
     )
 
     /** 自动极性裁决后的实际极性和对应晶格。 */
@@ -1782,10 +2023,58 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
 
     private companion object {
         const val LOCATOR_NAME: String = "OpenCV PG-Grid"
-        const val LOCATOR_VERSION: String = "2.1.0"
+
+        /**
+         * 处理器版本。
+         *
+         * 2.2.0 引入区域假设联合选择、闸值按行列数锚定、极性证据加权、支撑率三态和
+         * 幻影边缘否决。定位结果会因此与 2.1.0 不同，因此必须提升版本并冻结进运行快照；
+         * 历史运行仍按其冻结的旧版本解释，不重新定位。
+         */
+        const val LOCATOR_VERSION: String = "2.2.0"
         const val FRAME_QUALITY_LOG_TAG: String = "PgGridFrameQuality"
-        const val MIN_BRIGHTNESS_THRESHOLD: Double = 22.0
         const val MINIMUM_OBSERVED_RATIO: Double = 0.4
+
+        // ---- 区域假设联合选择 ----
+        // 评分公式与切换保护见 PgGridRegionArbiter（纯函数，便于 JVM 单元测试覆盖边界）。
+
+        /** 包围率低于此值即判定区域框把阵列截断了。 */
+        const val REGION_MINIMUM_COVERAGE: Double = 0.55
+
+        /** 证据已经很强时提前结束假设枚举的门限。 */
+        const val REGION_SHORT_CIRCUIT_COVERAGE: Double = 0.95
+        const val REGION_SHORT_CIRCUIT_SUPPORT: Double = 0.90
+
+        /**
+         * 计算包围率时原图检测的最长边上限。
+         *
+         * 覆盖率只需分辨到 0.35 个间距，在 4000px 级原图上做全分辨率形态学检测纯属浪费。
+         */
+        const val COVERAGE_DETECT_MAX_SIDE: Double = 1600.0
+
+        /** 统计包围率时，网格外扩多少个间距仍算“阵列邻域”。 */
+        const val COVERAGE_NEIGHBOURHOOD_PITCH: Double = 1.5
+
+        /** 判定“候选被网格覆盖”的距离容差相对间距的比例。 */
+        const val COVERAGE_TOLERANCE_PITCH_RATIO: Double = 0.35
+
+        // ---- 极性与支撑率证据 ----
+        /**
+         * 极性提示强度的显著性门限。
+         *
+         * 实测最弱的正确暗单元提示为 8.9，最强的弱提示（小亮点合成图）为 0.9，
+         * 取 3.0 兼顾两侧安全边际。
+         */
+        const val POLARITY_HINT_SIGNIFICANT: Double = 3.0
+
+        /** 支撑率检查所需的最小候选数（绝对下限）。 */
+        const val MINIMUM_SUPPORT_CHECK_CANDIDATES: Int = 6
+
+        /** 支撑率检查所需的最小候选数相对理论位点数的比例。 */
+        const val MINIMUM_SUPPORT_CHECK_CANDIDATE_RATIO: Double = 0.3
+
+        /** 幻影边缘的外伸量判定门限，仅用于 QC 展示，判定逻辑在 PgGridLatticeIntegrity。 */
+        const val PHANTOM_EDGE_OVERHANG_THRESHOLD: Double = 0.5
         const val TRUSTED_SUPPORT_RATIO: Double = 0.6
         const val FAILURE_SUPPORT_RATIO: Double = 0.35
         const val HIGH_IMPUTED_RATIO_THRESHOLD: Double = 0.2

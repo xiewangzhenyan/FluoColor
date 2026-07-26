@@ -2982,19 +2982,8 @@
     <string name="plate96_pdf_physical_wells">Physical wells</string>
     <string name="plate96_pdf_analyte_section">Analyte result</string>
     <!-- 结果页运行质量裁决与科学指标 -->
-    <string name="result_quality_good">Quality good</string>
-    <string name="result_quality_review">Needs review</string>
-    <string name="result_quality_unreliable">Not recommended</string>
-    <string name="result_quality_unknown">Signal only</string>
-    <string name="result_quality_unknown_detail">No standard curve; concentration not established</string>
-    <string name="result_quality_issue_r2">Curve fit below threshold</string>
-    <string name="result_quality_issue_cv">Replicate variation high</string>
-    <string name="result_quality_issue_retest">Many wells need retest</string>
-    <string name="result_quality_issue_extrapolation">Many values extrapolated</string>
     <string name="result_quality_metric_r2">R² %1$s</string>
     <string name="result_quality_metric_cv">CV %1$s%%</string>
-    <string name="result_quality_metric_in_range">%1$d/%2$d in range</string>
-    <string name="result_quality_metric_retest">%1$d to retest</string>
     <string name="result_metric_range">Range</string>
     <string name="result_metric_median">Median</string>
     <string name="result_metric_replicate_cv">Replicate CV</string>
@@ -3007,4 +2996,8 @@
     <string name="result_scale_source_range">Project range</string>
     <string name="result_scale_source_observed">Observed range</string>
     <string name="result_scale_source_empty">No data</string>
+    <string name="result_summary_out_of_range">%1$d wells outside project range</string>
+    <string name="result_summary_beyond_calibration">%1$d beyond curve range</string>
+    <string name="result_summary_no_curve">Signal only, no concentration</string>
+    <string name="result_summary_extrapolated">%1$d extrapolated</string>
 </resources>

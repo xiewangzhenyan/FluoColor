@@ -6,11 +6,18 @@ import com.muc.fluocolorquant.data.enums.AnalysisModelType
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.model.CalibrationPoint
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
+import com.muc.fluocolorquant.domain.calibration.CalibrationTrustedRange
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.max
+import kotlin.math.pow
+import kotlin.math.sqrt
 import org.apache.commons.math3.analysis.solvers.LaguerreSolver
+import org.apache.commons.math3.linear.Array2DRowRealMatrix
+import org.apache.commons.math3.linear.EigenDecomposition
+import java.util.Random
 
 /**
  * 已发布标准曲线的端侧浓度反算器。
@@ -61,13 +68,6 @@ object StandardCurveQuantifier {
         ) {
             return invalidPreparedDefinition()
         }
-        val domain = resolveQuantificationDomain(
-            calibrationMinimum = calibrationMinimum,
-            calibrationMaximum = calibrationMaximum,
-            projectMinimum = projectRangeMin,
-            projectMaximum = projectRangeMax
-        ) ?: return invalidPreparedDefinition()
-
         // 调用方可能传入 MutableList。准备阶段必须复制标定点，确保同一 Ready 在后续
         // 多位点执行中不受外部集合增删影响，也不会悄然重新准备模型。
         val frozenBundle = try {
@@ -79,14 +79,25 @@ object StandardCurveQuantifier {
             return invalidPreparedDefinition()
         }
         val snapshotJson = modelSnapshot(frozenBundle) ?: return invalidPreparedDefinition()
+        val function = FittingFunction.fromIdentifier(definition.fittingFunction)
+            ?: return invalidPreparedDefinition()
+        val metadata = parseQuantificationMetadata(
+            validationMetricsJson = frozenBundle.model.validationMetricsJson,
+            function = function,
+            calibrationMinimum = calibrationMinimum,
+            calibrationMaximum = calibrationMaximum
+        ) ?: return invalidPreparedDefinition()
+        val domain = resolveQuantificationDomain(
+            calibrationMinimum = calibrationMinimum,
+            calibrationMaximum = calibrationMaximum,
+            projectMinimum = projectRangeMin,
+            projectMaximum = projectRangeMax,
+            metadata = metadata
+        ) ?: return invalidPreparedDefinition()
         val concentrationTolerance = scaledTolerance(
             domain.executionMinimum,
             domain.executionMaximum
-        )
-            ?: return invalidPreparedDefinition()
-
-        val function = FittingFunction.fromIdentifier(definition.fittingFunction)
-            ?: return invalidPreparedDefinition()
+        ) ?: return invalidPreparedDefinition()
         return if (function == FittingFunction.INTERPOLATION) {
             prepareInterpolation(
                 bundle = frozenBundle,
@@ -100,7 +111,8 @@ object StandardCurveQuantifier {
                 function = function,
                 snapshotJson = snapshotJson,
                 concentrationTolerance = concentrationTolerance,
-                domain = domain
+                domain = domain,
+                metadata = metadata
             )
         }
     }
@@ -134,6 +146,8 @@ object StandardCurveQuantifier {
                     EndpointQuantificationResult.SignalOnly(
                         PreparedEndpointQuantificationResult.SiteSignalOnly.reason
                     )
+                is PreparedEndpointQuantificationResult.Unavailable ->
+                    EndpointQuantificationResult.SignalOnly(result.reason)
                 is PreparedEndpointQuantificationResult.ModelFailure ->
                     EndpointQuantificationResult.SignalOnly(result.reason)
             }
@@ -149,7 +163,8 @@ object StandardCurveQuantifier {
         function: FittingFunction,
         snapshotJson: String,
         concentrationTolerance: Double,
-        domain: QuantificationDomain
+        domain: QuantificationDomain,
+        metadata: QuantificationMetadata
     ): PreparedStandardCurveQuantifier {
         val definition = requireNotNull(bundle.standardCurve)
         val parameters = parseParameters(definition.parametersJson, function)
@@ -195,7 +210,14 @@ object StandardCurveQuantifier {
         if (!boundariesMatchProof) return nonMonotonicPreparedModel()
 
         val immutableParameters = parameters.toMap()
-        return PreparedStandardCurveQuantifier.Ready { signalValue ->
+        val uncertainty = prepareQuantificationUncertainty(
+            trustedRange = metadata.trustedRange,
+            function = function,
+            parameters = immutableParameters,
+            calibrationMinimum = domain.calibrationMinimum,
+            calibrationMaximum = domain.calibrationMaximum
+        ) ?: if (metadata.trustedRange != null) return invalidPreparedDefinition() else null
+        val quantifySignal: (Double) -> PreparedEndpointQuantificationResult = { signalValue ->
             quantifyPreparedFittedCurve(
                 signalValue = signalValue,
                 function = function,
@@ -207,9 +229,22 @@ object StandardCurveQuantifier {
                 signalTolerance = signalTolerance,
                 concentrationTolerance = concentrationTolerance,
                 unit = bundle.model.concentrationUnit,
-                snapshotJson = snapshotJson
+                snapshotJson = snapshotJson,
+                uncertainty = uncertainty
             )
         }
+        return PreparedStandardCurveQuantifier.Ready(
+            quantifyPreparedObservation = { observation ->
+                quantifyPreparedObservation(
+                    observation = observation,
+                    quantifySignal = quantifySignal,
+                    direction = direction,
+                    domain = domain,
+                    snapshotJson = snapshotJson
+                )
+            },
+            quantifyPreparedSignal = quantifySignal
+        )
     }
 
     /** 准备重复均值、可靠区间边界插值和分段反算所需的不可变状态。 */
@@ -260,21 +295,23 @@ object StandardCurveQuantifier {
         ) ?: return nonMonotonicPreparedModel()
 
         val immutablePoints = reliablePoints.toList()
-        return PreparedStandardCurveQuantifier.Ready { signalValue ->
-            quantifyPreparedInterpolation(
-                signalValue = signalValue,
-                points = immutablePoints,
-                minimum = minimum,
-                maximum = maximum,
-                minimumSignal = minimumSignal,
-                maximumSignal = maximumSignal,
-                direction = direction,
-                signalTolerance = signalTolerance,
-                concentrationTolerance = concentrationTolerance,
-                unit = bundle.model.concentrationUnit,
-                snapshotJson = snapshotJson
-            )
-        }
+        return PreparedStandardCurveQuantifier.Ready(
+            quantifyPreparedSignal = { signalValue ->
+                quantifyPreparedInterpolation(
+                    signalValue = signalValue,
+                    points = immutablePoints,
+                    minimum = minimum,
+                    maximum = maximum,
+                    minimumSignal = minimumSignal,
+                    maximumSignal = maximumSignal,
+                    direction = direction,
+                    signalTolerance = signalTolerance,
+                    concentrationTolerance = concentrationTolerance,
+                    unit = bundle.model.concentrationUnit,
+                    snapshotJson = snapshotJson
+                )
+            }
+        )
     }
 
     /** Ready 的拟合曲线路径只处理单个位点，不再执行任何模型级准备。 */
@@ -289,7 +326,8 @@ object StandardCurveQuantifier {
         signalTolerance: Double,
         concentrationTolerance: Double,
         unit: String,
-        snapshotJson: String
+        snapshotJson: String,
+        uncertainty: QuantificationUncertainty?
     ): PreparedEndpointQuantificationResult {
         if (!signalValue.isFinite()) return nonFiniteSiteSignal()
         val boundaryDecision = normalizeSignalToReliableBoundary(
@@ -304,8 +342,10 @@ object StandardCurveQuantifier {
         val targetSignal = when (boundaryDecision) {
             is SignalBoundaryDecision.Outside -> {
                 return PreparedEndpointQuantificationResult.OutOfRange(
-                    boundaryDecision.status,
-                    snapshotJson
+                    rangeStatus = boundaryDecision.status,
+                    modelSnapshotJson = snapshotJson,
+                    concentrationBound = domain.boundFor(boundaryDecision.status),
+                    censoringDirection = domain.censoringFor(boundaryDecision.status)
                 )
             }
             is SignalBoundaryDecision.Within -> boundaryDecision.normalizedSignal
@@ -317,7 +357,10 @@ object StandardCurveQuantifier {
                 concentration = domain.executionMinimum,
                 unit = unit,
                 snapshotJson = snapshotJson,
-                rangeStatus = domain.statusOf(domain.executionMinimum)
+                rangeStatus = domain.statusOf(domain.executionMinimum),
+                targetSignal = targetSignal,
+                function = function,
+                uncertainty = uncertainty
             )
         }
         if (targetSignal == maximumSignal) {
@@ -325,7 +368,10 @@ object StandardCurveQuantifier {
                 concentration = domain.executionMaximum,
                 unit = unit,
                 snapshotJson = snapshotJson,
-                rangeStatus = domain.statusOf(domain.executionMaximum)
+                rangeStatus = domain.statusOf(domain.executionMaximum),
+                targetSignal = targetSignal,
+                function = function,
+                uncertainty = uncertainty
             )
         }
 
@@ -352,8 +398,74 @@ object StandardCurveQuantifier {
             concentration = concentration,
             unit = unit,
             snapshotJson = snapshotJson,
-            rangeStatus = domain.statusOf(concentration)
+            rangeStatus = domain.statusOf(concentration),
+            targetSignal = targetSignal,
+            function = function,
+            uncertainty = uncertainty
         )
+    }
+
+    /**
+     * 在普通反算结果上叠加逐孔质量和删失语义。
+     *
+     * 严重饱和意味着记录到的信号只是单侧界限，不能继续保存“精确浓度”；质量明确失败
+     * 且无法形成界限时返回 UNAVAILABLE。轻度饱和仍由上游 qualityReliable 决定是否可用，
+     * 不会因为一个普通提示 flag 就过度丢弃数据。
+     */
+    private fun quantifyPreparedObservation(
+        observation: QuantificationObservation,
+        quantifySignal: (Double) -> PreparedEndpointQuantificationResult,
+        direction: MonotonicDirection,
+        domain: QuantificationDomain,
+        snapshotJson: String
+    ): PreparedEndpointQuantificationResult {
+        if (!observation.signalValue.isFinite()) return nonFiniteSiteSignal()
+        val severeSaturation = observation.saturationRatio
+            ?.let { it.isFinite() && it >= SEVERE_SATURATION_RATIO } == true ||
+            observation.photometryFlags.any { it.equals("SATURATED", ignoreCase = true) }
+        val hasExplicitCensoring = observation.censoringDirection !=
+            QuantificationCensoringDirection.NONE
+        if (!observation.qualityReliable && !severeSaturation && !hasExplicitCensoring) {
+            return PreparedEndpointQuantificationResult.Unavailable(
+                reason = EndpointQuantificationReason.UNRELIABLE_OBSERVATION,
+                modelSnapshotJson = snapshotJson
+            )
+        }
+        if (!severeSaturation && !hasExplicitCensoring) return quantifySignal(observation.signalValue)
+
+        val censoringDirection = if (hasExplicitCensoring) {
+            observation.censoringDirection
+        } else {
+            // 传感器贴顶表示真实信号不低于记录信号。递增曲线因此只能给出浓度下界；
+            // 递减曲线则只能给出浓度上界。
+            when (direction) {
+                MonotonicDirection.INCREASING -> QuantificationCensoringDirection.LOWER_BOUND
+                MonotonicDirection.DECREASING -> QuantificationCensoringDirection.UPPER_BOUND
+            }
+        }
+        val base = quantifySignal(observation.censoringSignalBound ?: observation.signalValue)
+        return when (base) {
+            is PreparedEndpointQuantificationResult.Quantified ->
+                PreparedEndpointQuantificationResult.OutOfRange(
+                    rangeStatus = base.rangeStatus,
+                    modelSnapshotJson = base.modelSnapshotJson,
+                    quantificationState = QuantificationState.BOUND_ONLY,
+                    concentrationBound = base.concentration.coerceAtLeast(0.0),
+                    censoringDirection = censoringDirection
+                )
+            is PreparedEndpointQuantificationResult.OutOfRange -> base.copy(
+                quantificationState = QuantificationState.BOUND_ONLY,
+                concentrationBound = base.concentrationBound ?: when (censoringDirection) {
+                    QuantificationCensoringDirection.LOWER_BOUND -> domain.executionMaximum
+                    QuantificationCensoringDirection.UPPER_BOUND -> domain.executionMinimum
+                    QuantificationCensoringDirection.NONE -> null
+                },
+                censoringDirection = censoringDirection
+            )
+            PreparedEndpointQuantificationResult.SiteSignalOnly,
+            is PreparedEndpointQuantificationResult.ModelFailure -> base
+            is PreparedEndpointQuantificationResult.Unavailable -> base
+        }
     }
 
     /** Ready 的插值路径只在预先构造的可靠区间分段中查找，不接触原始标定域外的段。 */
@@ -936,6 +1048,208 @@ object StandardCurveQuantifier {
         return max(relativeTolerance, ulpTolerance).takeIf(Double::isFinite)
     }
 
+    /**
+     * 从模型验证快照读取 V2 可信范围。
+     *
+     * 旧资源没有算法 schema 时继续使用旧项目量程行为；明确标记为 V2 的资源若可信范围
+     * 缺失，则只允许在真实标定范围内定量，绝不悄悄退回未经验证的项目范围外推。
+     */
+    private fun parseQuantificationMetadata(
+        validationMetricsJson: String?,
+        function: FittingFunction,
+        calibrationMinimum: Double,
+        calibrationMaximum: Double
+    ): QuantificationMetadata? {
+        if (validationMetricsJson.isNullOrBlank()) return QuantificationMetadata()
+        val root = try {
+            gson.fromJson(validationMetricsJson, JsonObject::class.java)
+        } catch (_: RuntimeException) {
+            return QuantificationMetadata()
+        } ?: return QuantificationMetadata()
+        val algorithmV2 = root.get("CALIBRATION_ALGORITHM_SCHEMA")
+            ?.takeIf { it.isJsonPrimitive }
+            ?.asString
+            ?.equals("calibration-v2", ignoreCase = true) == true
+        if (!algorithmV2) return QuantificationMetadata()
+        val trustedElement = root.get("TRUSTED_RANGE")
+        if (trustedElement == null || trustedElement.isJsonNull) {
+            return QuantificationMetadata(algorithmV2 = true)
+        }
+        val trusted = try {
+            gson.fromJson(trustedElement, CalibrationTrustedRange::class.java)
+        } catch (_: RuntimeException) {
+            return null
+        } ?: return null
+        val parameterCount = transformedParameterCount(function) ?: return null
+        val covarianceValid = trusted.transformedParameterCovariance.size == parameterCount &&
+            trusted.transformedParameterCovariance.all { row ->
+                row.size == parameterCount && row.all(Double::isFinite)
+            }
+        if (
+            trusted.methodVersion != TRUSTED_RANGE_METHOD_VERSION ||
+            !trusted.minimum.isFinite() || trusted.minimum < 0.0 ||
+            !trusted.maximum.isFinite() || trusted.maximum <= trusted.minimum ||
+            trusted.minimum > calibrationMinimum || trusted.maximum < calibrationMaximum ||
+            trusted.confidenceLevel !in 0.0..1.0 ||
+            trusted.parameterSampleCount != TRUSTED_PARAMETER_SAMPLE_COUNT ||
+            !covarianceValid
+        ) return null
+        return QuantificationMetadata(
+            algorithmV2 = true,
+            trustedRange = trusted
+        )
+    }
+
+    /** 根据冻结协方差和种子一次性重建参数样本，逐孔量化时只执行反算。 */
+    private fun prepareQuantificationUncertainty(
+        trustedRange: CalibrationTrustedRange?,
+        function: FittingFunction,
+        parameters: Map<String, Double>,
+        calibrationMinimum: Double,
+        calibrationMaximum: Double
+    ): QuantificationUncertainty? {
+        trustedRange ?: return null
+        val mean = encodeTransformedParameters(function, parameters) ?: return null
+        val covariance = Array2DRowRealMatrix(
+            trustedRange.transformedParameterCovariance.map(List<Double>::toDoubleArray).toTypedArray(),
+            false
+        )
+        val eigen = try {
+            EigenDecomposition(covariance)
+        } catch (_: RuntimeException) {
+            return null
+        }
+        val eigenvalues = eigen.realEigenvalues
+        if (eigenvalues.any { it < -COVARIANCE_NEGATIVE_EIGEN_TOLERANCE }) return null
+        val diagonal = Array2DRowRealMatrix(mean.size, mean.size)
+        eigenvalues.indices.forEach { index ->
+            diagonal.setEntry(index, index, sqrt(max(eigenvalues[index], 0.0)))
+        }
+        val transform = eigen.v.multiply(diagonal)
+        val random = Random(trustedRange.samplingSeed)
+        val mainDirection = sampledCurveDirection(
+            function,
+            parameters,
+            calibrationMinimum,
+            calibrationMaximum
+        ) ?: return null
+        val samples = List(trustedRange.parameterSampleCount) {
+            val gaussian = DoubleArray(mean.size) { random.nextGaussian() }
+            val delta = transform.operate(gaussian)
+            val transformed = DoubleArray(mean.size) { index -> mean[index] + delta[index] }
+            decodeTransformedParameters(function, transformed)?.takeIf { sampled ->
+                sampledCurveDirection(
+                    function,
+                    sampled,
+                    calibrationMinimum,
+                    calibrationMaximum
+                ) == mainDirection
+            }
+        }
+        return QuantificationUncertainty(
+            sampledParameters = samples,
+            confidenceLevel = trustedRange.confidenceLevel
+        )
+    }
+
+    private fun transformedParameterCount(function: FittingFunction): Int? = when (function) {
+        FittingFunction.LINEAR -> 2
+        FittingFunction.HILL -> 3
+        FittingFunction.RODBARD -> 4
+        FittingFunction.LOGISTIC -> 5
+        else -> null
+    }
+
+    private fun encodeTransformedParameters(
+        function: FittingFunction,
+        parameters: Map<String, Double>
+    ): DoubleArray? {
+        return try {
+            val encoded = when (function) {
+                FittingFunction.LINEAR -> doubleArrayOf(
+                    parameters.getValue("a"), parameters.getValue("b")
+                )
+                FittingFunction.HILL -> doubleArrayOf(
+                    ln(parameters.getValue("a")),
+                    ln(parameters.getValue("b")),
+                    ln(parameters.getValue("c"))
+                )
+                FittingFunction.RODBARD -> doubleArrayOf(
+                    parameters.getValue("a"),
+                    ln(parameters.getValue("b")),
+                    ln(parameters.getValue("c")),
+                    parameters.getValue("d")
+                )
+                FittingFunction.LOGISTIC -> doubleArrayOf(
+                    parameters.getValue("a"),
+                    ln(parameters.getValue("b")),
+                    ln(parameters.getValue("c")),
+                    parameters.getValue("d"),
+                    ln(parameters.getValue("g"))
+                )
+                else -> return null
+            }
+            encoded.takeIf { it.all(Double::isFinite) }
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+
+    private fun decodeTransformedParameters(
+        function: FittingFunction,
+        transformed: DoubleArray
+    ): Map<String, Double>? {
+        return try {
+            val decoded = when (function) {
+                FittingFunction.LINEAR -> mapOf("a" to transformed[0], "b" to transformed[1])
+                FittingFunction.HILL -> mapOf(
+                    "a" to exp(transformed[0]),
+                    "b" to exp(transformed[1]),
+                    "c" to exp(transformed[2])
+                )
+                FittingFunction.RODBARD -> mapOf(
+                    "a" to transformed[0],
+                    "b" to exp(transformed[1]),
+                    "c" to exp(transformed[2]),
+                    "d" to transformed[3]
+                )
+                FittingFunction.LOGISTIC -> mapOf(
+                    "a" to transformed[0],
+                    "b" to exp(transformed[1]),
+                    "c" to exp(transformed[2]),
+                    "d" to transformed[3],
+                    "g" to exp(transformed[4])
+                )
+                else -> return null
+            }
+            decoded.takeIf { it.values.all(Double::isFinite) }
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+
+    private fun sampledCurveDirection(
+        function: FittingFunction,
+        parameters: Map<String, Double>,
+        minimum: Double,
+        maximum: Double
+    ): MonotonicDirection? {
+        val first = evaluateSafely(function, parameters, minimum) ?: return null
+        val last = evaluateSafely(function, parameters, maximum) ?: return null
+        return when {
+            last > first -> MonotonicDirection.INCREASING
+            last < first -> MonotonicDirection.DECREASING
+            else -> null
+        }
+    }
+
+    /** 输入列表必须已排序；使用确定性最近秩，避免不同平台插值细节造成快照漂移。 */
+    private fun List<Double>.quantile(probability: Double): Double? {
+        if (isEmpty()) return null
+        val index = ((size - 1).toDouble() * probability.coerceIn(0.0, 1.0)).toInt()
+        return this[index.coerceIn(indices)]
+    }
+
     /** 模型快照包含主档、曲线定义、原始标定点和两类稳定实现版本。 */
     private fun modelSnapshot(bundle: AnalysisModelBundle): String? {
         return try {
@@ -958,14 +1272,56 @@ object StandardCurveQuantifier {
         concentration: Double,
         unit: String,
         snapshotJson: String,
-        rangeStatus: ReliableRangeStatus = ReliableRangeStatus.WITHIN_RANGE
+        rangeStatus: ReliableRangeStatus = ReliableRangeStatus.WITHIN_RANGE,
+        targetSignal: Double? = null,
+        function: FittingFunction? = null,
+        uncertainty: QuantificationUncertainty? = null
     ): PreparedEndpointQuantificationResult.Quantified {
+        val interval = if (targetSignal != null && function != null && uncertainty != null) {
+            concentrationInterval(
+                function = function,
+                targetSignal = targetSignal,
+                uncertainty = uncertainty
+            )
+        } else {
+            null
+        }
+        val state = if (rangeStatus == ReliableRangeStatus.WITHIN_RANGE) {
+            QuantificationState.QUANTIFIED
+        } else {
+            QuantificationState.ESTIMATED
+        }
         return PreparedEndpointQuantificationResult.Quantified(
-            concentration = concentration,
+            // 浓度非负约束在这里再次封口，防止未来新增反算器绕过二分边界。
+            concentration = concentration.coerceAtLeast(0.0),
             unit = unit,
             rangeStatus = rangeStatus,
-            modelSnapshotJson = snapshotJson
+            modelSnapshotJson = snapshotJson,
+            quantificationState = state,
+            concentrationLowerBound = interval?.first ?: concentration.coerceAtLeast(0.0),
+            concentrationUpperBound = interval?.second ?: concentration.coerceAtLeast(0.0),
+            intervalConfidenceLevel = interval?.let { uncertainty?.confidenceLevel }
         )
+    }
+
+    /** 使用准备阶段已经生成的确定性参数样本反算同一信号，得到逐孔浓度区间。 */
+    private fun concentrationInterval(
+        function: FittingFunction,
+        targetSignal: Double,
+        uncertainty: QuantificationUncertainty
+    ): Pair<Double, Double>? {
+        val concentrations = uncertainty.sampledParameters.mapNotNull { parameters ->
+            parameters?.let {
+                FittingEngine.invertCalibrationSignal(function, it, targetSignal)
+            }
+        }.sorted()
+        val validRatio = concentrations.size.toDouble() /
+            uncertainty.sampledParameters.size.toDouble()
+        if (validRatio < MINIMUM_INTERVAL_SAMPLE_VALID_RATIO) return null
+        val lower = concentrations.quantile(INTERVAL_LOWER_QUANTILE) ?: return null
+        val upper = concentrations.quantile(INTERVAL_UPPER_QUANTILE) ?: return null
+        if (!lower.isFinite() || !upper.isFinite() || upper < lower) return null
+        return lower.coerceAtLeast(0.0) to upper.coerceAtLeast(0.0)
     }
 
     /**
@@ -978,11 +1334,20 @@ object StandardCurveQuantifier {
         calibrationMinimum: Double,
         calibrationMaximum: Double,
         projectMinimum: Double?,
-        projectMaximum: Double?
+        projectMaximum: Double?,
+        metadata: QuantificationMetadata
     ): QuantificationDomain? {
         if ((projectMinimum == null) != (projectMaximum == null)) return null
-        val executionMinimum = projectMinimum ?: calibrationMinimum
-        val executionMaximum = projectMaximum ?: calibrationMaximum
+        val executionMinimum = when {
+            metadata.trustedRange != null -> metadata.trustedRange.minimum
+            metadata.algorithmV2 -> calibrationMinimum
+            else -> projectMinimum ?: calibrationMinimum
+        }
+        val executionMaximum = when {
+            metadata.trustedRange != null -> metadata.trustedRange.maximum
+            metadata.algorithmV2 -> calibrationMaximum
+            else -> projectMaximum ?: calibrationMaximum
+        }
         if (
             !executionMinimum.isFinite() ||
             !executionMaximum.isFinite() ||
@@ -994,7 +1359,8 @@ object StandardCurveQuantifier {
             calibrationMinimum = calibrationMinimum,
             calibrationMaximum = calibrationMaximum,
             executionMinimum = executionMinimum,
-            executionMaximum = executionMaximum
+            executionMaximum = executionMaximum,
+            trustedBoundary = metadata.algorithmV2
         )
     }
 
@@ -1042,22 +1408,37 @@ object StandardCurveQuantifier {
 
     private data class AveragedPoint(val concentration: Double, val signal: Double)
 
+    private data class QuantificationMetadata(
+        val algorithmV2: Boolean = false,
+        val trustedRange: CalibrationTrustedRange? = null
+    )
+
+    private data class QuantificationUncertainty(
+        val sampledParameters: List<Map<String, Double>?>,
+        val confidenceLevel: Double
+    )
+
     /** 标定域用于判定外推，项目域用于限制本次运行允许的最大反算范围。 */
     private data class QuantificationDomain(
         val calibrationMinimum: Double,
         val calibrationMaximum: Double,
         val executionMinimum: Double,
-        val executionMaximum: Double
+        val executionMaximum: Double,
+        val trustedBoundary: Boolean = false
     ) {
         val belowExecutionStatus: ReliableRangeStatus
-            get() = if (executionMinimum == calibrationMinimum) {
+            get() = if (trustedBoundary) {
+                ReliableRangeStatus.BELOW_TRUSTED_RANGE
+            } else if (executionMinimum == calibrationMinimum) {
                 ReliableRangeStatus.BELOW_RANGE
             } else {
                 ReliableRangeStatus.BELOW_PROJECT_RANGE
             }
 
         val aboveExecutionStatus: ReliableRangeStatus
-            get() = if (executionMaximum == calibrationMaximum) {
+            get() = if (trustedBoundary) {
+                ReliableRangeStatus.ABOVE_TRUSTED_RANGE
+            } else if (executionMaximum == calibrationMaximum) {
                 ReliableRangeStatus.ABOVE_RANGE
             } else {
                 ReliableRangeStatus.ABOVE_PROJECT_RANGE
@@ -1068,11 +1449,41 @@ object StandardCurveQuantifier {
             concentration > calibrationMaximum -> ReliableRangeStatus.ABOVE_RANGE
             else -> ReliableRangeStatus.WITHIN_RANGE
         }
+
+        fun boundFor(status: ReliableRangeStatus): Double? = when (status) {
+            ReliableRangeStatus.BELOW_RANGE,
+            ReliableRangeStatus.BELOW_TRUSTED_RANGE,
+            ReliableRangeStatus.BELOW_PROJECT_RANGE -> executionMinimum
+            ReliableRangeStatus.ABOVE_RANGE,
+            ReliableRangeStatus.ABOVE_TRUSTED_RANGE,
+            ReliableRangeStatus.ABOVE_PROJECT_RANGE -> executionMaximum
+            ReliableRangeStatus.WITHIN_RANGE -> null
+        }
+
+        fun censoringFor(status: ReliableRangeStatus): QuantificationCensoringDirection =
+            when (status) {
+                ReliableRangeStatus.BELOW_RANGE,
+                ReliableRangeStatus.BELOW_TRUSTED_RANGE,
+                ReliableRangeStatus.BELOW_PROJECT_RANGE ->
+                    QuantificationCensoringDirection.UPPER_BOUND
+                ReliableRangeStatus.ABOVE_RANGE,
+                ReliableRangeStatus.ABOVE_TRUSTED_RANGE,
+                ReliableRangeStatus.ABOVE_PROJECT_RANGE ->
+                    QuantificationCensoringDirection.LOWER_BOUND
+                ReliableRangeStatus.WITHIN_RANGE -> QuantificationCensoringDirection.NONE
+            }
     }
 
     private const val BISECTION_ITERATIONS: Int = 80
     private const val MONOTONIC_SAMPLE_COUNT: Int = 257
     private const val RELATIVE_TOLERANCE: Double = 1e-12
     private const val ULP_MULTIPLIER: Double = 8.0
+    private const val SEVERE_SATURATION_RATIO: Double = 0.25
+    private const val TRUSTED_RANGE_METHOD_VERSION: String = "hessian-sampling-v1"
+    private const val TRUSTED_PARAMETER_SAMPLE_COUNT: Int = 256
+    private const val MINIMUM_INTERVAL_SAMPLE_VALID_RATIO: Double = 0.95
+    private const val INTERVAL_LOWER_QUANTILE: Double = 0.025
+    private const val INTERVAL_UPPER_QUANTILE: Double = 0.975
+    private const val COVARIANCE_NEGATIVE_EIGEN_TOLERANCE: Double = 1e-10
     private const val POLYNOMIAL_ROOT_RELATIVE_TOLERANCE: Double = 1e-9
 }

@@ -152,6 +152,23 @@ object DatabaseMigrations {
     }
 
     /**
+     * 版本 14 → 15：为可信扩展估计、浓度区间和单侧删失增加结构化逐孔字段。
+     *
+     * 所有列均可空，旧运行无需推断不存在的区间或删失方向；迁移只追加列，不重建
+     * `site_measurements`，从而保持既有科研运行、主键、外键和附件引用完全不变。
+     */
+    val MIGRATION_14_15: Migration = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `quantificationState` TEXT")
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `concentrationLowerBound` REAL")
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `concentrationUpperBound` REAL")
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `intervalConfidenceLevel` REAL")
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `censoringDirection` TEXT")
+            db.execSQL("ALTER TABLE `site_measurements` ADD COLUMN `quantificationVersion` TEXT")
+        }
+    }
+
+    /**
      * 重建模板主表并保持所有外部引用仍指向 `experiment_templates`。
      *
      * `legacy_alter_table` 防止 SQLite 在旧表改名时把子表外键同步改到临时表名；新表

@@ -1,7 +1,7 @@
 package com.muc.fluocolorquant.domain.detection.quantification
 
 /** 端点量化决策和快照结构的稳定版本号，用于历史运行复算审计。 */
-const val ENDPOINT_QUANTIFIER_VERSION: String = "endpoint-quantifier-v3"
+const val ENDPOINT_QUANTIFIER_VERSION: String = "endpoint-quantifier-v4"
 
 /** 与旧 FittingEngine 共享正向公式时记录的公式引擎版本。 */
 const val FORMULA_ENGINE_VERSION: String = "fitting-engine-v1"
@@ -17,9 +17,47 @@ enum class ReliableRangeStatus {
     WITHIN_RANGE,
     BELOW_RANGE,
     ABOVE_RANGE,
+    BELOW_TRUSTED_RANGE,
+    ABOVE_TRUSTED_RANGE,
     BELOW_PROJECT_RANGE,
     ABOVE_PROJECT_RANGE
 }
+
+/**
+ * 浓度结果的科学可用级别。
+ *
+ * 范围关系和数值可用级别必须分开：一个高于项目预期范围的孔仍可能拥有可信估计，
+ * 而一个位于项目范围内但严重饱和的孔也可能只能报告界限或完全不可用。
+ */
+enum class QuantificationState {
+    QUANTIFIED,
+    ESTIMATED,
+    BOUND_ONLY,
+    UNAVAILABLE
+}
+
+/** 单侧删失或界限的方向；NONE 表示信号被视为普通精确观测。 */
+enum class QuantificationCensoringDirection {
+    NONE,
+    LOWER_BOUND,
+    UPPER_BOUND
+}
+
+/**
+ * 逐孔量化的富观测输入。
+ *
+ * `signalValue` 是真正参与曲线反算的冻结主特征；其余字段只提供质量与删失证据，
+ * 不能在量化器内部重新读取图片或重新计算光度值。
+ */
+data class QuantificationObservation(
+    val signalValue: Double,
+    val qualityReliable: Boolean = true,
+    val saturationRatio: Double? = null,
+    val photometryFlags: Set<String> = emptySet(),
+    val censoringDirection: QuantificationCensoringDirection =
+        QuantificationCensoringDirection.NONE,
+    val censoringSignalBound: Double? = null
+)
 
 /** 无法输出浓度时保存到运行记录的稳定机器原因。 */
 enum class EndpointQuantificationReason {
@@ -27,7 +65,9 @@ enum class EndpointQuantificationReason {
     UNSUPPORTED_MODEL_TYPE,
     MISSING_STANDARD_CURVE,
     INVALID_MODEL_DEFINITION,
-    NON_MONOTONIC_MODEL
+    NON_MONOTONIC_MODEL,
+    UNRELIABLE_OBSERVATION,
+    SATURATED_WITHOUT_BOUND
 }
 
 /**
@@ -42,12 +82,27 @@ sealed interface PreparedEndpointQuantificationResult {
         val concentration: Double,
         val unit: String,
         val rangeStatus: ReliableRangeStatus = ReliableRangeStatus.WITHIN_RANGE,
-        val modelSnapshotJson: String
+        val modelSnapshotJson: String,
+        val quantificationState: QuantificationState = QuantificationState.QUANTIFIED,
+        val concentrationLowerBound: Double? = concentration,
+        val concentrationUpperBound: Double? = concentration,
+        val intervalConfidenceLevel: Double? = null
     ) : PreparedEndpointQuantificationResult
 
     data class OutOfRange(
         val rangeStatus: ReliableRangeStatus,
-        val modelSnapshotJson: String
+        val modelSnapshotJson: String,
+        val quantificationState: QuantificationState = QuantificationState.BOUND_ONLY,
+        val concentrationBound: Double? = null,
+        val censoringDirection: QuantificationCensoringDirection =
+            QuantificationCensoringDirection.NONE
+    ) : PreparedEndpointQuantificationResult
+
+    /** 位点信号存在，但严重质量问题使点浓度和单侧界限都不可解释。 */
+    data class Unavailable(
+        val reason: EndpointQuantificationReason,
+        val modelSnapshotJson: String? = null,
+        val quantificationState: QuantificationState = QuantificationState.UNAVAILABLE
     ) : PreparedEndpointQuantificationResult
 
     /** 非有限原始位点信号是唯一允许的位点级仅信号结果。 */
@@ -70,11 +125,18 @@ sealed interface PreparedEndpointQuantificationResult {
 sealed interface PreparedStandardCurveQuantifier {
     /** 已准备完成的逐位点量化器；构造函数仅由量化器核心创建。 */
     class Ready internal constructor(
+        private val quantifyPreparedObservation:
+            ((QuantificationObservation) -> PreparedEndpointQuantificationResult)? = null,
         private val quantifyPreparedSignal: (Double) -> PreparedEndpointQuantificationResult
     ) : PreparedStandardCurveQuantifier {
         /** 仅执行逐位点信号判定和反算，不重复解析或验证模型。 */
         fun quantify(signalValue: Double): PreparedEndpointQuantificationResult =
             quantifyPreparedSignal(signalValue)
+
+        /** 使用冻结信号及其质量/删失证据执行一次逐孔反算。 */
+        fun quantify(observation: QuantificationObservation): PreparedEndpointQuantificationResult =
+            quantifyPreparedObservation?.invoke(observation)
+                ?: quantifyPreparedSignal(observation.signalValue)
     }
 
     /** 模型级降级结果，与单个位点的非有限信号失败严格区分。 */

@@ -20,9 +20,9 @@ import java.util.zip.ZipOutputStream
  * 光度或浓度模型。这样历史运行导出与屏幕显示使用完全相同的数据来源。
  */
 object ArrayResultExporter {
-    const val CSV_SCHEMA_VERSION: String = "array-measurements-csv-v2"
-    const val ARCHIVE_SCHEMA_VERSION: String = "array-result-archive-v2"
-    const val EXPORTER_VERSION: String = "array-result-exporter-v3"
+    const val CSV_SCHEMA_VERSION: String = "array-measurements-csv-v3"
+    const val ARCHIVE_SCHEMA_VERSION: String = "array-result-archive-v3"
+    const val EXPORTER_VERSION: String = "array-result-exporter-v4"
 
     private val gson: Gson = GsonBuilder()
         .disableHtmlEscaping()
@@ -60,6 +60,12 @@ object ArrayResultExporter {
         "primary_feature_value",
         "concentration",
         "concentration_unit",
+        "quantification_state",
+        "concentration_lower_bound",
+        "concentration_upper_bound",
+        "interval_confidence_level",
+        "censoring_direction",
+        "quantification_version",
         // 项目量程和曲线标定范围具有不同科学语义，必须分别输出，不能再用一个
         // reliable_range 字段让下游软件猜测。
         "project_range_min",
@@ -131,6 +137,12 @@ object ArrayResultExporter {
                     measurement.primaryFeatureValue.csvNumber(),
                     measurement.concentrationValue.csvNumber(),
                     measurement.concentrationUnit.orEmpty(),
+                    measurement.quantificationState.orEmpty(),
+                    measurement.concentrationLowerBound.csvNumber(),
+                    measurement.concentrationUpperBound.csvNumber(),
+                    measurement.intervalConfidenceLevel.csvNumber(),
+                    measurement.censoringDirection.orEmpty(),
+                    measurement.quantificationVersion.orEmpty(),
                     analyte?.projectRangeMin.csvNumber(),
                     analyte?.projectRangeMax.csvNumber(),
                     analyte?.calibrationRangeMin.csvNumber(),

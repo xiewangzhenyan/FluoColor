@@ -40,15 +40,26 @@ class ArrayResultExporterTest {
 
         val rows = parseCsv(String(bytes, StandardCharsets.UTF_8).removePrefix("\uFEFF"))
         assertEquals(3, rows.size)
-        val rawSignalColumn = rows.first().indexOf("raw_signal_json")
+        val header = rows.first()
+        assertEquals("array-measurements-csv-v3", ArrayResultExporter.CSV_SCHEMA_VERSION)
+        val rawSignalColumn = header.indexOf("raw_signal_json")
         assertTrue(rawSignalColumn >= 0)
         assertEquals("{\"note\":\"a,b\\\"c\"}", rows[1][rawSignalColumn])
         assertEquals("{\"note\":\"line1\nline2\"}", rows[2][rawSignalColumn])
-        assertEquals("0.0", rows[1][rows.first().indexOf("project_range_min")])
-        assertEquals("100.0", rows[1][rows.first().indexOf("project_range_max")])
-        assertEquals("10.0", rows[1][rows.first().indexOf("calibration_range_min")])
-        assertEquals("90.0", rows[1][rows.first().indexOf("calibration_range_max")])
-        assertEquals("VALID", rows[1][rows.first().indexOf("measurement_quality_level")])
+        assertEquals("QUANTIFIED", rows[1][header.indexOf("quantification_state")])
+        assertEquals("12.0", rows[1][header.indexOf("concentration_lower_bound")])
+        assertEquals("13.0", rows[1][header.indexOf("concentration_upper_bound")])
+        assertEquals("0.95", rows[1][header.indexOf("interval_confidence_level")])
+        assertEquals("NONE", rows[1][header.indexOf("censoring_direction")])
+        assertEquals("endpoint-quantifier-v4", rows[1][header.indexOf("quantification_version")])
+        assertEquals("ESTIMATED", rows[2][header.indexOf("quantification_state")])
+        assertEquals("20.0", rows[2][header.indexOf("concentration_lower_bound")])
+        assertEquals("30.0", rows[2][header.indexOf("concentration_upper_bound")])
+        assertEquals("0.0", rows[1][header.indexOf("project_range_min")])
+        assertEquals("100.0", rows[1][header.indexOf("project_range_max")])
+        assertEquals("10.0", rows[1][header.indexOf("calibration_range_min")])
+        assertEquals("90.0", rows[1][header.indexOf("calibration_range_max")])
+        assertEquals("VALID", rows[1][header.indexOf("measurement_quality_level")])
     }
 
     @Test
@@ -153,12 +164,18 @@ class ArrayResultExporterTest {
         val first = measurement(
             id = 1L,
             rawJson = "{\"note\":\"a,b\\\"c\"}",
-            concentration = 12.5
+            concentration = 12.5,
+            quantificationState = "QUANTIFIED",
+            concentrationLowerBound = 12.0,
+            concentrationUpperBound = 13.0
         )
         val second = measurement(
             id = 2L,
             rawJson = "{\"note\":\"line1\nline2\"}",
-            concentration = 25.0
+            concentration = 25.0,
+            quantificationState = "ESTIMATED",
+            concentrationLowerBound = 20.0,
+            concentrationUpperBound = 30.0
         )
         val imageBytes = "frozen-image".toByteArray(StandardCharsets.UTF_8)
         return ArrayResultSnapshot(
@@ -256,7 +273,10 @@ class ArrayResultExporterTest {
     private fun measurement(
         id: Long,
         rawJson: String,
-        concentration: Double
+        concentration: Double,
+        quantificationState: String,
+        concentrationLowerBound: Double,
+        concentrationUpperBound: Double
     ): ArraySiteMeasurementResult {
         return ArraySiteMeasurementResult(
             measurementId = id,
@@ -279,6 +299,12 @@ class ArrayResultExporterTest {
             correctedSignalJson = "{\"corrected\":true}",
             qcJson = "{}",
             quantificationQcJson = "{\"status\":\"QUANTIFIED\"}",
+            quantificationState = quantificationState,
+            concentrationLowerBound = concentrationLowerBound,
+            concentrationUpperBound = concentrationUpperBound,
+            intervalConfidenceLevel = 0.95,
+            censoringDirection = "NONE",
+            quantificationVersion = "endpoint-quantifier-v4",
             qc = ArrayMeasurementQc(
                 geometrySourceCode = "CANDIDATE_REFINED",
                 geometryFlags = emptySet(),

@@ -94,13 +94,60 @@ class ArrayHeatmapScaleTest {
             inputs = inputs
         )
 
-        assertEquals(225, model.calculatedCount)
+        // 旧运行仍可按历史范围字段恢复三类结果，但“已计算”只能统计真正拥有点浓度的位点。
+        // 37 个项目量程外位点只有方向、没有精确浓度，因此必须归入复测，不能继续伪装成已计算。
+        assertEquals(225, model.measuredCount)
+        assertEquals(188, model.calculatedCount)
+        assertEquals(61, model.quantifiedCount)
+        assertEquals(127, model.estimatedCount)
+        assertEquals(37, model.retestCount)
+        assertEquals(model.measuredCount, model.quantifiedCount + model.estimatedCount + model.retestCount)
         assertEquals(61, model.withinCalibrationRangeCount)
         assertEquals(127, model.calibrationExtrapolatedCount)
         assertEquals(37, model.outsideProjectRangeCount)
         assertEquals(225, model.reliableCount)
         assertEquals(0, model.warningCount)
         assertEquals(0, model.failureCount)
+    }
+
+    @Test
+    fun `Room15强类型状态严格闭合为定量估计复测`() {
+        val analyte = analyte(reliableMin = 0.0, reliableMax = 100.0)
+        val inputs = listOf(
+            input(siteIndex = 0, concentration = 20.0).copy(
+                quantificationState = "QUANTIFIED"
+            ),
+            input(siteIndex = 1, concentration = 118.0).copy(
+                quantificationState = "ESTIMATED",
+                reliableRangeStatus = "ABOVE_RANGE"
+            ),
+            input(siteIndex = 2, concentration = null, primaryFeature = 220.0).copy(
+                quantificationState = "BOUND_ONLY",
+                censoringDirection = "LOWER_BOUND",
+                reliableRangeStatus = "ABOVE_TRUSTED_RANGE"
+            ),
+            input(siteIndex = 3, concentration = null, primaryFeature = null).copy(
+                quantificationState = "UNAVAILABLE"
+            )
+        )
+
+        val model = buildAnalyteHeatmapModel(
+            rows = 1,
+            columns = 4,
+            analyte = analyte,
+            inputs = inputs
+        )
+
+        assertEquals(4, model.measuredCount)
+        assertEquals(2, model.calculatedCount)
+        assertEquals(1, model.quantifiedCount)
+        assertEquals(1, model.estimatedCount)
+        assertEquals(2, model.retestCount)
+        assertEquals(model.measuredCount, model.quantifiedCount + model.estimatedCount + model.retestCount)
+        assertEquals(ArrayHeatmapValueState.QUANTIFIED, model.cells[0].valueState)
+        assertEquals(ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED, model.cells[1].valueState)
+        assertEquals(ArrayHeatmapValueState.ABOVE_PROJECT_RANGE, model.cells[2].valueState)
+        assertEquals(ArrayHeatmapValueState.UNAVAILABLE, model.cells[3].valueState)
     }
 
     @Test

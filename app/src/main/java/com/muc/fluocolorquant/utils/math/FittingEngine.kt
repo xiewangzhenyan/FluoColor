@@ -21,6 +21,7 @@ import com.muc.fluocolorquant.data.enums.PixelType
  * 处理各种数学拟合模型计算和数据拟合
  */
 object FittingEngine {
+    private const val CALIBRATION_INVERSE_EPSILON: Double = 1e-12
 
     /**
      * 将函数参数格式化为LaTeX表达式
@@ -314,6 +315,72 @@ object FittingEngine {
             FittingFunction.RICHARDS -> richardsFunction(params, x)
             FittingFunction.INTERPOLATION -> interpolationFunction(params, x)
         }
+    }
+
+    /**
+     * 为自动标定模型执行解析浓度反算。
+     *
+     * 该入口只覆盖经过约束拟合的线性、Hill 3PL、4PL 和 5PL。返回 null 表示信号不在
+     * 当前模型的数学可达域、参数不可执行或反算结果为负。调用方不得把 null 夹到项目
+     * 量程端点，否则会把真正不可定量的观测伪造成精确浓度。
+     */
+    fun invertCalibrationSignal(
+        function: FittingFunction,
+        params: Map<String, Double>,
+        signal: Double
+    ): Double? {
+        if (!signal.isFinite() || params.values.any { !it.isFinite() }) return null
+        val concentration = when (function) {
+            FittingFunction.LINEAR -> {
+                val slope = params["a"] ?: return null
+                val intercept = params["b"] ?: return null
+                if (abs(slope) <= CALIBRATION_INVERSE_EPSILON) return null
+                (signal - intercept) / slope
+            }
+
+            FittingFunction.HILL -> {
+                val upperAsymptote = params["a"] ?: return null
+                val slope = params["b"] ?: return null
+                val center = params["c"] ?: return null
+                if (upperAsymptote <= 0.0 || slope <= 0.0 || center <= 0.0) return null
+                if (abs(signal) <= CALIBRATION_INVERSE_EPSILON) {
+                    0.0
+                } else {
+                    val remaining = upperAsymptote - signal
+                    if (signal <= 0.0 || remaining <= CALIBRATION_INVERSE_EPSILON) return null
+                    val powered = signal / remaining
+                    center * powered.pow(1.0 / slope)
+                }
+            }
+
+            FittingFunction.RODBARD,
+            FittingFunction.LOGISTIC -> {
+                val a = params["a"] ?: return null
+                val slope = params["b"] ?: return null
+                val center = params["c"] ?: return null
+                val d = params["d"] ?: return null
+                val asymmetry = if (function == FittingFunction.LOGISTIC) {
+                    params["g"] ?: return null
+                } else {
+                    1.0
+                }
+                if (slope <= 0.0 || center <= 0.0 || asymmetry <= 0.0) return null
+                val signalOffset = signal - d
+                if (abs(signalOffset) <= CALIBRATION_INVERSE_EPSILON) return null
+                val ratio = (a - d) / signalOffset
+                if (!ratio.isFinite() || ratio <= 0.0) return null
+                val powered = ratio.pow(1.0 / asymmetry) - 1.0
+                if (!powered.isFinite() || powered < -CALIBRATION_INVERSE_EPSILON) return null
+                if (powered <= CALIBRATION_INVERSE_EPSILON) {
+                    0.0
+                } else {
+                    center * powered.pow(1.0 / slope)
+                }
+            }
+
+            else -> return null
+        }
+        return concentration.takeIf { it.isFinite() && it >= 0.0 }
     }
 
     /**

@@ -10,6 +10,7 @@ import com.muc.fluocolorquant.data.enums.SiteShape
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
 import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
+import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
 import java.io.ByteArrayOutputStream
 import kotlin.math.min
@@ -33,11 +34,17 @@ object ArrayResultPngExporter {
             ?: snapshot.analytes.minByOrNull(ArrayAnalyteResult::displayOrder)
             ?: error("PNG_EXPORT_ANALYTE_UNAVAILABLE")
         val concentrationMode = snapshot.sites.any { site ->
-            site.measurementFor(analyte.analyteId)?.concentrationValue?.isFinite() == true
+            val measurement = site.measurementFor(analyte.analyteId)
+            measurement?.concentrationValue?.isFinite() == true ||
+                measurement?.quantificationState.equals("BOUND_ONLY", ignoreCase = true)
         }
         val values = snapshot.sites.mapNotNull { site ->
             val measurement = site.measurementFor(analyte.analyteId) ?: return@mapNotNull null
-            if (concentrationMode) measurement.concentrationValue else measurement.primaryFeatureValue
+            if (concentrationMode) {
+                measurement.concentrationHeatmapValue()
+            } else {
+                measurement.primaryFeatureValue
+            }
         }.filter(Double::isFinite)
         val dataMinimum = values.minOrNull() ?: 0.0
         val dataMaximum = values.maxOrNull() ?: 1.0
@@ -120,7 +127,7 @@ object ArrayResultPngExporter {
                 val site = siteByIndex[siteIndex]
                 val measurement = site?.measurementFor(analyte.analyteId)
                 val value = if (concentrationMode) {
-                    measurement?.concentrationValue
+                    measurement?.concentrationHeatmapValue()
                 } else {
                     measurement?.primaryFeatureValue
                 }?.takeIf(Double::isFinite)
@@ -142,6 +149,17 @@ object ArrayResultPngExporter {
                     )
                 } else {
                     canvas.drawRoundRect(RectF(left, top, right, bottom), inset, inset, paint)
+                }
+                if (concentrationMode && measurement != null) {
+                    drawQuantificationMarker(
+                        canvas = canvas,
+                        measurement = measurement,
+                        left = left,
+                        top = top,
+                        right = right,
+                        bottom = bottom,
+                        cellSize = cellSize
+                    )
                 }
             }
         }
@@ -185,6 +203,56 @@ object ArrayResultPngExporter {
 
     private fun ArrayPhysicalSiteResult.measurementFor(analyteId: String) =
         measurements.firstOrNull { measurement -> measurement.analyteId == analyteId }
+
+    /**
+     * 单侧界限没有点浓度，但仍可用冻结的浓度界限决定端点颜色；这不是伪造精确值，
+     * 因为导出图会同时叠加明确的 “>” 或 “<” 标记。
+     */
+    private fun ArraySiteMeasurementResult.concentrationHeatmapValue(): Double? =
+        concentrationValue?.takeIf(Double::isFinite)
+            ?: when {
+                quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+                    censoringDirection.equals("LOWER_BOUND", ignoreCase = true) ->
+                    concentrationLowerBound?.takeIf(Double::isFinite)
+                quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+                    censoringDirection.equals("UPPER_BOUND", ignoreCase = true) ->
+                    concentrationUpperBound?.takeIf(Double::isFinite)
+                else -> null
+            }
+
+    /** 离屏图用最小符号复现页面语义：估计值为≈，浓度下界为>，上界为<。 */
+    private fun drawQuantificationMarker(
+        canvas: Canvas,
+        measurement: ArraySiteMeasurementResult,
+        left: Float,
+        top: Float,
+        right: Float,
+        bottom: Float,
+        cellSize: Float
+    ) {
+        val marker = when {
+            measurement.quantificationState.equals("ESTIMATED", ignoreCase = true) -> "≈"
+            measurement.quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+                measurement.censoringDirection.equals("LOWER_BOUND", ignoreCase = true) -> ">"
+            measurement.quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+                measurement.censoringDirection.equals("UPPER_BOUND", ignoreCase = true) -> "<"
+            else -> null
+        } ?: return
+        val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = min(28f, cellSize * 0.34f)
+            textAlign = Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setShadowLayer(2f, 0f, 1f, Color.BLACK)
+        }
+        val centerX = if (marker == "≈") right - (right - left) * 0.18f else (left + right) / 2f
+        val centerY = if (marker == "≈") {
+            top + markerPaint.textSize
+        } else {
+            (top + bottom) / 2f - (markerPaint.ascent() + markerPaint.descent()) / 2f
+        }
+        canvas.drawText(marker, centerX, centerY, markerPaint)
+    }
 
     private fun platePngRowLabel(rowIndex: Int): String {
         var value = rowIndex + 1

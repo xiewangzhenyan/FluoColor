@@ -73,6 +73,25 @@ enum class GridFrameQcCode {
     @SerializedName("grid_support_low")
     GRID_SUPPORT_LOW,
 
+    /**
+     * 网格没有覆盖邻域内足够多的已检出单元，通常说明主区域框把阵列截断了。
+     *
+     * 与 [GRID_SUPPORT_LOW] 方向相反：支撑率问“网格点旁边有没有单元”，对被区域框
+     * 切掉的整行无感（那些单元根本没进矫正图）；包围率问“图里的单元有没有被网格
+     * 覆盖”，因此能直接抓住区域截断。
+     */
+    @SerializedName("grid_coverage_low")
+    GRID_COVERAGE_LOW,
+
+    /**
+     * 晶格疑似整体平移一个间距，凭空多出一条边缘行或列。
+     *
+     * 这类错误对支撑率、包围率和观测率全部免疫——三者都是共享行上的比值，平移后
+     * 几乎不动，只能在边界看见。判据见 PgGridLatticeIntegrity。
+     */
+    @SerializedName("phantom_lattice_edge")
+    PHANTOM_LATTICE_EDGE,
+
     @SerializedName("high_imputed_ratio")
     HIGH_IMPUTED_RATIO,
 
@@ -185,7 +204,83 @@ data class GridLocalizedSite(
     }
 }
 
-/** 全局晶格平差诊断，供帧级 QC、原图叠加和 Android/Python 对照使用。 */
+/**
+ * 候选支撑率检查的三态结论。
+ *
+ * 必须与“支撑率数值”分开保存：支撑率为 0 既可能是网格真的错了，也可能是检测器在
+ * 这张图上整体失效（重模糊、单元尺寸超出闸值）。前者应判不可信，后者属于“检查手段
+ * 缺席”，据此判错会误伤逐点精修已经充分的正确结果。
+ */
+enum class GridSupportCheck {
+    /** 候选充足，支撑率结论有效。 */
+    @SerializedName("ok")
+    OK,
+
+    /** 检测器几乎没有产出候选，本次检查无法给出结论，不据此判不可信。 */
+    @SerializedName("inconclusive")
+    INCONCLUSIVE,
+
+    /** 当前规格没有可用的候选检测器，检查不适用。 */
+    @SerializedName("unavailable")
+    UNAVAILABLE
+}
+
+/**
+ * 单个主区域假设的仲裁证据。
+ *
+ * 三条区域检测路径各有系统性偏好，没有一条在所有成像条件下占优，因此不按固定优先级
+ * 取一条，而是各自走完晶格拟合后用图像证据择优。本结构如实记录每个假设的得分，
+ * 使“为什么选了这个区域”在过程证据和历史快照中可复查。
+ */
+data class GridRegionHypothesis(
+    val method: String,
+    val coverage: Double,
+    val support: Double?,
+    val score: Double,
+    val selected: Boolean
+) {
+    fun requireValid(): GridRegionHypothesis = apply {
+        require(method.isNotBlank()) { "区域假设方法名不能为空" }
+        require(coverage.isFinite() && coverage in 0.0..1.0) { "区域包围率必须位于 0 到 1" }
+        require(support == null || support in 0.0..1.0) { "区域支撑率必须位于 0 到 1" }
+        require(score.isFinite()) { "区域仲裁得分必须为有限数值" }
+    }
+}
+
+/**
+ * 幻影边缘诊断：晶格是否整体平移了一个间距。
+ *
+ * [flagged] 为被判定为幻影的边缘名（row_lo/row_hi/col_lo/col_hi），无则为 null；
+ * [available] 为 false 表示当前没有候选可供检查，不代表检查通过。
+ */
+data class GridPhantomEdgeDiagnostics(
+    val available: Boolean,
+    val flagged: String? = null,
+    val flaggedOverhang: Double? = null,
+    val anisotropy: Double? = null,
+    val rowPitchPx: Double? = null,
+    val columnPitchPx: Double? = null
+) {
+    fun requireValid(): GridPhantomEdgeDiagnostics = apply {
+        require(flaggedOverhang == null || flaggedOverhang.isFinite()) { "幻影外伸量必须为有限数值" }
+        require(anisotropy == null || anisotropy.isFinite() && anisotropy >= 0.0) {
+            "两轴间距失配必须为非负有限数值"
+        }
+        if (flagged != null) {
+            require(flagged.isNotBlank()) { "幻影边缘名不能为空白" }
+            require(available) { "标记幻影边缘时检查必须可用" }
+        }
+    }
+}
+
+/**
+ * 全局晶格平差诊断，供帧级 QC、原图叠加和 Android/Python 对照使用。
+ *
+ * 后四个字段一律**可空**，而不是给非空类型配 Kotlin 默认值：Gson 不识别 Kotlin 的默认
+ * 参数，JSON 缺键时会直接注入 null，非空声明只会在 requireValid 里变成 NPE。可空同时
+ * 也更贴近语义——历史运行快照确实没有执行过这些检查，null 表示“无此证据”，而不是
+ * “检查通过”。旧结果不因此重新定位或重新计算。
+ */
 data class GridGeometryDiagnostics(
     val model: String = "homography",
     val candidateSupportRatio: Double?,
@@ -194,9 +289,25 @@ data class GridGeometryDiagnostics(
     val geometryRmsePx: Double?,
     val inlierCount: Int,
     val outlierCount: Int,
-    val meanConfidence: Double
+    val meanConfidence: Double,
+    /** 支撑率检查的三态结论；旧快照未执行该检查时为 null。 */
+    val supportCheck: GridSupportCheck? = null,
+    /** 原图坐标系下“已检出单元被网格覆盖”的比例；旧快照没有该证据时为 null。 */
+    val gridCoverageRatio: Double? = null,
+    /** 本次实际展开并比较过的主区域假设；证据充分而短路时可能只有一项，旧快照为 null。 */
+    val regionHypotheses: List<GridRegionHypothesis>? = null,
+    /** 幻影边缘检查结果；旧快照没有执行过该检查时为 null。 */
+    val phantomEdge: GridPhantomEdgeDiagnostics? = null
 ) {
     fun requireValid(siteCount: Int): GridGeometryDiagnostics = apply {
+        require(gridCoverageRatio == null || gridCoverageRatio in 0.0..1.0) {
+            "网格包围率必须位于 0 到 1"
+        }
+        regionHypotheses?.forEach(GridRegionHypothesis::requireValid)
+        require(regionHypotheses.orEmpty().count(GridRegionHypothesis::selected) <= 1) {
+            "最多只能有一个区域假设被选中"
+        }
+        phantomEdge?.requireValid()
         require(model.isNotBlank()) { "晶格模型名称不能为空" }
         require(candidateSupportRatio == null || candidateSupportRatio in 0.0..1.0) {
             "候选支撑率必须位于 0 到 1"

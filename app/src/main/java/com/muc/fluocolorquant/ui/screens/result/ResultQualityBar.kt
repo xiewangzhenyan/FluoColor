@@ -1,221 +1,98 @@
 package com.muc.fluocolorquant.ui.screens.result
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.WarningAmber
-import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.muc.fluocolorquant.R
-import com.muc.fluocolorquant.domain.result.ResultQualityIssue
-import com.muc.fluocolorquant.domain.result.ResultQualityLevel
-import com.muc.fluocolorquant.domain.result.ResultQualitySummary
+import com.muc.fluocolorquant.domain.result.ResultRunSummary
 import com.muc.fluocolorquant.ui.components.FluoNumericText
-import com.muc.fluocolorquant.ui.theme.FluoIconSize
-import com.muc.fluocolorquant.ui.theme.FluoRadius
 import com.muc.fluocolorquant.ui.theme.FluoSpacing
-import com.muc.fluocolorquant.ui.theme.FluoTheme
 
-/** 裁决条测试标签，供设备回归定位而不依赖中英文可见文本。 */
+/** 摘要条测试标签，供设备回归定位而不依赖中英文可见文本。 */
 const val RESULT_QUALITY_BAR_TAG: String = "result_quality_bar"
 
 /**
- * 运行质量裁决条。
+ * 运行摘要条。
  *
- * 固定在结果页顶栏下方、四个一级页之上：无论用户在看热力图还是翻到"过程"页核对证据，
- * 总能同时看到"这批数据能不能用"的总判定。
+ * 只陈述事实，不下判语。
  *
- * 结构是"一句话结论 + 支撑数字"：
- * - 第一行是裁决本身，用图标 + 文字 + 语义色三重表达，不单靠颜色（AGENTS.md 10）；
- * - 第二行是支撑该结论的关键数字，让判定可被追问而不是黑箱。
+ * 早先版本在这里做"良好 / 需复核 / 不建议使用"三态裁决，配警告色与感叹号。该设计有两个
+ * 实质错误：把"样本超量程"当成了数据质量问题（超量程是实验设计与样本浓度不匹配的正常
+ * 现象，处理办法是稀释重测或补标准点，不代表测量不可信）；阈值又是凭"生化常规"臆断的
+ * （超量程占比 5%、R² 0.99），真实体系里 96 孔板几十个孔超量程完全正常，结果每次打开
+ * 结果页都在报警——既没帮上忙，也让软件显得在指责用户。
  *
- * 组件不做任何判定逻辑，只负责呈现 [ResultQualitySummary]；判定规则集中在 domain 层
- * 并配有单测，96 孔板与微流控共用同一口径。
+ * 现在只把关键数字如实平铺。数字本身就是结论，好坏由研究者按自己的实验体系判断。
+ *
+ * 保留为独立组件是因为 96 孔板与微流控结果页共用它，口径必须一致。
  */
 @Composable
 fun ResultQualityBar(
-    summary: ResultQualitySummary,
-    modifier: Modifier = Modifier,
-    /** 浓度单位；仅信号运行传入信号特征名，为空时不显示单位。 */
-    unit: String? = null
-) {
-    val appearance = summary.level.appearance()
-
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag(RESULT_QUALITY_BAR_TAG),
-        color = appearance.container,
-        shape = RoundedCornerShape(0.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(
-                horizontal = FluoSpacing.lg,
-                vertical = FluoSpacing.md
-            ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(FluoSpacing.md)
-        ) {
-            Icon(
-                imageVector = appearance.icon,
-                contentDescription = null,
-                modifier = Modifier.size(FluoIconSize.large),
-                tint = appearance.accent
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = stringResource(appearance.titleRes),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = appearance.onContainer,
-                    maxLines = 1
-                )
-                QualityEvidenceRow(
-                    summary = summary,
-                    contentColor = appearance.onContainer
-                )
-                // 降级原因单独一行：用户需要知道"为什么不是良好"，而不是只看到一个结论。
-                summary.issues.firstOrNull()?.let { issue ->
-                    Text(
-                        text = stringResource(issue.labelRes()),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = appearance.onContainer,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * 支撑数字行。
- *
- * 只呈现真实存在的项：仅信号运行没有 R²，没有重复孔就没有 CV。缺失项直接不显示，
- * 而不是补一个占位数字——占位符会让人误以为该指标测过但结果不佳。
- */
-@Composable
-private fun QualityEvidenceRow(
-    summary: ResultQualitySummary,
-    contentColor: Color
+    summary: ResultRunSummary,
+    modifier: Modifier = Modifier
 ) {
     val parts = buildList {
         summary.rSquared?.let { value ->
-            // R² 固定四位小数：0.9987 与 0.9950 的差别直接决定"良好"还是"待复核"，
-            // 用通用两位小数格式会把两者都显示成 1.00 / 0.99，等于抹掉判定依据。
+            // R² 固定四位小数：0.9987 与 0.9950 在两位小数下都显示成 1.00 / 0.99，
+            // 而这正是判断曲线好坏时最需要分辨的位数。
             add(stringResource(R.string.result_quality_metric_r2, "%.4f".format(value)))
         }
         summary.repeatCvPercent?.let { value ->
             add(stringResource(R.string.result_quality_metric_cv, "%.1f".format(value)))
         }
-        if (summary.evaluatedCount > 0) {
+        // 超出项目量程与由曲线外推分别陈述：前者改项目设置即可，后者说明浓度落在标定区间
+        // 之外、只能外推得到，处理方式完全不同。合并成一个"需复测"数字会掩盖该差别。
+        if (summary.outsideProjectRangeCount > 0) {
             add(
                 stringResource(
-                    R.string.result_quality_metric_in_range,
-                    summary.inRangeCount,
-                    summary.evaluatedCount
+                    R.string.result_summary_out_of_range,
+                    summary.outsideProjectRangeCount
                 )
             )
         }
-        if (summary.retestCount > 0) {
-            add(stringResource(R.string.result_quality_metric_retest, summary.retestCount))
+        if (summary.extrapolatedCount > 0) {
+            add(stringResource(R.string.result_summary_extrapolated, summary.extrapolatedCount))
+        }
+        if (summary.rSquared == null && summary.evaluatedCount > 0) {
+            add(stringResource(R.string.result_summary_no_curve))
         }
     }
-    if (parts.isEmpty()) {
-        // 完全没有支撑数字时说明连位点都没有；给出明确说明而不是留一行空白。
-        Text(
-            text = stringResource(R.string.result_quality_unknown_detail),
-            style = MaterialTheme.typography.labelSmall,
-            color = contentColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        return
+
+    if (parts.isEmpty()) return
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(RESULT_QUALITY_BAR_TAG),
+        // 最低层级表面而不是语义色：这里陈述事实，不表达状态。
+        color = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                horizontal = FluoSpacing.lg,
+                vertical = FluoSpacing.sm
+            ),
+            horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
+        ) {
+            FluoNumericText(
+                text = parts.joinToString(SUMMARY_SEPARATOR),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2
+            )
+        }
     }
-    // 支撑数字含 R² 与 CV，使用等宽数字让不同运行之间的同一指标位置稳定。
-    // 允许折到两行：四项支撑数字在 360dp 窄屏必然放不下一行，截断掉的恰好是
-    // "13 需复测"这类最需要看到的降级依据。
-    FluoNumericText(
-        text = parts.joinToString(EVIDENCE_SEPARATOR),
-        style = MaterialTheme.typography.labelMedium,
-        color = contentColor,
-        maxLines = 2
-    )
+    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
 }
 
-/** 支撑数字之间的分隔符。中点比逗号更适合并列的短指标，且中英文下都不需要额外空格规则。 */
-private const val EVIDENCE_SEPARATOR = " · "
-
-/** 裁决等级对应的视觉与文案。 */
-private data class QualityAppearance(
-    val icon: ImageVector,
-    val accent: Color,
-    val container: Color,
-    val onContainer: Color,
-    val titleRes: Int
-)
-
-@Composable
-private fun ResultQualityLevel.appearance(): QualityAppearance = when (this) {
-    ResultQualityLevel.GOOD -> QualityAppearance(
-        icon = Icons.Filled.CheckCircle,
-        accent = FluoTheme.semantic.success,
-        container = FluoTheme.semantic.successContainer,
-        onContainer = FluoTheme.semantic.onSuccessContainer,
-        titleRes = R.string.result_quality_good
-    )
-    ResultQualityLevel.REVIEW -> QualityAppearance(
-        icon = Icons.Outlined.WarningAmber,
-        accent = FluoTheme.semantic.warning,
-        container = FluoTheme.semantic.warningContainer,
-        onContainer = FluoTheme.semantic.onWarningContainer,
-        titleRes = R.string.result_quality_review
-    )
-    ResultQualityLevel.UNRELIABLE -> QualityAppearance(
-        icon = Icons.Outlined.ErrorOutline,
-        accent = MaterialTheme.colorScheme.error,
-        container = MaterialTheme.colorScheme.errorContainer,
-        onContainer = MaterialTheme.colorScheme.onErrorContainer,
-        titleRes = R.string.result_quality_unreliable
-    )
-    // 仅信号运行不是"出问题"，只是没有浓度可判定，因此用中性提示色而不是警告色：
-    // 把正常的仅信号流程标成黄色会让用户以为运行失败。
-    ResultQualityLevel.UNKNOWN -> QualityAppearance(
-        icon = Icons.Outlined.HelpOutline,
-        accent = FluoTheme.semantic.info,
-        container = FluoTheme.semantic.infoContainer,
-        onContainer = FluoTheme.semantic.onInfoContainer,
-        titleRes = R.string.result_quality_unknown
-    )
-}
-
-private fun ResultQualityIssue.labelRes(): Int = when (this) {
-    ResultQualityIssue.LOW_R_SQUARED -> R.string.result_quality_issue_r2
-    ResultQualityIssue.HIGH_REPEAT_CV -> R.string.result_quality_issue_cv
-    ResultQualityIssue.HIGH_RETEST_RATIO -> R.string.result_quality_issue_retest
-    ResultQualityIssue.HIGH_EXTRAPOLATION_RATIO -> R.string.result_quality_issue_extrapolation
-}
+/** 摘要项之间的分隔符。中点比逗号更适合并列的短指标，中英文下都不需要额外空格规则。 */
+private const val SUMMARY_SEPARATOR = " · "

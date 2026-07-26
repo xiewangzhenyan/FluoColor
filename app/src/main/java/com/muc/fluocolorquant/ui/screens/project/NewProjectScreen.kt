@@ -242,7 +242,9 @@ fun NewProjectScreen(
                 Screen.ImageCapture.createRoute(
                     outputPath = Uri.encode(outputFile.absolutePath),
                     captureMode = state.resolvedConfiguration?.snapshot?.template?.detectionMode,
-                    expectedSpectrumTracks = 1
+                    // 光谱通道与模板配置的分析物一一对应，拍摄页据此提示需要对齐的轨道数。
+                    expectedSpectrumTracks = state.resolvedConfiguration?.snapshot?.analytes
+                        ?.size?.coerceAtLeast(1) ?: 1
                 )
             )
         }

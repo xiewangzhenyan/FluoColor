@@ -2,9 +2,8 @@ package com.muc.fluocolorquant.ui.screens.result.array
 
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
-import com.muc.fluocolorquant.domain.result.ResultQualitySummary
-import com.muc.fluocolorquant.domain.result.ResultQualityThresholds
-import com.muc.fluocolorquant.domain.result.computeResultQualitySummary
+import com.muc.fluocolorquant.domain.result.ResultRunSummary
+import com.muc.fluocolorquant.domain.result.computeResultRunSummary
 
 /**
  * 把冻结结果快照装配成运行质量裁决的输入。
@@ -21,17 +20,15 @@ import com.muc.fluocolorquant.domain.result.computeResultQualitySummary
 private const val SAMPLE_ROLE_CODE = "SAMPLE"
 
 /**
- * 计算当前分析物的运行质量摘要。
+ * 归纳当前分析物的运行摘要。
  *
- * @param model 已构建的热力图模型，提供量程内/需复测/外推计数。
- * @param thresholds 判定阈值，由设置页配置后传入。
+ * @param model 已构建的热力图模型，提供超量程与外推计数。
  */
 fun buildResultQualitySummary(
     snapshot: ArrayResultSnapshot,
     analyte: ArrayAnalyteResult,
-    model: ArrayHeatmapModel,
-    thresholds: ResultQualityThresholds = ResultQualityThresholds.Default
-): ResultQualitySummary {
+    model: ArrayHeatmapModel
+): ResultRunSummary {
     // 仅统计样本位点：把标准品浓度混进分布会让"浓度范围"直接等于标定范围，
     // 掩盖真实样本的实际分布。
     val sampleSites = snapshot.sites.filter { site ->
@@ -63,19 +60,17 @@ fun buildResultQualitySummary(
     // R² 的键在历史快照中出现过两种写法，兼容读取而不是只认其一。
     val rSquared = analyte.validationMetrics["R2"] ?: analyte.validationMetrics["R²"]
 
-    // 仅信号运行没有浓度维度：此时不传 R²，让 domain 层判定为"证据不足"，
-    // 而不是拿信号统计冒充浓度质量。
+    // 仅信号运行没有浓度维度：不传 R² 与浓度，摘要条会据此显示"仅信号，未建立浓度"，
+    // 而不是拿信号统计冒充浓度指标。
     val concentrationMode = model.scale.mode == ArrayHeatmapScaleMode.CONCENTRATION
 
-    return computeResultQualitySummary(
+    return computeResultRunSummary(
         rSquared = if (concentrationMode) rSquared else null,
         concentrations = if (concentrationMode) concentrations else emptyList(),
         repeatGroups = if (concentrationMode) repeatGroups else emptyList(),
         evaluatedCount = model.calculatedCount,
-        inRangeCount = model.withinCalibrationRangeCount,
-        retestCount = model.retestCount,
-        extrapolatedCount = model.calibrationExtrapolatedCount,
-        thresholds = thresholds
+        outsideProjectRangeCount = model.outsideProjectRangeCount,
+        extrapolatedCount = model.calibrationExtrapolatedCount
     )
 }
 

@@ -323,8 +323,12 @@ object ArrayResultPdfExporter {
         val siteMeasurements = snapshot.sites.mapNotNull { site ->
             site.measurements.firstOrNull { it.analyteId == analyte.analyteId }
         }
-        val concentrationValues = siteMeasurements.mapNotNull { it.concentrationValue?.finiteOrNull() }
-        val useConcentration = concentrationValues.isNotEmpty()
+        val concentrationValues = siteMeasurements.mapNotNull {
+            it.concentrationHeatmapValue()?.finiteOrNull()
+        }
+        val useConcentration = concentrationValues.isNotEmpty() || siteMeasurements.any {
+            it.quantificationState.equals("BOUND_ONLY", ignoreCase = true)
+        }
         val observedValues = if (useConcentration) {
             concentrationValues
         } else {
@@ -356,7 +360,7 @@ object ArrayResultPdfExporter {
             cellColor = { site ->
                 val measurement = site.measurements.firstOrNull { it.analyteId == analyte.analyteId }
                 val value = if (useConcentration) {
-                    measurement?.concentrationValue
+                    measurement?.concentrationHeatmapValue()
                 } else {
                     measurement?.primaryFeatureValue
                 }
@@ -368,7 +372,7 @@ object ArrayResultPdfExporter {
                     it.analyteId == analyte.analyteId
                 }
                 val value = if (useConcentration) {
-                    measurement?.concentrationValue
+                    measurement?.concentrationHeatmapValue()
                 } else {
                     measurement?.primaryFeatureValue
                 }
@@ -823,6 +827,11 @@ object ArrayResultPdfExporter {
             style = Paint.Style.FILL
             color = Color.rgb(2, 136, 209)
         }
+        val quantificationMarker = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textAlign = Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
         val circularSites = snapshot.carrier.siteShape.equals("CIRCLE", ignoreCase = true)
         val sitesByIndex = snapshot.sites.associateBy(ArrayPhysicalSiteResult::siteIndex)
         for (row in 0 until snapshot.rows) {
@@ -859,6 +868,23 @@ object ArrayResultPdfExporter {
                     null -> Unit
                 }
                 val measurement = site?.let { measurementForQc?.invoke(it) }
+                measurement?.quantificationMarker()?.let { marker ->
+                    quantificationMarker.textSize = min(9f, cellSize * 0.30f)
+                    // 估计值使用右上角轻量≈；单侧界限使用中央</>，即使黑白打印也可区分。
+                    val markerX = if (marker == "≈") rect.right - cellSize * 0.20f else rect.centerX()
+                    val markerY = if (marker == "≈") {
+                        rect.top + quantificationMarker.textSize
+                    } else {
+                        rect.centerY() -
+                            (quantificationMarker.ascent() + quantificationMarker.descent()) / 2f
+                    }
+                    quantificationMarker.color = if (marker == "≈") {
+                        Color.WHITE
+                    } else {
+                        Color.rgb(31, 41, 55)
+                    }
+                    canvas.drawText(marker, markerX, markerY, quantificationMarker)
+                }
                 if (measurement != null && !measurement.signalDetectable) {
                     canvas.drawCircle(
                         rect.right - cellSize * 0.22f,
@@ -879,6 +905,28 @@ object ArrayResultPdfExporter {
             ArrayMeasurementQualityLevel.REVIEW in levels -> Color.rgb(254, 240, 190)
             else -> Color.rgb(187, 247, 208)
         }
+    }
+
+    /** PDF 热力图与页面/CSV共用同一浓度语义，单侧界限只用于端点着色，不冒充点浓度。 */
+    private fun ArraySiteMeasurementResult.concentrationHeatmapValue(): Double? =
+        concentrationValue?.finiteOrNull()
+            ?: when {
+                quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+                    censoringDirection.equals("LOWER_BOUND", ignoreCase = true) ->
+                    concentrationLowerBound?.finiteOrNull()
+                quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+                    censoringDirection.equals("UPPER_BOUND", ignoreCase = true) ->
+                    concentrationUpperBound?.finiteOrNull()
+                else -> null
+            }
+
+    private fun ArraySiteMeasurementResult.quantificationMarker(): String? = when {
+        quantificationState.equals("ESTIMATED", ignoreCase = true) -> "≈"
+        quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+            censoringDirection.equals("LOWER_BOUND", ignoreCase = true) -> ">"
+        quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+            censoringDirection.equals("UPPER_BOUND", ignoreCase = true) -> "<"
+        else -> null
     }
 
     private fun heatmapColor(value: Double, minimum: Double, maximum: Double): Int {

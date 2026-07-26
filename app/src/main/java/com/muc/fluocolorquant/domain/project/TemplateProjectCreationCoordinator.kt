@@ -1,5 +1,6 @@
 package com.muc.fluocolorquant.domain.project
 
+import com.google.gson.Gson
 import com.muc.fluocolorquant.data.enums.AnalysisModelLifecycleStatus
 import com.muc.fluocolorquant.data.enums.AnalysisModelType
 import com.muc.fluocolorquant.data.enums.ReadoutLayout
@@ -437,10 +438,23 @@ class TemplateProjectCreationCoordinator @Inject constructor(
             rows = snapshot.carrierProfile.rows,
             columns = snapshot.carrierProfile.columns,
             lightSource = snapshot.acquisitionProfile.opticalModuleName,
+            // 光谱通道与分析物一一对应；非光谱项目该字段无意义，保持 1。
+            // 此前这里写成 `if (...) 1 else 1` 的恒等式，等于永远单通道，模板里配了几个
+            // 分析物都不起作用，逐通道分析物归属也一并丢失。
             spectrumColumnCount = if (
                 ready.configuration.destination == ProjectDetectionDestination.SPECTRUM_SINGLE
-            ) 1 else 1,
-            spectrumColumnMappingJson = null,
+            ) {
+                snapshot.analytes.size.coerceAtLeast(1)
+            } else {
+                1
+            },
+            spectrumColumnMappingJson = if (
+                ready.configuration.destination == ProjectDetectionDestination.SPECTRUM_SINGLE
+            ) {
+                encodeSpectrumColumnMapping(snapshot.analytes.map { it.analyte.id })
+            } else {
+                null
+            },
             createTime = Date(frozenAt),
             userId = request.userId.trim(),
             lastRunTimestamp = null,
@@ -482,6 +496,18 @@ class TemplateProjectCreationCoordinator @Inject constructor(
     }
 
     /** 校验规则阵列完整性、边界和位点所引用的分析物。 */
+    /**
+     * 生成“光谱通道 → 分析物”映射，键为 **1 基通道号字符串**。
+     *
+     * 与 [DirectProjectCreationCoordinator] 保持同一契约：`SpectrumCalibrationViewModel`
+     * 按 `analyteMapping[(index + 1).toString()]` 取用，键型不一致会让整张映射静默失配。
+     */
+    private fun encodeSpectrumColumnMapping(analyteIds: List<String>): String? {
+        if (analyteIds.isEmpty()) return null
+        val mapping = analyteIds.mapIndexed { index, id -> (index + 1).toString() to id }.toMap()
+        return Gson().toJson(mapping)
+    }
+
     private fun validateLayout(
         templateId: String,
         readoutLayout: String?,

@@ -2984,19 +2984,8 @@
     <string name="plate96_pdf_physical_wells">物理圆孔</string>
     <string name="plate96_pdf_analyte_section">分析物结果</string>
     <!-- 结果页运行质量裁决与科学指标 -->
-    <string name="result_quality_good">质量良好</string>
-    <string name="result_quality_review">需复核</string>
-    <string name="result_quality_unreliable">不建议使用</string>
-    <string name="result_quality_unknown">仅信号</string>
-    <string name="result_quality_unknown_detail">无标准曲线，未建立浓度</string>
-    <string name="result_quality_issue_r2">曲线拟合低于阈值</string>
-    <string name="result_quality_issue_cv">重复孔变异偏大</string>
-    <string name="result_quality_issue_retest">需复测孔位偏多</string>
-    <string name="result_quality_issue_extrapolation">外推浓度占比偏高</string>
     <string name="result_quality_metric_r2">R² %1$s</string>
     <string name="result_quality_metric_cv">CV %1$s%%</string>
-    <string name="result_quality_metric_in_range">%1$d/%2$d 在量程内</string>
-    <string name="result_quality_metric_retest">%1$d 需复测</string>
     <string name="result_metric_range">浓度范围</string>
     <string name="result_metric_median">中位数</string>
     <string name="result_metric_replicate_cv">重复孔 CV</string>
@@ -3009,4 +2998,8 @@
     <string name="result_scale_source_range">项目量程</string>
     <string name="result_scale_source_observed">实测范围</string>
     <string name="result_scale_source_empty">无数据</string>
+    <string name="result_summary_out_of_range">%1$d 孔超出项目量程</string>
+    <string name="result_summary_beyond_calibration">%1$d 孔超出曲线标定范围</string>
+    <string name="result_summary_no_curve">仅信号，未建立浓度</string>
+    <string name="result_summary_extrapolated">%1$d 孔由曲线外推</string>
 </resources>

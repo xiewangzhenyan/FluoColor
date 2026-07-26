@@ -91,6 +91,9 @@ data class CalibrationPolicy(
             FittingFunction.EXPONENTIAL,
             FittingFunction.LOG,
             FittingFunction.POWER,
+            // Hill 3PL 只有在存在零浓度且空白响应接近物理零点时才会真正生成候选；
+            // 加入默认允许集合不会让普通原始灰度数据被强制套用零基线模型。
+            FittingFunction.HILL,
             FittingFunction.RODBARD,
             FittingFunction.LOGISTIC
         )

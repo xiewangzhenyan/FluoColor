@@ -230,7 +230,8 @@ fun DirectCreateProjectScreen(
                 Screen.ImageCapture.createRoute(
                     outputPath = Uri.encode(outputFile.absolutePath),
                     captureMode = state.form.detectionModality.code,
-                    expectedSpectrumTracks = 1
+                    // 光谱通道与所选分析物一一对应，拍摄页据此提示需要对齐的轨道数。
+                    expectedSpectrumTracks = state.form.selectedAnalytes.size.coerceAtLeast(1)
                 )
             )
         }
@@ -434,6 +435,18 @@ private fun DirectCreateProjectContent(
                             )
                         }
                     }
+                } else {
+                    // 光谱不使用规则阵列载体，但必须让用户看见"通道数 = 分析物数"这层绑定：
+                    // 每个分析物占一条光谱轨道，标定与逐通道结果都按这个顺序归属。
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    DirectFormSectionHeader(
+                        icon = Icons.Default.Sensors,
+                        title = stringResource(R.string.direct_create_spectrum_channel_section),
+                        subtitle = stringResource(R.string.direct_create_spectrum_channel_help)
+                    )
+                    DirectSpectrumChannelBinding(
+                        analytes = selectedAnalytes.map { it.first }
+                    )
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -719,6 +732,69 @@ private fun DirectCarrierPresetTile(
  * 多选入口保持一个清晰主操作；确认后每个分析物独立成卡，单位使用系统设置中的下拉选项，
  * 从交互层阻止自由文本、拼写差异和“一个全局单位覆盖全部分析物”的数据错误。
  */
+/**
+ * 展示“光谱通道 ↔ 分析物”的一一绑定。
+ *
+ * 光谱不走规则阵列载体，因此这里不选行列，而是明确告诉用户：所选的第 n 个分析物就对应
+ * 第 n 条光谱轨道。该顺序会被写入项目的 `spectrumColumnMappingJson`，标定页按它检测轨道
+ * 数量、逐通道结果按它归属分析物，因此界面顺序与科学归属必须一致。
+ */
+@Composable
+private fun DirectSpectrumChannelBinding(
+    analytes: List<com.muc.fluocolorquant.data.model.Analyte>
+) {
+    if (analytes.isEmpty()) {
+        Text(
+            text = stringResource(R.string.direct_create_spectrum_channel_empty),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+
+    Surface(
+        shape = RoundedCornerShape(FluoRadius.control),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(
+                    R.string.direct_create_spectrum_channel_count,
+                    analytes.size
+                ),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            analytes.forEachIndexed { index, analyte ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        // 展示用 1 基通道号，与写入映射的键保持同一约定。
+                        text = stringResource(
+                            R.string.direct_create_spectrum_channel_label,
+                            index + 1
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = analyte.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun DirectAnalyteSelectionArea(
     selectedAnalytes: List<Pair<com.muc.fluocolorquant.data.model.Analyte, DirectAnalyteSelection>>,

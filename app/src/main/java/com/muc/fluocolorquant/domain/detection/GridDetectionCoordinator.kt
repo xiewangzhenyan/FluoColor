@@ -54,6 +54,9 @@ import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningEx
 import com.muc.fluocolorquant.domain.detection.quantification.UnavailableGridDeepLearningExecutor
 import com.muc.fluocolorquant.domain.detection.quantification.PreparedEndpointQuantificationResult
 import com.muc.fluocolorquant.domain.detection.quantification.PreparedStandardCurveQuantifier
+import com.muc.fluocolorquant.domain.detection.quantification.QuantificationObservation
+import com.muc.fluocolorquant.domain.detection.quantification.QuantificationCensoringDirection
+import com.muc.fluocolorquant.domain.detection.quantification.QuantificationState
 import com.muc.fluocolorquant.domain.detection.quantification.ReliableRangeStatus
 import com.muc.fluocolorquant.domain.detection.quantification.StandardCurveQuantifier
 import com.muc.fluocolorquant.domain.detection.photometry.BaseSitePhotometry
@@ -464,7 +467,9 @@ class GridDetectionCoordinator @Inject constructor(
                     schemaVersion = PG_GRID_SCHEMA_V2_1,
                     json = PgGridJsonCodec.encode(grid)
                 ),
-                detectionModelUsed = "OpenCV PG-Grid 2.1.0",
+                // 处理器版本必须跟随定位器实际版本，不能写死：它会冻结进运行快照，
+                // 是历史结果“用哪一版算法算出来的”唯一凭据。
+                detectionModelUsed = "${grid.locatorName} ${grid.locatorVersion}",
                 processingVersions = linkedMapOf(
                     "geometry" to PG_GRID_SCHEMA_V2_1,
                     "basePhotometry" to PG_QUANT_PROCESSOR_VERSION,
@@ -699,7 +704,13 @@ class GridDetectionCoordinator @Inject constructor(
                         "WEIGHTING_CODE" to calibration.weightingCode,
                         "ACCEPTED" to calibration.accepted,
                         "INPUT_FINGERPRINT" to calibration.inputFingerprint,
-                        "CALIBRATION_ENGINE_VERSION" to calibration.engineVersion
+                        "CALIBRATION_ENGINE_VERSION" to calibration.engineVersion,
+                        // V2 元数据随现场曲线一起冻结。StandardCurveQuantifier 只读取这里的
+                        // 快照，历史重开不会重新留一、重新求 Hessian 或改变可信范围。
+                        "CALIBRATION_ALGORITHM_SCHEMA" to "calibration-v2",
+                        "ROBUST_OBJECTIVE_VERSION" to calibration.robustObjectiveVersion,
+                        "CROSS_VALIDATION" to calibration.crossValidation,
+                        "TRUSTED_RANGE" to calibration.trustedRange
                     )
                 ),
                 updatedAt = Date()
@@ -805,12 +816,18 @@ class GridDetectionCoordinator @Inject constructor(
             val concentration = assignment.standardConcentration ?: return@mapNotNull null
             val siteIndex = assignment.rowIndex * snapshot.carrierProfile.columns +
                 assignment.columnIndex
+            val basePhotometry = quant.sites.getOrNull(siteIndex)
             CalibrationStandardObservation(
                 siteIndex = siteIndex,
                 concentration = concentration,
                 signals = features.associateWith { feature ->
                     signalMatrix[feature]?.get(siteIndex)?.takeIf(Double::isFinite)
-                }
+                },
+                qualityReliable = basePhotometry?.qc?.qualityReliable,
+                saturationRatio = basePhotometry?.saturationRatio,
+                photometryFlags = basePhotometry?.qc?.flags
+                    ?.mapTo(linkedSetOf()) { it.name }
+                    .orEmpty()
             )
         }
         val processorVersion = when (modality) {
@@ -825,7 +842,9 @@ class GridDetectionCoordinator @Inject constructor(
             observations = observations,
             requestedFeatures = features,
             requestedFunctions = functions,
-            policy = policy
+            policy = policy,
+            projectRangeMin = analyteSnapshot.templateConfig.reliableRangeMin,
+            projectRangeMax = analyteSnapshot.templateConfig.reliableRangeMax
         )
         return calibrationEngine.fit(
             CalibrationDraft(
@@ -837,7 +856,9 @@ class GridDetectionCoordinator @Inject constructor(
                 requestedFunctions = functions,
                 processorVersion = processorVersion,
                 policy = policy,
-                inputFingerprint = fingerprint
+                inputFingerprint = fingerprint,
+                projectRangeMin = analyteSnapshot.templateConfig.reliableRangeMin,
+                projectRangeMax = analyteSnapshot.templateConfig.reliableRangeMax
             )
         )
     }
@@ -1222,12 +1243,15 @@ class GridDetectionCoordinator @Inject constructor(
                 )
             )
             return QuantificationBatch(
-                measurements = measurements.map { it.copy(quantificationQcJson = reasonJson) },
+                measurements = measurements.map { measurement ->
+                    measurement.asUnavailableStandardCurveMeasurement(reasonJson)
+                },
                 modelExecutable = false,
                 quantifiedCount = 0,
                 outOfRangeCount = 0,
                 siteSignalOnlyCount = 0,
-                total = measurements.size
+                total = measurements.size,
+                unavailableCount = measurements.size
             )
         }
 
@@ -1243,12 +1267,15 @@ class GridDetectionCoordinator @Inject constructor(
                 )
             )
             return QuantificationBatch(
-                measurements = measurements.map { it.copy(quantificationQcJson = reasonJson) },
+                measurements = measurements.map { measurement ->
+                    measurement.asUnavailableStandardCurveMeasurement(reasonJson)
+                },
                 modelExecutable = false,
                 quantifiedCount = 0,
                 outOfRangeCount = 0,
                 siteSignalOnlyCount = 0,
-                total = measurements.size
+                total = measurements.size,
+                unavailableCount = measurements.size
             )
         }
         val ready = prepared as PreparedStandardCurveQuantifier.Ready
@@ -1256,8 +1283,11 @@ class GridDetectionCoordinator @Inject constructor(
         var outOfRangeCount = 0
         var extrapolatedCount = 0
         var siteSignalOnlyCount = 0
+        var estimatedCount = 0
+        var boundOnlyCount = 0
+        var unavailableCount = 0
         val evaluated = measurements.map { measurement ->
-            measurement to ready.quantify(measurement.primaryFeatureValue ?: Double.NaN)
+            measurement to ready.quantify(measurement.toQuantificationObservation())
         }
 
         // Ready 的正向求值、二分或插值内部一旦暴露模型故障，同一分析物的全部结果都
@@ -1275,19 +1305,14 @@ class GridDetectionCoordinator @Inject constructor(
             )
             return QuantificationBatch(
                 measurements = measurements.map { measurement ->
-                    measurement.copy(
-                        concentrationValue = null,
-                        concentrationUnit = null,
-                        reliableRangeStatus = null,
-                        modelSnapshotJson = null,
-                        quantificationQcJson = reasonJson
-                    )
+                    measurement.asUnavailableStandardCurveMeasurement(reasonJson)
                 },
                 modelExecutable = false,
                 quantifiedCount = 0,
                 outOfRangeCount = 0,
                 siteSignalOnlyCount = 0,
-                total = measurements.size
+                total = measurements.size,
+                unavailableCount = measurements.size
             )
         }
 
@@ -1303,15 +1328,34 @@ class GridDetectionCoordinator @Inject constructor(
                         concentrationUnit = result.unit,
                         reliableRangeStatus = result.rangeStatus.name,
                         modelSnapshotJson = result.modelSnapshotJson,
+                        quantificationState = result.quantificationState.name,
+                        concentrationLowerBound = result.concentrationLowerBound,
+                        concentrationUpperBound = result.concentrationUpperBound,
+                        intervalConfidenceLevel = result.intervalConfidenceLevel,
+                        censoringDirection = null,
+                        quantificationVersion = ENDPOINT_QUANTIFIER_VERSION,
                         quantificationQcJson = gson.toJson(
                             mapOf(
-                                "status" to if (extrapolated) "EXTRAPOLATED" else "QUANTIFIED",
-                                "rangeStatus" to result.rangeStatus.name
+                                "status" to result.quantificationState.name,
+                                "rangeStatus" to result.rangeStatus.name,
+                                "intervalConfidenceLevel" to result.intervalConfidenceLevel
                             )
                         )
                     ).also {
-                        quantifiedCount += 1
-                        if (extrapolated) extrapolatedCount += 1
+                        when (result.quantificationState) {
+                            QuantificationState.QUANTIFIED -> quantifiedCount += 1
+                            QuantificationState.ESTIMATED -> {
+                                estimatedCount += 1
+                                extrapolatedCount += 1
+                            }
+                            // Quantified 结果的领域契约不应携带这两种状态；保留防御分支，
+                            // 避免未来扩展时把单侧界限或不可用结果误计为精确浓度。
+                            QuantificationState.BOUND_ONLY -> boundOnlyCount += 1
+                            QuantificationState.UNAVAILABLE -> unavailableCount += 1
+                        }
+                        if (extrapolated && result.quantificationState != QuantificationState.ESTIMATED) {
+                            extrapolatedCount += 1
+                        }
                     }
                 }
 
@@ -1320,24 +1364,76 @@ class GridDetectionCoordinator @Inject constructor(
                     concentrationUnit = analyteSnapshot.analysisModel.model.concentrationUnit,
                     reliableRangeStatus = result.rangeStatus.name,
                     modelSnapshotJson = result.modelSnapshotJson,
+                    quantificationState = result.quantificationState.name,
+                    concentrationLowerBound = when (result.censoringDirection) {
+                        QuantificationCensoringDirection.LOWER_BOUND -> result.concentrationBound
+                        else -> null
+                    },
+                    concentrationUpperBound = when (result.censoringDirection) {
+                        QuantificationCensoringDirection.UPPER_BOUND -> result.concentrationBound
+                        else -> null
+                    },
+                    intervalConfidenceLevel = null,
+                    censoringDirection = result.censoringDirection.name,
+                    quantificationVersion = ENDPOINT_QUANTIFIER_VERSION,
                     quantificationQcJson = gson.toJson(
                         mapOf(
-                            "status" to "OUTSIDE_PROJECT_RANGE",
+                            "status" to result.quantificationState.name,
                             "rangeStatus" to result.rangeStatus.name,
+                            "concentrationBound" to result.concentrationBound,
+                            "censoringDirection" to result.censoringDirection.name,
                             "concentrationUnavailable" to true
                         )
                     )
-                ).also { outOfRangeCount += 1 }
+                ).also {
+                    outOfRangeCount += 1
+                    boundOnlyCount += 1
+                }
 
                 PreparedEndpointQuantificationResult.SiteSignalOnly -> measurement.copy(
+                    concentrationValue = null,
+                    concentrationUnit = analyteSnapshot.analysisModel.model.concentrationUnit,
+                    reliableRangeStatus = null,
+                    modelSnapshotJson = null,
+                    quantificationState = QuantificationState.UNAVAILABLE.name,
+                    concentrationLowerBound = null,
+                    concentrationUpperBound = null,
+                    intervalConfidenceLevel = null,
+                    censoringDirection = null,
+                    quantificationVersion = ENDPOINT_QUANTIFIER_VERSION,
                     quantificationQcJson = gson.toJson(
                         mapOf(
-                            "status" to "SIGNAL_ONLY",
+                            "status" to QuantificationState.UNAVAILABLE.name,
                             "scope" to "SITE",
                             "reason" to PreparedEndpointQuantificationResult.SiteSignalOnly.reason.name
                         )
                     )
-                ).also { siteSignalOnlyCount += 1 }
+                ).also {
+                    siteSignalOnlyCount += 1
+                    unavailableCount += 1
+                }
+
+                is PreparedEndpointQuantificationResult.Unavailable -> measurement.copy(
+                    concentrationValue = null,
+                    concentrationUnit = analyteSnapshot.analysisModel.model.concentrationUnit,
+                    modelSnapshotJson = result.modelSnapshotJson,
+                    quantificationState = result.quantificationState.name,
+                    concentrationLowerBound = null,
+                    concentrationUpperBound = null,
+                    intervalConfidenceLevel = null,
+                    censoringDirection = null,
+                    quantificationVersion = ENDPOINT_QUANTIFIER_VERSION,
+                    quantificationQcJson = gson.toJson(
+                        mapOf(
+                            "status" to result.quantificationState.name,
+                            "scope" to "SITE",
+                            "reason" to result.reason.name
+                        )
+                    )
+                ).also {
+                    siteSignalOnlyCount += 1
+                    unavailableCount += 1
+                }
 
                 // 上方已对整个批次做过 ModelFailure 门控；保留穷尽分支防止后续新增结果
                 // 类型时静默绕过模型级回退。
@@ -1351,7 +1447,10 @@ class GridDetectionCoordinator @Inject constructor(
             outOfRangeCount = outOfRangeCount,
             siteSignalOnlyCount = siteSignalOnlyCount,
             total = quantifiedMeasurements.size,
-            extrapolatedCount = extrapolatedCount
+            extrapolatedCount = extrapolatedCount,
+            estimatedCount = estimatedCount,
+            boundOnlyCount = boundOnlyCount,
+            unavailableCount = unavailableCount
         )
     }
 
@@ -1512,7 +1611,8 @@ class GridDetectionCoordinator @Inject constructor(
             quantifiedCount = quantifiedCount,
             outOfRangeCount = outOfRangeCount,
             siteSignalOnlyCount = 0,
-            total = updated.size
+            total = updated.size,
+            boundOnlyCount = outOfRangeCount
         )
     }
 
@@ -1543,7 +1643,8 @@ class GridDetectionCoordinator @Inject constructor(
             quantifiedCount = 0,
             outOfRangeCount = 0,
             siteSignalOnlyCount = 0,
-            total = measurements.size
+            total = measurements.size,
+            unavailableCount = measurements.size
         )
     }
 
@@ -1806,6 +1907,10 @@ class GridDetectionCoordinator @Inject constructor(
                 "compatible" to true,
                 "execution" to batch.execution,
                 "quantifiedCount" to batch.quantifiedCount,
+                "estimatedCount" to batch.estimatedCount,
+                "boundOnlyCount" to batch.boundOnlyCount,
+                "unavailableCount" to batch.unavailableCount,
+                "retestCount" to batch.retestCount,
                 "outOfRangeCount" to batch.outOfRangeCount,
                 "extrapolatedCount" to batch.extrapolatedCount,
                 "siteSignalOnlyCount" to batch.siteSignalOnlyCount,
@@ -1817,6 +1922,10 @@ class GridDetectionCoordinator @Inject constructor(
                 "reasons" to compatibility.reasons.map(Enum<*>::name),
                 "execution" to "signal_only",
                 "quantifiedCount" to 0,
+                "estimatedCount" to 0,
+                "boundOnlyCount" to 0,
+                "unavailableCount" to batch.unavailableCount,
+                "retestCount" to batch.retestCount,
                 "outOfRangeCount" to 0,
                 "siteSignalOnlyCount" to 0,
                 "total" to batch.total
@@ -1878,6 +1987,44 @@ class GridDetectionCoordinator @Inject constructor(
         }
     }
 
+    /**
+     * 将已经冻结到 SiteMeasurement 的光度证据组装为富量化观测。
+     *
+     * 96孔板和微流控都把 BaseSitePhotometry 写入 rawSignalJson，因此这里是两种载体共用
+     * 的唯一适配点。旧记录或特殊参考测量解析失败时只缺少饱和比例，不会重新读取图片。
+     */
+    private fun SiteMeasurement.toQuantificationObservation(): QuantificationObservation {
+        val base = runCatching {
+            gson.fromJson(rawSignalJson, BaseSitePhotometry::class.java)
+        }.getOrNull()
+        return QuantificationObservation(
+            signalValue = primaryFeatureValue ?: Double.NaN,
+            qualityReliable = qualityReliable,
+            saturationRatio = base?.saturationRatio,
+            photometryFlags = base?.qc?.flags?.mapTo(linkedSetOf()) { it.name }.orEmpty()
+        )
+    }
+
+    /**
+     * 标准曲线在模型级不可执行时统一清空所有旧浓度与区间字段，并写入稳定不可用状态。
+     * 这样重试同一内存对象或未来复用协调器时，不会把上一次成功结果残留到本次失败快照。
+     */
+    private fun SiteMeasurement.asUnavailableStandardCurveMeasurement(
+        reasonJson: String
+    ): SiteMeasurement = copy(
+        concentrationValue = null,
+        concentrationUnit = null,
+        reliableRangeStatus = null,
+        modelSnapshotJson = null,
+        quantificationState = QuantificationState.UNAVAILABLE.name,
+        concentrationLowerBound = null,
+        concentrationUpperBound = null,
+        intervalConfidenceLevel = null,
+        censoringDirection = null,
+        quantificationVersion = ENDPOINT_QUANTIFIER_VERSION,
+        quantificationQcJson = reasonJson
+    )
+
     private data class PreflightResult(
         val reasons: Set<GridDetectionBlockReason>,
         val targetPolarity: GridTargetPolarity?
@@ -1896,12 +2043,22 @@ class GridDetectionCoordinator @Inject constructor(
         val outOfRangeCount: Int,
         val siteSignalOnlyCount: Int,
         val total: Int,
-        val extrapolatedCount: Int = 0
+        val extrapolatedCount: Int = 0,
+        /** 可信扩展范围内、拥有区间的估计数量。 */
+        val estimatedCount: Int = 0,
+        /** 只能形成单侧浓度界限的数量。 */
+        val boundOnlyCount: Int = 0,
+        /** 模型、信号或质量证据不足，无法形成浓度或界限的数量。 */
+        val unavailableCount: Int = 0
     ) {
+        /** 结果页“复测”由单侧界限和真正不可用组成，两者在数据库中仍保持可区分。 */
+        val retestCount: Int = boundOnlyCount + unavailableCount
+
         /** 模型可执行但存在范围或位点信号警告时，保留成功浓度并明确记录警告。 */
         val execution: String = when {
             !modelExecutable -> "signal_only"
-            outOfRangeCount > 0 || extrapolatedCount > 0 || siteSignalOnlyCount > 0 ->
+            estimatedCount > 0 || boundOnlyCount > 0 || unavailableCount > 0 ||
+                outOfRangeCount > 0 || extrapolatedCount > 0 || siteSignalOnlyCount > 0 ->
                 "standard_curve_applied_with_warnings"
             else -> "standard_curve_applied"
         }

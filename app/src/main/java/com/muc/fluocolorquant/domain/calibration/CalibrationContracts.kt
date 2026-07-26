@@ -8,7 +8,57 @@ import com.muc.fluocolorquant.data.enums.FittingFunction
 data class CalibrationStandardObservation(
     val siteIndex: Int,
     val concentration: Double,
-    val signals: Map<AnalysisPrimaryFeature, Double?>
+    val signals: Map<AnalysisPrimaryFeature, Double?>,
+    /**
+     * 标准孔是否通过上游光度质量门控。旧调用没有逐孔质量证据时保持 null，表示未知，
+     * 不能误当成失败；V2 拟合只会把明确的 false 作为降权或删失证据。
+     */
+    val qualityReliable: Boolean? = null,
+    /** ROI 中贴近传感器上限的像素比例，范围为 0～1；用于后续饱和删失拟合。 */
+    val saturationRatio: Double? = null,
+    /** 冻结的光度质量标记；只保存稳定机器码，不保存用户可见文案。 */
+    val photometryFlags: Set<String> = emptySet()
+)
+
+/**
+ * 按完整浓度水平留一的预测验证结果。
+ *
+ * 留一时会同时移除该浓度的全部重复孔，防止同一水平的重复孔同时出现在训练集和验证集，
+ * 从根源上避免数据泄漏。零浓度/空白用于约束基线，但相对浓度误差只统计正浓度水平。
+ */
+data class CalibrationCrossValidationMetrics(
+    val validationLevelCount: Int,
+    val successfulLevelCount: Int,
+    val successRatio: Double,
+    val medianRelativeErrorPercent: Double?,
+    val p90RelativeErrorPercent: Double?,
+    val endpointRelativeErrorPercent: Double?,
+    /**
+     * 0～1 的预测稳定性分数。它比较各留一模型在完整标定网格上的预测漂移，
+     * 不直接比较不同量纲、不同函数的原始参数大小。
+     */
+    val parameterStabilityScore: Double?
+)
+
+/**
+ * 由参数不确定性生成的连续可信估计范围。
+ *
+ * 该范围不是项目预期量程，也不是曲线数学渐近线；只有通过留一、参数采样和区间宽度
+ * 门槛的连续区间才会写入这里。历史快照缺失本字段时必须关闭可信扩展。
+ */
+data class CalibrationTrustedRange(
+    val minimum: Double,
+    val maximum: Double,
+    val confidenceLevel: Double,
+    val parameterSampleCount: Int,
+    val validSampleRatio: Double,
+    val methodVersion: String,
+    /** 变换参数空间中的协方差，用于逐孔确定性重建浓度区间。 */
+    val transformedParameterCovariance: List<List<Double>> = emptyList(),
+    /** 与候选输入指纹绑定的确定性采样种子；历史重开不得生成另一组随机区间。 */
+    val samplingSeed: Long = 0L,
+    /** 拟合残差的鲁棒信号尺度，用于拒绝过于靠近渐近线的伪精确估计。 */
+    val residualSignalScale: Double? = null
 )
 
 /**
@@ -26,7 +76,10 @@ data class CalibrationDraft(
     val requestedFunctions: Set<FittingFunction>,
     val processorVersion: String,
     val policy: CalibrationPolicy,
-    val inputFingerprint: String
+    val inputFingerprint: String,
+    /** 用户项目中的预期范围；只用于限定可信扩展扫描上限，不参与未知样品模型选择。 */
+    val projectRangeMin: Double? = null,
+    val projectRangeMax: Double? = null
 )
 
 /** 普通页面能够解释的候选不可用原因；UI负责映射为中英文字符串资源。 */
@@ -72,7 +125,11 @@ data class CalibrationCandidate(
     val acceptedStandardRatio: Double?,
     val weightingCode: Int,
     val accepted: Boolean,
-    val status: CalibrationCandidateStatus
+    val status: CalibrationCandidateStatus,
+    val crossValidation: CalibrationCrossValidationMetrics? = null,
+    val trustedRange: CalibrationTrustedRange? = null,
+    /** 固定自由度 Student-t 鲁棒目标的版本；null 表示旧最小二乘候选。 */
+    val robustObjectiveVersion: String? = null
 )
 
 /** 结果页固定显示一个函数槽位；拟合失败时仍保留槽位和结构化原因。 */
@@ -135,7 +192,10 @@ data class AppliedCalibrationSnapshot(
     val policySnapshot: CalibrationPolicy,
     val processorVersion: String,
     val engineVersion: String,
-    val inputFingerprint: String
+    val inputFingerprint: String,
+    val crossValidation: CalibrationCrossValidationMetrics? = null,
+    val trustedRange: CalibrationTrustedRange? = null,
+    val robustObjectiveVersion: String? = null
 )
 
 /**

@@ -44,7 +44,10 @@ class CalibrationApplicationService @Inject constructor() {
             policySnapshot = resultSet.policySnapshot,
             processorVersion = resultSet.processorVersion,
             engineVersion = resultSet.engineVersion,
-            inputFingerprint = resultSet.inputFingerprint
+            inputFingerprint = resultSet.inputFingerprint,
+            crossValidation = candidate.crossValidation,
+            trustedRange = candidate.trustedRange,
+            robustObjectiveVersion = candidate.robustObjectiveVersion
         )
         return AnalyteQuantitationSnapshot(
             analyteId = resultSet.analyteId,
