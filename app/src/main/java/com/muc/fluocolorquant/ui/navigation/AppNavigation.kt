@@ -39,13 +39,22 @@ import com.muc.fluocolorquant.ui.screens.settings.resources.CarrierProfileManage
 import com.muc.fluocolorquant.ui.screens.spectrum.SpectrumCalibrationScreen
 import com.muc.fluocolorquant.ui.screens.spectrum.SpectrumResultScreen
 import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
-// import com.muc.fluocolorquant.utils.animatedComposable
+import com.muc.fluocolorquant.utils.fluoEnterTransition
+import com.muc.fluocolorquant.utils.fluoExitTransition
+import com.muc.fluocolorquant.utils.fluoPopEnterTransition
+import com.muc.fluocolorquant.utils.fluoPopExitTransition
 
 @Composable
 fun AppNavigation(navController: NavHostController, startDestination: String = Screen.Splash.route) {
     NavHost(
         navController = navController,
-        startDestination = startDestination
+        startDestination = startDestination,
+        // 过渡统一挂在 NavHost 上：所有页面共用同一节奏，页面自身不再各写一套动画，
+        // 也避免部分页面有动画、部分页面瞬间切换造成的体验断层（AGENTS.md 9.2）。
+        enterTransition = fluoEnterTransition,
+        exitTransition = fluoExitTransition,
+        popEnterTransition = fluoPopEnterTransition,
+        popExitTransition = fluoPopExitTransition
     ) {
         composable(route = Screen.Splash.route) {
             SplashScreen(navController = navController)
