@@ -222,6 +222,7 @@
     <string name="auth_show_password">显示密码</string>
     <string name="auth_hide_password">隐藏密码</string>
     <string name="auth_mode_switch_label">登录或注册</string>
+    <string name="image_crop_title">编辑图片</string>
     <string name="no_account">没有账号? 点击注册</string>
     <string name="have_account">已有账号? 点击登录</string>
     
