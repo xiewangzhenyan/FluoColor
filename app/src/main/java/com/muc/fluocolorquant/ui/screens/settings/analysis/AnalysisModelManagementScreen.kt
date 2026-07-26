@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.enums.AnalysisModelLifecycleStatus
 import com.muc.fluocolorquant.data.enums.AnalysisModelType
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
@@ -157,16 +158,9 @@ fun AnalysisModelManagementContent(
 ) {
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.analysis_model_library_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                },
+            FluoTopBar(
+                title = stringResource(R.string.analysis_model_library_title),
+                onBack = onNavigateBack,
                 actions = {
                     // 旧曲线库属于兼容入口，不再占用列表首屏；保留为明确的历史图标入口。
                     IconButton(

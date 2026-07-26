@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.PixelType
 import com.muc.fluocolorquant.data.model.CurveModel
@@ -97,16 +98,9 @@ fun CurveModelManagementScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(text = stringResource(R.string.curve_model_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.curve_model_title),
+                onBack = { navController.navigateUp() }
             )
         },
         floatingActionButton = {

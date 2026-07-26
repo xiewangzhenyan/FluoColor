@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Reagent
 import com.muc.fluocolorquant.ui.components.LocalToastManager
@@ -121,13 +122,9 @@ fun ReagentLibraryScreen(
     // Scaffold布局
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.reagent_library_title)) },
-                navigationIcon = {
-                    IconButton(onClick = navigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.reagent_library_title),
+                onBack = { navigateBack() }
             )
         },
         floatingActionButton = {

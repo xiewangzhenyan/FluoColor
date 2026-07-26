@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.navigation.Screen
 
 /** 设置分组中的单个导航定义，只保存资源 ID 和路由，不保存可见硬编码文本。 */
@@ -123,16 +124,9 @@ fun SettingsScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.settings_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.settings_title),
+                onBack = { navController.navigateUp() }
             )
         }
     ) { innerPadding ->

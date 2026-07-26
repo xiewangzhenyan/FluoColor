@@ -81,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.data.enums.ReadoutLayout
@@ -273,28 +274,15 @@ fun ExperimentTemplateWizardContent(
 ) {
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(
-                            if (state.editingTemplateId == null) {
-                                R.string.template_wizard_create_title
-                            } else {
-                                R.string.template_wizard_edit_title
-                            }
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = actions.onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
+            FluoTopBar(
+                title = stringResource(
+                    if (state.editingTemplateId == null) {
+                        R.string.template_wizard_create_title
+                    } else {
+                        R.string.template_wizard_edit_title
                     }
-                }
+                ),
+                onBack = actions.onNavigateBack
             )
         },
         bottomBar = {

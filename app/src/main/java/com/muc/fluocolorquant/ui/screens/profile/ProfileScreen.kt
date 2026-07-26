@@ -38,6 +38,7 @@ import com.muc.fluocolorquant.ui.navigation.Screen
 import coil.request.ImageRequest
 import coil.size.Size
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -213,22 +214,15 @@ fun ProfileScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        "个人信息",
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, "返回")
-                    }
-                }
+            // 标题与返回描述原为硬编码中文，英文环境会直接显示中文；复用已有的
+            // profile 资源（中英文均已存在）。返回图标随统一顶栏换为 AutoMirrored 版本。
+            FluoTopBar(
+                title = stringResource(R.string.profile),
+                onBack = { navController.navigateUp() }
             )
         },
-        containerColor = Color(0xFFF5F5F5) // 浅灰色背景
+        // 原背景写死 0xFFF5F5F5，深色模式下会是一整屏浅灰。改用主题背景色。
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier

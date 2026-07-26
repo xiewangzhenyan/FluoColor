@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.CurveModel
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
@@ -137,16 +138,9 @@ fun ExperimentTemplateManagementScreen(
     
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.library_template_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.library_template_title),
+                onBack = { navController.navigateUp() }
             )
         },
         floatingActionButton = {

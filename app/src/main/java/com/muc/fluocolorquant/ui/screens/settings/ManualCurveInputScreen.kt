@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.PixelType
 import com.muc.fluocolorquant.ui.components.LatexView
@@ -81,13 +82,9 @@ fun ManualCurveInputScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(text = stringResource(R.string.import_curve)) },
-                navigationIcon = {
-                    IconButton(onClick = { navigateBack() }) {
-                        Icon(Icons.Default.ArrowBack, stringResource(R.string.back))
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.import_curve),
+                onBack = { navigateBack() }
             )
         }
     ) { paddingValues ->

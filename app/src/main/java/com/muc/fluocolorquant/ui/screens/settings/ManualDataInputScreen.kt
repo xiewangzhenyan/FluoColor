@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.DetectionModality
@@ -259,26 +260,15 @@ fun ManualDataInputScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        stringResource(
-                            if (state.editingModelId == null) {
-                                R.string.standard_curve_unified_title
-                            } else {
-                                R.string.standard_curve_edit_title
-                            }
-                        )
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = navigateBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
+            FluoTopBar(
+                title = stringResource(
+                    if (state.editingModelId == null) {
+                        R.string.standard_curve_unified_title
+                    } else {
+                        R.string.standard_curve_edit_title
                     }
-                }
+                ),
+                onBack = navigateBack
             )
         }
     ) { innerPadding ->

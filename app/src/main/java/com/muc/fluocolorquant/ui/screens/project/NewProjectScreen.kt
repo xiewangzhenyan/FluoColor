@@ -92,6 +92,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.domain.project.ProjectDetectionDestination
@@ -339,19 +340,9 @@ fun TemplateProjectContent(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.new_project_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { onAction(TemplateProjectAction.NavigateBack) }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+            FluoTopBar(
+                title = stringResource(R.string.new_project_title),
+                onBack = { onAction(TemplateProjectAction.NavigateBack) }
             )
         }
     ) { paddingValues ->

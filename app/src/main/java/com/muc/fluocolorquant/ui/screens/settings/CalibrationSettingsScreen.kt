@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.FittingFunction
@@ -94,16 +95,9 @@ fun CalibrationSettingsScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.calibration_settings_title)) },
-                navigationIcon = {
-                    IconButton(onClick = navController::navigateUp) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.calibration_settings_title),
+                onBack = { navController.navigateUp() }
             )
         }
     ) { innerPadding ->

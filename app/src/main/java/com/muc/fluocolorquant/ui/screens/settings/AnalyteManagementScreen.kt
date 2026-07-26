@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
@@ -99,13 +100,9 @@ fun AnalyteManagementScreen(
     // Scaffold布局
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.analyte_management_title)) },
-                navigationIcon = {
-                    IconButton(onClick = navigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.analyte_management_title),
+                onBack = { navigateBack() }
             )
         },
         floatingActionButton = {

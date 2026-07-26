@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.ui.components.LocalToastManager
@@ -94,16 +95,9 @@ fun StandardCurveLibraryScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.standard_curve_library_title)) },
-                navigationIcon = {
-                    IconButton(onClick = navController::navigateUp) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.standard_curve_library_title),
+                onBack = { navController.navigateUp() }
             )
         },
         floatingActionButton = {
