@@ -61,6 +61,7 @@ import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
 import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import com.muc.fluocolorquant.utils.math.WellMappingUtils
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 修改版的PlateHeatmapCard，支持按分析物过滤
@@ -93,7 +94,7 @@ fun PlateHeatmapCard(
             .padding(bottom = 16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(FluoRadius.control)
     ) {
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 16.dp)) { // 调整内边距
             Row(
@@ -121,8 +122,8 @@ fun PlateHeatmapCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(projectColumns.toFloat() / projectRows)
-                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(8.dp)),
-                shape = RoundedCornerShape(8.dp),
+                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(FluoRadius.chip)),
+                shape = RoundedCornerShape(FluoRadius.chip),
                 shadowElevation = 2.dp
             ) {
                 val wellsByVirtualCoord = remember(filteredResults, projectColumns) {
@@ -224,7 +225,7 @@ fun SquareHeatmapCard(
             .padding(bottom = 16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(FluoRadius.control)
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)) { // 调整内边距
             Row(
@@ -252,8 +253,8 @@ fun SquareHeatmapCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(projectColumns.toFloat() / projectRows)
-                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(8.dp)),
-                shape = RoundedCornerShape(8.dp),
+                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(FluoRadius.chip)),
+                shape = RoundedCornerShape(FluoRadius.chip),
                 shadowElevation = 2.dp
             ) {
                 val wellsByVirtualCoord = remember(filteredResults, projectColumns) {
@@ -462,8 +463,8 @@ fun HeatmapLegend(minValue: Double, maxValue: Double, unit: String) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(24.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(FluoRadius.badge))
+                .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(FluoRadius.badge))
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
                 HeatmapColorUtil.getLegendColors(20).forEach { color ->
@@ -527,8 +528,8 @@ fun ConcentrationTrendCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(chartHeight)
-                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(8.dp))
-                    .clip(RoundedCornerShape(8.dp))
+                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(FluoRadius.chip))
+                    .clip(RoundedCornerShape(FluoRadius.chip))
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
                     .padding(start = 40.dp, end = 12.dp, top = 12.dp, bottom = 40.dp)
             ) {
@@ -793,7 +794,7 @@ fun ConcentrationTrendCard(
                             .fillMaxWidth()
                             .padding(bottom = 12.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(FluoRadius.chip)
                     ) {
                         Row(
                             modifier = Modifier

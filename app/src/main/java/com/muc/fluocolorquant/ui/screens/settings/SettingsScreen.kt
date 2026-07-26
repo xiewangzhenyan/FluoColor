@@ -41,6 +41,7 @@ import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.navigation.Screen
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /** 设置分组中的单个导航定义，只保存资源 ID 和路由，不保存可见硬编码文本。 */
 private data class SettingsEntry(
@@ -209,7 +210,7 @@ private fun SettingsSectionHeader(
     ) {
         Surface(
             modifier = Modifier.size(34.dp),
-            shape = RoundedCornerShape(11.dp),
+            shape = RoundedCornerShape(FluoRadius.badge),
             color = accentColor.copy(alpha = 0.12f)
         ) {
             Box(contentAlignment = Alignment.Center) {

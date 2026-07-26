@@ -57,6 +57,7 @@ import com.muc.fluocolorquant.ui.components.charts.ChartPoint
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
 import java.text.NumberFormat
 import kotlin.math.abs
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 圆孔板预测精度验证页。
@@ -90,7 +91,7 @@ fun Plate96ValidationContent(
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(FluoRadius.control)
                 ) {
                     Text(
                         text = stringResource(R.string.plate_validation_save_failed),
@@ -130,7 +131,7 @@ private fun PlateValidationHeaderCard(
     onEdit: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.30f)
         )
@@ -146,7 +147,7 @@ private fun PlateValidationHeaderCard(
             ) {
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(FluoRadius.control)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Outlined.FactCheck,
@@ -176,7 +177,7 @@ private fun PlateValidationHeaderCard(
                 validation?.let { saved ->
                     Surface(
                         color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(FluoRadius.badge)
                     ) {
                         Text(
                             text = stringResource(R.string.plate_validation_revision, saved.revision),
@@ -336,7 +337,7 @@ private fun PlateValidationChartCard(
     content: @Composable () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.30f)
         )
@@ -365,7 +366,7 @@ private fun PlateValidationMetricGrid(
                     val metricIndex = rowIndex * 2 + columnIndex
                     Surface(
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(FluoRadius.control),
                         color = MaterialTheme.colorScheme.surface
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
@@ -454,7 +455,7 @@ private fun PlateValidationInputDialog(
             ) {
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(FluoRadius.control)
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Edit,
@@ -482,7 +483,7 @@ private fun PlateValidationInputDialog(
                     )
                 }
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = MaterialTheme.colorScheme.secondaryContainer
                 ) {
                     Text(
@@ -505,7 +506,7 @@ private fun PlateValidationInputDialog(
             ) {
                 items(candidates, key = { candidate -> candidate.well.wellIndex }) { candidate ->
                     Surface(
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(FluoRadius.card),
                         color = MaterialTheme.colorScheme.surface,
                         tonalElevation = 1.dp
                     ) {

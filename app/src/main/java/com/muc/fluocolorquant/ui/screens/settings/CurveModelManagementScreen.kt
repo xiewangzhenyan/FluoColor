@@ -78,6 +78,7 @@ import com.muc.fluocolorquant.ui.viewmodels.CurveModelViewModel
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import androidx.compose.ui.text.font.FontWeight
 import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 曲线模型管理页面
@@ -145,7 +146,7 @@ fun CurveModelManagementScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 8.dp),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(FluoRadius.badge),
                             color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
                             tonalElevation = 3.dp
                         ) {

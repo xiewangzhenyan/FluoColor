@@ -65,6 +65,7 @@ import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.model.AcquisitionProfile
 import com.muc.fluocolorquant.ui.viewmodels.AcquisitionProfileUiState
 import com.muc.fluocolorquant.ui.viewmodels.AcquisitionProfileViewModel
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 采集设备档案管理页面。
@@ -209,7 +210,7 @@ private fun AcquisitionProfileCard(
     val fixture = profile.fixtureId ?: stringResource(R.string.acquisition_no_fixture)
 
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.70f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -374,7 +375,7 @@ private fun AcquisitionEditorSheet(
             )
 
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.58f)
             ) {
                 Text(

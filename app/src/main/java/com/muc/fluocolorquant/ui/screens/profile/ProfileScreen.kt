@@ -49,6 +49,7 @@ import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.PermissionStatus
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
@@ -286,7 +287,7 @@ fun ProfileScreen(
                     focusedBorderColor = Color(0xFF5D6B98),
                     unfocusedBorderColor = Color(0xFFDDDDDD)
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(FluoRadius.chip)
             )
 
             OutlinedTextField(
@@ -307,7 +308,7 @@ fun ProfileScreen(
                     focusedBorderColor = Color(0xFF5D6B98),
                     unfocusedBorderColor = Color(0xFFDDDDDD)
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(FluoRadius.chip)
             )
 
             // 保存修改按钮
@@ -325,7 +326,7 @@ fun ProfileScreen(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF5D6B98)
                 ),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(FluoRadius.chip),
                 enabled = isModified
             ) {
                 Icon(
@@ -346,7 +347,7 @@ fun ProfileScreen(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF4E5C82)
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(FluoRadius.chip)
             ) {
                 Icon(
                     imageVector = Icons.Default.Lock,
@@ -369,7 +370,7 @@ fun ProfileScreen(
                         modifier = Modifier.padding(bottom = 8.dp)
                     ) 
                 },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 containerColor = Color.White,
                 text = {
                     Column(
@@ -393,7 +394,7 @@ fun ProfileScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(60.dp)
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(FluoRadius.badge))
                                         .background(Color(0xFF5D6B98).copy(alpha = 0.1f)),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -426,7 +427,7 @@ fun ProfileScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(60.dp)
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(FluoRadius.badge))
                                         .background(Color(0xFF5D6B98).copy(alpha = 0.1f)),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -456,7 +457,7 @@ fun ProfileScreen(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF5D6B98)
                         ),
-                        shape = RoundedCornerShape(24.dp)
+                        shape = RoundedCornerShape(FluoRadius.sheet)
                     ) {
                         Text("取消")
                     }
@@ -484,7 +485,7 @@ fun ProfileScreen(
                         color = Color(0xFF5D6B98)
                     ) 
                 },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 containerColor = Color.White,
                 text = {
                     Column(
@@ -640,7 +641,7 @@ fun ProfileScreen(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF5D6B98)
                         ),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(FluoRadius.chip),
                         enabled = !isSubmitting
                     ) {
                         if (isSubmitting) {
@@ -662,7 +663,7 @@ fun ProfileScreen(
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = Color(0xFF5D6B98)
                         ),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(FluoRadius.chip),
                         border = ButtonDefaults.outlinedButtonBorder.copy(
                             brush = SolidColor(Color(0xFF5D6B98))
                         )

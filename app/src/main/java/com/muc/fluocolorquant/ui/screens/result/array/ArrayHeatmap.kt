@@ -59,6 +59,7 @@ import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
 import com.muc.fluocolorquant.domain.result.resolveArrayMeasurementQuality
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
 import kotlin.math.max
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 const val ARRAY_HEATMAP_CELL_TAG_PREFIX: String = "array_heatmap_cell_"
 const val ARRAY_HEATMAP_TRANSFORM_TAG: String = "array_heatmap_transform_container"
@@ -152,6 +153,10 @@ data class ArrayHeatmapValueInput(
     val photometryFlags: Set<String>,
     /** 量化执行状态用于区分“没有模型结果”和普通图像复核提示。 */
     val quantificationStatus: String? = null,
+    /** Room 15 强类型结果：QUANTIFIED / ESTIMATED / BOUND_ONLY / UNAVAILABLE。 */
+    val quantificationState: String? = null,
+    /** BOUND_ONLY 时用于区分“>下界”和“<上界”。 */
+    val censoringDirection: String? = null,
     /** 严重饱和才属于不可用；轻度饱和继续保留浓度并提示复核。 */
     val saturationRatio: Double? = null,
     /** ROI 大面积超出图像边界时结果不可用，小比例裁切仅提示复核。 */
@@ -186,6 +191,12 @@ data class ArrayHeatmapModel(
     val measuredCount: Int,
     /** 当前显示维度已经形成有限值或明确项目量程方向的位点数量。 */
     val calculatedCount: Int,
+    /** 标定范围内且质量可用的点浓度数量。 */
+    val quantifiedCount: Int = 0,
+    /** 标定范围外但仍通过可信区间门槛的估计数量。 */
+    val estimatedCount: Int = 0,
+    /** 单侧界限或不可用、需要复测的数量。 */
+    val retestCount: Int = 0,
     /** 直接位于曲线标定范围内的浓度数量。 */
     val withinCalibrationRangeCount: Int,
     /** 位于项目量程内、但使用曲线外推得到浓度的数量。 */
@@ -255,8 +266,10 @@ fun buildAnalyteHeatmapModel(
             input.hasMeasurement &&
             input.reliableRangeStatus?.uppercase() in setOf(
                 "BELOW_PROJECT_RANGE",
-                "ABOVE_PROJECT_RANGE"
-            )
+                "ABOVE_PROJECT_RANGE",
+                "BELOW_TRUSTED_RANGE",
+                "ABOVE_TRUSTED_RANGE"
+            ) || input.quantificationState.equals("BOUND_ONLY", ignoreCase = true)
     }
     // 旧运行只保存了部分浓度时，整张图统一使用信号值；绝不能让同一色带同时表达浓度和信号。
     // 即使全部位点都落在项目量程外，只要项目边界完整，仍应显示浓度端点颜色和方向标记，
@@ -488,7 +501,7 @@ fun ArrayHeatmap(
                 .width(gridWidth)
                 .height(gridHeight)
                 .align(Alignment.Center)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(FluoRadius.control))
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .onSizeChanged { viewportSize = it }
                 .testTag(if (transformEnabled) ARRAY_HEATMAP_TRANSFORM_TAG else "array_heatmap_static_container")
@@ -869,9 +882,33 @@ private fun ArrayHeatmapValueInput.resolveValueState(
             ArrayHeatmapValueState.UNAVAILABLE
         }
     }
+    when (quantificationState?.uppercase()) {
+        "UNAVAILABLE" -> return ArrayHeatmapValueState.UNAVAILABLE
+        "ESTIMATED" -> return if (rawValue?.isFinite() == true) {
+            ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED
+        } else {
+            ArrayHeatmapValueState.UNAVAILABLE
+        }
+        "QUANTIFIED" -> return if (rawValue?.isFinite() == true) {
+            ArrayHeatmapValueState.QUANTIFIED
+        } else {
+            ArrayHeatmapValueState.UNAVAILABLE
+        }
+        "BOUND_ONLY" -> return when {
+            reliableRangeStatus?.uppercase() in setOf(
+                "BELOW_PROJECT_RANGE",
+                "BELOW_TRUSTED_RANGE",
+                "BELOW_RANGE"
+            ) || censoringDirection.equals("UPPER_BOUND", ignoreCase = true) ->
+                ArrayHeatmapValueState.BELOW_PROJECT_RANGE
+            else -> ArrayHeatmapValueState.ABOVE_PROJECT_RANGE
+        }
+    }
     return when (reliableRangeStatus?.uppercase()) {
-        "BELOW_PROJECT_RANGE" -> ArrayHeatmapValueState.BELOW_PROJECT_RANGE
-        "ABOVE_PROJECT_RANGE" -> ArrayHeatmapValueState.ABOVE_PROJECT_RANGE
+        "BELOW_PROJECT_RANGE", "BELOW_TRUSTED_RANGE" ->
+            ArrayHeatmapValueState.BELOW_PROJECT_RANGE
+        "ABOVE_PROJECT_RANGE", "ABOVE_TRUSTED_RANGE" ->
+            ArrayHeatmapValueState.ABOVE_PROJECT_RANGE
         "BELOW_RANGE", "ABOVE_RANGE" -> if (rawValue?.isFinite() == true) {
             ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED
         } else {
@@ -923,6 +960,8 @@ private fun ArrayPhysicalSiteResult.toHeatmapInput(
             measurement?.qc?.geometryFlags.orEmpty(),
         photometryFlags = measurement?.qc?.photometryFlags.orEmpty(),
         quantificationStatus = measurement?.qc?.quantificationStatus,
+        quantificationState = measurement?.quantificationState,
+        censoringDirection = measurement?.censoringDirection,
         saturationRatio = measurement?.detail?.basePhotometryOrNull()?.saturationRatio,
         roiClipRatio = measurement?.detail?.basePhotometryOrNull()?.roiClipRatio,
         annulusClipRatio = measurement?.detail?.basePhotometryOrNull()?.annulusClipRatio
@@ -946,7 +985,19 @@ private fun buildHeatmapModel(
     cells: List<ArrayHeatmapCell>,
     historicalConcentrationIncomplete: Boolean = false
 ): ArrayHeatmapModel {
-    val measuredCells = cells.filter(ArrayHeatmapCell::hasMeasurement)
+    // 当前分析物的三类统计只计算适用位点；其他分析物或全局参考孔不能混入分母。
+    val measuredCells = cells.filter { it.hasMeasurement && it.applicable }
+    val quantifiedCount = measuredCells.count {
+        it.valueState == ArrayHeatmapValueState.QUANTIFIED
+    }
+    val estimatedCount = measuredCells.count {
+        it.valueState == ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED
+    }
+    val retestCount = measuredCells.count {
+        it.valueState == ArrayHeatmapValueState.BELOW_PROJECT_RANGE ||
+            it.valueState == ArrayHeatmapValueState.ABOVE_PROJECT_RANGE ||
+            it.valueState == ArrayHeatmapValueState.UNAVAILABLE
+    }
     return ArrayHeatmapModel(
         rows = rows,
         columns = columns,
@@ -954,13 +1005,12 @@ private fun buildHeatmapModel(
         scale = scale,
         cells = cells,
         measuredCount = measuredCells.size,
-        calculatedCount = measuredCells.count { it.valueState != ArrayHeatmapValueState.UNAVAILABLE },
-        withinCalibrationRangeCount = measuredCells.count {
-            it.valueState == ArrayHeatmapValueState.QUANTIFIED
-        },
-        calibrationExtrapolatedCount = measuredCells.count {
-            it.valueState == ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED
-        },
+        calculatedCount = quantifiedCount + estimatedCount,
+        quantifiedCount = quantifiedCount,
+        estimatedCount = estimatedCount,
+        retestCount = retestCount,
+        withinCalibrationRangeCount = quantifiedCount,
+        calibrationExtrapolatedCount = estimatedCount,
         outsideProjectRangeCount = measuredCells.count {
             it.valueState == ArrayHeatmapValueState.BELOW_PROJECT_RANGE ||
                 it.valueState == ArrayHeatmapValueState.ABOVE_PROJECT_RANGE

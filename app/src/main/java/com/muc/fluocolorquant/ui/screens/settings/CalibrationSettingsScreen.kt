@@ -76,6 +76,7 @@ import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.components.analysisFeatureLabel
 import com.muc.fluocolorquant.ui.components.analysisFeatureIcon
 import com.muc.fluocolorquant.ui.viewmodels.CalibrationSettingsViewModel
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 曲线拟合设置页。
@@ -237,7 +238,7 @@ private fun CalibrationSettingsSection(
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(FluoRadius.card)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -248,7 +249,7 @@ private fun CalibrationSettingsSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Box(
@@ -299,7 +300,7 @@ private fun StrategySelector(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { onSelected(strategy) },
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 color = if (selected == strategy) {
                     MaterialTheme.colorScheme.secondaryContainer
                 } else {
@@ -491,7 +492,7 @@ private fun FeatureSelector(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         onClick = { pickerVisible = true },
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
@@ -586,7 +587,7 @@ private fun SettingsSignalFeatureDialog(
                                     pending + feature
                                 }
                             },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(FluoRadius.badge),
                             color = MaterialTheme.colorScheme.surfaceContainerLow
                         ) {
                             Row(
@@ -599,7 +600,7 @@ private fun SettingsSignalFeatureDialog(
                                     onCheckedChange = null
                                 )
                                 Surface(
-                                    shape = RoundedCornerShape(9.dp),
+                                    shape = RoundedCornerShape(FluoRadius.chip),
                                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
                                 ) {
                                     Icon(
@@ -673,7 +674,7 @@ private fun CalibrationRulePreview(policy: CalibrationPolicy) {
     val recommended = previewRecommendation(policy)
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(FluoRadius.card)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),

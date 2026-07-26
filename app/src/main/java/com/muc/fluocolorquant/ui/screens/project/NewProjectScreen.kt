@@ -114,6 +114,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /** Compose UI 测试使用的稳定语义标签。 */
 object NewProjectTestTags {
@@ -382,7 +383,7 @@ fun TemplateProjectContent(
                     .fillMaxWidth()
                     .height(52.dp)
                     .testTag(NewProjectTestTags.CREATE_BUTTON),
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(FluoRadius.control)
             ) {
                 if (state.form.isSubmitting) {
                     CircularProgressIndicator(
@@ -490,7 +491,7 @@ private fun TemplateSelectorCard(
 private fun EmptyTemplateState(onAction: (TemplateProjectAction) -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(FluoRadius.badge)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -659,7 +660,7 @@ private fun SampleMappingCard(
             state.form.sampleGroups.take(6).forEach { group ->
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(FluoRadius.badge)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(10.dp),
@@ -795,12 +796,12 @@ private fun ProjectImageCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(190.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(FluoRadius.control))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
                     .border(
                         1.dp,
                         MaterialTheme.colorScheme.outlineVariant,
-                        RoundedCornerShape(14.dp)
+                        RoundedCornerShape(FluoRadius.control)
                     )
                     .clickable { onAction(TemplateProjectAction.ChooseImage) },
                 contentAlignment = Alignment.Center
@@ -821,7 +822,7 @@ private fun ProjectImageCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(220.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(FluoRadius.control))
                     .background(Color.Black.copy(alpha = 0.04f))
             ) {
                 AsyncImage(
@@ -873,7 +874,7 @@ private fun PreflightCard(state: ProjectUiState) {
         Spacer(Modifier.height(10.dp))
         Surface(
             color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(FluoRadius.badge)
         ) {
             Column(
                 modifier = Modifier.padding(14.dp),
@@ -916,7 +917,7 @@ private fun SectionCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {

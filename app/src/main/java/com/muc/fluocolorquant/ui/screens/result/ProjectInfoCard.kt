@@ -58,6 +58,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 private fun formatDate(date: Date): String =
     SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(date)
@@ -179,7 +180,7 @@ private fun ProjectCaptureThumbnail(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(FluoRadius.control)
     ) {
         Box(
             modifier = Modifier
@@ -187,7 +188,7 @@ private fun ProjectCaptureThumbnail(
                 .border(
                     width = 1.5.dp,
                     color = Color.White.copy(alpha = 0.9f),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(FluoRadius.control)
                 )
         ) {
             AsyncImage(
@@ -208,7 +209,7 @@ private fun ProjectCaptureThumbnail(
                     .align(Alignment.TopStart)
                     .background(
                         color = Color.Black.copy(alpha = 0.58f),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(FluoRadius.badge)
                     )
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
@@ -267,7 +268,7 @@ private fun ProjectCapturePreviewDialog(
                 containerColor = MaterialTheme.colorScheme.surface
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
-            shape = RoundedCornerShape(24.dp)
+            shape = RoundedCornerShape(FluoRadius.sheet)
         ) {
             Box(
                 modifier = Modifier
@@ -294,7 +295,7 @@ private fun ProjectCapturePreviewDialog(
                         .align(Alignment.TopStart)
                         .background(
                             color = Color.Black.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(FluoRadius.badge)
                         )
                         .padding(horizontal = 10.dp, vertical = 5.dp)
                 ) {

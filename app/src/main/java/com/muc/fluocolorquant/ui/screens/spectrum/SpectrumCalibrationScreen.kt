@@ -103,6 +103,7 @@ import kotlinx.coroutines.launch
 
 import kotlin.math.abs
 import kotlin.math.min
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -427,7 +428,7 @@ private fun AutoCalibrationSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(FluoRadius.chip),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (state.calibrationImageBitmap != null) 
                         Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
@@ -513,7 +514,7 @@ private fun AutoCalibrationSection(
                     placeholder = { Text("nm") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(FluoRadius.chip),
                     trailingIcon = {
                         // 显示删除按钮（至少保留2个输入框）
                         if (wavelengthInputs.size > 2) {
@@ -534,7 +535,7 @@ private fun AutoCalibrationSection(
             OutlinedButton(
                 onClick = { wavelengthInputs.add("") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(FluoRadius.chip)
             ) {
                 Text("+ ${stringResource(R.string.add_wavelength)}")
             }
@@ -564,7 +565,7 @@ private fun AutoCalibrationSection(
                 .fillMaxWidth()
                 .height(52.dp),
             enabled = !state.isAutoFitting && (canStartFitting || isFittingCompleted),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(FluoRadius.chip),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isFittingCompleted) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary,
                 disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -1049,7 +1050,7 @@ private fun ManualCalibrationSection(
                     Box(
                         modifier = Modifier
                             .size(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(FluoRadius.badge))
                             .background(Color(0xFF5D6B98)),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1087,7 +1088,7 @@ private fun ManualCalibrationSection(
                         enabled = state.currentTrackIndex > 0,
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(FluoRadius.badge))
                             .background(
                                 if (state.currentTrackIndex > 0) Color(0xFF5D6B98)
                                 else Color(0xFFE5E7EB)
@@ -1107,7 +1108,7 @@ private fun ManualCalibrationSection(
                         enabled = state.currentTrackIndex < state.trackRects.lastIndex,
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(FluoRadius.badge))
                             .background(
                                 if (state.currentTrackIndex < state.trackRects.lastIndex) Color(0xFF5D6B98)
                                 else Color(0xFFE5E7EB)
@@ -1141,7 +1142,7 @@ private fun ManualCalibrationSection(
                         containerColor = Color(0xFF5D6B98),
                         disabledContainerColor = Color(0xFFE5E7EB)
                     ),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     elevation = ButtonDefaults.buttonElevation(
                         defaultElevation = 4.dp,
                         pressedElevation = 8.dp,
@@ -1167,7 +1168,7 @@ private fun ManualCalibrationSection(
                 Row(
                     modifier = Modifier
                         .weight(1.2f)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(FluoRadius.badge))
                         .background(Color(0xFFF0F4F8))
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,

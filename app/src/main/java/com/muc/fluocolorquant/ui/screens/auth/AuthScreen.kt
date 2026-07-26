@@ -315,7 +315,7 @@ private fun AuthBrandHeader() {
         // 因此用主题色自绘标记：随明暗自动适配，且与应用主色始终一致。
         Surface(
             modifier = Modifier.size(84.dp),
-            shape = RoundedCornerShape(26.dp),
+            shape = RoundedCornerShape(FluoRadius.sheet),
             color = MaterialTheme.colorScheme.primaryContainer
         ) {
             Box(contentAlignment = Alignment.Center) {

@@ -63,6 +63,7 @@ import com.muc.fluocolorquant.ui.viewmodels.StandardCurveLibraryEvent
 import com.muc.fluocolorquant.ui.viewmodels.StandardCurveLibraryItem
 import com.muc.fluocolorquant.ui.viewmodels.StandardCurveLibraryViewModel
 import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 面向普通用户的标准曲线库。
@@ -218,7 +219,7 @@ private fun StandardCurveLibraryCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -230,7 +231,7 @@ private fun StandardCurveLibraryCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     modifier = Modifier.size(42.dp),
-                    shape = RoundedCornerShape(13.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -324,7 +325,7 @@ private fun StandardCurveTag(
     text: String
 ) {
     Surface(
-        shape = RoundedCornerShape(11.dp),
+        shape = RoundedCornerShape(FluoRadius.badge),
         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.48f)
     ) {
         Row(
@@ -356,7 +357,7 @@ private fun StandardCurveLibraryEmptyState(
     ) {
         Surface(
             modifier = Modifier.size(72.dp),
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(FluoRadius.sheet),
             color = MaterialTheme.colorScheme.primaryContainer
         ) {
             Box(contentAlignment = Alignment.Center) {

@@ -119,6 +119,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.log10
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 孔位布局页底部的“实验模板 / 手动配置”与逐分析物定量方案。
@@ -173,7 +174,7 @@ internal fun GridExperimentConfigurationSection(
         modifier = Modifier
             .fillMaxWidth()
             .testTag(ArrayLayoutEditorTestTags.QUANTITATION),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
@@ -185,7 +186,7 @@ internal fun GridExperimentConfigurationSection(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    shape = RoundedCornerShape(11.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Icon(
@@ -204,7 +205,7 @@ internal fun GridExperimentConfigurationSection(
                     )
                 }
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = if (allCompleted) MaterialTheme.colorScheme.primaryContainer
                     else MaterialTheme.colorScheme.surfaceContainerHighest
                 ) {
@@ -422,7 +423,7 @@ private fun ConfigurationSourceSwitcher(
             .fillMaxWidth()
             .background(
                 MaterialTheme.colorScheme.surfaceContainerHighest,
-                RoundedCornerShape(14.dp)
+                RoundedCornerShape(FluoRadius.control)
             )
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -454,7 +455,7 @@ private fun ConfigurationSourceSegment(
 ) {
     Surface(
         modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(11.dp),
+        shape = RoundedCornerShape(FluoRadius.badge),
         color = if (selected) MaterialTheme.colorScheme.surface
         else MaterialTheme.colorScheme.surfaceContainerHighest,
         tonalElevation = if (selected) 2.dp else 0.dp
@@ -491,7 +492,7 @@ private fun TemplateAppliedSummary(
     onChangeTemplate: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
     ) {
         Column(
@@ -659,7 +660,7 @@ private fun QuantitationModeOption(
         modifier = modifier
             .heightIn(min = 58.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer
         else MaterialTheme.colorScheme.surface,
         border = BorderStroke(
@@ -707,7 +708,7 @@ private fun CompactOnsiteFitControl(
     onOpen: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.surface
     ) {
         Column(
@@ -939,7 +940,7 @@ private fun OnsiteCalibrationDialog(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 8.dp, vertical = 12.dp),
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(FluoRadius.sheet),
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -975,6 +976,7 @@ private fun OnsiteCalibrationDialog(
                     OnsiteCalibrationResultStage(
                         resultSet = resultSet,
                         selectedCandidateId = selectedCandidateId,
+                        concentrationUnit = analyte.concentrationUnit,
                         saveToLibrary = saveToLibrary,
                         applying = applying,
                         alreadyApplied = draft.onsiteState is OnsiteCalibrationState.Applied,
@@ -993,7 +995,7 @@ private fun OnsiteCalibrationDialog(
                 ) {
                     item {
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(FluoRadius.control),
                             color = MaterialTheme.colorScheme.surfaceContainerLow
                         ) {
                             Row(
@@ -1131,7 +1133,7 @@ private fun OnsiteCalibrationDialog(
                     if (standards.isEmpty()) {
                         item {
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(FluoRadius.control),
                                 color = MaterialTheme.colorScheme.errorContainer
                             ) {
                                 Text(
@@ -1169,7 +1171,7 @@ private fun OnsiteCalibrationDialog(
                     if (draft.onsiteState is OnsiteCalibrationState.TechnicalFailure) {
                         item {
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(FluoRadius.control),
                                 color = MaterialTheme.colorScheme.errorContainer
                             ) {
                                 Text(
@@ -1269,7 +1271,7 @@ private fun StandardConcentrationInputRow(
         )
         Surface(
             modifier = Modifier.size(48.dp),
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(FluoRadius.badge),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             if (crop != null) {
@@ -1344,7 +1346,7 @@ private fun CalibrationSelectionField(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
@@ -1513,7 +1515,7 @@ private fun AutomaticSelectionRow(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
@@ -1556,7 +1558,7 @@ private fun FunctionSelectionRow(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         onClick = onToggle,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = if (checked) {
             MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
         } else {
@@ -1603,7 +1605,7 @@ private fun SignalSelectionRow(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         onClick = onToggle,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = if (checked) {
             MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
         } else {
@@ -1617,7 +1619,7 @@ private fun SignalSelectionRow(
         ) {
             Checkbox(checked = checked, onCheckedChange = { onToggle() })
             Surface(
-                shape = RoundedCornerShape(9.dp),
+                shape = RoundedCornerShape(FluoRadius.chip),
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
             ) {
                 Icon(
@@ -1713,6 +1715,7 @@ private const val MAXIMUM_RESOURCE_NAME_LENGTH = 80
 private fun ColumnScope.OnsiteCalibrationResultStage(
     resultSet: CalibrationResultSet,
     selectedCandidateId: String?,
+    concentrationUnit: String,
     saveToLibrary: Boolean,
     applying: Boolean,
     alreadyApplied: Boolean,
@@ -1729,6 +1732,9 @@ private fun ColumnScope.OnsiteCalibrationResultStage(
         resultSet.inputFingerprint,
         selectedCandidateId
     ) { mutableStateOf(false) }
+    var showComparison by rememberSaveable(resultSet.inputFingerprint) {
+        mutableStateOf(false)
+    }
     val functionListState = rememberLazyListState()
     val selectedFunctionIndex = resultSet.functionResults.indexOfFirst { functionResult ->
         functionResult.candidate?.id == selectedCandidateId
@@ -1736,6 +1742,14 @@ private fun ColumnScope.OnsiteCalibrationResultStage(
     LaunchedEffect(resultSet.inputFingerprint, selectedFunctionIndex) {
         if (selectedFunctionIndex >= 0) {
             functionListState.animateScrollToItem(selectedFunctionIndex)
+        }
+    }
+    val requestApply: () -> Unit = {
+        when (applicationDecision) {
+            CalibrationApplicationDecision.REQUIRE_CONFIRMATION ->
+                showLowQualityConfirmation = true
+            CalibrationApplicationDecision.BLOCK, null -> Unit
+            CalibrationApplicationDecision.APPLY -> onApply(false)
         }
     }
     LazyColumn(
@@ -1746,57 +1760,73 @@ private fun ColumnScope.OnsiteCalibrationResultStage(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text(
-                text = stringResource(R.string.grid_quant_fit_result_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+            OnsiteCalibrationSummaryCard(
+                candidate = selectedCandidate,
+                isRecommended = selectedCandidate?.id == resultSet.recommendedCandidateId,
+                applicationDecision = applicationDecision,
+                saveToLibrary = saveToLibrary,
+                applying = applying,
+                alreadyApplied = alreadyApplied,
+                showComparison = showComparison,
+                onToggleComparison = { showComparison = !showComparison },
+                onApply = requestApply
             )
         }
-        item {
-            /*
-             * 默认候选已经扩展为七种函数，不能再通过 weight(1f) 强塞进一行。固定宽度的
-             * 横向列表既保证中英文函数名完整，也允许专家模式展示更多函数而不压缩正文。
-             */
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                state = functionListState,
-                contentPadding = PaddingValues(horizontal = 1.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(
-                    items = resultSet.functionResults,
-                    key = { functionResult -> functionResult.function.identifier }
-                ) { functionResult ->
-                    CalibrationFunctionOption(
-                        result = functionResult,
-                        selected = functionResult.candidate?.id == selectedCandidateId,
-                        recommended = functionResult.candidate?.id ==
-                            resultSet.recommendedCandidateId,
-                        onClick = {
-                            functionResult.candidate?.id?.let(onSelectCandidate)
-                        },
-                        modifier = Modifier.width(86.dp)
-                    )
-                }
-            }
-        }
         if (selectedCandidate != null) {
-            item { OnsiteFitCandidateCard(selectedCandidate) }
-            if (!selectedCandidate.accepted) {
-                item {
-                    Text(
-                        text = stringResource(
-                            when (applicationDecision) {
-                                CalibrationApplicationDecision.BLOCK ->
-                                    R.string.grid_quant_low_quality_view_only_hint
-                                CalibrationApplicationDecision.REQUIRE_CONFIRMATION ->
-                                    R.string.grid_quant_low_quality_confirm_hint
-                                else -> R.string.grid_quant_low_quality_allow_hint
+            item {
+                AnimatedVisibility(visible = showComparison) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = stringResource(R.string.grid_quant_candidate_comparison),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        /*
+                         * 候选模型数量会随自动/专家模式变化，固定宽度横向列表可避免中英文
+                         * 函数名在 360dp 屏幕被强行压扁；默认折叠，不占用现场录入主流程。
+                         */
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            state = functionListState,
+                            contentPadding = PaddingValues(horizontal = 1.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(
+                                items = resultSet.functionResults,
+                                key = { functionResult -> functionResult.function.identifier }
+                            ) { functionResult ->
+                                CalibrationFunctionOption(
+                                    result = functionResult,
+                                    selected = functionResult.candidate?.id == selectedCandidateId,
+                                    recommended = functionResult.candidate?.id ==
+                                        resultSet.recommendedCandidateId,
+                                    onClick = {
+                                        functionResult.candidate?.id?.let(onSelectCandidate)
+                                    },
+                                    modifier = Modifier.width(86.dp)
+                                )
                             }
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                        }
+                        OnsiteFitCandidateDetails(
+                            preview = selectedCandidate,
+                            concentrationUnit = concentrationUnit
+                        )
+                        if (!selectedCandidate.accepted) {
+                            Text(
+                                text = stringResource(
+                                    when (applicationDecision) {
+                                        CalibrationApplicationDecision.BLOCK ->
+                                            R.string.grid_quant_low_quality_view_only_hint
+                                        CalibrationApplicationDecision.REQUIRE_CONFIRMATION ->
+                                            R.string.grid_quant_low_quality_confirm_hint
+                                        else -> R.string.grid_quant_low_quality_allow_hint
+                                    }
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         } else {
@@ -1833,49 +1863,15 @@ private fun ColumnScope.OnsiteCalibrationResultStage(
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.End
         ) {
             TextButton(
                 onClick = onBackToEditing,
-                enabled = !applying,
-                modifier = Modifier.weight(0.8f)
+                enabled = !applying
             ) {
+                Icon(Icons.Outlined.EditNote, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
                 Text(stringResource(R.string.grid_quant_back_to_edit))
-            }
-            Button(
-                onClick = {
-                    when (applicationDecision) {
-                        CalibrationApplicationDecision.REQUIRE_CONFIRMATION ->
-                            showLowQualityConfirmation = true
-                        CalibrationApplicationDecision.BLOCK, null -> Unit
-                        CalibrationApplicationDecision.APPLY -> onApply(false)
-                    }
-                },
-                enabled = selectedCandidate != null &&
-                    applicationDecision != CalibrationApplicationDecision.BLOCK &&
-                    !applying && !alreadyApplied,
-                modifier = Modifier.weight(1.4f)
-            ) {
-                if (applying) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null)
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    stringResource(
-                        when {
-                            alreadyApplied -> R.string.grid_quant_curve_applied
-                            applicationDecision == CalibrationApplicationDecision.BLOCK ->
-                                R.string.grid_quant_curve_view_only
-                            saveToLibrary -> R.string.grid_quant_save_and_apply
-                            else -> R.string.grid_quant_apply_fit
-                        }
-                    )
-                )
             }
         }
     }
@@ -1903,6 +1899,140 @@ private fun ColumnScope.OnsiteCalibrationResultStage(
     }
 }
 
+/**
+ * 现场拟合首屏只保留一个决策摘要，避免把公式、R²、留一验证和曲线图同时塞给普通用户。
+ * “对比”展开后才展示科学细节；应用动作始终针对当前选中的冻结候选。
+ */
+@Composable
+private fun OnsiteCalibrationSummaryCard(
+    candidate: CalibrationCandidate?,
+    isRecommended: Boolean,
+    applicationDecision: CalibrationApplicationDecision?,
+    saveToLibrary: Boolean,
+    applying: Boolean,
+    alreadyApplied: Boolean,
+    showComparison: Boolean,
+    onToggleComparison: () -> Unit,
+    onApply: () -> Unit
+) {
+    val inverseError = candidate?.backCalculatedRmsePercent
+        ?: candidate?.crossValidation?.medianRelativeErrorPercent
+    Card(
+        shape = RoundedCornerShape(FluoRadius.control),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.AutoGraph,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.grid_quant_smart_calibration),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Surface(
+                    shape = RoundedCornerShape(FluoRadius.badge),
+                    color = when {
+                        candidate == null -> MaterialTheme.colorScheme.surfaceContainerHighest
+                        candidate.accepted -> MaterialTheme.colorScheme.primaryContainer
+                        else -> MaterialTheme.colorScheme.tertiaryContainer
+                    }
+                ) {
+                    Text(
+                        text = stringResource(
+                            when {
+                                candidate == null -> R.string.grid_quant_fit_unavailable
+                                candidate.accepted -> R.string.grid_quant_fit_stable
+                                else -> R.string.grid_quant_fit_review
+                            }
+                        ),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.Bottom) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.grid_quant_fit_inverse_error),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = formatFitPercentValue(inverseError),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                if (candidate != null && !isRecommended) {
+                    Text(
+                        text = stringResource(R.string.grid_quant_selected_alternative),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onApply,
+                    enabled = candidate != null &&
+                        applicationDecision != CalibrationApplicationDecision.BLOCK &&
+                        !applying && !alreadyApplied,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (applying) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null)
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        stringResource(
+                            when {
+                                alreadyApplied -> R.string.grid_quant_curve_applied
+                                applicationDecision == CalibrationApplicationDecision.BLOCK ->
+                                    R.string.grid_quant_curve_view_only
+                                saveToLibrary -> R.string.grid_quant_save_and_apply
+                                else -> R.string.grid_quant_apply_fit
+                            }
+                        )
+                    )
+                }
+                OutlinedButton(
+                    onClick = onToggleComparison,
+                    enabled = candidate != null,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.AutoGraph, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        stringResource(
+                            if (showComparison) R.string.grid_quant_hide_comparison
+                            else R.string.grid_quant_show_comparison
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun CalibrationFunctionOption(
     result: CalibrationFunctionResult,
@@ -1914,7 +2044,7 @@ private fun CalibrationFunctionOption(
     val available = result.candidate != null
     Surface(
         modifier = modifier.clickable(enabled = available, onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(FluoRadius.badge),
         color = when {
             selected -> MaterialTheme.colorScheme.primaryContainer
             available -> MaterialTheme.colorScheme.surfaceContainer
@@ -1973,7 +2103,7 @@ private fun CalibrationFunctionOption(
 @Composable
 private fun CalibrationUnavailableSummary(results: List<CalibrationFunctionResult>) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
@@ -2027,12 +2157,15 @@ private fun calibrationFailureReasonResource(reason: CalibrationFailureReason): 
     }
 
 @Composable
-private fun OnsiteFitCandidateCard(preview: CalibrationCandidate) {
+private fun OnsiteFitCandidateDetails(
+    preview: CalibrationCandidate,
+    concentrationUnit: String
+) {
     val fittedCurve = remember(preview.function, preview.parameters) {
         FittingEngine.createFunctionFromParameters(preview.function, preview.parameters)
     }
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
@@ -2044,7 +2177,7 @@ private fun OnsiteFitCandidateCard(preview: CalibrationCandidate) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = stringResource(R.string.grid_quant_fit_recommended),
+                        text = stringResource(R.string.grid_quant_fit_evidence_title),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -2058,26 +2191,9 @@ private fun OnsiteFitCandidateCard(preview: CalibrationCandidate) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (preview.accepted) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.tertiaryContainer
-                    }
-                ) {
-                    Text(
-                        text = stringResource(
-                            if (preview.accepted) R.string.grid_quant_fit_accepted
-                            else R.string.grid_quant_fit_review
-                        ),
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
             }
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(FluoRadius.badge),
                 color = MaterialTheme.colorScheme.surface
             ) {
                 LatexView(
@@ -2094,19 +2210,61 @@ private fun OnsiteFitCandidateCard(preview: CalibrationCandidate) {
             ) {
                 FitMetric(
                     modifier = Modifier.weight(1f),
+                    label = stringResource(R.string.grid_quant_fit_inverse_error),
+                    value = formatFitPercentValue(preview.backCalculatedRmsePercent)
+                )
+                FitMetric(
+                    modifier = Modifier.weight(1f),
+                    label = stringResource(R.string.grid_quant_fit_metric_loo),
+                    value = formatFitPercentValue(
+                        preview.crossValidation?.medianRelativeErrorPercent
+                    )
+                )
+                FitMetric(
+                    modifier = Modifier.weight(1f),
                     label = stringResource(R.string.grid_quant_fit_metric_r2),
                     value = formatFitMetricValue(preview.rSquared)
                 )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 FitMetric(
                     modifier = Modifier.weight(1f),
-                    label = stringResource(R.string.grid_quant_fit_metric_rmse),
-                    value = formatFitMetricValue(preview.rmse)
+                    label = stringResource(R.string.grid_quant_fit_metric_endpoint),
+                    value = formatFitPercentValue(
+                        preview.crossValidation?.endpointRelativeErrorPercent
+                    )
                 )
                 FitMetric(
                     modifier = Modifier.weight(1f),
-                    label = stringResource(R.string.grid_quant_fit_metric_mae),
-                    value = formatFitMetricValue(preview.mae)
+                    label = stringResource(R.string.grid_quant_fit_metric_acceptance),
+                    value = formatFitRatioPercentValue(preview.acceptedStandardRatio)
                 )
+            }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(FluoRadius.badge),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.grid_quant_fit_metric_trusted_range),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = formatTrustedRange(preview, concentrationUnit),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.End
+                    )
+                }
             }
             CurveChart(
                 fittedCurve = fittedCurve,
@@ -2124,11 +2282,46 @@ private fun OnsiteFitCandidateCard(preview: CalibrationCandidate) {
     }
 }
 
+/** 百分数指标已经按 0～100 保存，UI只负责本地化格式化，不再次乘以100。 */
+@Composable
+private fun formatFitPercentValue(value: Double?): String {
+    val finiteValue = value?.takeIf(Double::isFinite)
+        ?: return stringResource(R.string.grid_quant_value_unavailable)
+    return stringResource(R.string.grid_quant_fit_acceptance_value, finiteValue)
+}
+
+/** 标准点接受率以 0～1 保存，展示时转换为百分数。 */
+@Composable
+private fun formatFitRatioPercentValue(value: Double?): String {
+    val finiteValue = value?.takeIf(Double::isFinite)
+        ?: return stringResource(R.string.grid_quant_value_unavailable)
+    return stringResource(R.string.grid_quant_fit_acceptance_value, finiteValue * 100.0)
+}
+
+/**
+ * 可信范围只显示由留一验证和参数采样共同批准的连续区间。
+ * 缺失时明确写“无可信扩展”，不能把项目预期上限伪装成算法已经验证的范围。
+ */
+@Composable
+private fun formatTrustedRange(
+    candidate: CalibrationCandidate,
+    concentrationUnit: String
+): String {
+    val range = candidate.trustedRange
+        ?: return stringResource(R.string.grid_quant_no_trusted_extension)
+    return stringResource(
+        R.string.grid_quant_fit_trusted_range_value,
+        formatFitMetricValue(range.minimum),
+        formatFitMetricValue(range.maximum),
+        concentrationUnit
+    )
+}
+
 @Composable
 private fun FitMetric(modifier: Modifier, label: String, value: String) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(FluoRadius.badge),
         color = MaterialTheme.colorScheme.surface
     ) {
         Column(
@@ -2219,7 +2412,7 @@ private fun TemplatePickerDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onSelect(template.id) },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(FluoRadius.control),
                             color = MaterialTheme.colorScheme.surfaceContainer
                         ) {
                             Column(Modifier.padding(12.dp)) {

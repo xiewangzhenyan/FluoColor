@@ -114,6 +114,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /** 普通创建页当前展示的数据来源。 */
 private enum class StandardCurveDataSource {
@@ -294,7 +295,7 @@ fun ManualDataInputScreen(
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text(stringResource(R.string.standard_curve_name_label)) },
                             singleLine = true,
-                            shape = RoundedCornerShape(14.dp)
+                            shape = RoundedCornerShape(FluoRadius.control)
                         )
                         DetectionModeSelector(
                             selected = state.detectionModality,
@@ -363,7 +364,7 @@ fun ManualDataInputScreen(
                             supportingValue = analysisFeatureRangeLabel(state.selectedFeature)
                         )
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(FluoRadius.control),
                             color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.36f)
                         ) {
                             Row(
@@ -439,7 +440,7 @@ fun ManualDataInputScreen(
                 if (dataSource == StandardCurveDataSource.MANUAL && state.importDraft == null) {
                     item {
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(FluoRadius.control),
                             color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.58f),
                             border = BorderStroke(
                                 1.dp,
@@ -663,7 +664,7 @@ private fun UnifiedCurveSection(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
@@ -677,7 +678,7 @@ private fun UnifiedCurveSection(
             ) {
                 Surface(
                     modifier = Modifier.size(38.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -738,7 +739,7 @@ private fun DataSourceOption(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
         } else {
@@ -776,7 +777,7 @@ private fun ImportedDataSummary(
     onRemove: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.42f)
     ) {
         Column(
@@ -826,7 +827,7 @@ private fun ManualCalibrationPointCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(17.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
@@ -886,7 +887,7 @@ private fun CandidateCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(17.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
         else MaterialTheme.colorScheme.surface,
         border = BorderStroke(
@@ -902,7 +903,7 @@ private fun CandidateCard(
         ) {
             Surface(
                 modifier = Modifier.size(22.dp),
-                shape = RoundedCornerShape(11.dp),
+                shape = RoundedCornerShape(FluoRadius.badge),
                 color = if (selected) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.surfaceVariant,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -926,7 +927,7 @@ private fun CandidateCard(
                     if (recommended) {
                         Spacer(Modifier.width(8.dp))
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(FluoRadius.chip),
                             color = MaterialTheme.colorScheme.tertiaryContainer
                         ) {
                             Text(
@@ -1094,7 +1095,7 @@ private fun CsvMappingSheet(
                 val selected = column.index in draft.selectedSignalColumnIndices
                 val feature = draft.featureMappings[column.index]
                 Surface(
-                    shape = RoundedCornerShape(15.dp),
+                    shape = RoundedCornerShape(FluoRadius.control),
                     color = MaterialTheme.colorScheme.surfaceContainerLow
                 ) {
                     Column(

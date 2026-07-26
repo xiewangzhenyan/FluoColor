@@ -45,6 +45,8 @@ import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.domain.result.ArrayCaptureEvidence
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import java.io.File
+import com.muc.fluocolorquant.ui.theme.FluoRadius
+import androidx.compose.foundation.shape.CircleShape
 
 const val ARRAY_PROCESSING_TAB_TAG: String = "array_processing_tab"
 const val ARRAY_PROCESSING_IMAGE_TAG: String = "array_processing_image"
@@ -117,7 +119,7 @@ fun ArrayProcessingEvidenceTab(snapshot: ArrayResultSnapshot) {
 private fun ProcessingIntroCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.52f)
         )
@@ -128,7 +130,7 @@ private fun ProcessingIntroCard() {
             verticalAlignment = Alignment.Top
         ) {
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(FluoRadius.badge),
                 color = MaterialTheme.colorScheme.secondary
             ) {
                 Icon(
@@ -168,7 +170,7 @@ private fun ProcessingEvidenceCard(
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
@@ -196,7 +198,7 @@ private fun ProcessingEvidenceCard(
                     )
                 }
                 Surface(
-                    shape = RoundedCornerShape(999.dp),
+                    shape = CircleShape,
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(
@@ -216,7 +218,7 @@ private fun ProcessingEvidenceCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(360.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(FluoRadius.control))
                     // 测试标记属于“证据图显示区域”而不是 Coil 的瞬时加载节点。
                     // 即使文件损坏或历史附件丢失，错误占位仍应保留同一个可访问语义区域。
                     .testTag(ARRAY_PROCESSING_IMAGE_TAG),
@@ -285,7 +287,7 @@ private fun ProcessingEvidenceCard(
 private fun ProcessingEmptyCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(

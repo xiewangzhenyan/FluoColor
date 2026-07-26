@@ -72,6 +72,7 @@ import com.muc.fluocolorquant.utils.math.FittingEngine
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sqrt
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 const val PLATE96_ANALYSIS_TAG: String = "plate96_analysis"
 const val PLATE96_SAMPLE_TABLE_TAG: String = "plate96_sample_table"
@@ -185,7 +186,7 @@ private fun Plate96CurveCard(analyte: ArrayAnalyteResult) {
         val yRange = paddedRange(points.map(Pair<Double, Double>::second))
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(15.dp),
+            shape = RoundedCornerShape(FluoRadius.control),
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -205,7 +206,7 @@ private fun Plate96CurveCard(analyte: ArrayAnalyteResult) {
                 )
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
                 ) {
                     LatexView(
@@ -251,7 +252,7 @@ private fun Plate96FitMetrics(analyte: ArrayAnalyteResult) {
 private fun Plate96FitMetricCard(modifier: Modifier, label: String, value: String?) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(15.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
@@ -734,7 +735,7 @@ private fun Plate96SampleTableRow(
         if (expanded) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(FluoRadius.badge),
                 color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 Row(
@@ -783,7 +784,7 @@ private fun Plate96AnalysisCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(19.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = androidx.compose.foundation.BorderStroke(
@@ -801,7 +802,7 @@ private fun Plate96AnalysisCard(
                 horizontalArrangement = Arrangement.spacedBy(9.dp)
             ) {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
                 ) {
                     Icon(

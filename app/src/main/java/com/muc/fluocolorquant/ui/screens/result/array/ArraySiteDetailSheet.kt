@@ -41,6 +41,7 @@ import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
 import com.muc.fluocolorquant.domain.result.resolveQualityLevel
 import com.muc.fluocolorquant.ui.components.analysisFeatureLabel
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 const val ARRAY_SITE_DETAIL_SHEET_TAG: String = "array_site_detail_sheet"
 const val ARRAY_SITE_DETAIL_LIST_TAG: String = "array_site_detail_list"
@@ -141,7 +142,7 @@ private fun SiteDetailHeader(
             ArrayMeasurementQualityLevel.REVIEW -> Color(0xFFFFE8BE)
             ArrayMeasurementQualityLevel.VALID -> MaterialTheme.colorScheme.primaryContainer
         }
-        Surface(color = statusColor, shape = RoundedCornerShape(12.dp)) {
+        Surface(color = statusColor, shape = RoundedCornerShape(FluoRadius.badge)) {
             Text(
                 text = when (qualityLevel) {
                     null -> stringResource(R.string.array_heatmap_missing)
@@ -440,7 +441,7 @@ private fun DetailSectionCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
@@ -511,26 +512,30 @@ private fun measurementResultText(
     val concentration = measurement.concentrationValue
     return if (concentration != null) {
         stringResource(
-            R.string.array_site_concentration_value,
+            if (measurement.quantificationState.equals("ESTIMATED", ignoreCase = true)) {
+                R.string.array_site_concentration_estimated_value
+            } else {
+                R.string.array_site_concentration_value
+            },
             formatArrayHeatmapValue(concentration),
             measurement.concentrationUnit.orEmpty()
         )
     } else if (
-        measurement.reliableRangeStatus.equals("BELOW_PROJECT_RANGE", ignoreCase = true) &&
-        analyte?.projectRangeMin?.isFinite() == true
+        measurement.censoringDirection.equals("UPPER_BOUND", ignoreCase = true) &&
+        measurement.concentrationUpperBound?.isFinite() == true
     ) {
         stringResource(
             R.string.array_site_concentration_below_boundary,
-            formatArrayHeatmapValue(requireNotNull(analyte?.projectRangeMin)),
+            formatArrayHeatmapValue(requireNotNull(measurement.concentrationUpperBound)),
             measurement.concentrationUnit ?: analyte?.concentrationUnit.orEmpty()
         )
     } else if (
-        measurement.reliableRangeStatus.equals("ABOVE_PROJECT_RANGE", ignoreCase = true) &&
-        analyte?.projectRangeMax?.isFinite() == true
+        measurement.censoringDirection.equals("LOWER_BOUND", ignoreCase = true) &&
+        measurement.concentrationLowerBound?.isFinite() == true
     ) {
         stringResource(
             R.string.array_site_concentration_above_boundary,
-            formatArrayHeatmapValue(requireNotNull(analyte?.projectRangeMax)),
+            formatArrayHeatmapValue(requireNotNull(measurement.concentrationLowerBound)),
             measurement.concentrationUnit ?: analyte?.concentrationUnit.orEmpty()
         )
     } else {
@@ -551,6 +556,8 @@ private fun reliableRangeLabel(status: String?): String {
         "ABOVE_RANGE" -> stringResource(R.string.array_site_range_above)
         "BELOW_PROJECT_RANGE" -> stringResource(R.string.array_site_range_below_project)
         "ABOVE_PROJECT_RANGE" -> stringResource(R.string.array_site_range_above_project)
+        "BELOW_TRUSTED_RANGE" -> stringResource(R.string.array_site_range_below_trusted)
+        "ABOVE_TRUSTED_RANGE" -> stringResource(R.string.array_site_range_above_trusted)
         else -> stringResource(R.string.array_site_range_not_available)
     }
 }

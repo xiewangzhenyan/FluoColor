@@ -35,6 +35,7 @@ import com.muc.fluocolorquant.domain.result.plate96.Plate96WellResult
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueState
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapScaleMode
 import com.muc.fluocolorquant.ui.screens.result.array.formatArrayHeatmapValue
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 const val PLATE96_INLINE_WELL_DETAIL_TAG: String = "plate96_inline_well_detail"
 
@@ -60,7 +61,7 @@ fun Plate96InlineWellDetailCard(
         modifier = modifier
             .fillMaxWidth()
             .testTag(PLATE96_INLINE_WELL_DETAIL_TAG),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
         ),
@@ -177,7 +178,7 @@ fun Plate96InlineWellDetailCard(
 private fun Plate96InlineDetailMetric(modifier: Modifier, label: String, value: String) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)
     ) {
         Column(
@@ -220,17 +221,25 @@ internal fun concentrationText(
 ): String = when (valueState) {
     ArrayHeatmapValueState.BELOW_PROJECT_RANGE -> stringResource(
         R.string.plate96_result_below_range_value,
-        analyte.projectRangeMin?.let(::formatArrayHeatmapValue).orEmpty(),
+        measurement?.concentrationUpperBound?.let(::formatArrayHeatmapValue)
+            ?: analyte.projectRangeMin?.let(::formatArrayHeatmapValue).orEmpty(),
         analyte.concentrationUnit
     )
     ArrayHeatmapValueState.ABOVE_PROJECT_RANGE -> stringResource(
         R.string.plate96_result_above_range_value,
-        analyte.projectRangeMax?.let(::formatArrayHeatmapValue).orEmpty(),
+        measurement?.concentrationLowerBound?.let(::formatArrayHeatmapValue)
+            ?: analyte.projectRangeMax?.let(::formatArrayHeatmapValue).orEmpty(),
         analyte.concentrationUnit
     )
-    ArrayHeatmapValueState.QUANTIFIED,
-    ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED -> measurement?.concentrationValue?.let {
+    ArrayHeatmapValueState.QUANTIFIED -> measurement?.concentrationValue?.let {
         "${formatArrayHeatmapValue(it)} ${measurement.concentrationUnit ?: analyte.concentrationUnit}"
+    } ?: stringResource(R.string.plate96_result_no_value)
+    ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED -> measurement?.concentrationValue?.let {
+        stringResource(
+            R.string.plate96_result_estimated_value,
+            formatArrayHeatmapValue(it),
+            measurement.concentrationUnit ?: analyte.concentrationUnit
+        )
     } ?: stringResource(R.string.plate96_result_no_value)
     ArrayHeatmapValueState.UNAVAILABLE -> stringResource(R.string.plate96_result_no_value)
 }

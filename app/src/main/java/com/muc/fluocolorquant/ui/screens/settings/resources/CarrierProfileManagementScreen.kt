@@ -67,6 +67,7 @@ import com.muc.fluocolorquant.data.model.CarrierProfile
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
 import com.muc.fluocolorquant.ui.viewmodels.CarrierProfileUiState
 import com.muc.fluocolorquant.ui.viewmodels.CarrierProfileViewModel
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 载体与布局库页面。
@@ -206,7 +207,7 @@ fun CarrierProfileManagementScreen(
 @Composable
 private fun QuickCarrierPresets(onChip10: () -> Unit, onChip15: () -> Unit) {
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -248,7 +249,7 @@ private fun CarrierProfileCard(
 ) {
     val isActive = profile.status == ResourceStatus.ACTIVE.code
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.70f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)

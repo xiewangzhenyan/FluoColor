@@ -61,6 +61,7 @@ import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.viewmodels.AnalyteViewModel
 import kotlinx.coroutines.launch
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 分析物管理界面
@@ -166,7 +167,7 @@ fun AnalyteManagementScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 8.dp),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(FluoRadius.badge),
                             color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
                             tonalElevation = 3.dp
                         ) {

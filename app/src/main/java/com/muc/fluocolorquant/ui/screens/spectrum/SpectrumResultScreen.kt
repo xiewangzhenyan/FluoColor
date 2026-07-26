@@ -92,6 +92,7 @@ import com.muc.fluocolorquant.ui.viewmodels.SpectrumPeakUiModel
 import com.muc.fluocolorquant.ui.viewmodels.SpectrumResultViewModel
 import kotlinx.coroutines.launch
 import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 光谱分析结果展示页面
@@ -364,7 +365,7 @@ private fun QuickAdjustCard(
     val accentColor = colorScheme.primary
     OutlinedCard(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.outlinedCardColors(containerColor = colorScheme.surface)
     ) {
         Column(
@@ -557,7 +558,7 @@ private fun AnalyteTitleCard(
 
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -571,7 +572,7 @@ private fun AnalyteTitleCard(
             Box(
                 modifier = Modifier
                     .size(92.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(FluoRadius.control))
                     .background(colorScheme.surfaceVariant.copy(alpha = 0.32f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -668,7 +669,7 @@ private fun CalibrationComparisonCard(
 
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -685,7 +686,7 @@ private fun CalibrationComparisonCard(
                 Box(
                     modifier = Modifier
                         .size(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(FluoRadius.chip))
                         .background(colorScheme.secondary),
                     contentAlignment = Alignment.Center
                 ) {
@@ -817,7 +818,7 @@ private fun CalibrationComparisonCard(
             comparison.equation?.takeIf { it.isNotBlank() }?.let { equation ->
                 OutlinedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(FluoRadius.control),
                     colors = CardDefaults.outlinedCardColors(
                         containerColor = colorScheme.surfaceVariant.copy(alpha = 0.18f)
                     )
@@ -877,7 +878,7 @@ private fun CalibrationResidualSection(
 
     OutlinedCard(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.outlinedCardColors(
             containerColor = colorScheme.surfaceVariant.copy(alpha = 0.18f)
         )
@@ -898,7 +899,7 @@ private fun CalibrationResidualSection(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(FluoRadius.badge))
                         .background(colorScheme.surface.copy(alpha = 0.88f))
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -967,7 +968,7 @@ private fun ComparisonImagePanel(
     val colorScheme = MaterialTheme.colorScheme
     OutlinedCard(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.outlinedCardColors(containerColor = colorScheme.surfaceVariant.copy(alpha = 0.2f))
     ) {
         Column(
@@ -986,7 +987,7 @@ private fun ComparisonImagePanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(116.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(FluoRadius.badge))
                     .background(colorScheme.surface),
                 contentAlignment = Alignment.Center
             ) {
@@ -1046,7 +1047,7 @@ private fun SpectrumCurveCard(
     }
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -1069,7 +1070,7 @@ private fun SpectrumCurveCard(
                     Box(
                         modifier = Modifier
                             .size(32.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(FluoRadius.chip))
                             .background(colorScheme.primary),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1148,7 +1149,7 @@ private fun CurveModeSegmentedControl(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(FluoRadius.control))
             .background(colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -1196,7 +1197,7 @@ private fun CurveModeSegmentButton(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(FluoRadius.badge))
             .background(
                 if (selected) colorScheme.primary
                 else Color.Transparent
@@ -1204,7 +1205,7 @@ private fun CurveModeSegmentButton(
             .border(
                 width = if (selected) 0.dp else 1.dp,
                 color = if (selected) Color.Transparent else colorScheme.outline.copy(alpha = 0.38f),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(FluoRadius.badge)
             )
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -1231,7 +1232,7 @@ private fun PeakInfoCard(
 
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -1248,7 +1249,7 @@ private fun PeakInfoCard(
                 Box(
                     modifier = Modifier
                         .size(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(FluoRadius.chip))
                         .background(Color(0xFFFF6B6B)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1345,7 +1346,7 @@ private fun PeakInfoCard(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(FluoRadius.badge))
                                 .background(colorScheme.surfaceVariant.copy(alpha = 0.22f))
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1397,7 +1398,7 @@ private fun DataRangeCard(
     val colorScheme = MaterialTheme.colorScheme
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -1417,7 +1418,7 @@ private fun DataRangeCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(FluoRadius.badge))
                     .background(
                         brush = Brush.horizontalGradient(
                             colors = listOf(
@@ -1482,7 +1483,7 @@ private fun SpectrumComparisonCard(
 
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -1706,9 +1707,9 @@ private fun InfoItem(
     val colorScheme = MaterialTheme.colorScheme
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(FluoRadius.badge))
             .background(highlightColor.copy(alpha = 0.08f))
-            .border(1.dp, highlightColor.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+            .border(1.dp, highlightColor.copy(alpha = 0.2f), RoundedCornerShape(FluoRadius.badge))
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

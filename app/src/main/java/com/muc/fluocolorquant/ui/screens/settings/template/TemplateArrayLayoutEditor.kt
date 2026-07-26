@@ -59,6 +59,7 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.TemplateReferenceScope
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.data.model.Analyte
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 阵列编辑器使用的稳定语义标签。
@@ -166,7 +167,7 @@ fun TemplateArrayLayoutEditor(
 private fun ArrayEditorSummary(layout: TemplateArrayLayoutDraft) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.64f)
     ) {
         Row(
@@ -175,7 +176,7 @@ private fun ArrayEditorSummary(layout: TemplateArrayLayoutDraft) {
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 color = MaterialTheme.colorScheme.primary
             ) {
                 Icon(
@@ -231,7 +232,7 @@ private fun SelectionToolbar(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -297,7 +298,7 @@ private fun BatchAssignmentPanel(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.42f)
         ),
@@ -480,11 +481,11 @@ private fun ArrayGridViewport(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(max = 520.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(FluoRadius.card))
             .border(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outlineVariant,
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(FluoRadius.card)
             )
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
             .verticalScroll(verticalScrollState)
@@ -525,7 +526,7 @@ private fun ColumnHeader(
         Surface(
             onClick = onSelectAll,
             modifier = Modifier.size(width = 54.dp, height = 38.dp),
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(FluoRadius.badge),
             color = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary
         ) {
@@ -543,7 +544,7 @@ private fun ColumnHeader(
                 modifier = Modifier
                     .size(width = 62.dp, height = 38.dp)
                     .testTag(TemplateArrayLayoutTestTags.columnHeader(columnIndex)),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(FluoRadius.badge),
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer
             ) {
@@ -579,7 +580,7 @@ private fun ArraySiteRow(
             modifier = Modifier
                 .size(width = 54.dp, height = 58.dp)
                 .testTag(TemplateArrayLayoutTestTags.rowHeader(rowIndex)),
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(FluoRadius.badge),
             color = MaterialTheme.colorScheme.secondaryContainer,
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
         ) {
@@ -644,7 +645,7 @@ private fun ArraySiteCell(
             )
             .semantics { contentDescription = accessibilityLabel }
             .testTag(TemplateArrayLayoutTestTags.site(coordinate)),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(FluoRadius.badge),
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
         } else {
@@ -693,7 +694,7 @@ private fun ArraySiteCell(
 private fun EmptyArrayState() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
     ) {
         Text(

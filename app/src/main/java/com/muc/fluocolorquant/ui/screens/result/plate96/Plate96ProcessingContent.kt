@@ -33,6 +33,7 @@ import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.domain.result.ArrayCaptureEvidence
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshot
 import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSource
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 const val PLATE96_PROCESSING_TAG: String = "plate96_processing"
 const val PLATE96_PROCESSING_IMAGE_TAG_PREFIX: String = "plate96_processing_image_"
@@ -56,7 +57,7 @@ fun Plate96ProcessingContent(snapshot: Plate96ResultSnapshot) {
         } else {
             item {
             Card(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(FluoRadius.card),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
                 )
@@ -108,7 +109,7 @@ fun Plate96ProcessingContent(snapshot: Plate96ResultSnapshot) {
 private fun Plate96LegacyHistoryNotice() {
     Card(
         modifier = Modifier.testTag(PLATE96_LEGACY_HISTORY_NOTICE_TAG),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
         )
@@ -138,7 +139,7 @@ private fun Plate96ProcessingStageCard(
 ) {
     val complete = artifacts.isNotEmpty() || stage.inferredComplete
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.24f)
         ),

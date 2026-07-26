@@ -60,6 +60,7 @@ import java.math.RoundingMode
 import java.util.Locale
 import com.muc.fluocolorquant.R
 import androidx.compose.ui.res.stringResource
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 曲线图表组件
@@ -119,8 +120,8 @@ fun CurveChart(
     Column(
         modifier = modifier
             .heightIn(min = 240.dp)
-            .background(chartBackgroundColor, RoundedCornerShape(16.dp))
-            .border(BorderStroke(1.dp, plotBorderColor), RoundedCornerShape(16.dp))
+            .background(chartBackgroundColor, RoundedCornerShape(FluoRadius.control))
+            .border(BorderStroke(1.dp, plotBorderColor), RoundedCornerShape(FluoRadius.control))
             .padding(horizontal = 10.dp, vertical = 10.dp)
     ) {
         // 调用方未提供标题时不保留空白行，让有限高度优先服务于数据区。

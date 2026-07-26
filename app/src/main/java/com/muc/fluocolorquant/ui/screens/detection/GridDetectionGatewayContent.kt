@@ -334,7 +334,7 @@ private fun LocalizationConfirmation(
         }
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(FluoRadius.card),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
@@ -570,7 +570,7 @@ internal fun ArrayLayoutEditor(
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(FluoRadius.card),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
@@ -677,7 +677,7 @@ internal fun ArrayLayoutEditor(
 private fun ArrayLayoutReadinessCard(readiness: ArrayLayoutReadiness) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.20f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
     ) {

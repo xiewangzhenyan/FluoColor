@@ -41,6 +41,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.Analyte
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 可搜索的多分析物选择面板。
@@ -75,7 +76,7 @@ fun AnalyteSelectionDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .heightIn(max = 640.dp),
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(FluoRadius.sheet),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
         ) {
@@ -109,7 +110,7 @@ fun AnalyteSelectionDialog(
                         null
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(15.dp)
+                    shape = RoundedCornerShape(FluoRadius.control)
                 )
                 Text(
                     text = stringResource(R.string.selected_analytes_count, selectedIds.size),

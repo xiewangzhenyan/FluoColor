@@ -28,6 +28,7 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.AnalyteResultDetails
 import com.muc.fluocolorquant.ui.components.ScientificExpandableSection
 import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 结果可追溯信息卡片。
@@ -174,7 +175,7 @@ private fun TraceabilityMetricCard(
             containerColor = colorScheme.surfaceVariant.copy(alpha = 0.36f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(FluoRadius.control)
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp)) {
             Text(

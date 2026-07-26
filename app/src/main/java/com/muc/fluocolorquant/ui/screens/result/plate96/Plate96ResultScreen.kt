@@ -487,7 +487,7 @@ private fun Plate96OverviewContent(
         }
         item {
             Card(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(FluoRadius.card),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(
@@ -521,7 +521,7 @@ private fun Plate96OverviewContent(
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(FluoRadius.badge),
                 color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 Text(
@@ -711,7 +711,7 @@ private fun Plate96MetricCard(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,

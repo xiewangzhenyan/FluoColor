@@ -98,6 +98,7 @@ import com.muc.fluocolorquant.utils.HeatmapColorUtil
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import kotlin.math.abs
 import kotlin.math.sqrt
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 const val ARRAY_RESULT_SCREEN_TAG: String = "array_result_screen"
 const val ARRAY_RESULT_ANALYTE_TAB_TAG: String = "array_result_tab_analytes"
@@ -335,7 +336,7 @@ private fun ArrayResultHero(snapshot: ArrayResultSnapshot) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer
         )
@@ -350,7 +351,7 @@ private fun ArrayResultHero(snapshot: ArrayResultSnapshot) {
                         .size(44.dp)
                         .background(
                             MaterialTheme.colorScheme.primary,
-                            RoundedCornerShape(14.dp)
+                            RoundedCornerShape(FluoRadius.control)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -559,7 +560,7 @@ private fun ArrayStandardCurveCard(analyte: ArrayAnalyteResult) {
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
@@ -584,7 +585,7 @@ private fun ArrayStandardCurveCard(analyte: ArrayAnalyteResult) {
             )
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 color = MaterialTheme.colorScheme.surface
             ) {
                 LatexView(
@@ -703,7 +704,7 @@ private fun ArrayCurveMetricsCard(analyte: ArrayAnalyteResult) {
     val acceptedRatio = metrics["ACCEPTED_STANDARD_RATIO"]
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
@@ -759,7 +760,7 @@ private fun ArrayCurveMetricsCard(analyte: ArrayAnalyteResult) {
 private fun ResultMetric(modifier: Modifier, label: String, value: String) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(FluoRadius.badge),
         color = MaterialTheme.colorScheme.surface
     ) {
         Column(
@@ -798,7 +799,7 @@ private fun ArrayQuantitationMethodSummary(
     val signalOnly = records.count { record -> record.measurement.concentrationValue == null }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp)
+        shape = RoundedCornerShape(FluoRadius.card)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -850,7 +851,7 @@ private fun ArrayRepeatabilityCard(
             .map { (name, values) -> RepeatabilitySummary.create(name, values) }
             .sortedBy(RepeatabilitySummary::name)
     }
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(FluoRadius.card)) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp)
@@ -915,7 +916,7 @@ private fun ArrayStandardRecoveryCard(
             measured / expected * 100.0
         }
     }
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(FluoRadius.card)) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -960,7 +961,7 @@ private fun ArraySampleConcentrationTable(
             record.roleCode == TemplateSiteRole.SAMPLE.code
         }
     }
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(FluoRadius.card)) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -988,7 +989,7 @@ private fun ArraySampleConcentrationTable(
                                     ArraySiteSelection(record.siteIndex, analyte.analyteId)
                                 )
                             },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(FluoRadius.control),
                         color = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {
                         Row(
@@ -997,7 +998,7 @@ private fun ArraySampleConcentrationTable(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(9.dp),
+                                shape = RoundedCornerShape(FluoRadius.chip),
                                 color = MaterialTheme.colorScheme.primaryContainer
                             ) {
                                 Text(
@@ -1128,7 +1129,7 @@ private fun ArrayHeatmapResultCard(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("$ARRAY_HEATMAP_CARD_TAG_PREFIX${model.analyteId ?: "overview"}"),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
@@ -1139,7 +1140,7 @@ private fun ArrayHeatmapResultCard(
             // 色带来源是必要的科学语义，但压缩成一行状态标签，避免结果页出现说明段落。
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(FluoRadius.badge)
             ) {
                 Text(
                     subtitle,
@@ -1151,7 +1152,7 @@ private fun ArrayHeatmapResultCard(
             if (showZoomHint) {
                 Surface(
                     color = MaterialTheme.colorScheme.secondaryContainer,
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(FluoRadius.badge)
                 ) {
                     Row(
                         modifier = Modifier
@@ -1408,7 +1409,7 @@ private fun ArrayHeatmapStatistics(model: ArrayHeatmapModel) {
     val concentrationMode = model.scale.mode == ArrayHeatmapScaleMode.CONCENTRATION
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
@@ -1516,7 +1517,7 @@ private fun HeatmapMetric(value: String, label: String) {
 private fun ArrayRoleDistribution(roleCounts: Map<String, Int>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp)
+        shape = RoundedCornerShape(FluoRadius.card)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1555,7 +1556,7 @@ private fun AnalyteSnapshotCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp)
+        shape = RoundedCornerShape(FluoRadius.card)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1790,7 +1791,7 @@ private fun captureRoleLabel(code: String): String {
 private fun SectionCard(icon: ImageVector, title: String, body: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(

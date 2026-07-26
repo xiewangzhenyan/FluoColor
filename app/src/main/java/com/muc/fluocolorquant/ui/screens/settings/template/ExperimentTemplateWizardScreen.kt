@@ -98,6 +98,7 @@ import com.muc.fluocolorquant.ui.viewmodels.ExperimentTemplateWizardEvent
 import com.muc.fluocolorquant.ui.viewmodels.ExperimentTemplateWizardOperation
 import com.muc.fluocolorquant.ui.viewmodels.ExperimentTemplateWizardUiState
 import com.muc.fluocolorquant.ui.viewmodels.ExperimentTemplateWizardViewModel
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /** 模板向导的稳定语义标签，页面测试不依赖具体排版像素。 */
 object ExperimentTemplateWizardTestTags {
@@ -348,7 +349,7 @@ private fun WizardStepProgress(currentStep: TemplateWizardStep) {
         modifier = Modifier
             .fillMaxWidth()
             .testTag(ExperimentTemplateWizardTestTags.STEP_PROGRESS),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f)
     ) {
         Column(
@@ -361,7 +362,7 @@ private fun WizardStepProgress(currentStep: TemplateWizardStep) {
             ) {
                 Surface(
                     modifier = Modifier.size(36.dp),
-                    shape = RoundedCornerShape(11.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -678,7 +679,7 @@ private fun ReviewStep(state: ExperimentTemplateWizardUiState) {
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(FluoRadius.card),
             color = if (ready) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
             } else {
@@ -788,7 +789,7 @@ private fun StepCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(FluoRadius.sheet),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -824,7 +825,7 @@ private fun ScientificChoiceCard(
     OutlinedCard(
         onClick = onClick,
         modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.outlinedCardColors(
             containerColor = if (selected) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
@@ -914,7 +915,7 @@ private fun ResourceChoiceRow(
     OutlinedCard(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.outlinedCardColors(
             containerColor = if (selected) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f)
@@ -978,7 +979,7 @@ private fun AnalyteConfigurationCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
         ),
@@ -1177,7 +1178,7 @@ private fun ReagentChipGroup(
 private fun InlineNotice(text: String, warning: Boolean) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = if (warning) {
             MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
         } else {

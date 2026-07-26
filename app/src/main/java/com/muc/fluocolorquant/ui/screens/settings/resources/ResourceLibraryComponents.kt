@@ -34,6 +34,8 @@ import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import kotlinx.coroutines.flow.Flow
+import com.muc.fluocolorquant.ui.theme.FluoRadius
+import androidx.compose.foundation.shape.CircleShape
 
 /** 页面顶部统计项，由调用页面传入已经本地化的标签。 */
 data class ResourceSummaryMetric(
@@ -56,7 +58,7 @@ fun ResourceLibraryHeader(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = accentColor.copy(alpha = 0.07f),
         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.18f)),
     ) {
@@ -136,7 +138,7 @@ fun ResourceStatusBadge(status: String) {
         else -> stringResource(R.string.resource_status_legacy) to MaterialTheme.colorScheme.tertiary
     }
     Surface(
-        shape = RoundedCornerShape(999.dp),
+        shape = CircleShape,
         color = color.copy(alpha = 0.10f)
     ) {
         Text(
@@ -165,7 +167,7 @@ fun ResourceEmptyState(
     ) {
         Surface(
             modifier = Modifier.size(58.dp),
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(FluoRadius.card),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -195,7 +197,7 @@ fun ResourceEmptyState(
 @Composable
 fun ResourceMetadataPill(text: String, icon: ImageVector? = null) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(FluoRadius.badge),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
     ) {
         Row(

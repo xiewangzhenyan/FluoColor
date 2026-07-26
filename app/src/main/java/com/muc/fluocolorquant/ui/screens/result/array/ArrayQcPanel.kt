@@ -47,6 +47,7 @@ import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.GridQcSeverity
 import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 const val ARRAY_QC_PANEL_TAG: String = "array_qc_panel"
 const val ARRAY_QC_IMPUTED_TAG_PREFIX: String = "array_qc_imputed_"
@@ -185,7 +186,7 @@ fun ArrayQcPanel(
 private fun GeometrySummaryCard(snapshot: ArrayResultSnapshot) {
     val geometry = snapshot.frame.geometry
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(
@@ -231,7 +232,7 @@ private fun SiteQcCard(
     val colors = severityColors(entry.severity)
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(containerColor = colors.container)
     ) {
         Column(
@@ -348,7 +349,7 @@ private fun SectionHeading(title: String, count: Int) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Surface(
             color = MaterialTheme.colorScheme.secondaryContainer,
-            shape = RoundedCornerShape(10.dp)
+            shape = RoundedCornerShape(FluoRadius.badge)
         ) {
             Text(
                 text = count.toString(),
@@ -363,7 +364,7 @@ private fun SectionHeading(title: String, count: Int) {
 @Composable
 private fun EmptyQcCard(text: String) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
     ) {
         Text(
@@ -378,7 +379,7 @@ private fun EmptyQcCard(text: String) {
 @Composable
 private fun SeverityBadge(severity: GridQcSeverity) {
     val colors = severityColors(severity)
-    Surface(color = colors.accent.copy(alpha = 0.14f), shape = RoundedCornerShape(9.dp)) {
+    Surface(color = colors.accent.copy(alpha = 0.14f), shape = RoundedCornerShape(FluoRadius.chip)) {
         Text(
             text = severityLabel(severity),
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),

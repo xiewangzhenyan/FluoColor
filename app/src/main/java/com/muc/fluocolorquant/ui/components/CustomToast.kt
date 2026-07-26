@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 自定义Toast类型
@@ -91,7 +92,7 @@ fun CustomToast(
             modifier = Modifier
                 .padding(bottom = 90.dp, start = 16.dp, end = 16.dp)
                 .alpha(alpha),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(FluoRadius.chip),
             shadowElevation = 6.dp,
             color = backgroundColor.copy(alpha = 0.9f)
         ) {

@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 科研方案选择器使用的稳定展示项。
@@ -92,7 +93,7 @@ fun ScientificSectionTitle(
     ) {
         Surface(
             modifier = Modifier.size(36.dp),
-            shape = RoundedCornerShape(11.dp),
+            shape = RoundedCornerShape(FluoRadius.badge),
             color = accentColor.copy(alpha = 0.12f)
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -175,7 +176,7 @@ fun ScientificSelectionField(
                     }
                 )
                 .clickable(enabled = enabled, onClick = onClick),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(FluoRadius.control),
             color = if (value.isNullOrBlank()) {
                 MaterialTheme.colorScheme.surface
             } else {
@@ -291,7 +292,7 @@ fun ScientificPickerSheet(
                                 onSelect(option.id)
                                 onDismiss()
                             },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(FluoRadius.control),
                         color = if (selected) {
                             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
                         } else {
@@ -306,7 +307,7 @@ fun ScientificPickerSheet(
                             option.icon?.let { optionIcon ->
                                 Surface(
                                     modifier = Modifier.size(38.dp),
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(FluoRadius.badge),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
@@ -381,7 +382,7 @@ fun ScientificMetadataChip(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(FluoRadius.badge),
         color = accentColor.copy(alpha = 0.09f)
     ) {
         Row(
@@ -434,7 +435,7 @@ fun ScientificExpandableSection(
         modifier = modifier
             .fillMaxWidth()
             .animateContentSize(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
@@ -449,7 +450,7 @@ fun ScientificExpandableSection(
             ) {
                 Surface(
                     modifier = Modifier.size(38.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = accentColor.copy(alpha = 0.11f)
                 ) {
                     Box(contentAlignment = Alignment.Center) {

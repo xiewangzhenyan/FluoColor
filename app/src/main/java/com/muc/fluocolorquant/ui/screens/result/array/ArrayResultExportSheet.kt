@@ -67,6 +67,7 @@ import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 const val ARRAY_RESULT_EXPORT_SHEET_TAG: String = "array_result_export_sheet"
 const val ARRAY_RESULT_EXPORT_CSV_TAG: String = "array_result_export_csv"
@@ -284,7 +285,7 @@ fun ArrayResultExportSheet(
             )
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(FluoRadius.control)
             ) {
                 Row(
                     modifier = Modifier.padding(14.dp),
@@ -321,7 +322,7 @@ private fun ExportFormatCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
     ) {
         Row(
@@ -331,7 +332,7 @@ private fun ExportFormatCard(
         ) {
             Surface(
                 color = iconColor.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(FluoRadius.control)
             ) {
                 Icon(
                     imageVector = icon,
@@ -371,7 +372,7 @@ private fun ArrayExportProgressOverlay() {
         Surface(
             modifier = Modifier.testTag(ARRAY_RESULT_EXPORT_PROGRESS_TAG),
             color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(FluoRadius.card),
             shadowElevation = 8.dp
         ) {
             Row(

@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.muc.fluocolorquant.ui.theme.FluoRadius
+import androidx.compose.foundation.shape.CircleShape
 
 /**
  * 系统设置中的统一导航卡片。
@@ -49,7 +51,7 @@ fun SettingsNavigationItem(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f))
@@ -60,7 +62,7 @@ fun SettingsNavigationItem(
         ) {
             Surface(
                 modifier = Modifier.size(40.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(FluoRadius.badge),
                 color = accentColor.copy(alpha = 0.12f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -90,7 +92,7 @@ fun SettingsNavigationItem(
                     badge?.let { badgeText ->
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
-                            shape = RoundedCornerShape(999.dp),
+                            shape = CircleShape,
                             color = accentColor.copy(alpha = 0.10f)
                         ) {
                             Text(

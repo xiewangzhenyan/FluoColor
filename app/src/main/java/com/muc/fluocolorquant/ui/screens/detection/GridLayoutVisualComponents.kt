@@ -80,6 +80,7 @@ import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.ceil
 import kotlin.math.roundToInt
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /** 运行时真实孔位缩略图；Android Bitmap 在页面离开时统一释放。 */
 internal data class RealSiteCropBitmap(
@@ -147,7 +148,7 @@ internal fun RealSiteCropGrid(
     if (crops.size != preview.siteCount) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(FluoRadius.control),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         ) {
             Text(
@@ -206,7 +207,7 @@ internal fun RealSiteCropGrid(
         Dialog(onDismissRequest = { expandedSiteIndex = null }) {
             Surface(
                 modifier = Modifier.testTag(ArrayLayoutEditorTestTags.CROP_DIALOG),
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(FluoRadius.sheet),
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 6.dp
             ) {
@@ -223,7 +224,7 @@ internal fun RealSiteCropGrid(
                     Surface(
                         modifier = Modifier.size(220.dp),
                         shape = if (visualStyle == ArraySiteVisualStyle.CIRCLE) CircleShape
-                        else RoundedCornerShape(20.dp),
+                        else RoundedCornerShape(FluoRadius.card),
                         border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
                     ) {
                         Image(
@@ -258,7 +259,7 @@ internal fun GridAnalyteSelector(
                 modifier = Modifier
                     .width(132.dp)
                     .clickable { onSelected(analyte.id) },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 color = if (selected) accent.copy(alpha = 0.14f)
                 else MaterialTheme.colorScheme.surface,
                 border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) accent else MaterialTheme.colorScheme.outlineVariant)
@@ -497,7 +498,7 @@ private fun RoleToolCard(
     Surface(
         modifier = modifier
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(17.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = if (selected) accent.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surface,
         border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) accent else MaterialTheme.colorScheme.outlineVariant)
     ) {
@@ -510,7 +511,7 @@ private fun RoleToolCard(
         ) {
             Surface(
                 modifier = Modifier.size(31.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(FluoRadius.badge),
                 color = accent.copy(alpha = if (selected) 0.22f else 0.11f)
             ) {
                 Box(contentAlignment = Alignment.Center) {

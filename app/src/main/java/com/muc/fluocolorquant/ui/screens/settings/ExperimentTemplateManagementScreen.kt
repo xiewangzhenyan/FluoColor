@@ -105,6 +105,7 @@ import com.muc.fluocolorquant.ui.components.charts.ChartPoint
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import kotlin.math.pow
 import com.muc.fluocolorquant.utils.math.FittingEngine
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 实验模板管理页面
@@ -304,7 +305,7 @@ fun TemplateItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(FluoRadius.badge))
             .clickable { expanded = !expanded },
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -645,7 +646,7 @@ private fun VersionedTemplateSummary(template: ExperimentTemplate) {
 @Composable
 private fun TemplateSummaryPill(icon: ImageVector, text: String) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(FluoRadius.badge),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
     ) {
         Row(

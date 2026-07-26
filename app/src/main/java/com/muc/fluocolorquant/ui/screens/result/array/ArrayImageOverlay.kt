@@ -61,6 +61,7 @@ import kotlin.math.hypot
 import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 const val ARRAY_IMAGE_OVERLAY_TAG: String = "array_image_overlay"
 const val ARRAY_IMAGE_LEGEND_CANDIDATE_TAG: String = "array_image_legend_candidate"
@@ -166,7 +167,7 @@ fun ArrayImageOverlay(
         modifier = modifier
             .fillMaxWidth()
             .testTag(ARRAY_IMAGE_OVERLAY_TAG),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
@@ -199,7 +200,7 @@ fun ArrayImageOverlay(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(360.dp)
-                    .background(Color.Black, RoundedCornerShape(16.dp))
+                    .background(Color.Black, RoundedCornerShape(FluoRadius.control))
                     .onSizeChanged { viewportSize = it },
                 contentAlignment = Alignment.Center
             ) {

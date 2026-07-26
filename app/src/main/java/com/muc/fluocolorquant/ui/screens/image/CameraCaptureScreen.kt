@@ -88,6 +88,7 @@ import com.muc.fluocolorquant.utils.camera.toFixedCameraCaptureRequest
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 @Composable
 fun CameraCaptureScreen(
@@ -494,7 +495,7 @@ private fun OverlayIconButton(
     onClick: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = Color.Black.copy(alpha = 0.32f)
         )
@@ -564,7 +565,7 @@ private fun CameraBottomControls(
             FilledTonalButton(
                 onClick = onOpenAdvanced,
                 modifier = Modifier.height(58.dp),
-                shape = RoundedCornerShape(22.dp)
+                shape = RoundedCornerShape(FluoRadius.card)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Tune,
@@ -584,7 +585,7 @@ private fun CameraBottomControls(
                 modifier = Modifier
                     .weight(1f)
                     .height(64.dp),
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(FluoRadius.sheet)
             ) {
                 Icon(
                     imageVector = Icons.Filled.CameraAlt,
@@ -608,7 +609,7 @@ private fun StatusBadge(
     highlighted: Boolean = false
 ) {
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = if (highlighted) {
                 MaterialTheme.colorScheme.primary.copy(alpha = 0.84f)
@@ -776,7 +777,7 @@ private fun AdvancedCaptureSettingsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 20.dp)
-                .clip(RoundedCornerShape(28.dp))
+                .clip(RoundedCornerShape(FluoRadius.sheet))
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(horizontal = 4.dp)
         ) {
@@ -822,7 +823,7 @@ private fun AdvancedCaptureSettingsSheet(
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
                         ),
-                        shape = RoundedCornerShape(18.dp)
+                        shape = RoundedCornerShape(FluoRadius.card)
                     ) {
                         Row(
                             modifier = Modifier
@@ -958,7 +959,7 @@ private fun AdvancedCaptureSettingsSheet(
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
                             ),
-                            shape = RoundedCornerShape(22.dp)
+                            shape = RoundedCornerShape(FluoRadius.card)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -994,7 +995,7 @@ private fun AdvancedCaptureSettingsSheet(
                     FilledTonalButton(
                         onClick = onResetDefaults,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp)
+                        shape = RoundedCornerShape(FluoRadius.card)
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
@@ -1053,7 +1054,7 @@ private fun CaptureSettingsGroupCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)
         ),
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(FluoRadius.sheet)
     ) {
         Column(
             modifier = Modifier
@@ -1121,7 +1122,7 @@ private fun ZoomSliderSection(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
         ),
-        shape = RoundedCornerShape(22.dp)
+        shape = RoundedCornerShape(FluoRadius.card)
     ) {
         Column(
             modifier = Modifier
@@ -1174,7 +1175,7 @@ private fun DialSliderSection(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
         ),
-        shape = RoundedCornerShape(22.dp)
+        shape = RoundedCornerShape(FluoRadius.card)
     ) {
         Column(
             modifier = Modifier

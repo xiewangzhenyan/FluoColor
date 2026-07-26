@@ -78,6 +78,7 @@ import com.muc.fluocolorquant.utils.math.WellMappingUtils
 import kotlinx.coroutines.launch
 import java.util.Locale
 import android.util.Log
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 结果展示区域
@@ -131,7 +132,7 @@ fun ResultsDisplaySection(
             containerColor = colorScheme.surface
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
             colorScheme.outlineVariant
@@ -201,7 +202,7 @@ private fun ResultDisplaySegmentedControl(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(FluoRadius.control))
             .background(colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -218,7 +219,7 @@ private fun ResultDisplaySegmentedControl(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(FluoRadius.control))
                             .background(
                                 if (selected) colorScheme.primary
                                 else colorScheme.surface.copy(alpha = 0.9f)
@@ -226,7 +227,7 @@ private fun ResultDisplaySegmentedControl(
                             .border(
                                 width = if (selected) 0.dp else 1.dp,
                                 color = colorScheme.outline.copy(alpha = 0.22f),
-                                shape = RoundedCornerShape(14.dp)
+                                shape = RoundedCornerShape(FluoRadius.control)
                             )
                             .clickable { onSelect(currentIndex) }
                             .padding(horizontal = 12.dp, vertical = 14.dp),

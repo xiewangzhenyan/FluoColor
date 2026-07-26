@@ -38,6 +38,7 @@ import com.muc.fluocolorquant.ui.viewmodels.ArrayRunHistoryItem
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 const val ARRAY_RUN_HISTORY_SHEET_TAG: String = "array_run_history_sheet"
 const val ARRAY_RUN_HISTORY_LIST_TAG: String = "array_run_history_list"
@@ -83,7 +84,7 @@ fun ArrayRunHistorySheet(
                             .fillMaxWidth()
                             .testTag(ARRAY_RUN_HISTORY_READ_ERROR_TAG),
                         color = MaterialTheme.colorScheme.errorContainer,
-                        shape = RoundedCornerShape(16.dp)
+                        shape = RoundedCornerShape(FluoRadius.control)
                     ) {
                         Row(
                             modifier = Modifier.padding(14.dp),
@@ -141,7 +142,7 @@ private fun RunHistoryHeader(runCount: Int) {
     ) {
         Surface(
             color = MaterialTheme.colorScheme.primaryContainer,
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(FluoRadius.control)
         ) {
             Icon(
                 imageVector = Icons.Outlined.History,
@@ -190,7 +191,7 @@ private fun RunHistoryCard(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("$ARRAY_RUN_HISTORY_ITEM_TAG_PREFIX${run.runId}"),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = if (isCurrent) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
@@ -245,7 +246,7 @@ private fun RunHistoryCard(
                     Surface(
                         modifier = Modifier.testTag(ARRAY_RUN_HISTORY_CURRENT_BADGE_TAG),
                         color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(FluoRadius.badge)
                     ) {
                         Text(
                             text = stringResource(R.string.array_run_history_current),
@@ -262,7 +263,7 @@ private fun RunHistoryCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(color = statusStyle.container, shape = RoundedCornerShape(10.dp)) {
+                Surface(color = statusStyle.container, shape = RoundedCornerShape(FluoRadius.badge)) {
                     Text(
                         text = statusStyle.label,
                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),

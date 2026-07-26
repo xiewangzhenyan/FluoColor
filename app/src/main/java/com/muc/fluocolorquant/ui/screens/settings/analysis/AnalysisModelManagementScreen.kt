@@ -94,6 +94,7 @@ import com.muc.fluocolorquant.ui.viewmodels.AnalysisModelEvent
 import com.muc.fluocolorquant.ui.viewmodels.AnalysisModelUiState
 import com.muc.fluocolorquant.ui.viewmodels.AnalysisModelViewModel
 import kotlinx.coroutines.flow.Flow
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /** Compose 测试只依赖这些稳定语义标签，不与具体排版像素耦合。 */
 object AnalysisModelTestTags {
@@ -247,7 +248,7 @@ private fun AnalysisModelSummary(state: AnalysisModelUiState) {
         modifier = Modifier
             .fillMaxWidth()
             .testTag(AnalysisModelTestTags.SUMMARY),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.24f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
     ) {
@@ -293,7 +294,7 @@ private fun SummaryMetric(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(FluoRadius.badge),
         color = Color.Transparent
     ) {
         Column(
@@ -443,7 +444,7 @@ private fun CompactFilterField(
     Card(
         onClick = onClick,
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -487,7 +488,7 @@ private fun CompactFilterField(
 private fun AnalysisModelEmptyState() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         color = MaterialTheme.colorScheme.surface
     ) {
@@ -531,7 +532,7 @@ private fun AnalysisModelCard(
     val canArchive = model.status != AnalysisModelLifecycleStatus.ARCHIVED.code
 
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -721,7 +722,7 @@ private fun AnalysisModelEditorSheet(
             )
             if (state.analytes.isEmpty()) {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(FluoRadius.control),
                     color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.58f)
                 ) {
                     Text(

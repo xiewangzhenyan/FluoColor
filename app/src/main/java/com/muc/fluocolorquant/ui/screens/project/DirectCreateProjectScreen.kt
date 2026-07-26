@@ -420,7 +420,7 @@ private fun DirectCreateProjectContent(
                                 label = { Text(stringResource(R.string.direct_create_rows)) },
                                 modifier = Modifier.weight(1f),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(FluoRadius.control),
                                 singleLine = true
                             )
                             OutlinedTextField(
@@ -429,7 +429,7 @@ private fun DirectCreateProjectContent(
                                 label = { Text(stringResource(R.string.direct_create_columns)) },
                                 modifier = Modifier.weight(1f),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(FluoRadius.control),
                                 singleLine = true
                             )
                         }
@@ -749,7 +749,7 @@ private fun DirectAnalyteSelectionArea(
     selectedAnalytes.forEach { (analyte, selection) ->
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(17.dp),
+            shape = RoundedCornerShape(FluoRadius.control),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
@@ -816,7 +816,7 @@ private fun DirectAnalyteSelectionArea(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             isError = selection.maxConcentration == null,
                             singleLine = true,
-                            shape = RoundedCornerShape(16.dp)
+                            shape = RoundedCornerShape(FluoRadius.control)
                         )
                     }
                     ScientificSelectionField(
@@ -854,7 +854,7 @@ private fun DirectImageCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onChooseImage),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
         ),
@@ -872,7 +872,7 @@ private fun DirectImageCard(
             ) {
                 Surface(
                     modifier = Modifier.size(62.dp),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(FluoRadius.card),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -917,7 +917,7 @@ private fun DirectImageCard(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(10.dp),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     color = Color.Black.copy(alpha = 0.65f)
                 ) {
                     Text(
@@ -988,7 +988,7 @@ private fun DirectCreateBottomBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
-                shape = RoundedCornerShape(15.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -1089,7 +1089,7 @@ private fun DirectTwoOptionDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(22.dp),
+            shape = RoundedCornerShape(FluoRadius.card),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
         ) {
@@ -1148,7 +1148,7 @@ private fun DirectImageSourceOption(
         modifier = modifier
             .heightIn(min = 116.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(FluoRadius.card),
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.24f))
     ) {
@@ -1159,7 +1159,7 @@ private fun DirectImageSourceOption(
         ) {
             Surface(
                 modifier = Modifier.size(48.dp),
-                shape = RoundedCornerShape(15.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 color = MaterialTheme.colorScheme.primary
             ) {
                 Box(contentAlignment = Alignment.Center) {
