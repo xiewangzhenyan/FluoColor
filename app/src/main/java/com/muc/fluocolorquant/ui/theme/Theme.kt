@@ -3,9 +3,7 @@ package com.muc.fluocolorquant.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -17,7 +15,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 private val LightColorScheme = lightColorScheme(
@@ -131,10 +128,12 @@ fun FluoColorTheme(
     val semanticColors = if (darkTheme) DarkSemanticColors else LightSemanticColors
 
     CompositionLocalProvider(LocalFluoSemanticColors provides semanticColors) {
+        // 刻意不覆盖 MaterialTheme.shapes：那会改变全应用所有 Material 组件的默认圆角，
+        // 波及首页、历史、关于等本次不在改造范围内的页面。圆角统一改为在改造到的页面里
+        // 显式使用 FluoRadius，把影响面限制在实际动过的页面内。
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
-            shapes = FluoShapes,
             content = content
         )
     }
@@ -152,18 +151,3 @@ object FluoTheme {
         @ReadOnlyComposable
         get() = LocalFluoSemanticColors.current
 }
-
-/**
- * 统一形状体系。
- *
- * Material 组件（Button、Card、Dialog、BottomSheet 等）会读取 MaterialTheme.shapes 决定默认
- * 圆角。此前主题未提供该参数，组件使用 M3 基线圆角，而页面里的手写卡片又各自使用
- * 14/16/18/20/22dp，导致同一屏出现四五种圆角。这里把默认值对齐到 [FluoRadius]。
- */
-private val FluoShapes = Shapes(
-    extraSmall = RoundedCornerShape(FluoRadius.chip),
-    small = RoundedCornerShape(FluoRadius.badge),
-    medium = RoundedCornerShape(FluoRadius.control),
-    large = RoundedCornerShape(FluoRadius.card),
-    extraLarge = RoundedCornerShape(28.dp)
-)
