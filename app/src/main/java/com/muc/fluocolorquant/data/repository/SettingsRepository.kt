@@ -17,8 +17,8 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
-// 创建独立的DataStore实例，确保语言设置与其他设置分开存储
-private val Context.languageDataStore by preferencesDataStore(name = "language_settings")
+// 语言偏好的 DataStore 委托统一声明在 AppLanguageStore：应用启动阶段（Hilt 尚未就绪）
+// 与本仓库都需要读取它，两处各自声明委托会让同一进程出现两个指向同一文件的实例。
 private val Context.appSettingsDataStore by preferencesDataStore(name = "app_settings")
 
 /**
@@ -37,14 +37,14 @@ interface ConcentrationUnitPreferences {
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ConcentrationUnitPreferences {
-    // 语言相关的DataStore实例
-    private val languageDataStore: DataStore<Preferences> = context.languageDataStore
+    // 语言相关的DataStore实例；与 FluoColorApp 共用 AppLanguageStore 提供的同一个实例
+    private val languageDataStore: DataStore<Preferences> = AppLanguageStore.dataStore(context)
     
     // 应用其他设置的DataStore实例
     private val appSettingsDataStore: DataStore<Preferences> = context.appSettingsDataStore
 
     // 偏好设置的键
-    private val LANGUAGE_KEY = stringPreferencesKey("language")
+    private val LANGUAGE_KEY = AppLanguageStore.LANGUAGE_KEY
     private val DEFAULT_DETECTION_MODE_KEY = stringPreferencesKey("default_detection_mode")
     private val DEFAULT_CONCENTRATION_UNIT_KEY = stringPreferencesKey("default_concentration_unit")
     private val CONCENTRATION_UNITS_KEY = stringSetPreferencesKey("concentration_units")
@@ -68,11 +68,10 @@ class SettingsRepository @Inject constructor(
         preferences[LANGUAGE_KEY] ?: getSystemLanguage()
     }
 
-    // 设置语言
+    // 设置语言。必须经 AppLanguageStore 写入，它会同步刷新 attachBaseContext 使用的
+    // 进程内缓存；直接写 DataStore 会让缓存滞留旧值，重建后的 Activity 仍用旧语言。
     suspend fun setLanguage(languageCode: String) {
-        languageDataStore.edit { preferences ->
-            preferences[LANGUAGE_KEY] = languageCode
-        }
+        AppLanguageStore.setLanguage(context, languageCode)
     }
 
     // 获取系统语言代码
