@@ -57,9 +57,7 @@ fun ResultQualityBar(
     summary: ResultQualitySummary,
     modifier: Modifier = Modifier,
     /** 浓度单位；仅信号运行传入信号特征名，为空时不显示单位。 */
-    unit: String? = null,
-    /** 数值格式化交由调用方，避免同一数值在不同页面出现不同精度。 */
-    formatValue: (Double) -> String
+    unit: String? = null
 ) {
     val appearance = summary.level.appearance()
 
@@ -97,8 +95,7 @@ fun ResultQualityBar(
                 )
                 QualityEvidenceRow(
                     summary = summary,
-                    contentColor = appearance.onContainer,
-                    formatValue = formatValue
+                    contentColor = appearance.onContainer
                 )
                 // 降级原因单独一行：用户需要知道"为什么不是良好"，而不是只看到一个结论。
                 summary.issues.firstOrNull()?.let { issue ->
@@ -124,15 +121,16 @@ fun ResultQualityBar(
 @Composable
 private fun QualityEvidenceRow(
     summary: ResultQualitySummary,
-    contentColor: Color,
-    formatValue: (Double) -> String
+    contentColor: Color
 ) {
     val parts = buildList {
         summary.rSquared?.let { value ->
-            add(stringResource(R.string.result_quality_metric_r2, formatValue(value)))
+            // R² 固定四位小数：0.9987 与 0.9950 的差别直接决定"良好"还是"待复核"，
+            // 用通用两位小数格式会把两者都显示成 1.00 / 0.99，等于抹掉判定依据。
+            add(stringResource(R.string.result_quality_metric_r2, "%.4f".format(value)))
         }
         summary.repeatCvPercent?.let { value ->
-            add(stringResource(R.string.result_quality_metric_cv, formatValue(value)))
+            add(stringResource(R.string.result_quality_metric_cv, "%.1f".format(value)))
         }
         if (summary.evaluatedCount > 0) {
             add(
@@ -159,10 +157,13 @@ private fun QualityEvidenceRow(
         return
     }
     // 支撑数字含 R² 与 CV，使用等宽数字让不同运行之间的同一指标位置稳定。
+    // 允许折到两行：四项支撑数字在 360dp 窄屏必然放不下一行，截断掉的恰好是
+    // "13 需复测"这类最需要看到的降级依据。
     FluoNumericText(
         text = parts.joinToString(EVIDENCE_SEPARATOR),
         style = MaterialTheme.typography.labelMedium,
-        color = contentColor
+        color = contentColor,
+        maxLines = 2
     )
 }
 

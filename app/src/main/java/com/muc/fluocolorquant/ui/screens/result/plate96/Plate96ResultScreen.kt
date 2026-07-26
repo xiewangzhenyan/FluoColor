@@ -231,10 +231,7 @@ private fun Plate96ResultSuccess(
                 val qualitySummary = remember(snapshot.runId, current.analyteId) {
                     buildResultQualitySummary(snapshot.arraySnapshot, current, qualityModel)
                 }
-                ResultQualityBar(
-                    summary = qualitySummary,
-                    formatValue = ::formatArrayHeatmapValue
-                )
+                ResultQualityBar(summary = qualitySummary)
             }
             if (snapshot.arraySnapshot.analytes.size > 1) {
                 LazyRow(
@@ -443,8 +440,11 @@ private fun Plate96OverviewContent(
                         onWellClick = onWellClick,
                         selectedSiteIndex = selectedWellIndex
                     )
-                    Plate96ScaleLegend(model)
+                    // 状态图例排在色带之前：色带下方紧跟五个刻度数字，若再接一行图标文字，
+                    // 两组小字会挤在一起难以区分谁属于谁。状态图例说明的是热力图里的角标，
+                    // 紧贴热力图更符合阅读顺序。
                     Plate96StateLegend(model)
+                    Plate96ScaleLegend(model)
                 }
             }
         }
@@ -689,12 +689,15 @@ private fun Plate96ScientificMetrics(
             MaterialTheme.colorScheme.outlineVariant
         )
     ) {
-        Row(
+        // 范围独占一行、其余两项并排：三等分时 "0.78–52.0 ng/mL" 这类范围值必然被截断成
+        // "0.78–…"，而范围恰恰是首屏最该看清的一项。范围由两个数加连字符构成，天然比单值
+        // 宽，不该和单值平分同一份宽度。
+        Column(
             modifier = Modifier.padding(FluoSpacing.lg),
-            horizontalArrangement = Arrangement.spacedBy(FluoSpacing.lg)
+            verticalArrangement = Arrangement.spacedBy(FluoSpacing.md)
         ) {
             FluoScientificMetric(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 label = stringResource(
                     if (concentrationMode) R.string.result_metric_range
                     else R.string.result_metric_signal_range
@@ -710,26 +713,30 @@ private fun Plate96ScientificMetrics(
                 },
                 unit = unit
             )
-            FluoScientificMetric(
-                modifier = Modifier.weight(1f),
-                label = stringResource(
-                    if (concentrationMode) R.string.result_metric_median
-                    else R.string.result_metric_signal_median
-                ),
-                value = median?.let(::formatArrayHeatmapValue),
-                unit = unit
-            )
-            // 重复孔 CV 只在浓度模式下有意义：信号的重复性受曝光与背景影响，
-            // 与浓度重复性不是同一回事，不放在同一格里比较。
-            if (concentrationMode) {
+            Row(horizontalArrangement = Arrangement.spacedBy(FluoSpacing.lg)) {
                 FluoScientificMetric(
                     modifier = Modifier.weight(1f),
-                    label = stringResource(R.string.result_metric_replicate_cv),
-                    value = summary.repeatCvPercent?.let(::formatArrayHeatmapValue),
-                    unit = "%"
+                    label = stringResource(
+                        if (concentrationMode) R.string.result_metric_median
+                        else R.string.result_metric_signal_median
+                    ),
+                    value = median?.let(::formatArrayHeatmapValue),
+                    unit = unit
                 )
-            } else {
-                Spacer(Modifier.weight(1f))
+                // 重复孔 CV 只在浓度模式下有意义：信号的重复性受曝光与背景影响，
+                // 与浓度重复性不是同一回事，不放在同一格里比较。
+                if (concentrationMode) {
+                    FluoScientificMetric(
+                        modifier = Modifier.weight(1f),
+                        label = stringResource(R.string.result_metric_replicate_cv),
+                        // CV 固定一位小数：通用格式在小数值时给两位、大数值时给整数，
+                        // 同一指标在不同运行间位数跳动会让对比失去锚点。
+                        value = summary.repeatCvPercent?.let { "%.1f".format(it) },
+                        unit = "%"
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
             }
         }
     }
