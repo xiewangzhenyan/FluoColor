@@ -1,10 +1,12 @@
 package com.muc.fluocolorquant.ui.screens.detection.plate96
 
 import android.graphics.Paint
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -31,6 +34,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,6 +43,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -76,6 +81,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -87,6 +93,17 @@ import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
 import com.muc.fluocolorquant.domain.detection.array.ArrayOriginCorner
 import com.muc.fluocolorquant.domain.detection.array.ArraySiteLocalizationSource
 import com.muc.fluocolorquant.domain.detection.plate96.Plate96Locator
+import com.muc.fluocolorquant.ui.components.FluoMetricTile
+import com.muc.fluocolorquant.ui.components.FluoSectionCard
+import com.muc.fluocolorquant.ui.components.FluoStatePlaceholder
+import com.muc.fluocolorquant.ui.components.FluoStatusChip
+import com.muc.fluocolorquant.ui.components.FluoStepIndicator
+import com.muc.fluocolorquant.ui.components.FluoTopBar
+import com.muc.fluocolorquant.ui.theme.FluoIconSize
+import com.muc.fluocolorquant.ui.theme.FluoMotion
+import com.muc.fluocolorquant.ui.theme.FluoRadius
+import com.muc.fluocolorquant.ui.theme.FluoSpacing
+import com.muc.fluocolorquant.ui.theme.FluoTheme
 import com.muc.fluocolorquant.ui.viewmodels.Plate96ImageViewMode
 import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationError
 import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationStage
@@ -131,13 +148,9 @@ fun Plate96LocalizationScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.plate96_localization_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.plate96_localization_title),
+                onBack = onBack
             )
         }
     ) { padding ->
@@ -289,36 +302,17 @@ internal fun Plate96ReadyContent(
     }
 }
 
+/** 定位是三步链路的第一步；步骤条复用共享实现，与检测网关保持同一视觉。 */
 @Composable
-private fun Plate96StepHeader() {
-    val steps = listOf(
-        R.string.plate96_step_localization,
-        R.string.plate96_step_layout,
-        R.string.plate96_step_quantitation
+private fun Plate96StepHeader(currentStep: Int = 0) {
+    FluoStepIndicator(
+        steps = listOf(
+            stringResource(R.string.plate96_step_localization),
+            stringResource(R.string.plate96_step_layout),
+            stringResource(R.string.plate96_step_quantitation)
+        ),
+        currentStep = currentStep
     )
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        steps.forEachIndexed { index, label ->
-            OutlinedCard(
-                modifier = Modifier.weight(1f),
-                colors = CardDefaults.outlinedCardColors(
-                    containerColor = if (index == 0) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surface
-                )
-            ) {
-                Text(
-                    text = stringResource(label),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (index == 0) MaterialTheme.colorScheme.onPrimaryContainer
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
 }
 
 @Composable
@@ -335,15 +329,24 @@ private fun Plate96OrientationCard(
     } else {
         listOf(ArrayOriginCorner.BOTTOM_LEFT, ArrayOriginCorner.TOP_RIGHT)
     }
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(Plate96LocalizationTestTags.ORIENTATION_CARD)
+    // 方向未确认是"必须处理但可继续查看"的状态，属于警告语义。此前借用 tertiaryContainer
+    // 表达，紫粉色既没有警告含义也与主色争夺注意力；改用语义警告色后，页面里"待确认"
+    // 与其他页面的"需复核"呈现同一种颜色（AGENTS.md 7.2）。
+    val confirmed = state.orientationConfirmed
+    val statusContainer = if (confirmed) {
+        FluoTheme.semantic.successContainer
+    } else {
+        FluoTheme.semantic.warningContainer
+    }
+    val statusContent = if (confirmed) {
+        FluoTheme.semantic.onSuccessContainer
+    } else {
+        FluoTheme.semantic.onWarningContainer
+    }
+    FluoSectionCard(
+        modifier = Modifier.testTag(Plate96LocalizationTestTags.ORIENTATION_CARD),
+        accentColor = if (confirmed) FluoTheme.semantic.success else FluoTheme.semantic.warning
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -354,35 +357,16 @@ private fun Plate96OrientationCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                Surface(
-                    shape = CircleShape,
-                    color = if (state.orientationConfirmed) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.tertiaryContainer
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (state.orientationConfirmed) Icons.Default.CheckCircle
-                            else Icons.Default.RadioButtonUnchecked,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = if (state.orientationConfirmed) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.tertiary
-                        )
-                        Text(
-                            text = stringResource(
-                                if (state.orientationConfirmed) R.string.plate96_orientation_status_confirmed
-                                else R.string.plate96_orientation_status_pending
-                            ),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (state.orientationConfirmed) MaterialTheme.colorScheme.onPrimaryContainer
-                            else MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
-                }
+                FluoStatusChip(
+                    text = stringResource(
+                        if (confirmed) R.string.plate96_orientation_status_confirmed
+                        else R.string.plate96_orientation_status_pending
+                    ),
+                    icon = if (confirmed) Icons.Default.CheckCircle
+                    else Icons.Default.RadioButtonUnchecked,
+                    contentColor = statusContent,
+                    containerColor = statusContainer
+                )
             }
             Row(modifier = Modifier.fillMaxWidth()) {
                 Plate96OrientationMetric(
@@ -407,15 +391,20 @@ private fun Plate96OrientationCard(
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
             ) {
                 Box(modifier = Modifier.weight(1f)) {
                     OutlinedButton(
                         onClick = { menuExpanded = true },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(FluoRadius.control)
                     ) {
                         Text(stringResource(R.string.plate96_orientation_adjust), maxLines = 1)
-                        Icon(Icons.Default.ExpandMore, contentDescription = null)
+                        Icon(
+                            imageVector = Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(FluoIconSize.medium)
+                        )
                     }
                     DropdownMenu(
                         expanded = menuExpanded,
@@ -439,16 +428,23 @@ private fun Plate96OrientationCard(
                         )
                     }
                 }
-                if (!state.orientationConfirmed) {
+                // 确认按钮只在未确认时出现，用 AnimatedVisibility 让它按标准节奏淡入淡出，
+                // 避免确认后按钮"凭空消失"导致同一行控件宽度瞬间跳变。
+                AnimatedVisibility(
+                    visible = !confirmed,
+                    modifier = Modifier.weight(1f),
+                    enter = FluoMotion.expandEnter,
+                    exit = FluoMotion.expandExit
+                ) {
                     Button(
                         onClick = onConfirmCurrent,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(FluoRadius.control)
                     ) {
                         Text(stringResource(R.string.plate96_orientation_confirm_current), maxLines = 1)
                     }
                 }
             }
-        }
     }
 }
 
@@ -499,16 +495,14 @@ private fun Plate96DisplayControls(
     onShowLabelsChange: (Boolean) -> Unit,
     onOpenAdjustment: () -> Unit
 ) {
-    OutlinedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(Plate96LocalizationTestTags.DISPLAY_CONTROLS)
+    FluoSectionCard(
+        modifier = Modifier.testTag(Plate96LocalizationTestTags.DISPLAY_CONTROLS),
+        verticalSpacing = FluoSpacing.sm
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.plate96_display_title), fontWeight = FontWeight.SemiBold)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
             ) {
                 FilterChip(
                     selected = showOutlines,
@@ -529,7 +523,6 @@ private fun Plate96DisplayControls(
                     modifier = Modifier.testTag(Plate96LocalizationTestTags.MANUAL_ADJUST_BUTTON)
                 )
             }
-        }
     }
 }
 
@@ -538,16 +531,14 @@ private fun Plate96AlgorithmSelector(
     selected: ArrayLocatorMode,
     onSelected: (ArrayLocatorMode) -> Unit
 ) {
-    OutlinedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(Plate96LocalizationTestTags.ALGORITHM_SELECTOR)
+    FluoSectionCard(
+        modifier = Modifier.testTag(Plate96LocalizationTestTags.ALGORITHM_SELECTOR),
+        verticalSpacing = FluoSpacing.sm
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.plate96_algorithm_title), fontWeight = FontWeight.SemiBold)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
             ) {
                 listOf(
                     ArrayLocatorMode.AUTO to R.string.plate96_algorithm_auto,
@@ -562,21 +553,21 @@ private fun Plate96AlgorithmSelector(
                     )
                 }
             }
-        }
     }
 }
 
 @Composable
 private fun Plate96LocalizationSummary(state: Plate96LocalizationUiState.Ready) {
     val diagnostics = state.session.result.diagnostics
-    OutlinedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(Plate96LocalizationTestTags.SUMMARY)
+    FluoSectionCard(
+        modifier = Modifier.testTag(Plate96LocalizationTestTags.SUMMARY),
+        verticalSpacing = FluoSpacing.md
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.plate96_summary_title), fontWeight = FontWeight.SemiBold)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
+            ) {
                 Plate96Metric(
                     R.string.plate96_summary_observed,
                     diagnostics.observedSiteCount,
@@ -600,20 +591,22 @@ private fun Plate96LocalizationSummary(state: Plate96LocalizationUiState.Ready) 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall
             )
-        }
     }
 }
 
+/**
+ * 定位摘要指标。
+ *
+ * 原实现把标签放在数值上方且两者字号接近，扫视时先读到的是标签而不是数字。改用共享
+ * 指标块后数值优先、标签次之，三项指标的对齐、圆角和底色与其他页面一致。
+ */
 @Composable
 private fun Plate96Metric(labelId: Int, value: Int, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(stringResource(labelId), style = MaterialTheme.typography.labelMedium)
-        Text(
-            stringResource(R.string.plate96_summary_value, value),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
+    FluoMetricTile(
+        modifier = modifier,
+        label = stringResource(labelId),
+        value = stringResource(R.string.plate96_summary_value, value)
+    )
 }
 
 /**
@@ -948,12 +941,10 @@ private fun Plate96LoadingContent(stage: Plate96LocalizationStage, modifier: Mod
         Plate96LocalizationStage.LOCATING -> R.string.plate96_stage_locating
         Plate96LocalizationStage.PREPARING_PREVIEW -> R.string.plate96_stage_preparing_preview
     }
+    // 定位耗时较长，阶段文本必须如实反映当前处于哪一步，不能用无限动画掩盖无响应
+    // （AGENTS.md 9.2）。三个阶段文案由 ViewModel 驱动，此处只负责呈现。
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator()
-            Spacer(Modifier.height(16.dp))
-            Text(stringResource(label), style = MaterialTheme.typography.titleMedium)
-        }
+        FluoStatePlaceholder(text = stringResource(label))
     }
 }
 
@@ -963,18 +954,17 @@ private fun Plate96ErrorContent(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(
-                stringResource(
-                    if (reason == Plate96LocalizationError.IMAGE_LOAD_FAILED) R.string.plate96_error_image
-                    else R.string.plate96_error_localization
-                ),
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Button(onClick = onRetry) { Text(stringResource(R.string.plate96_retry)) }
-        }
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        FluoStatePlaceholder(
+            text = stringResource(
+                if (reason == Plate96LocalizationError.IMAGE_LOAD_FAILED) R.string.plate96_error_image
+                else R.string.plate96_error_localization
+            ),
+            icon = Icons.Outlined.ErrorOutline,
+            iconTint = MaterialTheme.colorScheme.error,
+            actionText = stringResource(R.string.plate96_retry),
+            onAction = onRetry
+        )
     }
 }
 

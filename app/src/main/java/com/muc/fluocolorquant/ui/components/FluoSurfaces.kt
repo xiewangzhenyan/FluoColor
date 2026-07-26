@@ -20,8 +20,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -373,6 +375,93 @@ fun FluoExpandableCard(
                         content()
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 检测链路步骤条。
+ *
+ * 定位页与检测网关此前各有一套实现：一个用三张等宽 OutlinedCard，一个用等宽 Surface，
+ * 都只靠底色区分当前步骤，看不出先后顺序也没有序号——同一条链路上前后两页的进度提示
+ * 长得不一样。收敛为唯一实现后，微流控与 96 孔板走同一条视觉线索。
+ *
+ * 用"序号圆点 + 连接线"表达顺序：已完成显示对勾，当前步骤实心高亮，未开始保持中性底色。
+ * 进度同时由形状（对勾/数字）和颜色表达，不单独依赖颜色（AGENTS.md 10）。
+ *
+ * 纯展示组件，不可点击，因此不适用 48dp 最小触控尺寸。
+ *
+ * @param currentStep 从 0 开始的当前步骤下标。
+ */
+@Composable
+fun FluoStepIndicator(
+    steps: List<String>,
+    currentStep: Int,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        steps.forEachIndexed { index, label ->
+            val isCurrent = index == currentStep
+            val isDone = index < currentStep
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
+            ) {
+                Surface(
+                    modifier = Modifier.size(24.dp),
+                    shape = CircleShape,
+                    color = if (isCurrent || isDone) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (isDone) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text(
+                                text = (index + 1).toString(),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCurrent) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = label,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (isCurrent) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (index != steps.lastIndex) {
+                HorizontalDivider(
+                    modifier = Modifier.width(FluoSpacing.md),
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
             }
         }
     }

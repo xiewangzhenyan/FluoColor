@@ -60,6 +60,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
+import com.muc.fluocolorquant.ui.components.FluoMetricTile
+import com.muc.fluocolorquant.ui.components.FluoSectionCard
+import com.muc.fluocolorquant.ui.components.FluoSectionHeader
+import com.muc.fluocolorquant.ui.components.FluoStatePlaceholder
+import com.muc.fluocolorquant.ui.components.FluoStepIndicator
+import com.muc.fluocolorquant.ui.theme.FluoIconSize
+import com.muc.fluocolorquant.ui.theme.FluoRadius
+import com.muc.fluocolorquant.ui.theme.FluoSpacing
+import com.muc.fluocolorquant.ui.theme.FluoTheme
 import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.FittingFunction
@@ -120,26 +130,15 @@ fun GridDetectionGatewayContent(
     }
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        stringResource(
-                            if (presentation == GridLocalizationPresentation.PLATE96) {
-                                R.string.plate96_layout_screen_title
-                            } else {
-                                R.string.microfluidic_detection_title
-                            }
-                        )
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.go_back)
-                        )
+            FluoTopBar(
+                title = stringResource(
+                    if (presentation == GridLocalizationPresentation.PLATE96) {
+                        R.string.plate96_layout_screen_title
+                    } else {
+                        R.string.microfluidic_detection_title
                     }
-                }
+                ),
+                onBack = onBack
             )
         }
     ) { padding ->
@@ -774,74 +773,41 @@ private fun List<GridLayoutAssignmentDraft>.toIndexedAssignmentMap(
 }
 
 
+/**
+ * 检测链路步骤条。
+ *
+ * 改用共享实现后与 96 孔板定位页完全一致：微流控走"定位 → 布局"两步，96 孔板走
+ * "定位 → 布局 → 定量"三步，两条链路的进度提示不再是两种长相。
+ *
+ * currentStep 沿用调用方既有的 1 起始语义，这里换算为共享组件的 0 起始下标。
+ */
 @Composable
 private fun WorkflowStepHeader(
     currentStep: Int,
     includeQuantitationStep: Boolean = false
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        val stepLabels = if (includeQuantitationStep) {
-            listOf(
-                R.string.plate96_step_localization,
-                R.string.plate96_step_layout,
-                R.string.plate96_step_quantitation
-            )
-        } else {
-            listOf(
-                R.string.grid_workflow_step_localization,
-                R.string.grid_workflow_step_layout
-            )
-        }
-        stepLabels.forEachIndexed { index, labelRes ->
-            val selected = currentStep == index + 1
-            Surface(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp),
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                }
-            ) {
-                Text(
-                    text = stringResource(labelRes),
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
-        }
+    val stepLabels = if (includeQuantitationStep) {
+        listOf(
+            stringResource(R.string.plate96_step_localization),
+            stringResource(R.string.plate96_step_layout),
+            stringResource(R.string.plate96_step_quantitation)
+        )
+    } else {
+        listOf(
+            stringResource(R.string.grid_workflow_step_localization),
+            stringResource(R.string.grid_workflow_step_layout)
+        )
     }
+    FluoStepIndicator(
+        steps = stepLabels,
+        currentStep = (currentStep - 1).coerceIn(0, stepLabels.lastIndex)
+    )
 }
 
+/** 定位指标改用共享指标块，与定位页、结果页的数值呈现保持同一层级。 */
 @Composable
 private fun LocalizationMetric(modifier: Modifier, value: String, label: String) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(value, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-        }
-    }
+    FluoMetricTile(modifier = modifier, label = label, value = value)
 }
 
 @Composable
@@ -853,23 +819,21 @@ private fun LayoutSectionTitle(text: String) {
     )
 }
 
+/**
+ * 定位/定量处理中的占位。
+ *
+ * 标题由调用方传入真实阶段文本，副文本说明预期耗时；不使用无限装饰动画替代阶段信息
+ * （AGENTS.md 9.2）。
+ */
 @Composable
 private fun CenteredProcessing(title: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        CircularProgressIndicator()
-        Spacer(Modifier.height(20.dp))
-        Text(title, style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            stringResource(R.string.grid_detection_processing_description),
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        FluoStatePlaceholder(
+            text = title,
+            supportingText = stringResource(R.string.grid_detection_processing_description)
         )
     }
 }
@@ -885,33 +849,50 @@ private fun MessageCard(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(FluoSpacing.xl),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+        FluoSectionCard(
+            contentPadding = FluoSpacing.xl,
+            accentColor = MaterialTheme.colorScheme.error
+        ) {
+            Icon(
+                Icons.Default.ErrorOutline,
+                contentDescription = null,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(40.dp),
+                tint = MaterialTheme.colorScheme.error
+            )
+            Text(
+                text = title,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                style = MaterialTheme.typography.titleLarge
+            )
+            Text(
+                text = message,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(FluoSpacing.sm))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(FluoSpacing.md)
             ) {
-                Icon(
-                    Icons.Default.ErrorOutline,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(title, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-                Text(message, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(20.dp))
-                Row(Modifier.fillMaxWidth()) {
-                    OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.go_back))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Button(onClick = onPrimary, modifier = Modifier.weight(1f)) {
-                        Text(primaryLabel)
-                    }
+                OutlinedButton(
+                    onClick = onBack,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(FluoRadius.control)
+                ) {
+                    Text(stringResource(R.string.go_back))
+                }
+                Button(
+                    onClick = onPrimary,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(FluoRadius.control)
+                ) {
+                    Text(primaryLabel)
                 }
             }
         }
@@ -924,38 +905,57 @@ private fun BlockedCard(
     onRetry: () -> Unit,
     onBack: () -> Unit
 ) {
+    // 阻断不是失败：布局还差条件，回去补齐即可继续。此前整卡使用 error 红色，与"运行
+    // 崩溃/数据不可用"表现相同，会让用户误以为结果已经作废。改用警告语义，并给每条
+    // 原因加图标前缀，使原因可逐条扫读而不是一段红字（AGENTS.md 7.2、10）。
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .padding(FluoSpacing.xl),
         verticalArrangement = Arrangement.Center
     ) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(24.dp)) {
-                Text(
-                    stringResource(R.string.grid_detection_blocked_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.error
-                )
-                Spacer(Modifier.height(12.dp))
-                reasons.forEach { reason ->
-                    Text(
-                        text = stringResource(
-                            R.string.grid_block_reason_item,
-                            blockReasonText(reason)
-                        )
+        FluoSectionCard(
+            contentPadding = FluoSpacing.xl,
+            accentColor = FluoTheme.semantic.warning
+        ) {
+            FluoSectionHeader(
+                title = stringResource(R.string.grid_detection_blocked_title),
+                icon = Icons.Default.ErrorOutline,
+                accentColor = FluoTheme.semantic.warning
+            )
+            reasons.forEach { reason ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ErrorOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(FluoIconSize.small),
+                        tint = FluoTheme.semantic.warning
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = blockReasonText(reason),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
-                HorizontalDivider(Modifier.padding(vertical = 12.dp))
-                Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.grid_layout_return_to_edit))
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.go_back))
-                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Button(
+                onClick = onRetry,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(FluoRadius.control)
+            ) {
+                Text(stringResource(R.string.grid_layout_return_to_edit))
+            }
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(FluoRadius.control)
+            ) {
+                Text(stringResource(R.string.go_back))
             }
         }
     }
