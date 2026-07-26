@@ -89,6 +89,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
@@ -143,13 +144,11 @@ fun SpectrumCalibrationScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.spectrum_calibration_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
+            // 原实现使用已废弃的 Icons.Default.ArrowBack，在 RTL 语言下箭头方向不会镜像。
+            // 统一顶栏内部使用 AutoMirrored 版本，顺带修正该无障碍/国际化问题。
+            FluoTopBar(
+                title = stringResource(R.string.spectrum_calibration_title),
+                onBack = { navController.navigateUp() },
                 actions = {
                     // 手动标定模式下显示撤销和完成按钮
                     if (state.calibrationMode == CalibrationMode.MANUAL) {

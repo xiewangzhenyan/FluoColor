@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoStatePlaceholder
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayResultScreen
 import com.muc.fluocolorquant.ui.screens.result.plate96.Plate96ResultScreen
 import com.muc.fluocolorquant.ui.viewmodels.ResultGatewayUiState
@@ -80,16 +81,9 @@ fun ResultGatewayContent(
                 .testTag(RESULT_GATEWAY_LOADING_TAG),
             contentAlignment = Alignment.Center
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                CircularProgressIndicator()
-                Text(
-                    text = stringResource(R.string.array_result_gateway_loading),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
+            FluoStatePlaceholder(
+                text = stringResource(R.string.array_result_gateway_loading)
+            )
         }
 
         ResultGatewayUiState.NewArrayResult -> Box(
@@ -120,31 +114,24 @@ fun ResultGatewayContent(
     }
 }
 
+/**
+ * 运行不存在与读取失败的统一呈现。
+ *
+ * 运行本身无效时不提供重试：重试不会让一个不存在的 runId 变得存在，只会让用户反复
+ * 点击。仅在读取失败这种可恢复的情况下给出重试入口。
+ */
 @Composable
 private fun ResultGatewayError(invalidRun: Boolean, onRetry: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            modifier = Modifier.padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error
-            )
-            Text(
-                text = stringResource(
-                    if (invalidRun) R.string.array_result_invalid_run
-                    else R.string.array_result_gateway_error
-                ),
-                style = MaterialTheme.typography.bodyLarge
-            )
-            if (!invalidRun) {
-                Button(onClick = onRetry) {
-                    Text(stringResource(R.string.action_retry))
-                }
-            }
-        }
+        FluoStatePlaceholder(
+            text = stringResource(
+                if (invalidRun) R.string.array_result_invalid_run
+                else R.string.array_result_gateway_error
+            ),
+            icon = Icons.Outlined.ErrorOutline,
+            iconTint = MaterialTheme.colorScheme.error,
+            actionText = if (invalidRun) null else stringResource(R.string.action_retry),
+            onAction = if (invalidRun) null else onRetry
+        )
     }
 }

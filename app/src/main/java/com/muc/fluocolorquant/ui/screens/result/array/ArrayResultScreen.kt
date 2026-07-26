@@ -1,5 +1,12 @@
 package com.muc.fluocolorquant.ui.screens.result.array
 
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
@@ -71,6 +78,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
+import com.muc.fluocolorquant.ui.theme.FluoMotion
 import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
@@ -188,28 +197,13 @@ private fun ArrayResultSuccess(
         modifier = Modifier.testTag(ARRAY_RESULT_SCREEN_TAG),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(snapshot.projectName, maxLines = 1)
-                        Text(
-                            text = stringResource(
-                                R.string.array_result_current_run_title,
-                                shortRunId(snapshot.runId)
-                            ),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.cd_navigate_back)
-                        )
-                    }
-                },
+            FluoTopBar(
+                title = snapshot.projectName,
+                subtitle = stringResource(
+                    R.string.array_result_current_run_title,
+                    shortRunId(snapshot.runId)
+                ),
+                onBack = onBack,
                 actions = {
                     IconButton(
                         onClick = { showExportSheet = true },
@@ -229,10 +223,7 @@ private fun ArrayResultSuccess(
                             contentDescription = stringResource(R.string.array_run_history_open)
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                }
             )
         }
     ) { paddingValues ->
@@ -274,15 +265,38 @@ private fun ArrayResultSuccess(
                     )
                 }
             }
-            when (tabs[selectedTab]) {
-                ArrayResultTab.OVERVIEW -> ArrayOverviewTab(
-                    snapshot = snapshot,
-                    onSiteClick = { selectedSite = it }
-                )
-                ArrayResultTab.ANALYSIS -> ArrayAnalytesTab(
-                    snapshot = snapshot
-                )
-                ArrayResultTab.PROCESS -> ArrayProcessingEvidenceTab(snapshot)
+            // 与96孔板结果页使用同一套标签切换过渡：横向滑动方向跟随标签顺序，
+            // 幅度取容器宽度的 1/6，避免热力图和曲线在过渡期间形变。
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    val forward = targetState > initialState
+                    (slideInHorizontally(
+                        animationSpec = tween(FluoMotion.STANDARD_MS, easing = FluoMotion.Standard),
+                        initialOffsetX = { width -> if (forward) width / 6 else -width / 6 }
+                    ) + fadeIn(
+                        animationSpec = tween(FluoMotion.STANDARD_MS, easing = FluoMotion.Decelerate)
+                    )).togetherWith(
+                        slideOutHorizontally(
+                            animationSpec = tween(FluoMotion.STANDARD_MS, easing = FluoMotion.Standard),
+                            targetOffsetX = { width -> if (forward) -width / 6 else width / 6 }
+                        ) + fadeOut(
+                            animationSpec = tween(FluoMotion.MICRO_MS, easing = FluoMotion.Accelerate)
+                        )
+                    )
+                },
+                label = "arrayResultTabContent"
+            ) { tabIndex ->
+                when (tabs[tabIndex]) {
+                    ArrayResultTab.OVERVIEW -> ArrayOverviewTab(
+                        snapshot = snapshot,
+                        onSiteClick = { selectedSite = it }
+                    )
+                    ArrayResultTab.ANALYSIS -> ArrayAnalytesTab(
+                        snapshot = snapshot
+                    )
+                    ArrayResultTab.PROCESS -> ArrayProcessingEvidenceTab(snapshot)
+                }
             }
         }
     }
@@ -1420,20 +1434,16 @@ private fun ArrayHeatmapStatistics(model: ArrayHeatmapModel) {
             ) {
                 if (concentrationMode) {
                     HeatmapMetric(
-                        value = model.calculatedCount.toString(),
-                        label = stringResource(R.string.array_heatmap_calculated)
+                        value = model.quantifiedCount.toString(),
+                        label = stringResource(R.string.array_heatmap_quantified)
                     )
                     HeatmapMetric(
-                        value = model.withinCalibrationRangeCount.toString(),
-                        label = stringResource(R.string.array_heatmap_within_calibration)
+                        value = model.estimatedCount.toString(),
+                        label = stringResource(R.string.array_heatmap_estimated)
                     )
                     HeatmapMetric(
-                        value = model.calibrationExtrapolatedCount.toString(),
-                        label = stringResource(R.string.array_heatmap_extrapolated_count)
-                    )
-                    HeatmapMetric(
-                        value = model.outsideProjectRangeCount.toString(),
-                        label = stringResource(R.string.array_heatmap_outside_project_count)
+                        value = model.retestCount.toString(),
+                        label = stringResource(R.string.array_heatmap_retest)
                     )
                 } else {
                     HeatmapMetric(

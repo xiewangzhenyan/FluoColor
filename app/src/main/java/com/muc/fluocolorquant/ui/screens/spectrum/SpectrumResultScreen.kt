@@ -75,6 +75,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationIssue
 import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationQualityLevel
@@ -148,21 +149,9 @@ fun SpectrumResultScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.spectrum_result_title),
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                },
+            FluoTopBar(
+                title = stringResource(R.string.spectrum_result_title),
+                onBack = { navController.navigateUp() },
                 actions = {
                     if (state.results.isNotEmpty()) {
                         IconButton(onClick = { showQuickSettings = !showQuickSettings }) {
@@ -180,13 +169,7 @@ fun SpectrumResultScreen(
                             )
                         }
                     }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = colorScheme.surface,
-                    titleContentColor = colorScheme.onSurface,
-                    navigationIconContentColor = colorScheme.onSurface,
-                    actionIconContentColor = colorScheme.onSurfaceVariant
-                )
+                }
             )
         }
     ) { paddingValues ->
