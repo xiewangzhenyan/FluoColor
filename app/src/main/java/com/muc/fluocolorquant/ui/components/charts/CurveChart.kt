@@ -95,7 +95,9 @@ fun CurveChart(
     val tickColor = MaterialTheme.colorScheme.onSurfaceVariant
     val plotBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.9f)
     val crosshairColor = MaterialTheme.colorScheme.secondary
-    val selectedPointColor = MaterialTheme.colorScheme.error
+    // 选中态用主色而不是 error：红色在科研语境里表示异常或超限，
+    // 用它标注"用户点选的点"会让人误以为该点有问题。
+    val selectedPointColor = MaterialTheme.colorScheme.primary
     val pointOutlineColor = MaterialTheme.colorScheme.surface
     val meanLineColor = MaterialTheme.colorScheme.tertiary
     val limitLineColor = MaterialTheme.colorScheme.error
@@ -155,6 +157,24 @@ fun CurveChart(
                 .fillMaxWidth()
                 .weight(1f)
         ) {
+            /**
+             * 沿曲线拖动时的探针更新。
+             *
+             * 拖动与点击共用同一套命中判定，但语义不同：拖动是"沿着曲线滑动查看"，
+             * 因此离开有效区域时必须把提示一并清掉。原实现在未命中分支只重置了
+             * selectedPointIndex，curvePointPosition 保留旧值，提示会停在上一个位置不动。
+             */
+            fun updateProbe(position: Offset, canvasBounds: Size) {
+                val nearest = findNearestPointToPosition(data, position, canvasBounds, density)
+                if (nearest != null) {
+                    selectedPointIndex = nearest.first
+                    curvePointPosition = nearest.second
+                    return
+                }
+                selectedPointIndex = null
+                curvePointPosition = findPointOnCurve(data, position, canvasBounds, density)
+            }
+
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
@@ -162,18 +182,24 @@ fun CurveChart(
                     .pointerInput(data, interactive, density) {
                         if (!interactive) return@pointerInput
                         detectTapGestures { offset ->
-                            // 点击事件处理，查找最近的数据点或曲线点
-                            findNearestPointToPosition(data, offset, size.toSize(), density)?.let { (index, pointOffset) ->
-                                selectedPointIndex = index
-                                curvePointPosition = pointOffset
-                            } ?: run {
-                                // 如果没有找到附近的数据点，则计算曲线上的点
-                                findPointOnCurve(data, offset, size.toSize(), density)?.let { curveOffset ->
-                                    selectedPointIndex = null
-                                    curvePointPosition = curveOffset
-                                } ?: run {
+                            val nearest = findNearestPointToPosition(data, offset, size.toSize(), density)
+                            when {
+                                // 再次点击已选中的点即取消选择：用户对"点一下选中、再点一下
+                                // 取消"有稳定预期，只靠点空白取消在密集散点图里很难做到。
+                                nearest != null && nearest.first == selectedPointIndex -> {
                                     selectedPointIndex = null
                                     curvePointPosition = null
+                                }
+                                nearest != null -> {
+                                    selectedPointIndex = nearest.first
+                                    curvePointPosition = nearest.second
+                                }
+                                else -> {
+                                    // 没命中散点就尝试曲线；两者都没命中说明点的是空白区，
+                                    // 必须同时清掉选中点和提示，否则提示会一直挂在屏幕上。
+                                    val onCurve = findPointOnCurve(data, offset, size.toSize(), density)
+                                    selectedPointIndex = null
+                                    curvePointPosition = onCurve
                                 }
                             }
                         }
@@ -181,33 +207,9 @@ fun CurveChart(
                     .pointerInput(data, interactive, density) {
                         if (!interactive) return@pointerInput
                         detectDragGestures(
-                            onDragStart = { offset ->
-                                // 拖动开始时查找最近的点
-                                findNearestPointToPosition(data, offset, size.toSize(), density)?.let { (index, pointOffset) ->
-                                    selectedPointIndex = index
-                                    curvePointPosition = pointOffset
-                                } ?: run {
-                                    // 如果没有找到附近的数据点，则计算曲线上的点
-                                    findPointOnCurve(data, offset, size.toSize(), density)?.let { curveOffset ->
-                                        selectedPointIndex = null
-                                        curvePointPosition = curveOffset
-                                    }
-                                }
-                            },
+                            onDragStart = { offset -> updateProbe(offset, size.toSize()) },
                             onDragEnd = {},
-                            onDrag = { change, _ ->
-                                // 先查找最近的数据点尝试吸附
-                                findNearestPointToPosition(data, change.position, size.toSize(), density)?.let { (index, pointOffset) ->
-                                    selectedPointIndex = index
-                                    curvePointPosition = pointOffset
-                                } ?: run {
-                                    // 如果没有找到附近的数据点，则计算曲线上的点
-                                    selectedPointIndex = null
-                                    findPointOnCurve(data, change.position, size.toSize(), density)?.let { curveOffset ->
-                                        curvePointPosition = curveOffset
-                                    }
-                                }
-                            }
+                            onDrag = { change, _ -> updateProbe(change.position, size.toSize()) }
                         )
                     }
             ) {
@@ -230,7 +232,13 @@ fun CurveChart(
                 val xDiff = xMax - xMin
                 val yDiff = yMax - yMin
 
-                val yTickStyle = TextStyle(fontSize = 10.sp, color = tickColor)
+                // 刻度启用等宽数字：Y 轴刻度右对齐，比例字体下 "1" 比 "8" 窄，
+                // 整列数字右边缘会呈锯齿状；等宽后按位对齐，读数时眼睛不必重新定位。
+                val yTickStyle = TextStyle(
+                    fontSize = 10.sp,
+                    color = tickColor,
+                    fontFeatureSettings = CHART_TABULAR_FIGURES
+                )
 
                 // 绘制坐标轴
                 drawLine(
@@ -290,11 +298,15 @@ fun CurveChart(
                         val xRatio = if (xDiff != 0.0) (xValue - xMin) / xDiff else 0.0
                         val x = graphStartX + (xRatio * graphWidth).toFloat()
 
+                        // 纵向不画贯穿全图的实线，只在 X 轴上留一段短刻度。
+                        // 横竖都画满会形成方格纸效果，与曲线和散点争夺视觉；而读取数值时
+                        // 真正起作用的是横向网格（对照 Y 轴），纵向网格贡献很小却噪声很大。
+                        // 这是科研绘图（Prism/Origin/matplotlib）的通行取舍。
                         drawLine(
-                            color = gridColor,
-                            start = Offset(x, graphStartY),
-                            end = Offset(x, graphEndY),
-                            strokeWidth = with(density) { 0.5.dp.toPx() }
+                            color = axisColor,
+                            start = Offset(x, graphEndY),
+                            end = Offset(x, graphEndY + with(density) { 4.dp.toPx() }),
+                            strokeWidth = with(density) { 1.dp.toPx() }
                         )
 
                         // X轴刻度
@@ -598,25 +610,30 @@ fun CurveChart(
                     // 保存点的屏幕坐标
                     pointOffsets.add(Offset(pointX, pointY))
 
+                    val isSelected = index == selectedPointIndex
+
                     // 先绘制浅色描边，再绘制实心点，避免数据点被曲线或网格吞没。
                     drawCircle(
                         color = pointOutlineColor,
-                        radius = if (index == selectedPointIndex) {
-                            with(density) { 5.5.dp.toPx() }
-                        } else {
-                            with(density) { 4.5.dp.toPx() }
-                        },
+                        radius = with(density) { if (isSelected) 5.5.dp.toPx() else 4.5.dp.toPx() },
                         center = Offset(pointX, pointY)
                     )
                     drawCircle(
-                        color = if (index == selectedPointIndex) selectedPointColor else pointColor,
-                        radius = if (index == selectedPointIndex) {
-                            with(density) { 4.dp.toPx() }
-                        } else {
-                            with(density) { 3.dp.toPx() }
-                        },
+                        // 选中不改变点的颜色。原实现把选中点染成 error 红——在科研软件里
+                        // 红色意味着异常或超限，用它表示"用户点了这个点"会让人误判该点有问题。
+                        color = pointColor,
+                        radius = with(density) { if (isSelected) 3.5.dp.toPx() else 3.dp.toPx() },
                         center = Offset(pointX, pointY)
                     )
+                    if (isSelected) {
+                        // 选中改用主色外环：既明确又不改变数据点自身的语义颜色。
+                        drawCircle(
+                            color = selectedPointColor,
+                            radius = with(density) { 8.dp.toPx() },
+                            center = Offset(pointX, pointY),
+                            style = Stroke(width = with(density) { 1.5.dp.toPx() })
+                        )
+                    }
                 }
 
                 // 绘制十字定位辅助线 - 使用曲线点位置或选中的数据点
@@ -628,7 +645,7 @@ fun CurveChart(
 
                         // 垂直线
                         drawLine(
-                            color = crosshairColor.copy(alpha = 0.72f),
+                            color = crosshairColor.copy(alpha = 0.45f),
                             start = Offset(boundedX, graphStartY),
                             end = Offset(boundedX, graphEndY),
                             strokeWidth = with(density) { 0.75.dp.toPx() },
@@ -637,7 +654,7 @@ fun CurveChart(
 
                         // 水平线
                         drawLine(
-                            color = crosshairColor.copy(alpha = 0.72f),
+                            color = crosshairColor.copy(alpha = 0.45f),
                             start = Offset(graphStartX, boundedY),
                             end = Offset(graphEndX, boundedY),
                             strokeWidth = with(density) { 0.75.dp.toPx() },
@@ -766,25 +783,33 @@ fun CurveChart(
                             stringResource(
                                 id = R.string.chart_tooltip_pair_format,
                                 xLabel,
-                                formatTooltipValue(xValue),
+                                formatTooltipValue(xValue, data.xRange.second - data.xRange.first),
                                 yLabel,
-                                formatTooltipValue(yValue)
+                                formatTooltipValue(yValue, data.yRange.second - data.yRange.first)
                             )
                         }
                         
                         Card(
                             modifier = Modifier
                                 .align(if (isInUpperHalf) Alignment.BottomCenter else Alignment.TopCenter)
+                                // 绘图区底部到画布底部预留了 44dp 给 X 轴刻度与轴标题
+                                // （见 calculatePlotGeometry）。底部锚定的提示若只留 8dp，
+                                // 会正好压住刻度数字和轴标题，实测中 X 轴完全被遮住。
                                 .padding(
                                     top = if (isInUpperHalf) 0.dp else 8.dp,
-                                    bottom = if (isInUpperHalf) 8.dp else 0.dp
+                                    bottom = if (isInUpperHalf) 52.dp else 0.dp
                                 ),
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
                             Text(
                                 text = tooltipText,
-                                modifier = Modifier.padding(8.dp),
-                                style = TextStyle(fontSize = 12.sp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                // 等宽数字：沿曲线拖动时数值不断变化，比例字体会让整块提示
+                                // 左右抖动，读数变得困难。
+                                style = TextStyle(
+                                    fontSize = 12.sp,
+                                    fontFeatureSettings = CHART_TABULAR_FIGURES
+                                )
                             )
                         }
                     }
@@ -904,10 +929,12 @@ private fun formatAxisTick(value: Double, span: Double): String {
 /**
  * 统一格式化曲线提示框中的数值，避免不同模式下出现过长小数。
  */
-private fun formatTooltipValue(value: Double, scale: Int = 4): String {
-    return BigDecimal.valueOf(value)
-        .setScale(scale, RoundingMode.HALF_UP)
-        .toPlainString()
+private fun formatTooltipValue(value: Double, span: Double = 0.0): String {
+    // 与坐标轴刻度共用精度规则：提示框固定四位小数会把 20 显示成 20.0000，
+    // 既冗长又暗示了数据并不具备的精度。跨度大时给整数，跨度小时才补小数。
+    if (!value.isFinite()) return "--"
+    val effectiveSpan = if (span != 0.0) span else abs(value)
+    return formatAxisTick(value, effectiveSpan)
 }
 
 /**
@@ -1013,6 +1040,17 @@ private fun findNearestPointToPosition(
  * @param size Canvas大小
  * @return 曲线上点的屏幕坐标 或 null
  */
+/** 图表刻度使用的等宽数字字型特性，与 FluoNumeric 保持一致。 */
+private const val CHART_TABULAR_FIGURES = "tnum, lnum"
+
+/**
+ * 判定"点在曲线上"的垂直容差。
+ *
+ * 取 24dp，与散点吸附阈值一致：两者都代表"手指落点算不算命中"，用同一尺度才不会出现
+ * 散点点不中、曲线却吸附上的错位手感。
+ */
+private val CURVE_HIT_SLOP = 24.dp
+
 private fun findPointOnCurve(
     data: ChartData,
     position: Offset,
@@ -1027,9 +1065,13 @@ private fun findPointOnCurve(
     val graphStartX = plotGeometry.startX
     val graphEndY = plotGeometry.endY
 
-    // 确保位置在图表范围内
-    val boundedX = position.x.coerceIn(graphStartX, graphStartX + graphWidth)
-    
+    // 点击必须真正落在绘图区内。原实现用 coerceIn 把 x 夹进绘图区，等于把坐标轴、
+    // 图例甚至图表外的点击也投影到曲线上，页面因此不存在任何"空白区"可以取消选择——
+    // 这正是"点了数据点之后点别处消不掉"的根因。
+    if (position.x < graphStartX || position.x > graphStartX + graphWidth) return null
+    if (position.y < graphEndY - graphHeight || position.y > graphEndY) return null
+    val boundedX = position.x
+
     // 数据范围
     val xMin = data.xRange.first
     val xMax = data.xRange.second
@@ -1055,10 +1097,12 @@ private fun findPointOnCurve(
             val pointY = graphEndY - (yRatio * graphHeight).toFloat()
             
             // 确保计算的坐标不是NaN
-            if (boundedX.isNaN() || pointY.isNaN()) {
-                null
-            } else {
-                Offset(boundedX, pointY)
+            when {
+                boundedX.isNaN() || pointY.isNaN() -> null
+                // 还必须离曲线足够近才算命中。只判断横向落点会让绘图区里任意高度的
+                // 点击都吸附到曲线上，用户点空白处依然清不掉提示。
+                kotlin.math.abs(position.y - pointY) > with(density) { CURVE_HIT_SLOP.toPx() } -> null
+                else -> Offset(boundedX, pointY)
             }
         }
     } catch (e: Exception) {
