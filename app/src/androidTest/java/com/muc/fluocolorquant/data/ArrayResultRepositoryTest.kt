@@ -375,7 +375,7 @@ class ArrayResultRepositoryTest {
             runId = RUN_ID,
             projectId = PROJECT_ID,
             timestamp = Date(2_000L),
-            detectionModelUsed = "OpenCV PG-Grid 2.1.0",
+            detectionModelUsed = "OpenCV PG-Grid 2.2.0",
             concentrationModelUsed = "{}",
             status = "Completed",
             errorMessage = null,

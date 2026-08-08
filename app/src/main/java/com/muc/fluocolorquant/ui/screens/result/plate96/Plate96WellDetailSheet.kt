@@ -163,7 +163,7 @@ fun Plate96InlineWellDetailCard(
                     modifier = Modifier.weight(1f),
                     label = stringResource(R.string.plate96_result_range_status),
                     value = if (concentrationMode) {
-                        plate96RangeStatus(valueState)
+                        plate96RangeStatus(measurement, valueState)
                     } else {
                         stringResource(R.string.plate96_result_signal_only)
                     }
@@ -244,15 +244,38 @@ internal fun concentrationText(
     ArrayHeatmapValueState.UNAVAILABLE -> stringResource(R.string.plate96_result_no_value)
 }
 
-/** 将热力图数值状态映射为稳定、可翻译的科研状态。 */
+/**
+ * 将冻结机器状态映射为稳定、可翻译的科研状态。
+ *
+ * 热力图为了画方向箭头会把项目边界、可信边界和删失界限收敛到同一绘图状态；详情页
+ * 不能据此统称“超出项目量程”，必须优先读取原始范围状态和单侧界限方向。
+ */
 @Composable
-internal fun plate96RangeStatus(state: ArrayHeatmapValueState): String = stringResource(
-    when (state) {
-        ArrayHeatmapValueState.QUANTIFIED -> R.string.plate96_result_range_within
-        ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED -> R.string.plate96_result_range_extrapolated
-        ArrayHeatmapValueState.BELOW_PROJECT_RANGE -> R.string.plate96_result_range_below
-        ArrayHeatmapValueState.ABOVE_PROJECT_RANGE -> R.string.plate96_result_range_above
-        ArrayHeatmapValueState.UNAVAILABLE -> R.string.plate96_result_range_unavailable
+internal fun plate96RangeStatus(
+    measurement: ArraySiteMeasurementResult?,
+    state: ArrayHeatmapValueState
+): String = stringResource(
+    when {
+        measurement?.reliableRangeStatus.equals("BELOW_TRUSTED_RANGE", ignoreCase = true) ->
+            R.string.plate96_result_range_below_trusted
+        measurement?.reliableRangeStatus.equals("ABOVE_TRUSTED_RANGE", ignoreCase = true) ->
+            R.string.plate96_result_range_above_trusted
+        measurement?.reliableRangeStatus.equals("BELOW_PROJECT_RANGE", ignoreCase = true) ->
+            R.string.plate96_result_range_below
+        measurement?.reliableRangeStatus.equals("ABOVE_PROJECT_RANGE", ignoreCase = true) ->
+            R.string.plate96_result_range_above
+        measurement?.quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+            measurement?.censoringDirection.equals("LOWER_BOUND", ignoreCase = true) ->
+            R.string.plate96_result_range_lower_bound_only
+        measurement?.quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+            measurement?.censoringDirection.equals("UPPER_BOUND", ignoreCase = true) ->
+            R.string.plate96_result_range_upper_bound_only
+        state == ArrayHeatmapValueState.QUANTIFIED -> R.string.plate96_result_range_within
+        state == ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED ->
+            R.string.plate96_result_range_extrapolated
+        state == ArrayHeatmapValueState.BELOW_PROJECT_RANGE -> R.string.plate96_result_range_below
+        state == ArrayHeatmapValueState.ABOVE_PROJECT_RANGE -> R.string.plate96_result_range_above
+        else -> R.string.plate96_result_range_unavailable
     }
 )
 

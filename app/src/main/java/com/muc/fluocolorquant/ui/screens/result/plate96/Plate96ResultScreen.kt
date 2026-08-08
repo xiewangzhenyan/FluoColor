@@ -1,5 +1,6 @@
 package com.muc.fluocolorquant.ui.screens.result.plate96
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -51,6 +52,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,8 +83,10 @@ import com.muc.fluocolorquant.ui.components.FluoStatePlaceholder
 import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapCell
+import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapConcentrationScaleMode
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapModel
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapRangeSource
+import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapScaleSelector
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapScaleMode
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueState
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayResultExportCoordinator
@@ -140,26 +144,32 @@ fun Plate96ResultContent(
     onRetry: () -> Unit,
     onSaveValidation: (String, Map<Int, Double>) -> Unit = { _, _ -> }
 ) {
+    // 加载或错误占位没有顶栏，因此必须在页面层统一接管系统返回，避免导航死锁。
+    BackHandler(onBack = onBack)
     when (state) {
         Plate96ResultUiState.Loading -> Plate96CenteredState(
             text = stringResource(R.string.plate96_result_loading),
             showProgress = true,
-            onRetry = null
+            onRetry = null,
+            onBack = onBack
         )
         Plate96ResultUiState.NotFound -> Plate96CenteredState(
             text = stringResource(R.string.plate96_result_not_found),
             showProgress = false,
-            onRetry = null
+            onRetry = null,
+            onBack = onBack
         )
         is Plate96ResultUiState.InvalidSnapshot -> Plate96CenteredState(
             text = stringResource(R.string.plate96_result_invalid_snapshot),
             showProgress = false,
-            onRetry = null
+            onRetry = null,
+            onBack = onBack
         )
         Plate96ResultUiState.Error -> Plate96CenteredState(
             text = stringResource(R.string.plate96_result_load_failed),
             showProgress = false,
-            onRetry = onRetry
+            onRetry = onRetry,
+            onBack = onBack
         )
         is Plate96ResultUiState.Success -> Plate96ResultSuccess(
             state = state,
@@ -377,8 +387,16 @@ private fun Plate96OverviewContent(
     var displayMode by rememberSaveable(snapshot.runId, analyte.analyteId) {
         mutableStateOf(Plate96ResultDisplayMode.HEATMAP)
     }
-    val model = remember(snapshot.runId, analyte.analyteId) {
-        buildAnalyteHeatmapModel(snapshot.arraySnapshot, analyte)
+    var concentrationScaleMode by rememberSaveable(snapshot.runId, analyte.analyteId) {
+        // 本次分布是结果阅读默认视角；项目量程保留为同一页面内的绝对尺度对照。
+        mutableStateOf(ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION)
+    }
+    val model = remember(snapshot.runId, analyte.analyteId, concentrationScaleMode) {
+        buildAnalyteHeatmapModel(
+            snapshot = snapshot.arraySnapshot,
+            analyte = analyte,
+            concentrationScaleMode = concentrationScaleMode
+        )
     }
     val selectedCell = selectedWellIndex?.let { index ->
         model.cells.firstOrNull { it.siteIndex == index }
@@ -434,6 +452,10 @@ private fun Plate96OverviewContent(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    ArrayHeatmapScaleSelector(
+                        scale = model.scale,
+                        onScaleModeChange = { concentrationScaleMode = it }
+                    )
                     Plate96Heatmap(
                         model = model,
                         displayMode = displayMode,
@@ -542,8 +564,8 @@ private fun Plate96DisplayModeToggle(
  * 浓度/信号色带图例。
  *
  * 原实现只有"最小值 | 单位 | 最大值"三个标签，中间大片色带没有任何刻度——用户看到一格
- * 偏橙的孔，无法判断它대概是多少。这里补到五个等距刻度，并单独标出色带覆盖范围的来源
- * （项目量程 / 实测范围 / 标定范围），让颜色可以被读成数值而不只是"深浅"。
+ * 偏橙的孔，无法判断它大概是多少。这里补到五个等距刻度，并单独标出色带覆盖范围的来源
+ * （项目量程 / 本次分布 / 信号实测范围），让颜色可以被读成数值而不只是"深浅"。
  *
  * 刻度按线性插值：热力图着色本身就是线性归一化，刻度必须与之一致，否则读数会系统性偏移。
  */
@@ -776,14 +798,28 @@ private fun Plate96MetricCard(
  * 非加载态显示明确图标而不是只有一行文字：用户需要立刻区分"还在算"和"没有结果"。
  */
 @Composable
-private fun Plate96CenteredState(text: String, showProgress: Boolean, onRetry: (() -> Unit)?) {
+private fun Plate96CenteredState(
+    text: String,
+    showProgress: Boolean,
+    onRetry: (() -> Unit)?,
+    onBack: (() -> Unit)? = null
+) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        FluoStatePlaceholder(
-            text = text,
-            icon = if (showProgress) null else Icons.Outlined.Info,
-            actionText = onRetry?.let { stringResource(R.string.action_retry) },
-            onAction = onRetry
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            FluoStatePlaceholder(
+                text = text,
+                icon = if (showProgress) null else Icons.Outlined.Info,
+                actionText = onRetry?.let { stringResource(R.string.action_retry) },
+                onAction = onRetry
+            )
+            if (onBack != null) {
+                TextButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.back))
+                }
+            }
+        }
     }
 }
 
@@ -797,7 +833,8 @@ private fun Plate96ResultTab.titleRes(): Int = when (this) {
 /** 色带覆盖范围的来源。让用户知道颜色是按项目量程还是按实测极值归一化的。 */
 private fun ArrayHeatmapRangeSource.labelRes(): Int = when (this) {
     ArrayHeatmapRangeSource.FIXED_PERCENTAGE -> R.string.result_scale_source_fixed
-    ArrayHeatmapRangeSource.RELIABLE_RANGE -> R.string.result_scale_source_range
+    ArrayHeatmapRangeSource.PROJECT_RANGE -> R.string.result_scale_source_range
+    ArrayHeatmapRangeSource.RUN_DISTRIBUTION -> R.string.result_scale_source_run_distribution
     ArrayHeatmapRangeSource.OBSERVED_VALUES -> R.string.result_scale_source_observed
     ArrayHeatmapRangeSource.EMPTY_FALLBACK -> R.string.result_scale_source_empty
 }

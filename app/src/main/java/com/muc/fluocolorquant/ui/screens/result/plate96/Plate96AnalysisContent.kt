@@ -723,7 +723,7 @@ private fun Plate96SampleTableRow(
                 color = plate96StatusColor(record.valueState)
             ) {
                 Text(
-                    text = plate96RangeStatus(record.valueState),
+                    text = plate96RangeStatus(record.measurement, record.valueState),
                     modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                     textAlign = TextAlign.Center,

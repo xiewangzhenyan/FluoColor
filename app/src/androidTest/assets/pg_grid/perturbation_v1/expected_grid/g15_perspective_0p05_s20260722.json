@@ -1100,11 +1100,11 @@
       },
       "siteIndex": 58,
       "rectified": {
-        "x": 949.7872,
+        "x": 949.7874,
         "y": 360.3482
       },
       "original": {
-        "x": 684.017029,
+        "x": 684.01709,
         "y": 495.933624
       },
       "confidence": 0.9886,
@@ -1316,7 +1316,7 @@
       },
       "siteIndex": 70,
       "rectified": {
-        "x": 777.9215,
+        "x": 777.9214,
         "y": 422.065
       },
       "original": {
@@ -1431,7 +1431,7 @@
         "x": 500.337769,
         "y": 530.808777
       },
-      "confidence": 0.9702,
+      "confidence": 0.9701,
       "source": "candidate_refined",
       "flags": []
     },
@@ -1485,7 +1485,7 @@
         "x": 546.258972,
         "y": 529.919128
       },
-      "confidence": 0.9759,
+      "confidence": 0.9758,
       "source": "candidate_refined",
       "flags": []
     },
@@ -1532,7 +1532,7 @@
       },
       "siteIndex": 82,
       "rectified": {
-        "x": 605.5408,
+        "x": 605.5409,
         "y": 483.9479
       },
       "original": {
@@ -1701,7 +1701,7 @@
         "x": 500.019165,
         "y": 545.560425
       },
-      "confidence": 0.9812,
+      "confidence": 0.9811,
       "source": "candidate_refined",
       "flags": []
     },
@@ -1910,7 +1910,7 @@
       },
       "siteIndex": 103,
       "rectified": {
-        "x": 946.1676,
+        "x": 946.1677,
         "y": 532.2075
       },
       "original": {
@@ -1947,7 +1947,7 @@
       "siteIndex": 105,
       "rectified": {
         "x": 200.4541,
-        "y": 605.6072
+        "y": 605.6071
       },
       "original": {
         "x": 483.965729,
@@ -2378,8 +2378,8 @@
       },
       "siteIndex": 129,
       "rectified": {
-        "x": 714.617,
-        "y": 654.0323
+        "x": 714.6171,
+        "y": 654.0324
       },
       "original": {
         "x": 621.233093,
@@ -2775,7 +2775,7 @@
       "siteIndex": 151,
       "rectified": {
         "x": 255.2002,
-        "y": 777.4203
+        "y": 777.4202
       },
       "original": {
         "x": 498.581421,
@@ -2919,7 +2919,7 @@
       "siteIndex": 159,
       "rectified": {
         "x": 712.252,
-        "y": 767.6244
+        "y": 767.6245
       },
       "original": {
         "x": 620.601685,
@@ -3188,8 +3188,8 @@
       },
       "siteIndex": 174,
       "rectified": {
-        "x": 710.8654,
-        "y": 826.4523
+        "x": 710.8655,
+        "y": 826.4524
       },
       "original": {
         "x": 620.231506,
@@ -3249,7 +3249,7 @@
         "x": 666.86615,
         "y": 619.746033
       },
-      "confidence": 0.9746,
+      "confidence": 0.9745,
       "source": "candidate_refined",
       "flags": []
     },
@@ -3278,11 +3278,11 @@
       },
       "siteIndex": 179,
       "rectified": {
-        "x": 998.2262,
+        "x": 998.2261,
         "y": 820.049
       },
       "original": {
-        "x": 696.948914,
+        "x": 696.948853,
         "y": 619.082825
       },
       "confidence": 0.997,
@@ -3351,7 +3351,7 @@
       "siteIndex": 183,
       "rectified": {
         "x": 366.075,
-        "y": 892.7646
+        "y": 892.7647
       },
       "original": {
         "x": 528.181946,
@@ -3440,12 +3440,12 @@
       },
       "siteIndex": 188,
       "rectified": {
-        "x": 654.8808,
-        "y": 886.38
+        "x": 654.8809,
+        "y": 886.3801
       },
       "original": {
         "x": 605.285156,
-        "y": 636.852234
+        "y": 636.852295
       },
       "confidence": 0.9642,
       "source": "candidate_refined",
@@ -3465,7 +3465,7 @@
         "x": 619.902954,
         "y": 636.490784
       },
-      "confidence": 0.952,
+      "confidence": 0.9519,
       "source": "candidate_refined",
       "flags": []
     },
@@ -3531,7 +3531,7 @@
       "siteIndex": 193,
       "rectified": {
         "x": 938.9727,
-        "y": 880.0818
+        "y": 880.0819
       },
       "original": {
         "x": 681.129883,
@@ -3621,11 +3621,11 @@
       "siteIndex": 198,
       "rectified": {
         "x": 364.9091,
-        "y": 947.8212
+        "y": 947.8213
       },
       "original": {
         "x": 527.870667,
-        "y": 653.311707
+        "y": 653.311768
       },
       "confidence": 0.9871,
       "source": "candidate_refined",
@@ -3699,7 +3699,7 @@
         "x": 589.366821,
         "y": 651.952026
       },
-      "confidence": 0.9924,
+      "confidence": 0.9923,
       "source": "candidate_refined",
       "flags": []
     },
@@ -3999,11 +3999,11 @@
       "siteIndex": 219,
       "rectified": {
         "x": 707.1656,
-        "y": 999.0248
+        "y": 999.025
       },
       "original": {
         "x": 619.243774,
-        "y": 667.028625
+        "y": 667.028687
       },
       "confidence": 0.9772,
       "source": "candidate_refined",
@@ -4052,12 +4052,12 @@
       },
       "siteIndex": 222,
       "rectified": {
-        "x": 881.8194,
-        "y": 994.8401
+        "x": 881.8195,
+        "y": 994.8403
       },
       "original": {
         "x": 665.871521,
-        "y": 665.907593
+        "y": 665.907654
       },
       "confidence": 0.979,
       "source": "candidate_refined",
@@ -4105,16 +4105,16 @@
     "candidateSupportRatio": 1.0,
     "trusted": true,
     "observedRatio": 1.0,
-    "geometryRmsePx": 1.437561,
+    "geometryRmsePx": 1.437559,
     "inlierCount": 225,
     "outlierCount": 0,
-    "meanConfidence": 0.980962
+    "meanConfidence": 0.98096
   },
   "frameQc": [],
   "locatorName": "PG-Grid Python reference",
   "locatorVersion": "2.0-adapted-to-2.1",
   "referenceMetadata": {
-    "referenceCoreSha256": "67620a2ed5921d22f30e7f881872ad6edf6ff0fe2007849f649afb30a3577a84",
+    "referenceCoreSha256": "e85152fc4011edf3d3f0575a6a1063aa590deb5ed01e9733055b2e6ce960d210",
     "algorithm": "PG-Grid V2.0 bundle-adjusted localization with PG-Quant V1.0"
   }
 }

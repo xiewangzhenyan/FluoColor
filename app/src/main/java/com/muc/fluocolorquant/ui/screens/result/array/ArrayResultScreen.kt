@@ -1,5 +1,6 @@
 package com.muc.fluocolorquant.ui.screens.result.array
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInHorizontally
@@ -147,26 +148,33 @@ fun ArrayResultContent(
     onRetry: () -> Unit,
     onSelectRun: (String) -> Unit = {}
 ) {
+    // 加载、损坏快照和数据库错误同样属于完整页面状态，必须响应系统返回键。
+    // 旧实现只在 Success 顶栏暴露返回动作，错误页因此会把用户困在当前导航目的地。
+    BackHandler(onBack = onBack)
     when (state) {
         ArrayResultUiState.Loading -> ArrayResultCenteredState(
             title = stringResource(R.string.array_result_loading),
             showProgress = true,
-            onRetry = null
+            onRetry = null,
+            onBack = onBack
         )
         ArrayResultUiState.NotFound -> ArrayResultCenteredState(
             title = stringResource(R.string.array_result_not_found),
             showProgress = false,
-            onRetry = null
+            onRetry = null,
+            onBack = onBack
         )
         is ArrayResultUiState.CorruptSnapshot -> ArrayResultCenteredState(
             title = stringResource(R.string.array_result_corrupt_snapshot),
             showProgress = false,
-            onRetry = null
+            onRetry = null,
+            onBack = onBack
         )
         ArrayResultUiState.Error -> ArrayResultCenteredState(
             title = stringResource(R.string.array_result_load_error),
             showProgress = false,
-            onRetry = onRetry
+            onRetry = onRetry,
+            onBack = onBack
         )
         is ArrayResultUiState.Success -> ArrayResultSuccess(
             snapshot = state.snapshot,
@@ -463,8 +471,18 @@ private fun ArrayOverviewTab(
     val selectedAnalyte = snapshot.analytes.firstOrNull { analyte ->
         analyte.analyteId == selectedAnalyteId
     } ?: snapshot.analytes.firstOrNull()
+    var concentrationScaleMode by rememberSaveable(snapshot.runId, selectedAnalyte?.analyteId) {
+        // 结果首屏优先回答“本次孔间有什么差异”；项目量程仍通过显式切换保留给跨实验比较。
+        mutableStateOf(ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION)
+    }
     val heatmapModel = selectedAnalyte?.let { analyte ->
-        remember(snapshot, analyte) { buildAnalyteHeatmapModel(snapshot, analyte) }
+        remember(snapshot, analyte, concentrationScaleMode) {
+            buildAnalyteHeatmapModel(
+                snapshot = snapshot,
+                analyte = analyte,
+                concentrationScaleMode = concentrationScaleMode
+            )
+        }
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -504,6 +522,7 @@ private fun ArrayOverviewTab(
                     title = heatmapTitle(heatmapModel, selectedAnalyte),
                     subtitle = heatmapSubtitle(heatmapModel, selectedAnalyte),
                     model = heatmapModel,
+                    onScaleModeChange = { concentrationScaleMode = it },
                     onSiteClick = { cell ->
                         onSiteClick(
                             ArraySiteSelection(
@@ -1120,6 +1139,7 @@ private fun ArrayHeatmapResultCard(
     title: String,
     subtitle: String,
     model: ArrayHeatmapModel,
+    onScaleModeChange: (ArrayHeatmapConcentrationScaleMode) -> Unit,
     onSiteClick: (ArrayHeatmapCell) -> Unit
 ) {
     var showZoomHint by rememberSaveable(model.analyteId, model.rows, model.columns) {
@@ -1149,6 +1169,10 @@ private fun ArrayHeatmapResultCard(
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
+            ArrayHeatmapScaleSelector(
+                scale = model.scale,
+                onScaleModeChange = onScaleModeChange
+            )
             if (showZoomHint) {
                 Surface(
                     color = MaterialTheme.colorScheme.secondaryContainer,
@@ -1638,8 +1662,12 @@ private fun ArrayAnalyteResult.userFacingModelName(): String {
 private fun heatmapSubtitle(model: ArrayHeatmapModel, analyte: ArrayAnalyteResult): String {
     return when (model.scale.mode) {
         ArrayHeatmapScaleMode.CONCENTRATION -> when (model.scale.rangeSource) {
-            ArrayHeatmapRangeSource.RELIABLE_RANGE -> stringResource(
+            ArrayHeatmapRangeSource.PROJECT_RANGE -> stringResource(
                 R.string.array_heatmap_concentration_reliable_subtitle,
+                analyte.concentrationUnit
+            )
+            ArrayHeatmapRangeSource.RUN_DISTRIBUTION -> stringResource(
+                R.string.array_heatmap_concentration_observed_subtitle,
                 analyte.concentrationUnit
             )
             else -> stringResource(
@@ -1816,7 +1844,8 @@ private fun SectionCard(icon: ImageVector, title: String, body: String) {
 private fun ArrayResultCenteredState(
     title: String,
     showProgress: Boolean,
-    onRetry: (() -> Unit)?
+    onRetry: (() -> Unit)?,
+    onBack: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
@@ -1827,8 +1856,15 @@ private fun ArrayResultCenteredState(
             if (showProgress) CircularProgressIndicator()
             else Icon(Icons.Outlined.BrokenImage, contentDescription = null)
             Text(title, style = MaterialTheme.typography.bodyLarge)
-            if (onRetry != null) {
-                Button(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.back))
+                }
+                if (onRetry != null) {
+                    Button(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
+                }
             }
         }
     }

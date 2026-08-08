@@ -1179,7 +1179,7 @@
         "x": 508.006195,
         "y": 532.997986
       },
-      "confidence": 0.9726,
+      "confidence": 0.9725,
       "source": "candidate_refined",
       "flags": []
     },
@@ -4102,19 +4102,19 @@
   ],
   "geometry": {
     "model": "homography",
-    "candidateSupportRatio": 1.0,
+    "candidateSupportRatio": 0.982222,
     "trusted": true,
     "observedRatio": 1.0,
     "geometryRmsePx": 1.438266,
     "inlierCount": 225,
     "outlierCount": 0,
-    "meanConfidence": 0.981195
+    "meanConfidence": 0.981194
   },
   "frameQc": [],
   "locatorName": "PG-Grid Python reference",
   "locatorVersion": "2.0-adapted-to-2.1",
   "referenceMetadata": {
-    "referenceCoreSha256": "67620a2ed5921d22f30e7f881872ad6edf6ff0fe2007849f649afb30a3577a84",
+    "referenceCoreSha256": "e85152fc4011edf3d3f0575a6a1063aa590deb5ed01e9733055b2e6ce960d210",
     "algorithm": "PG-Grid V2.0 bundle-adjusted localization with PG-Quant V1.0"
   }
 }

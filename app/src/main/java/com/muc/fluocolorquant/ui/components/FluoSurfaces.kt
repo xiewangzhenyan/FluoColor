@@ -34,6 +34,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -71,6 +74,9 @@ import com.muc.fluocolorquant.ui.theme.FluoSpacing
  * @param accentColor 非空时在卡片左侧绘制一条 3dp 色条，用于区分"正常 / 需复核 / 失败"等
  *   分区语义。色条只是辅助，语义仍必须由卡片内的图标与文字表达（AGENTS.md 10）。
  */
+/** 分区卡片左侧语义色条宽度；色条只是辅助，语义仍由卡片内图标与文字表达。 */
+private val ACCENT_BAR_WIDTH: Dp = 3.dp
+
 @Composable
 fun FluoSectionCard(
     modifier: Modifier = Modifier,
@@ -89,27 +95,39 @@ fun FluoSectionCard(
         color = containerColor,
         border = BorderStroke(width = 1.dp, color = borderColor)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                // IntrinsicSize.Min 让左侧色条能通过 fillMaxHeight() 与内容等高；
-                // 没有它时 Box 高度为 0，长卡片会出现"色条只画了一小段"。
-                .height(IntrinsicSize.Min)
-        ) {
-            if (accentColor != null) {
-                Box(
-                    modifier = Modifier
-                        .width(3.dp)
-                        .fillMaxHeight()
-                        .background(accentColor)
+                // 色条在**绘制阶段**贴左边缘画出，而不是用 `height(IntrinsicSize.Min)` +
+                // `fillMaxHeight()` 的 Row 布局。后者会向子节点查询内在高度，而 LazyColumn、
+                // BoxWithConstraints、TabRow、Scaffold 等基于 SubcomposeLayout 的组件根本
+                // 不支持内在尺寸测量，一旦被放进卡片就会抛
+                // "Asking for intrinsic measurements of SubcomposeLayout layouts is not
+                // supported" 并使整个页面崩溃。绘制阶段已经拿到最终尺寸，无需任何测量查询，
+                // 因此对任意内容都安全，色条同样能覆盖完整卡片高度。
+                .then(
+                    if (accentColor != null) {
+                        Modifier.drawBehind {
+                            drawRect(
+                                color = accentColor,
+                                topLeft = Offset.Zero,
+                                size = Size(ACCENT_BAR_WIDTH.toPx(), size.height)
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
                 )
-            }
-            Column(
-                modifier = Modifier.padding(contentPadding),
-                verticalArrangement = Arrangement.spacedBy(verticalSpacing),
-                content = content
-            )
-        }
+                .padding(
+                    // 内容整体让开色条宽度，视觉结果与旧的 Row 布局一致。
+                    start = contentPadding + if (accentColor != null) ACCENT_BAR_WIDTH else 0.dp,
+                    top = contentPadding,
+                    end = contentPadding,
+                    bottom = contentPadding
+                ),
+            verticalArrangement = Arrangement.spacedBy(verticalSpacing),
+            content = content
+        )
     }
 }
 

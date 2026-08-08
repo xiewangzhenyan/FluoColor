@@ -115,7 +115,7 @@ class ArrayHeatmapTest {
     }
 
     @Test
-    fun `范围状态使用弱标记且不丢失浓度端点颜色`() {
+    fun `范围状态投影到色带端点并保留方向标记`() {
         val analyte = analyte().copy(
             reliableRangeMax = 100.0,
             projectRangeMax = 100.0
@@ -202,6 +202,50 @@ class ArrayHeatmapTest {
         }
         assertEquals(rangeLegendTopPositions[0], rangeLegendTopPositions[1], 1f)
         assertEquals(rangeLegendTopPositions[0], rangeLegendTopPositions[2], 1f)
+    }
+
+    @Test
+    fun `浓度色带可以在本次分布和项目量程之间切换`() {
+        val selectedMode = mutableStateOf(ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION)
+        val analyte = analyte().copy(
+            projectRangeMin = 0.0,
+            projectRangeMax = 100.0
+        )
+        val inputs = listOf(10.0, 40.0, 80.0).mapIndexed { siteIndex, concentration ->
+            heatmapInput(
+                siteIndex = siteIndex,
+                concentration = concentration,
+                primaryFeature = concentration,
+                rangeStatus = "WITHIN_RANGE",
+                quantificationStatus = "QUANTIFIED"
+            )
+        }
+
+        composeRule.setContent {
+            FluoColorTheme {
+                val model = buildAnalyteHeatmapModel(
+                    rows = 1,
+                    columns = 3,
+                    analyte = analyte,
+                    inputs = inputs,
+                    concentrationScaleMode = selectedMode.value
+                )
+                ArrayHeatmapScaleSelector(
+                    scale = model.scale,
+                    onScaleModeChange = { selectedMode.value = it }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(
+            "$ARRAY_HEATMAP_SCALE_OPTION_TAG_PREFIX${ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION.name}"
+        ).assertIsSelected()
+        composeRule.onNodeWithTag(
+            "$ARRAY_HEATMAP_SCALE_OPTION_TAG_PREFIX${ArrayHeatmapConcentrationScaleMode.PROJECT_RANGE.name}"
+        ).performClick().assertIsSelected()
+        composeRule.runOnIdle {
+            assertEquals(ArrayHeatmapConcentrationScaleMode.PROJECT_RANGE, selectedMode.value)
+        }
     }
 
     @Test

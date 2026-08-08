@@ -42,6 +42,7 @@ import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
 import com.muc.fluocolorquant.ui.theme.FluoColorTheme
 import com.muc.fluocolorquant.ui.viewmodels.ArrayResultUiState
 import org.junit.Rule
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -65,6 +66,25 @@ class ArrayResultDetailTest {
     private fun string(id: Int, vararg formatArgs: Any): String {
         return ApplicationProvider.getApplicationContext<android.content.Context>()
             .getString(id, *formatArgs)
+    }
+
+    @Test
+    fun `冻结快照错误页提供可用返回动作`() {
+        var backRequested = false
+        composeRule.setContent {
+            FluoColorTheme {
+                ArrayResultContent(
+                    state = ArrayResultUiState.CorruptSnapshot(
+                        com.muc.fluocolorquant.domain.result.ArrayResultErrorCode.INVALID_MEASUREMENT
+                    ),
+                    onBack = { backRequested = true },
+                    onRetry = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(string(R.string.back)).performClick()
+        composeRule.runOnIdle { assertTrue(backRequested) }
     }
 
     @Test

@@ -46,6 +46,76 @@ class StandardCurveQuantifierTest {
     }
 
     @Test
+    fun `V2曲线只在冻结可信范围内输出估计并在范围外给出单侧界限`() {
+        val bundle = linearBundle(
+            parametersJson = """{"a":2.0,"b":1.0}""",
+            reliableRangeMin = 0.0,
+            reliableRangeMax = 10.0,
+            validationMetricsJson = """
+                {
+                  "CALIBRATION_ALGORITHM_SCHEMA":"calibration-v2",
+                  "TRUSTED_RANGE":{
+                    "minimum":0.0,
+                    "maximum":20.0,
+                    "confidenceLevel":0.95,
+                    "parameterSampleCount":256,
+                    "validSampleRatio":1.0,
+                    "methodVersion":"hessian-sampling-v1",
+                    "transformedParameterCovariance":[[0.0,0.0],[0.0,0.0]],
+                    "samplingSeed":42,
+                    "residualSignalScale":0.01
+                  }
+                }
+            """.trimIndent()
+        )
+        val ready = StandardCurveQuantifier.prepare(
+            bundle = bundle,
+            projectRangeMin = 0.0,
+            projectRangeMax = 100.0
+        ) as PreparedStandardCurveQuantifier.Ready
+
+        val estimated = ready.quantify(31.0) as PreparedEndpointQuantificationResult.Quantified
+        val outside = ready.quantify(51.0) as PreparedEndpointQuantificationResult.OutOfRange
+
+        assertEquals(15.0, estimated.concentration, 1e-6)
+        assertEquals(QuantificationState.ESTIMATED, estimated.quantificationState)
+        assertEquals(15.0, estimated.concentrationLowerBound ?: Double.NaN, 1e-6)
+        assertEquals(15.0, estimated.concentrationUpperBound ?: Double.NaN, 1e-6)
+        assertEquals(ReliableRangeStatus.ABOVE_TRUSTED_RANGE, outside.rangeStatus)
+        assertEquals(20.0, outside.concentrationBound ?: Double.NaN, 1e-6)
+        assertEquals(QuantificationCensoringDirection.LOWER_BOUND, outside.censoringDirection)
+    }
+
+    @Test
+    fun `严重饱和只保存浓度下界而质量失败单独标记不可用`() {
+        val ready = StandardCurveQuantifier.prepare(
+            linearBundle(parametersJson = """{"a":2.0,"b":1.0}""")
+        ) as PreparedStandardCurveQuantifier.Ready
+
+        val saturated = ready.quantify(
+            QuantificationObservation(
+                signalValue = 21.0,
+                qualityReliable = false,
+                saturationRatio = 0.30,
+                photometryFlags = setOf("SATURATED")
+            )
+        ) as PreparedEndpointQuantificationResult.OutOfRange
+        val unavailable = ready.quantify(
+            QuantificationObservation(
+                signalValue = 21.0,
+                qualityReliable = false,
+                saturationRatio = 0.0
+            )
+        ) as PreparedEndpointQuantificationResult.Unavailable
+
+        assertEquals(10.0, saturated.concentrationBound ?: Double.NaN, 1e-6)
+        assertEquals(QuantificationCensoringDirection.LOWER_BOUND, saturated.censoringDirection)
+        assertEquals(QuantificationState.BOUND_ONLY, saturated.quantificationState)
+        assertEquals(EndpointQuantificationReason.UNRELIABLE_OBSERVATION, unavailable.reason)
+        assertEquals(QuantificationState.UNAVAILABLE, unavailable.quantificationState)
+    }
+
+    @Test
     fun `五参数逻辑曲线允许项目量程从零开始并反算真实孔位信号`() {
         val bundle = linearBundle(
             fittingFunction = "logistic_5pl",
@@ -854,7 +924,8 @@ class StandardCurveQuantifierTest {
         reliableRangeMin: Double = 0.0,
         reliableRangeMax: Double = 100.0,
         lod: Double? = null,
-        loq: Double? = null
+        loq: Double? = null,
+        validationMetricsJson: String = """{"r2":0.998}"""
     ): AnalysisModelBundle {
         val model = AnalysisModel(
             id = "model-linear",
@@ -869,7 +940,7 @@ class StandardCurveQuantifierTest {
             concentrationUnit = "ng/mL",
             reliableRangeMin = reliableRangeMin,
             reliableRangeMax = reliableRangeMax,
-            validationMetricsJson = """{"r2":0.998}""",
+            validationMetricsJson = validationMetricsJson,
             status = AnalysisModelLifecycleStatus.PUBLISHED.code,
             version = 3
         )

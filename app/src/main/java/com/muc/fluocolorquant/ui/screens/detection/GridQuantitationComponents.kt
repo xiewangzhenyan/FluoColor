@@ -931,6 +931,22 @@ private fun OnsiteCalibrationDialog(
         else -> false
     }
     val applying = draft.onsiteState is OnsiteCalibrationState.Applying
+    var observedApplying by remember(analyte.id) { mutableStateOf(false) }
+
+    LaunchedEffect(draft.onsiteState) {
+        when (draft.onsiteState) {
+            is OnsiteCalibrationState.Applying -> observedApplying = true
+            is OnsiteCalibrationState.Applied -> {
+                if (observedApplying) {
+                    // 应用完成后立即回到布局主流程，避免弹窗停留在不可点击的“已应用”页。
+                    // 用户以后主动点“查看拟合结果”时仍可重新打开，因为那次没有经历 Applying。
+                    observedApplying = false
+                    onDismiss()
+                }
+            }
+            else -> Unit
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1764,6 +1780,7 @@ private fun ColumnScope.OnsiteCalibrationResultStage(
                 candidate = selectedCandidate,
                 isRecommended = selectedCandidate?.id == resultSet.recommendedCandidateId,
                 applicationDecision = applicationDecision,
+                concentrationUnit = concentrationUnit,
                 saveToLibrary = saveToLibrary,
                 applying = applying,
                 alreadyApplied = alreadyApplied,
@@ -1900,14 +1917,15 @@ private fun ColumnScope.OnsiteCalibrationResultStage(
 }
 
 /**
- * 现场拟合首屏只保留一个决策摘要，避免把公式、R²、留一验证和曲线图同时塞给普通用户。
- * “对比”展开后才展示科学细节；应用动作始终针对当前选中的冻结候选。
+ * 现场拟合首屏直接回答“系统推荐哪条曲线、使用什么信号、覆盖什么标定范围”。
+ * 公式、R²、留一验证和可信外推只在“其他曲线”展开后展示；应用动作始终针对当前候选。
  */
 @Composable
 private fun OnsiteCalibrationSummaryCard(
     candidate: CalibrationCandidate?,
     isRecommended: Boolean,
     applicationDecision: CalibrationApplicationDecision?,
+    concentrationUnit: String,
     saveToLibrary: Boolean,
     applying: Boolean,
     alreadyApplied: Boolean,
@@ -1917,6 +1935,20 @@ private fun OnsiteCalibrationSummaryCard(
 ) {
     val inverseError = candidate?.backCalculatedRmsePercent
         ?: candidate?.crossValidation?.medianRelativeErrorPercent
+    val calibrationConcentrations = candidate?.standardPoints
+        .orEmpty()
+        .map { point -> point.first }
+        .filter(Double::isFinite)
+    val calibrationRange = if (calibrationConcentrations.isNotEmpty()) {
+        stringResource(
+            R.string.grid_quant_calibration_range_value,
+            formatEditableNumber(requireNotNull(calibrationConcentrations.minOrNull())),
+            formatEditableNumber(requireNotNull(calibrationConcentrations.maxOrNull())),
+            concentrationUnit
+        )
+    } else {
+        stringResource(R.string.grid_quant_value_unavailable)
+    }
     Card(
         shape = RoundedCornerShape(FluoRadius.control),
         colors = CardDefaults.cardColors(
@@ -1927,19 +1959,37 @@ private fun OnsiteCalibrationSummaryCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.Top) {
                 Icon(
                     imageVector = Icons.Default.AutoGraph,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.grid_quant_smart_calibration),
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(
+                            if (isRecommended) R.string.grid_quant_system_recommendation
+                            else R.string.grid_quant_current_selection
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = candidate?.function?.let { fittingFunctionLabel(it) }
+                            ?: stringResource(R.string.grid_quant_fit_unavailable),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    candidate?.let { selected ->
+                        Text(
+                            text = primaryFeatureLabel(selected.primaryFeature),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 Surface(
                     shape = RoundedCornerShape(FluoRadius.badge),
                     color = when {
@@ -1961,26 +2011,52 @@ private fun OnsiteCalibrationSummaryCard(
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.Bottom) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.grid_quant_fit_inverse_error),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = formatFitPercentValue(inverseError),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(FluoRadius.badge),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp)) {
+                        Text(
+                            text = stringResource(R.string.grid_quant_fit_inverse_error),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = formatFitPercentValue(inverseError),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
-                if (candidate != null && !isRecommended) {
-                    Text(
-                        text = stringResource(R.string.grid_quant_selected_alternative),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary
-                    )
+                Surface(
+                    modifier = Modifier.weight(1.35f),
+                    shape = RoundedCornerShape(FluoRadius.badge),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp)) {
+                        Text(
+                            text = stringResource(R.string.grid_quant_calibration_range),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = calibrationRange,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
+            }
+            if (candidate != null && !isRecommended) {
+                Text(
+                    text = stringResource(R.string.grid_quant_selected_alternative),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2009,6 +2085,7 @@ private fun OnsiteCalibrationSummaryCard(
                                 applicationDecision == CalibrationApplicationDecision.BLOCK ->
                                     R.string.grid_quant_curve_view_only
                                 saveToLibrary -> R.string.grid_quant_save_and_apply
+                                isRecommended -> R.string.grid_quant_apply_recommended_fit
                                 else -> R.string.grid_quant_apply_fit
                             }
                         )
@@ -2024,7 +2101,7 @@ private fun OnsiteCalibrationSummaryCard(
                     Text(
                         stringResource(
                             if (showComparison) R.string.grid_quant_hide_comparison
-                            else R.string.grid_quant_show_comparison
+                            else R.string.grid_quant_other_curves
                         )
                     )
                 }

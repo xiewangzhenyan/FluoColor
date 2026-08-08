@@ -1,11 +1,13 @@
 package com.muc.fluocolorquant.ui.screens.result.array
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +48,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
@@ -68,23 +72,37 @@ const val ARRAY_HEATMAP_ZOOMED_CONTENT_TAG: String = "array_heatmap_zoomed_conte
 const val ARRAY_HEATMAP_EXTRAPOLATED_MARKER_TAG_PREFIX: String = "array_heatmap_extrapolated_marker_"
 const val ARRAY_HEATMAP_BELOW_RANGE_MARKER_TAG_PREFIX: String = "array_heatmap_below_range_marker_"
 const val ARRAY_HEATMAP_ABOVE_RANGE_MARKER_TAG_PREFIX: String = "array_heatmap_above_range_marker_"
+const val ARRAY_HEATMAP_SCALE_SELECTOR_TAG: String = "array_heatmap_scale_selector"
+const val ARRAY_HEATMAP_SCALE_OPTION_TAG_PREFIX: String = "array_heatmap_scale_option_"
 
 /** 热力图底色所表达的科学量，QC 不得通过切换该枚举来改变底色含义。 */
 enum class ArrayHeatmapScaleMode {
     /** 芯片总览只表达位点可靠性百分比，不混合不同分析物的浓度单位。 */
     OVERVIEW_RELIABILITY,
 
-    /** 当前分析物存在可用浓度时，使用该分析物自己的可靠范围或观测范围。 */
+    /** 当前分析物存在可用浓度时，使用本次分布或项目量程。 */
     CONCENTRATION,
 
     /** 整个分析物只能保留信号时，改用当前模型声明的主特征。 */
     PRIMARY_FEATURE
 }
 
+/**
+ * 浓度热力图的显示归一化方式。
+ *
+ * 该枚举只改变颜色映射，不修改、截断或重新计算冻结浓度。默认结果页使用本次分布增强孔间差异，
+ * 项目量程模式用于跨实验按同一绝对尺度比较。
+ */
+enum class ArrayHeatmapConcentrationScaleMode {
+    RUN_DISTRIBUTION,
+    PROJECT_RANGE
+}
+
 /** 色带边界的来源会展示给用户，防止把观测范围误认为模型可靠范围。 */
 enum class ArrayHeatmapRangeSource {
     FIXED_PERCENTAGE,
-    RELIABLE_RANGE,
+    PROJECT_RANGE,
+    RUN_DISTRIBUTION,
     OBSERVED_VALUES,
     EMPTY_FALLBACK
 }
@@ -96,7 +114,11 @@ data class ArrayHeatmapScale(
     val maximum: Double,
     val unit: String,
     val featureName: String?,
-    val rangeSource: ArrayHeatmapRangeSource
+    val rangeSource: ArrayHeatmapRangeSource,
+    /** 非浓度模式为 null；浓度模式记录当前实际采用的颜色尺度。 */
+    val concentrationScaleMode: ArrayHeatmapConcentrationScaleMode? = null,
+    /** 只有同时具备本次有限浓度与合法项目量程时，页面才展示双尺度切换。 */
+    val availableConcentrationScaleModes: Set<ArrayHeatmapConcentrationScaleMode> = emptySet()
 )
 
 /**
@@ -111,10 +133,10 @@ enum class ArrayHeatmapValueState {
     /** 超出曲线真实标定区间、但仍位于项目量程内，显示实际外推浓度。 */
     CALIBRATION_EXTRAPOLATED,
 
-    /** 低于项目量程，热力图用项目下限颜色表达方向，不伪造精确浓度。 */
+    /** 只能报告低端方向或上限；可能来自项目边界、可信边界或删失观测。 */
     BELOW_PROJECT_RANGE,
 
-    /** 高于项目量程，热力图用项目上限颜色表达方向，不伪造精确浓度。 */
+    /** 只能报告高端方向或下限；可能来自项目边界、可信边界或删失观测。 */
     ABOVE_PROJECT_RANGE,
 
     /** 当前热力图维度确实没有可解释数值。 */
@@ -178,7 +200,13 @@ data class ArrayHeatmapCell(
     val displayValue: Double?,
     val normalizedValue: Float?,
     val valueState: ArrayHeatmapValueState,
-    val qc: ArrayHeatmapQcEncoding
+    val qc: ArrayHeatmapQcEncoding,
+    /** 保留冻结的原始范围状态，统计时不能从用于绘图的方向状态反向猜测。 */
+    val reliableRangeStatus: String? = null,
+    /** 保留 QUANTIFIED / ESTIMATED / BOUND_ONLY / UNAVAILABLE 科学语义。 */
+    val quantificationState: String? = null,
+    /** 单侧界限方向，用于区分“仅下限”和“仅上限”。 */
+    val censoringDirection: String? = null
 )
 
 /** 一张热力图及其统计摘要。 */
@@ -201,7 +229,7 @@ data class ArrayHeatmapModel(
     val withinCalibrationRangeCount: Int,
     /** 位于项目量程内、但使用曲线外推得到浓度的数量。 */
     val calibrationExtrapolatedCount: Int,
-    /** 低于或高于项目声明量程、只保留方向和端点颜色的数量。 */
+    /** 低于或高于项目声明量程、只保留方向并投影到色带端点显示的数量。 */
     val outsideProjectRangeCount: Int,
     val reliableCount: Int,
     val warningCount: Int,
@@ -235,7 +263,9 @@ fun buildAnalyteHeatmapModel(
     rows: Int,
     columns: Int,
     analyte: ArrayAnalyteResult,
-    inputs: List<ArrayHeatmapValueInput>
+    inputs: List<ArrayHeatmapValueInput>,
+    concentrationScaleMode: ArrayHeatmapConcentrationScaleMode =
+        ArrayHeatmapConcentrationScaleMode.PROJECT_RANGE
 ): ArrayHeatmapModel {
     require(rows > 0 && columns > 0) { "阵列行列必须大于零" }
     require(inputs.map { it.siteIndex }.distinct().size == inputs.size) { "热力图输入包含重复位点" }
@@ -246,9 +276,10 @@ fun buildAnalyteHeatmapModel(
             resolveArraySiteIndex(it.rowIndex, it.columnIndex, columns) == it.siteIndex
     }) { "热力图输入的行列与线性索引不一致" }
 
-    val finiteConcentrations = inputs.filter(ArrayHeatmapValueInput::hasMeasurement)
+    // 色带只能由当前分析物适用位点形成；其他分析物或全局参考位不能偷偷拉伸本次分布。
+    val finiteConcentrations = inputs.filter { it.hasMeasurement && it.applicable }
         .mapNotNull { it.concentrationValue?.takeIf(Double::isFinite) }
-    val finiteFeatures = inputs.filter(ArrayHeatmapValueInput::hasMeasurement)
+    val finiteFeatures = inputs.filter { it.hasMeasurement && it.applicable }
         .mapNotNull { it.primaryFeatureValue?.takeIf(Double::isFinite) }
     val historicalConcentrationIncomplete = inputs.any { input ->
         input.applicable &&
@@ -272,13 +303,17 @@ fun buildAnalyteHeatmapModel(
             ) || input.quantificationState.equals("BOUND_ONLY", ignoreCase = true)
     }
     // 旧运行只保存了部分浓度时，整张图统一使用信号值；绝不能让同一色带同时表达浓度和信号。
-    // 即使全部位点都落在项目量程外，只要项目边界完整，仍应显示浓度端点颜色和方向标记，
+    // 即使全部位点都落在项目量程外，只要项目边界完整，仍应保持浓度语义并显示方向标记；
     // 不能因为没有精确浓度而退回信号色带，导致用户丢失“低于/高于量程”的直接解释。
     val useConcentration = !historicalConcentrationIncomplete && (
         finiteConcentrations.isNotEmpty() || (hasValidProjectRange && hasProjectBoundaryResult)
     )
     val scale = if (useConcentration) {
-        buildConcentrationScale(analyte, finiteConcentrations)
+        buildConcentrationScale(
+            analyte = analyte,
+            finiteValues = finiteConcentrations,
+            requestedMode = concentrationScaleMode
+        )
     } else {
         buildFeatureScale(analyte, finiteFeatures)
     }
@@ -338,7 +373,10 @@ fun buildAnalyteHeatmapModel(
                         failure = false,
                         lowSignal = false
                     )
-                }
+                },
+                reliableRangeStatus = input.reliableRangeStatus,
+                quantificationState = input.quantificationState,
+                censoringDirection = input.censoringDirection
             )
         }
     }
@@ -355,7 +393,9 @@ fun buildAnalyteHeatmapModel(
 /** 从冻结运行快照提取当前分析物，不读取当前模板或模型库。 */
 fun buildAnalyteHeatmapModel(
     snapshot: ArrayResultSnapshot,
-    analyte: ArrayAnalyteResult
+    analyte: ArrayAnalyteResult,
+    concentrationScaleMode: ArrayHeatmapConcentrationScaleMode =
+        ArrayHeatmapConcentrationScaleMode.PROJECT_RANGE
 ): ArrayHeatmapModel {
     val inputs = snapshot.sites.map { site ->
         val measurement = site.measurements.firstOrNull { it.analyteId == analyte.analyteId }
@@ -364,7 +404,13 @@ fun buildAnalyteHeatmapModel(
             applicable = site.analyteId == analyte.analyteId
         )
     }
-    return buildAnalyteHeatmapModel(snapshot.rows, snapshot.columns, analyte, inputs)
+    return buildAnalyteHeatmapModel(
+        rows = snapshot.rows,
+        columns = snapshot.columns,
+        analyte = analyte,
+        inputs = inputs,
+        concentrationScaleMode = concentrationScaleMode
+    )
 }
 
 /**
@@ -601,6 +647,80 @@ fun ArrayHeatmap(
     }
 }
 
+/**
+ * 浓度热力图的双尺度选择器。
+ *
+ * 使用紧凑的同层胶囊切换，避免在专业结果页增加解释段落。若当前运行没有有限浓度或没有合法
+ * 项目量程，函数直接不渲染，页面继续使用唯一可执行的色带。
+ */
+@Composable
+fun ArrayHeatmapScaleSelector(
+    scale: ArrayHeatmapScale,
+    onScaleModeChange: (ArrayHeatmapConcentrationScaleMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val selectedMode = scale.concentrationScaleMode ?: return
+    val options = ArrayHeatmapConcentrationScaleMode.entries.filter {
+        it in scale.availableConcentrationScaleModes
+    }
+    if (options.size < 2) return
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(ARRAY_HEATMAP_SCALE_SELECTOR_TAG),
+        shape = RoundedCornerShape(FluoRadius.badge),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            options.forEach { option ->
+                val selected = option == selectedMode
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .selectable(
+                            selected = selected,
+                            onClick = { onScaleModeChange(option) },
+                            role = Role.RadioButton
+                        )
+                        .testTag("$ARRAY_HEATMAP_SCALE_OPTION_TAG_PREFIX${option.name}"),
+                    shape = RoundedCornerShape(FluoRadius.badge),
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        Color.Transparent
+                    }
+                ) {
+                    Text(
+                        text = stringResource(
+                            when (option) {
+                                ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION ->
+                                    R.string.array_heatmap_scale_run_distribution
+                                ArrayHeatmapConcentrationScaleMode.PROJECT_RANGE ->
+                                    R.string.array_heatmap_scale_project_range
+                            }
+                        ),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        textAlign = TextAlign.Center,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** 热力图使用与旧结果页一致的专业渐变，但输入永远是已经归一化的 0～1。 */
 fun arrayHeatmapBaseColor(
     normalizedValue: Float?,
@@ -633,6 +753,8 @@ private fun ArrayHeatmapCellView(
 ) {
     val shape = RoundedCornerShape(if (showText) 10.dp else 3.dp)
     val baseColor = if (cell.enabled && cell.applicable) {
+        // 单侧界限的 displayValue 已按方向投影到当前色带端点。底色表达“趋近量程低端/高端”，
+        // 箭头与 < / > 继续表达它不是精确点浓度，因此既恢复完整色彩，也不篡改冻结数据。
         arrayHeatmapBaseColor(cell.normalizedValue, scale.mode)
     } else {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
@@ -692,7 +814,11 @@ private fun ArrayHeatmapCellView(
                 drawPath(triangle, color = subtleMarkerColor)
             }
         }
-        if (!cell.qc.failure && cell.valueState == ArrayHeatmapValueState.BELOW_PROJECT_RANGE) {
+        if (
+            !showText &&
+            !cell.qc.failure &&
+            cell.valueState == ArrayHeatmapValueState.BELOW_PROJECT_RANGE
+        ) {
             Canvas(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -711,7 +837,11 @@ private fun ArrayHeatmapCellView(
                 drawPath(triangle, color = subtleMarkerColor)
             }
         }
-        if (!cell.qc.failure && cell.valueState == ArrayHeatmapValueState.ABOVE_PROJECT_RANGE) {
+        if (
+            !showText &&
+            !cell.qc.failure &&
+            cell.valueState == ArrayHeatmapValueState.ABOVE_PROJECT_RANGE
+        ) {
             Canvas(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -745,14 +875,10 @@ private fun ArrayHeatmapCellView(
                 )
                 Text(
                     text = when (cell.valueState) {
-                        ArrayHeatmapValueState.BELOW_PROJECT_RANGE -> stringResource(
-                            R.string.array_heatmap_cell_below_boundary,
-                            formatArrayHeatmapValue(scale.minimum)
-                        )
-                        ArrayHeatmapValueState.ABOVE_PROJECT_RANGE -> stringResource(
-                            R.string.array_heatmap_cell_above_boundary,
-                            formatArrayHeatmapValue(scale.maximum)
-                        )
+                        ArrayHeatmapValueState.BELOW_PROJECT_RANGE ->
+                            stringResource(R.string.array_heatmap_upper_bound_symbol)
+                        ArrayHeatmapValueState.ABOVE_PROJECT_RANGE ->
+                            stringResource(R.string.array_heatmap_lower_bound_symbol)
                         ArrayHeatmapValueState.QUANTIFIED,
                         ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED -> cell.displayValue?.let { value ->
                             val formatted = formatArrayHeatmapValue(value)
@@ -791,27 +917,99 @@ fun formatArrayHeatmapValue(value: Double): String {
 
 private fun buildConcentrationScale(
     analyte: ArrayAnalyteResult,
-    finiteValues: List<Double>
+    finiteValues: List<Double>,
+    requestedMode: ArrayHeatmapConcentrationScaleMode
 ): ArrayHeatmapScale {
-    // 浓度色带遵循项目量程，而不是现场标准点的狭窄标定区间。
-    val reliableMin = analyte.projectRangeMin?.takeIf(Double::isFinite)
-    val reliableMax = analyte.projectRangeMax?.takeIf(Double::isFinite)
-    val hasReliableRange = reliableMin != null && reliableMax != null && reliableMax > reliableMin
-    val minimum = if (hasReliableRange) reliableMin!! else finiteValues.minOrNull() ?: 0.0
-    val maximum = if (hasReliableRange) reliableMax!! else finiteValues.maxOrNull() ?: 1.0
+    val projectMinimum = analyte.projectRangeMin?.takeIf(Double::isFinite)
+    val projectMaximum = analyte.projectRangeMax?.takeIf(Double::isFinite)
+    val projectRange = if (
+        projectMinimum != null && projectMaximum != null && projectMaximum > projectMinimum
+    ) {
+        NumericHeatmapRange(projectMinimum, projectMaximum)
+    } else {
+        null
+    }
+    val runDistributionRange = buildRunDistributionRange(finiteValues)
+    val availableModes = buildSet {
+        if (runDistributionRange != null) add(ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION)
+        if (projectRange != null) add(ArrayHeatmapConcentrationScaleMode.PROJECT_RANGE)
+    }
+    val resolvedMode = when {
+        requestedMode in availableModes -> requestedMode
+        ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION in availableModes ->
+            ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION
+        ArrayHeatmapConcentrationScaleMode.PROJECT_RANGE in availableModes ->
+            ArrayHeatmapConcentrationScaleMode.PROJECT_RANGE
+        else -> null
+    }
+    val selectedRange = when (resolvedMode) {
+        ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION -> requireNotNull(runDistributionRange)
+        ArrayHeatmapConcentrationScaleMode.PROJECT_RANGE -> requireNotNull(projectRange)
+        null -> NumericHeatmapRange(0.0, 1.0)
+    }
     return ArrayHeatmapScale(
         mode = ArrayHeatmapScaleMode.CONCENTRATION,
-        minimum = minimum,
-        maximum = maximum,
+        minimum = selectedRange.minimum,
+        maximum = selectedRange.maximum,
         unit = analyte.concentrationUnit,
         featureName = null,
-        rangeSource = if (hasReliableRange) {
-            ArrayHeatmapRangeSource.RELIABLE_RANGE
-        } else {
-            ArrayHeatmapRangeSource.OBSERVED_VALUES
-        }
+        rangeSource = when (resolvedMode) {
+            ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION ->
+                ArrayHeatmapRangeSource.RUN_DISTRIBUTION
+            ArrayHeatmapConcentrationScaleMode.PROJECT_RANGE ->
+                ArrayHeatmapRangeSource.PROJECT_RANGE
+            null -> ArrayHeatmapRangeSource.EMPTY_FALLBACK
+        },
+        concentrationScaleMode = resolvedMode,
+        availableConcentrationScaleModes = availableModes
     )
 }
+
+/** 本次分布使用P5～P95抑制偶发离群值；点数过少时退回完整最小/最大值，避免稀疏数据被过度裁切。 */
+private fun buildRunDistributionRange(finiteValues: List<Double>): NumericHeatmapRange? {
+    val sorted = finiteValues.filter(Double::isFinite).sorted()
+    if (sorted.isEmpty()) return null
+    val minimum = if (sorted.size >= MINIMUM_ROBUST_DISTRIBUTION_VALUES) {
+        percentile(sorted, 0.05)
+    } else {
+        sorted.first()
+    }
+    val maximum = if (sorted.size >= MINIMUM_ROBUST_DISTRIBUTION_VALUES) {
+        percentile(sorted, 0.95)
+    } else {
+        sorted.last()
+    }
+    if (maximum > minimum) return NumericHeatmapRange(minimum, maximum)
+
+    // 浓度完全相同时仍要形成可执行色带；仅增加显示用微小跨度，不改写任何孔位数值。
+    val padding = max(kotlin.math.abs(minimum) * 0.05, 1e-6)
+    val expandedMinimum = (minimum - padding).coerceAtLeast(0.0)
+    val expandedMaximum = maximum + padding
+    return NumericHeatmapRange(
+        minimum = expandedMinimum,
+        maximum = if (expandedMaximum > expandedMinimum) expandedMaximum else expandedMinimum + 1e-6
+    )
+}
+
+/** 对已排序数据做线性插值分位数，保证同一冻结输入始终得到确定性色带。 */
+private fun percentile(sortedValues: List<Double>, fraction: Double): Double {
+    require(sortedValues.isNotEmpty()) { "分位数输入不能为空" }
+    require(fraction in 0.0..1.0) { "分位数比例必须位于0到1之间" }
+    if (sortedValues.size == 1) return sortedValues.single()
+    val position = fraction * (sortedValues.lastIndex)
+    val lowerIndex = kotlin.math.floor(position).toInt()
+    val upperIndex = kotlin.math.ceil(position).toInt()
+    if (lowerIndex == upperIndex) return sortedValues[lowerIndex]
+    val weight = position - lowerIndex
+    return sortedValues[lowerIndex] * (1.0 - weight) + sortedValues[upperIndex] * weight
+}
+
+private data class NumericHeatmapRange(
+    val minimum: Double,
+    val maximum: Double
+)
+
+private const val MINIMUM_ROBUST_DISTRIBUTION_VALUES: Int = 8
 
 private fun buildFeatureScale(
     analyte: ArrayAnalyteResult,
@@ -867,8 +1065,8 @@ private fun ArrayHeatmapValueInput.toQcEncoding(
 /**
  * 将冻结结果解释成热力图专用的数值状态。
  *
- * 项目量程外没有精确浓度时仍保留方向状态，后续使用项目端点颜色显示；信号热力图则
- * 忽略浓度范围标志，防止旧运行的范围字段污染当前信号色带。
+ * 项目量程外没有精确浓度时仍保留方向状态，并把显示值投影到当前色带端点；方向符号负责
+ * 明确它只是边界结果。信号热力图忽略浓度范围标志，防止旧运行字段污染当前信号色带。
  */
 private fun ArrayHeatmapValueInput.resolveValueState(
     useConcentration: Boolean,
@@ -925,8 +1123,8 @@ private fun ArrayHeatmapValueInput.resolveValueState(
 /**
  * 只有确实无法解释的数值才进入“不可用”。
  *
- * 轻度和严重成像风险都保留已经得到的有限结果供用户复核；超项目量程由端点颜色和方向
- * 短线表达。只有当前显示维度确实没有有限值时才显示为无法计算。
+ * 轻度和严重成像风险都保留已经得到的有限结果供用户复核；单侧界限由色带端点投影和方向
+ * 短线共同表达。只有当前显示维度确实没有有限值时才显示为无法计算。
  */
 private fun ArrayHeatmapValueInput.isHardFailure(displayValue: Double?): Boolean {
     return resolveArrayMeasurementQuality(
@@ -1011,9 +1209,13 @@ private fun buildHeatmapModel(
         retestCount = retestCount,
         withinCalibrationRangeCount = quantifiedCount,
         calibrationExtrapolatedCount = estimatedCount,
-        outsideProjectRangeCount = measuredCells.count {
-            it.valueState == ArrayHeatmapValueState.BELOW_PROJECT_RANGE ||
-                it.valueState == ArrayHeatmapValueState.ABOVE_PROJECT_RANGE
+        outsideProjectRangeCount = measuredCells.count { cell ->
+            // 绘图状态会把可信边界和严重饱和的单侧界限也编码成上下方向；只有原始机器
+            // 状态明确写为项目量程外，才允许进入“超出项目量程”统计。
+            cell.reliableRangeStatus?.uppercase() in setOf(
+                "BELOW_PROJECT_RANGE",
+                "ABOVE_PROJECT_RANGE"
+            )
         },
         reliableCount = measuredCells.count {
             !it.qc.failure && !it.qc.warning

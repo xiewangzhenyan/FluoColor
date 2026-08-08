@@ -1064,11 +1064,11 @@
       },
       "siteIndex": 56,
       "rectified": {
-        "x": 834.676,
+        "x": 834.6759,
         "y": 364.3246
       },
       "original": {
-        "x": 650.001282,
+        "x": 650.001221,
         "y": 516.99884
       },
       "confidence": 0.9925,
@@ -1677,11 +1677,11 @@
       "siteIndex": 90,
       "rectified": {
         "x": 188.8933,
-        "y": 539.7832
+        "y": 539.7833
       },
       "original": {
         "x": 477.002594,
-        "y": 564.002441
+        "y": 564.002502
       },
       "confidence": 0.9884,
       "source": "candidate_refined",
@@ -1784,12 +1784,12 @@
       },
       "siteIndex": 96,
       "rectified": {
-        "x": 539.7858,
-        "y": 539.7858
+        "x": 539.7857,
+        "y": 539.7857
       },
       "original": {
-        "x": 571.003174,
-        "y": 564.003174
+        "x": 571.003113,
+        "y": 564.003113
       },
       "confidence": 0.9787,
       "source": "candidate_refined",
@@ -1820,8 +1820,8 @@
       },
       "siteIndex": 98,
       "rectified": {
-        "x": 659.2142,
-        "y": 539.7856
+        "x": 659.2143,
+        "y": 539.7857
       },
       "original": {
         "x": 602.996826,
@@ -1928,12 +1928,12 @@
       },
       "siteIndex": 104,
       "rectified": {
-        "x": 1010.1075,
-        "y": 539.78
+        "x": 1010.1077,
+        "y": 539.7801
       },
       "original": {
-        "x": 696.997559,
-        "y": 564.001587
+        "x": 696.99762,
+        "y": 564.001648
       },
       "confidence": 0.9881,
       "source": "candidate_refined",
@@ -2132,12 +2132,12 @@
       },
       "siteIndex": 115,
       "rectified": {
-        "x": 774.9527,
-        "y": 599.4999
+        "x": 774.9528,
+        "y": 599.5
       },
       "original": {
         "x": 634.002014,
-        "y": 579.999939
+        "y": 580.0
       },
       "confidence": 0.9985,
       "source": "candidate_refined",
@@ -2150,12 +2150,12 @@
       },
       "siteIndex": 116,
       "rectified": {
-        "x": 834.6705,
-        "y": 599.5
+        "x": 834.6703,
+        "y": 599.4999
       },
       "original": {
         "x": 649.999756,
-        "y": 580.0
+        "y": 579.999939
       },
       "confidence": 0.9958,
       "source": "candidate_refined",
@@ -2168,12 +2168,12 @@
       },
       "siteIndex": 117,
       "rectified": {
-        "x": 894.3999,
-        "y": 599.4999
+        "x": 894.4,
+        "y": 599.5
       },
       "original": {
-        "x": 666.000671,
-        "y": 579.999939
+        "x": 666.000732,
+        "y": 580.0
       },
       "confidence": 0.9717,
       "source": "candidate_refined",
@@ -2204,12 +2204,12 @@
       },
       "siteIndex": 119,
       "rectified": {
-        "x": 1010.1072,
-        "y": 599.4999
+        "x": 1010.1074,
+        "y": 599.5
       },
       "original": {
-        "x": 696.997498,
-        "y": 579.999939
+        "x": 696.997559,
+        "y": 580.0
       },
       "confidence": 0.9995,
       "source": "candidate_refined",
@@ -2259,7 +2259,7 @@
       "siteIndex": 122,
       "rectified": {
         "x": 306.3456,
-        "y": 658.1839
+        "y": 658.184
       },
       "original": {
         "x": 508.466888,
@@ -2354,11 +2354,11 @@
       },
       "siteIndex": 127,
       "rectified": {
-        "x": 599.4999,
+        "x": 599.5,
         "y": 659.223
       },
       "original": {
-        "x": 586.999939,
+        "x": 587.0,
         "y": 595.999207
       },
       "confidence": 0.9904,
@@ -2415,7 +2415,7 @@
         "x": 634.00177,
         "y": 595.997253
       },
-      "confidence": 0.9893,
+      "confidence": 0.9892,
       "source": "candidate_refined",
       "flags": []
     },
@@ -2480,7 +2480,7 @@
       },
       "siteIndex": 134,
       "rectified": {
-        "x": 1010.1076,
+        "x": 1010.1077,
         "y": 659.2186
       },
       "original": {
@@ -2534,11 +2534,11 @@
       },
       "siteIndex": 137,
       "rectified": {
-        "x": 306.3466,
+        "x": 306.3465,
         "y": 716.8178
       },
       "original": {
-        "x": 508.467163,
+        "x": 508.467133,
         "y": 611.428223
       },
       "confidence": 0.3,
@@ -2555,7 +2555,7 @@
       "siteIndex": 138,
       "rectified": {
         "x": 364.969,
-        "y": 716.8188
+        "y": 716.8189
       },
       "original": {
         "x": 524.171509,
@@ -2594,11 +2594,11 @@
       },
       "siteIndex": 140,
       "rectified": {
-        "x": 483.7988,
-        "y": 715.2013
+        "x": 483.7987,
+        "y": 715.2012
       },
       "original": {
-        "x": 556.004822,
+        "x": 556.004761,
         "y": 610.995178
       },
       "confidence": 0.955,
@@ -2630,12 +2630,12 @@
       },
       "siteIndex": 142,
       "rectified": {
-        "x": 599.4999,
-        "y": 715.2054
+        "x": 599.5,
+        "y": 715.2055
       },
       "original": {
-        "x": 586.999939,
-        "y": 610.996277
+        "x": 587.0,
+        "y": 610.996338
       },
       "confidence": 0.9768,
       "source": "candidate_refined",
@@ -2648,7 +2648,7 @@
       },
       "siteIndex": 143,
       "rectified": {
-        "x": 659.2144,
+        "x": 659.2145,
         "y": 715.2047
       },
       "original": {
@@ -2666,8 +2666,8 @@
       },
       "siteIndex": 144,
       "rectified": {
-        "x": 715.2018,
-        "y": 715.2018
+        "x": 715.2017,
+        "y": 715.2017
       },
       "original": {
         "x": 617.9953,
@@ -2744,12 +2744,12 @@
       },
       "siteIndex": 148,
       "rectified": {
-        "x": 950.3723,
-        "y": 715.2012
+        "x": 950.3724,
+        "y": 715.2014
       },
       "original": {
-        "x": 680.995117,
-        "y": 610.995178
+        "x": 680.995178,
+        "y": 610.995239
       },
       "confidence": 0.9704,
       "source": "candidate_refined",
@@ -2942,8 +2942,8 @@
       },
       "siteIndex": 159,
       "rectified": {
-        "x": 715.2438,
-        "y": 774.9796
+        "x": 715.2439,
+        "y": 774.9797
       },
       "original": {
         "x": 618.006592,
@@ -2961,11 +2961,11 @@
       "siteIndex": 160,
       "rectified": {
         "x": 775.324,
-        "y": 775.4584
+        "y": 775.4585
       },
       "original": {
         "x": 634.10144,
-        "y": 627.137451
+        "y": 627.137512
       },
       "confidence": 0.3,
       "source": "model_imputed",
@@ -3000,7 +3000,7 @@
       },
       "siteIndex": 162,
       "rectified": {
-        "x": 892.571,
+        "x": 892.5711,
         "y": 775.4609
       },
       "original": {
@@ -3110,8 +3110,8 @@
       },
       "siteIndex": 168,
       "rectified": {
-        "x": 364.3189,
-        "y": 834.681
+        "x": 364.319,
+        "y": 834.6811
       },
       "original": {
         "x": 523.997375,
@@ -3237,7 +3237,7 @@
       "siteIndex": 175,
       "rectified": {
         "x": 775.3133,
-        "y": 834.0877
+        "y": 834.0878
       },
       "original": {
         "x": 634.098572,
@@ -3276,12 +3276,12 @@
       },
       "siteIndex": 177,
       "rectified": {
-        "x": 892.5574,
-        "y": 834.0904
+        "x": 892.5575,
+        "y": 834.0905
       },
       "original": {
-        "x": 665.50708,
-        "y": 642.84436
+        "x": 665.507141,
+        "y": 642.844421
       },
       "confidence": 0.3,
       "source": "model_imputed",
@@ -3405,7 +3405,7 @@
       "siteIndex": 184,
       "rectified": {
         "x": 424.0498,
-        "y": 894.3991
+        "y": 894.3992
       },
       "original": {
         "x": 539.998657,
@@ -3423,11 +3423,11 @@
       "siteIndex": 185,
       "rectified": {
         "x": 483.7972,
-        "y": 894.3959
+        "y": 894.3958
       },
       "original": {
         "x": 556.004395,
-        "y": 658.999634
+        "y": 658.999573
       },
       "confidence": 0.9528,
       "source": "candidate_refined",
@@ -3621,11 +3621,11 @@
       "siteIndex": 196,
       "rectified": {
         "x": 248.6219,
-        "y": 950.378
+        "y": 950.3781
       },
       "original": {
         "x": 493.003296,
-        "y": 673.996643
+        "y": 673.996704
       },
       "confidence": 0.985,
       "source": "candidate_refined",
@@ -3728,12 +3728,12 @@
       },
       "siteIndex": 202,
       "rectified": {
-        "x": 599.4999,
-        "y": 950.3762
+        "x": 599.5,
+        "y": 950.3763
       },
       "original": {
-        "x": 586.999939,
-        "y": 673.996155
+        "x": 587.0,
+        "y": 673.996216
       },
       "confidence": 0.9918,
       "source": "candidate_refined",
@@ -3789,7 +3789,7 @@
         "x": 634.001831,
         "y": 673.996704
       },
-      "confidence": 0.9908,
+      "confidence": 0.9907,
       "source": "candidate_refined",
       "flags": []
     },
@@ -3980,11 +3980,11 @@
       },
       "siteIndex": 216,
       "rectified": {
-        "x": 539.7846,
+        "x": 539.7847,
         "y": 1010.108
       },
       "original": {
-        "x": 571.002808,
+        "x": 571.002869,
         "y": 689.997681
       },
       "confidence": 0.9903,
@@ -4138,19 +4138,19 @@
   ],
   "geometry": {
     "model": "homography",
-    "candidateSupportRatio": 0.906667,
+    "candidateSupportRatio": 0.933333,
     "trusted": true,
     "observedRatio": 0.92,
-    "geometryRmsePx": 1.59636,
+    "geometryRmsePx": 1.596361,
     "inlierCount": 207,
     "outlierCount": 18,
-    "meanConfidence": 0.924298
+    "meanConfidence": 0.924297
   },
   "frameQc": [],
   "locatorName": "PG-Grid Python reference",
   "locatorVersion": "2.0-adapted-to-2.1",
   "referenceMetadata": {
-    "referenceCoreSha256": "67620a2ed5921d22f30e7f881872ad6edf6ff0fe2007849f649afb30a3577a84",
+    "referenceCoreSha256": "e85152fc4011edf3d3f0575a6a1063aa590deb5ed01e9733055b2e6ce960d210",
     "algorithm": "PG-Grid V2.0 bundle-adjusted localization with PG-Quant V1.0"
   }
 }

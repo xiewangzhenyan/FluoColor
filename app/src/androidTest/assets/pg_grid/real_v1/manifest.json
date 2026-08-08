@@ -62,6 +62,102 @@
       "pythonUnitPolarity": "dark",
       "pythonCandidateSupportRatio": 0.924444,
       "pythonQualityStatus": "warn"
+    },
+    {
+      "id": "real_10x10_01_cropped",
+      "image": "images/real_10x10_01_cropped.jpg",
+      "sourceName": "由 real_10x10_01 沿检测芯片框外扩 4% 裁切，并按长边 1600px 降采样，用于覆盖 uCrop 紧裁场景",
+      "sha256": "504D111EED48C6775DC270B6FBA0FF8DD18A10791B9A8F054CCB109A9688A039",
+      "gridSize": 10,
+      "pixelWidth": 1366,
+      "pixelHeight": 1438,
+      "chipAreaFraction": 0.6915,
+      "pythonUnitPolarity": "dark",
+      "pythonChipRegionMethod": "opencv_bright_region_wide",
+      "pythonCandidateSupportRatio": 0.92,
+      "pythonGridCoverageRatio": 0.8936,
+      "pythonTrusted": true
+    },
+    {
+      "id": "real_10x10_02_cropped",
+      "image": "images/real_10x10_02_cropped.jpg",
+      "sourceName": "由 real_10x10_02 沿检测芯片框外扩 4% 裁切，并按长边 1600px 降采样，用于覆盖 uCrop 紧裁场景",
+      "sha256": "7B85E70B19E63E4A695F14F42D63F75A3B974F9CC90DC76404E0ADBB72A47F85",
+      "gridSize": 10,
+      "pixelWidth": 1359,
+      "pixelHeight": 1253,
+      "chipAreaFraction": 0.789,
+      "pythonUnitPolarity": "dark",
+      "pythonChipRegionMethod": "opencv_bright_region_wide",
+      "pythonCandidateSupportRatio": 0.78,
+      "pythonGridCoverageRatio": 0.859,
+      "pythonTrusted": true
+    },
+    {
+      "id": "real_15x15_01_cropped",
+      "image": "images/real_15x15_01_cropped.jpg",
+      "sourceName": "由 real_15x15_01 沿检测芯片框外扩 4% 裁切，并按长边 1600px 降采样，用于覆盖 uCrop 紧裁场景",
+      "sha256": "49A4AD82647FB27B4163C52F588941928C33C286ACFE7CA505136E0C919ED0ED",
+      "gridSize": 15,
+      "pixelWidth": 1279,
+      "pixelHeight": 1278,
+      "chipAreaFraction": 0.7914,
+      "pythonUnitPolarity": "dark",
+      "pythonChipRegionMethod": "opencv_bright_region_wide",
+      "pythonCandidateSupportRatio": 1.0,
+      "pythonGridCoverageRatio": 1.0,
+      "pythonTrusted": true
+    },
+    {
+      "id": "real_15x15_02_cropped",
+      "image": "images/real_15x15_02_cropped.jpg",
+      "sourceName": "由 real_15x15_02 沿检测芯片框外扩 4% 裁切，并按长边 1600px 降采样，用于覆盖 uCrop 紧裁场景",
+      "sha256": "2CFEBCCCA42187B7CF03E36CE18F7C3B8F24AC250BAECA123CDE80113D393DFA",
+      "gridSize": 15,
+      "pixelWidth": 1600,
+      "pixelHeight": 1598,
+      "chipAreaFraction": 0.831,
+      "pythonUnitPolarity": "dark",
+      "pythonChipRegionMethod": "opencv_bright_region_wide",
+      "pythonCandidateSupportRatio": 1.0,
+      "pythonGridCoverageRatio": 0.9912,
+      "pythonTrusted": true
+    },
+    {
+      "id": "real_15x15_03_cropped",
+      "image": "images/real_15x15_03_cropped.jpg",
+      "sourceName": "由 real_15x15_03 沿检测芯片框外扩 4% 裁切，并按长边 1600px 降采样，用于覆盖 uCrop 紧裁场景",
+      "sha256": "4897DDBD2BD4D426630BA89C80D214FED24D51ED157FC67151015647A9F9C26D",
+      "gridSize": 15,
+      "pixelWidth": 1600,
+      "pixelHeight": 1599,
+      "chipAreaFraction": 0.8257,
+      "pythonUnitPolarity": "dark",
+      "pythonChipRegionMethod": "opencv_bright_region_wide",
+      "pythonCandidateSupportRatio": 1.0,
+      "pythonGridCoverageRatio": 1.0,
+      "pythonTrusted": true
+    },
+    {
+      "id": "real_15x15_04_cropped",
+      "image": "images/real_15x15_04_cropped.jpg",
+      "sourceName": "由 real_15x15_04 沿检测芯片框外扩 4% 裁切，并按长边 1600px 降采样，用于覆盖 uCrop 紧裁场景",
+      "sha256": "694C2DE69C6BC53DC6A5FB88D51B7D0BB0CEFF6C1FBC33DE74D2C75813D2C0DB",
+      "gridSize": 15,
+      "pixelWidth": 804,
+      "pixelHeight": 818,
+      "chipAreaFraction": 0.5975,
+      "pythonUnitPolarity": "dark",
+      "pythonChipRegionMethod": "opencv_bright_region_wide",
+      "pythonCandidateSupportRatio": 1.0,
+      "pythonGridCoverageRatio": 1.0,
+      "pythonTrusted": true
     }
-  ]
+  ],
+  "croppedDerivation": {
+    "marginRatio": 0.04,
+    "maxSide": 1600,
+    "jpegQuality": 95,
+    "note": "紧裁语料由 tools/pg_grid/export_cropped_real_corpus.py 确定性派生，覆盖用户在 uCrop 中贴着芯片裁切后的定位鲁棒性。"
+  }
 }

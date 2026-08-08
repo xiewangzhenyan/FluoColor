@@ -373,7 +373,10 @@ object ArrayResultSnapshotMapper {
      *
      * `BELOW_RANGE` / `ABOVE_RANGE` 从当前版本起表示“已得到有限浓度，但属于标定范围外推”，
      * 因而允许携带浓度；旧运行曾在这两个状态下抑制浓度，空值也必须继续兼容。
-     * `BELOW_PROJECT_RANGE` / `ABOVE_PROJECT_RANGE` 才表示超过用户声明的项目量程，不能携带浓度。
+     * `BELOW_TRUSTED_RANGE` / `ABOVE_TRUSTED_RANGE` 表示新版可信边界外只能报告单侧界限；
+     * `BELOW_PROJECT_RANGE` / `ABOVE_PROJECT_RANGE` 表示超过用户声明的项目量程。以上四种
+     * 状态都不能携带伪精确浓度。写入端新增状态时，读取端必须同步识别，否则会把刚刚
+     * 完成的新运行误判为“冻结证据损坏”。
      */
     private fun hasValidMeasurementValues(measurement: SiteMeasurement): Boolean {
         if (measurement.primaryFeatureValue?.isFinite() == false) return false
@@ -384,7 +387,9 @@ object ArrayResultSnapshotMapper {
         return when (measurement.reliableRangeStatus?.uppercase()) {
             "BELOW_RANGE", "ABOVE_RANGE", "WITHIN_RANGE" -> measurement.concentrationValue == null ||
                 !measurement.concentrationUnit.isNullOrBlank()
-            "BELOW_PROJECT_RANGE", "ABOVE_PROJECT_RANGE" -> measurement.concentrationValue == null
+            "BELOW_TRUSTED_RANGE", "ABOVE_TRUSTED_RANGE",
+            "BELOW_PROJECT_RANGE", "ABOVE_PROJECT_RANGE" ->
+                measurement.concentrationValue == null
             null -> measurement.concentrationValue == null ||
                 !measurement.concentrationUnit.isNullOrBlank()
             else -> false

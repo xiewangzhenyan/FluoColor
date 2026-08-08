@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -75,6 +76,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoIconBadge
+import com.muc.fluocolorquant.ui.components.FluoMetricTile
 import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationIssue
@@ -458,7 +461,7 @@ private fun SpectrumEmptyState(
                     imageVector = Icons.Default.Science,
                     contentDescription = null,
                     tint = colorScheme.primary,
-                    modifier = Modifier.size(42.dp)
+                    modifier = Modifier.size(48.dp)
                 )
             }
 
@@ -683,20 +686,10 @@ private fun CalibrationComparisonCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(FluoRadius.chip))
-                        .background(colorScheme.secondary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Science,
-                        contentDescription = null,
-                        tint = colorScheme.onSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                FluoIconBadge(
+                    icon = Icons.Default.Science,
+                    accentColor = colorScheme.secondary
+                )
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -753,14 +746,12 @@ private fun CalibrationComparisonCard(
                     label = stringResource(R.string.spectrum_calibration_quality_score),
                     value = qualityScore?.let { stringResource(R.string.spectrum_calibration_quality_score_value, it) }
                         ?: "--",
-                    modifier = Modifier.weight(1f),
-                    highlightColor = colorScheme.secondary
+                    modifier = Modifier.weight(1f)
                 )
                 InfoItem(
                     label = stringResource(R.string.spectrum_calibration_rmse),
                     value = comparison.fitRmse?.let { String.format(Locale.US, "%.4f", it) } ?: "--",
-                    modifier = Modifier.weight(1f),
-                    highlightColor = Color(0xFFEF4444)
+                    modifier = Modifier.weight(1f)
                 )
             }
 
@@ -776,8 +767,7 @@ private fun CalibrationComparisonCard(
                             (it * 100.0).toInt()
                         )
                     } ?: "--",
-                    modifier = Modifier.weight(1f),
-                    highlightColor = Color(0xFF10B981)
+                    modifier = Modifier.weight(1f)
                 )
                 InfoItem(
                     label = stringResource(R.string.spectrum_calibration_peak_match),
@@ -786,8 +776,7 @@ private fun CalibrationComparisonCard(
                         comparison.detectedPeakCount,
                         comparison.referencePeakCount
                     ),
-                    modifier = Modifier.weight(1f),
-                    highlightColor = colorScheme.primary
+                    modifier = Modifier.weight(1f)
                 )
             }
 
@@ -801,16 +790,14 @@ private fun CalibrationComparisonCard(
                         value = comparison.meanAbsoluteResidual?.let {
                             String.format(Locale.US, "%.4f", it)
                         } ?: "--",
-                        modifier = Modifier.weight(1f),
-                        highlightColor = Color(0xFF8B5CF6)
+                        modifier = Modifier.weight(1f)
                     )
                     InfoItem(
                         label = stringResource(R.string.spectrum_calibration_max_residual),
                         value = comparison.maxResidual?.let {
                             String.format(Locale.US, "%.4f", it)
                         } ?: "--",
-                        modifier = Modifier.weight(1f),
-                        highlightColor = Color(0xFFF97316)
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -1006,7 +993,7 @@ private fun ComparisonImagePanel(
                             imageVector = Icons.Default.Image,
                             contentDescription = null,
                             tint = colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                         Text(
                             text = fallbackLabel,
@@ -1067,20 +1054,10 @@ private fun SpectrumCurveCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(FluoRadius.chip))
-                            .background(colorScheme.primary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ShowChart,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    FluoIconBadge(
+                        icon = Icons.Default.ShowChart,
+                        accentColor = colorScheme.primary
+                    )
                     Text(
                         text = stringResource(R.string.spectrum_curve_title),
                         fontWeight = FontWeight.Bold,
@@ -1154,7 +1131,12 @@ private fun CurveModeSegmentedControl(
             .padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        // 同行按钮统一取最高者的高度：Baseline Review 折行时不会只把这一行撑高、
+        // 造成 2×2 网格上下两行错落。
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.height(IntrinsicSize.Min)
+        ) {
             CurveModeSegmentButton(
                 text = stringResource(R.string.spectrum_curve_mode_raw),
                 selected = curveMode == SpectrumCurveMode.RAW,
@@ -1168,7 +1150,12 @@ private fun CurveModeSegmentedControl(
                 onClick = { onCurveModeChange(SpectrumCurveMode.CLASSIC) }
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        // 同行按钮统一取最高者的高度：Baseline Review 折行时不会只把这一行撑高、
+        // 造成 2×2 网格上下两行错落。
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.height(IntrinsicSize.Min)
+        ) {
             CurveModeSegmentButton(
                 text = stringResource(R.string.spectrum_curve_mode_baseline),
                 selected = curveMode == SpectrumCurveMode.BASELINE,
@@ -1246,20 +1233,10 @@ private fun PeakInfoCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(bottom = 16.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(FluoRadius.chip))
-                        .background(Color(0xFFFF6B6B)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                FluoIconBadge(
+                    icon = Icons.Default.Star,
+                    accentColor = colorScheme.tertiary
+                )
                 Text(
                     text = stringResource(R.string.spectrum_peak_result_title),
                     fontWeight = FontWeight.Bold,
@@ -1274,23 +1251,21 @@ private fun PeakInfoCard(
             ) {
                 InfoItem(
                     label = stringResource(R.string.spectrum_peak_wavelength),
-                    value = primaryPeak?.let { String.format(Locale.US, "%.1f nm", it.wavelength) } ?: "--",
-                    modifier = Modifier.weight(1f),
-                    highlightColor = Color(0xFFFF6B6B)
+                    value = primaryPeak?.let { String.format(Locale.US, "%.1f", it.wavelength) } ?: "--",
+                    unit = primaryPeak?.let { "nm" },
+                    modifier = Modifier.weight(1f)
                 )
                 
                 InfoItem(
                     label = stringResource(R.string.spectrum_peak_intensity),
                     value = primaryPeak?.let { String.format(Locale.US, "%.3f", it.intensity) } ?: "--",
-                    modifier = Modifier.weight(1f),
-                    highlightColor = MaterialTheme.colorScheme.primary
+                    modifier = Modifier.weight(1f)
                 )
                 
                 InfoItem(
                     label = stringResource(R.string.spectrum_data_points),
                     value = dataPointCount.toString(),
-                    modifier = Modifier.weight(1f),
-                    highlightColor = Color(0xFF10B981)
+                    modifier = Modifier.weight(1f)
                 )
             }
 
@@ -1304,20 +1279,18 @@ private fun PeakInfoCard(
                     InfoItem(
                         label = stringResource(R.string.spectrum_peak_prominence),
                         value = primaryPeak?.let { String.format(Locale.US, "%.3f", it.prominence) } ?: "--",
-                        modifier = Modifier.weight(1f),
-                        highlightColor = Color(0xFF8B5CF6)
+                        modifier = Modifier.weight(1f)
                     )
                     InfoItem(
                         label = stringResource(R.string.spectrum_peak_fwhm),
-                        value = primaryPeak?.let { String.format(Locale.US, "%.2f nm", it.fullWidthHalfMax) } ?: "--",
-                        modifier = Modifier.weight(1f),
-                        highlightColor = Color(0xFFF59E0B)
+                        value = primaryPeak?.let { String.format(Locale.US, "%.2f", it.fullWidthHalfMax) } ?: "--",
+                        unit = primaryPeak?.let { "nm" },
+                        modifier = Modifier.weight(1f)
                     )
                     InfoItem(
                         label = stringResource(R.string.spectrum_peak_snr),
                         value = primaryPeak?.let { String.format(Locale.US, "%.2f", it.signalToNoise) } ?: "--",
-                        modifier = Modifier.weight(1f),
-                        highlightColor = Color(0xFF06B6D4)
+                        modifier = Modifier.weight(1f)
                     )
                 }
 
@@ -1326,8 +1299,7 @@ private fun PeakInfoCard(
                 InfoItem(
                     label = stringResource(R.string.spectrum_peak_area),
                     value = primaryPeak?.let { String.format(Locale.US, "%.3f", it.area) } ?: "--",
-                    modifier = Modifier.fillMaxWidth(),
-                    highlightColor = Color(0xFFEC4899)
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
@@ -1695,35 +1667,27 @@ private fun SensitivityFilterChip(
 }
 
 /**
- * 信息项组件
+ * 光谱指标块，直接委派给统一的 [FluoMetricTile]。
+ *
+ * 旧实现是本页手搓的一套：标签在上、数值在下、居中对齐，单位直接拼进数值字符串，且没有
+ * 任何 `maxLines`。后果在真机上都能看到——"Peak Wavelength" 被从词中间断成
+ * "Peak Wavelengt / h"，"514.5 nm" 连着单位一起折行，三块指标因行数不同而高低不齐；
+ * 每块还各带一个硬编码高饱和色（全页共 7 种），与"低饱和状态色、颜色只表达语义"
+ * 的风格约束相悖（AGENTS.md 7.2）。
+ *
+ * 统一组件把数值与单位分开排版、限制标签行数、使用同一容器色，三块自然等高。
  */
 @Composable
 private fun InfoItem(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    highlightColor: Color = Color(0xFF5D6B98)
+    unit: String? = null
 ) {
-    val colorScheme = MaterialTheme.colorScheme
-    Column(
+    FluoMetricTile(
+        label = label,
+        value = value,
+        unit = unit,
         modifier = modifier
-            .clip(RoundedCornerShape(FluoRadius.badge))
-            .background(highlightColor.copy(alpha = 0.08f))
-            .border(1.dp, highlightColor.copy(alpha = 0.2f), RoundedCornerShape(FluoRadius.badge))
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = value,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = highlightColor
-        )
-    }
+    )
 }

@@ -38,6 +38,7 @@ import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshotCodec
 import java.util.Date
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -195,6 +196,43 @@ class ArrayResultSnapshotMapperTest {
         assertEquals(
             ArrayResultErrorCode.INVALID_MEASUREMENT,
             (result as ArrayResultLoadResult.Failure).errorCode
+        )
+    }
+
+    @Test
+    fun `可信边界外的单侧界限允许重建且不得携带伪精确浓度`() {
+        val fixture = fixture(rows = 10, columns = 10)
+        val boundOnly = measurement(
+            siteIndex = 1,
+            correctedSignalJson = null
+        ).copy(
+            concentrationValue = null,
+            concentrationUnit = "ng/mL",
+            reliableRangeStatus = "BELOW_TRUSTED_RANGE",
+            quantificationState = "BOUND_ONLY",
+            concentrationUpperBound = 6.0,
+            censoringDirection = "UPPER_BOUND"
+        )
+
+        val successful = ArrayResultSnapshotMapper.map(
+            fixture.source.copy(measurements = listOf(boundOnly))
+        )
+
+        val mapped = (successful as ArrayResultLoadResult.Success)
+            .snapshot.sites[1].measurements.single()
+        assertEquals("BELOW_TRUSTED_RANGE", mapped.reliableRangeStatus)
+        assertEquals("BOUND_ONLY", mapped.quantificationState)
+        assertEquals(6.0, mapped.concentrationUpperBound ?: Double.NaN, 0.0)
+        assertNull(mapped.concentrationValue)
+
+        val inconsistent = ArrayResultSnapshotMapper.map(
+            fixture.source.copy(
+                measurements = listOf(boundOnly.copy(concentrationValue = 5.5))
+            )
+        )
+        assertEquals(
+            ArrayResultErrorCode.INVALID_MEASUREMENT,
+            (inconsistent as ArrayResultLoadResult.Failure).errorCode
         )
     }
 

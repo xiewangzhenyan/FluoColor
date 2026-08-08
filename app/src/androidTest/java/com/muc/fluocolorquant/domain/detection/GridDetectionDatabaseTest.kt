@@ -154,7 +154,7 @@ class GridDetectionDatabaseTest {
             runId = runId,
             projectId = projectId,
             timestamp = Date(2_000L),
-            detectionModelUsed = "OpenCV PG-Grid 2.1.0",
+            detectionModelUsed = "OpenCV PG-Grid 2.2.0",
             concentrationModelUsed = null,
             status = "Completed",
             errorMessage = null,

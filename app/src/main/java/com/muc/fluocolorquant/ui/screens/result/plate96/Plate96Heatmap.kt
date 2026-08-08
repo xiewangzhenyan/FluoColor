@@ -147,8 +147,15 @@ private fun Plate96HeatmapWell(
     onClick: () -> Unit,
     modifier: Modifier
 ) {
+    // 单侧界限已经在绘图模型中投影到当前色带端点；箭头和数值模式的 < / > 负责提示
+    // 该颜色只表达量程方向，不代表保存了精确浓度。真正不可用的孔仍由 null 值显示为灰色。
     val baseColor = arrayHeatmapBaseColor(cell.normalizedValue, model.scale.mode)
     val textColor = if (baseColor.luminance() > 0.52f) Color(0xFF172033) else Color.White
+    val rangeMarkerColor = if (baseColor.luminance() > 0.52f) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)
+    } else {
+        Color.White.copy(alpha = 0.86f)
+    }
     val failureMarkerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.72f)
     val selectedRingColor = MaterialTheme.colorScheme.primary
     val unavailableText = stringResource(R.string.plate96_result_no_value_short)
@@ -164,8 +171,10 @@ private fun Plate96HeatmapWell(
         if (displayMode == Plate96ResultDisplayMode.VALUES) {
             Text(
                 text = when (cell.valueState) {
-                    ArrayHeatmapValueState.BELOW_PROJECT_RANGE -> "<"
-                    ArrayHeatmapValueState.ABOVE_PROJECT_RANGE -> ">"
+                    ArrayHeatmapValueState.BELOW_PROJECT_RANGE ->
+                        stringResource(R.string.array_heatmap_upper_bound_symbol)
+                    ArrayHeatmapValueState.ABOVE_PROJECT_RANGE ->
+                        stringResource(R.string.array_heatmap_lower_bound_symbol)
                     ArrayHeatmapValueState.QUANTIFIED,
                     ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED ->
                         cell.displayValue?.let(::formatArrayHeatmapValue) ?: unavailableText
@@ -184,25 +193,32 @@ private fun Plate96HeatmapWell(
         // 状态标记刻意使用低占用的圆周符号，既能识别又不会破坏96孔整体色带。
         Canvas(modifier = Modifier.fillMaxSize()) {
             val strokeWidth = (size.minDimension * 0.07f).coerceAtLeast(1f)
-            val markerColor = Color.White.copy(alpha = 0.86f)
             when (cell.valueState) {
                 ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED -> drawArc(
-                    color = markerColor,
+                    color = rangeMarkerColor,
                     startAngle = 205f,
                     sweepAngle = 130f,
                     useCenter = false,
                     style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                 )
-                ArrayHeatmapValueState.BELOW_PROJECT_RANGE -> drawRangeArrow(
-                    upward = false,
-                    color = markerColor,
-                    strokeWidth = strokeWidth
-                )
-                ArrayHeatmapValueState.ABOVE_PROJECT_RANGE -> drawRangeArrow(
-                    upward = true,
-                    color = markerColor,
-                    strokeWidth = strokeWidth
-                )
+                ArrayHeatmapValueState.BELOW_PROJECT_RANGE -> if (
+                    displayMode == Plate96ResultDisplayMode.HEATMAP
+                ) {
+                    drawRangeArrow(
+                        upward = false,
+                        color = rangeMarkerColor,
+                        strokeWidth = strokeWidth
+                    )
+                }
+                ArrayHeatmapValueState.ABOVE_PROJECT_RANGE -> if (
+                    displayMode == Plate96ResultDisplayMode.HEATMAP
+                ) {
+                    drawRangeArrow(
+                        upward = true,
+                        color = rangeMarkerColor,
+                        strokeWidth = strokeWidth
+                    )
+                }
                 ArrayHeatmapValueState.QUANTIFIED,
                 ArrayHeatmapValueState.UNAVAILABLE -> Unit
             }

@@ -68,10 +68,11 @@ class CalibrationModelSelectorTest {
     }
 
     @Test
-    fun `自动候选只包含线性4PL和5PL`() {
+    fun `自动候选只包含线性约束3PL约束4PL和正则5PL`() {
         assertEquals(
             setOf(
                 FittingFunction.LINEAR,
+                FittingFunction.HILL,
                 FittingFunction.RODBARD,
                 FittingFunction.LOGISTIC
             ),
@@ -96,6 +97,38 @@ class CalibrationModelSelectorTest {
         assertTrue(candidates.any { result ->
             result.allMetrics["Weighting Scheme"] == 3.0
         })
+    }
+
+    @Test
+    fun `约束3PL只在零浓度空白接近物理零点时参加自动拟合`() {
+        val concentrations = listOf(0.0, 1.0, 2.0, 4.0, 8.0, 16.0)
+        val physicalZeroPoints = concentrations.map { concentration ->
+            val signal = if (concentration == 0.0) {
+                0.0
+            } else {
+                100.0 * concentration.pow(1.4) /
+                    (4.0.pow(1.4) + concentration.pow(1.4))
+            }
+            concentration to signal
+        }
+        val rawBaselinePoints = physicalZeroPoints.map { (concentration, signal) ->
+            concentration to (signal + 80.0)
+        }
+
+        val physicalCandidates = FittingEngine.fitCalibrationCandidates(
+            physicalZeroPoints,
+            setOf(FittingFunction.HILL)
+        )
+        val rawCandidates = FittingEngine.fitCalibrationCandidates(
+            rawBaselinePoints,
+            setOf(FittingFunction.HILL)
+        )
+
+        assertTrue(physicalCandidates.any { it.function == FittingFunction.HILL })
+        assertTrue(physicalCandidates.all {
+            it.allMetrics["Student-t Degrees Of Freedom"] == 4.0
+        })
+        assertTrue(rawCandidates.isEmpty())
     }
 
     @Test

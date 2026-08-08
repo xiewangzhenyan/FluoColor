@@ -176,6 +176,69 @@ class ArrayCalibrationEngineTest {
     }
 
     @Test
+    fun `V2稳健推荐优先留一预测而不是训练集R方`() {
+        val predictiveLinear = candidate(FittingFunction.LINEAR, rSquared = 0.980).copy(
+            crossValidation = CalibrationCrossValidationMetrics(
+                validationLevelCount = 8,
+                successfulLevelCount = 8,
+                successRatio = 1.0,
+                medianRelativeErrorPercent = 6.0,
+                p90RelativeErrorPercent = 10.0,
+                endpointRelativeErrorPercent = 12.0,
+                parameterStabilityScore = 0.95
+            )
+        )
+        val overfitFiveParameter = candidate(FittingFunction.LOGISTIC, rSquared = 0.9999).copy(
+            crossValidation = CalibrationCrossValidationMetrics(
+                validationLevelCount = 8,
+                successfulLevelCount = 6,
+                successRatio = 0.75,
+                medianRelativeErrorPercent = 3.0,
+                p90RelativeErrorPercent = 30.0,
+                endpointRelativeErrorPercent = 80.0,
+                parameterStabilityScore = 0.40
+            )
+        )
+
+        val selected = CalibrationRecommendationEngine.recommend(
+            candidates = listOf(overfitFiveParameter, predictiveLinear),
+            policy = CalibrationPolicy.DEFAULT
+        )
+
+        assertEquals(FittingFunction.LINEAR, requireNotNull(selected).function)
+    }
+
+    @Test
+    fun `按浓度水平留一生成预测指标且可信扩展不读取未知样品`() {
+        val observations = listOf(1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0).mapIndexed {
+                index, concentration ->
+            CalibrationStandardObservation(
+                siteIndex = index,
+                concentration = concentration,
+                signals = mapOf(
+                    AnalysisPrimaryFeature.FLUORESCENCE_SNR to (2.0 * concentration + 1.0)
+                )
+            )
+        }
+        val result = engine.fit(
+            draft(observations).copy(
+                requestedFunctions = setOf(FittingFunction.LINEAR),
+                projectRangeMin = 0.0,
+                projectRangeMax = 100.0
+            )
+        )
+        val linear = requireNotNull(result.candidates.single())
+        val validation = requireNotNull(linear.crossValidation)
+
+        assertEquals(7, validation.validationLevelCount)
+        assertEquals(7, validation.successfulLevelCount)
+        assertEquals(1.0, validation.successRatio, 0.0)
+        assertTrue((validation.medianRelativeErrorPercent ?: 1.0) < 1e-6)
+        assertTrue((validation.parameterStabilityScore ?: 0.0) > 0.99)
+        assertTrue((linear.trustedRange?.maximum ?: 64.0) > 64.0)
+    }
+
+    @Test
     fun `R方优先策略不会应用简单模型保护`() {
         val linear = candidate(FittingFunction.LINEAR, rSquared = 0.9980)
         val fourParameter = candidate(FittingFunction.RODBARD, rSquared = 0.9995)

@@ -7,6 +7,8 @@ import android.graphics.PointF
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -388,12 +390,22 @@ private fun AutoCalibrationSection(
         }
     }
 
+    // 主操作按钮固定在底部，其余内容独立滚动。
+    //
+    // 此前整页是一个不可滚动的 Column，并用 `Spacer(weight(1f))` 把按钮压到底：内容一旦
+    // 超过一屏——实测加到第 3 个参考波长就会——按钮被挤出可视区，而页面又滚不动，用户
+    // 完全无法提交标定。参考波长数量本来就是用户可增的，这条路径必然会被走到。
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+            .padding(16.dp)
     ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
         // ========== 标定图区域 ==========
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -549,10 +561,11 @@ private fun AutoCalibrationSection(
                 )
             }
         }
+        }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // ========== 主操作按钮 ==========
+        // ========== 主操作按钮（常驻底部，不随内容滚走）==========
         Button(
             onClick = {
                 if (isFittingCompleted) {

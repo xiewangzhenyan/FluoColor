@@ -41,6 +41,7 @@ import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
 import com.muc.fluocolorquant.domain.detection.photometry.RgbPhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.SitePhotometryQc
 import com.muc.fluocolorquant.domain.detection.quantification.EndpointQuantificationReason
+import com.muc.fluocolorquant.domain.detection.quantification.ENDPOINT_QUANTIFIER_VERSION
 import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningBatchResult
 import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningFailureReason
 import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningPrediction
@@ -288,6 +289,10 @@ class GridDetectionCoordinatorTest {
         assertTrue(batch.modelExecutable)
         assertEquals(3, batch.total)
         assertEquals(1, batch.quantifiedCount)
+        assertEquals(0, batch.estimatedCount)
+        assertEquals(1, batch.boundOnlyCount)
+        assertEquals(1, batch.unavailableCount)
+        assertEquals(2, batch.retestCount)
         assertEquals(1, batch.outOfRangeCount)
         assertEquals(1, batch.siteSignalOnlyCount)
         assertEquals("standard_curve_applied_with_warnings", batch.execution)
@@ -298,9 +303,11 @@ class GridDetectionCoordinatorTest {
         assertEquals(10.0, requireNotNull(quantified.concentrationValue), 1e-9)
         assertNull(outOfRange.concentrationValue)
         assertEquals("ABOVE_RANGE", outOfRange.reliableRangeStatus)
+        assertEquals("BOUND_ONLY", outOfRange.quantificationState)
         assertNull(nonFinite.concentrationValue)
+        assertEquals("UNAVAILABLE", nonFinite.quantificationState)
         val nonFiniteQc = JsonParser().parse(nonFinite.quantificationQcJson).asJsonObject
-        assertEquals("SIGNAL_ONLY", nonFiniteQc["status"].asString)
+        assertEquals("UNAVAILABLE", nonFiniteQc["status"].asString)
         assertEquals("SITE", nonFiniteQc["scope"].asString)
         assertEquals(EndpointQuantificationReason.NON_FINITE_SIGNAL.name, nonFiniteQc["reason"].asString)
 
@@ -311,6 +318,10 @@ class GridDetectionCoordinatorTest {
         )
         assertEquals(3, modelUsage["total"])
         assertEquals(1, modelUsage["quantifiedCount"])
+        assertEquals(0, modelUsage["estimatedCount"])
+        assertEquals(1, modelUsage["boundOnlyCount"])
+        assertEquals(1, modelUsage["unavailableCount"])
+        assertEquals(2, modelUsage["retestCount"])
         assertEquals(1, modelUsage["outOfRangeCount"])
         assertEquals(1, modelUsage["siteSignalOnlyCount"])
         assertEquals("standard_curve_applied_with_warnings", modelUsage["execution"])
@@ -333,9 +344,13 @@ class GridDetectionCoordinatorTest {
 
         assertFalse(batch.modelExecutable)
         assertEquals("signal_only", batch.execution)
+        assertEquals(2, batch.unavailableCount)
+        assertEquals(2, batch.retestCount)
         assertTrue(batch.measurements.all { measurement ->
             val qc = JsonParser().parse(measurement.quantificationQcJson).asJsonObject
-            qc["scope"].asString == "MODEL"
+            qc["scope"].asString == "MODEL" &&
+                measurement.quantificationState == "UNAVAILABLE" &&
+                measurement.quantificationVersion == ENDPOINT_QUANTIFIER_VERSION
         })
         assertEquals("SignalOnlyCompleted", coordinator.statusForSignalOnlyAnalytes(setOf("cea")))
     }
@@ -594,9 +609,13 @@ class GridDetectionCoordinatorTest {
         assertFalse(batch.modelExecutable)
         assertEquals(0, batch.quantifiedCount)
         assertEquals(0, batch.siteSignalOnlyCount)
+        assertEquals(2, batch.unavailableCount)
+        assertEquals(2, batch.retestCount)
         assertEquals("signal_only", batch.execution)
         assertTrue(batch.measurements.all { measurement ->
             measurement.concentrationValue == null &&
+                measurement.quantificationState == "UNAVAILABLE" &&
+                measurement.quantificationVersion == ENDPOINT_QUANTIFIER_VERSION &&
                 JsonParser().parse(measurement.quantificationQcJson).asJsonObject["scope"].asString == "MODEL"
         })
         assertEquals("SignalOnlyCompleted", coordinator.statusForSignalOnlyAnalytes(setOf("cea")))

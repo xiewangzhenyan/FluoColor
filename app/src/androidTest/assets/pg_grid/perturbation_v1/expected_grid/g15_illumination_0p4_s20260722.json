@@ -171,7 +171,7 @@
         "x": 571.002319,
         "y": 470.002045
       },
-      "confidence": 0.9891,
+      "confidence": 0.989,
       "source": "candidate_refined",
       "flags": []
     },
@@ -1449,7 +1449,7 @@
         "x": 507.999115,
         "y": 549.004028
       },
-      "confidence": 0.9523,
+      "confidence": 0.9522,
       "source": "candidate_refined",
       "flags": []
     },
@@ -1568,11 +1568,11 @@
       },
       "siteIndex": 84,
       "rectified": {
-        "x": 715.2099,
-        "y": 483.7998
+        "x": 715.21,
+        "y": 483.7999
       },
       "original": {
-        "x": 617.997498,
+        "x": 617.997559,
         "y": 549.005066
       },
       "confidence": 0.9565,
@@ -1820,8 +1820,8 @@
       },
       "siteIndex": 98,
       "rectified": {
-        "x": 659.2135,
-        "y": 539.7854
+        "x": 659.2136,
+        "y": 539.7855
       },
       "original": {
         "x": 602.996643,
@@ -1946,12 +1946,12 @@
       },
       "siteIndex": 105,
       "rectified": {
-        "x": 188.9011,
-        "y": 599.4999
+        "x": 188.9012,
+        "y": 599.5
       },
       "original": {
-        "x": 477.0047,
-        "y": 579.999939
+        "x": 477.00473,
+        "y": 580.0
       },
       "confidence": 0.9998,
       "source": "candidate_refined",
@@ -2019,11 +2019,11 @@
       "siteIndex": 109,
       "rectified": {
         "x": 424.0553,
-        "y": 599.4999
+        "y": 599.5
       },
       "original": {
         "x": 540.000122,
-        "y": 579.999939
+        "y": 580.0
       },
       "confidence": 0.9982,
       "source": "candidate_refined",
@@ -2108,12 +2108,12 @@
       },
       "siteIndex": 114,
       "rectified": {
-        "x": 715.2022,
-        "y": 599.4999
+        "x": 715.2023,
+        "y": 599.5
       },
       "original": {
-        "x": 617.995422,
-        "y": 579.999939
+        "x": 617.995483,
+        "y": 580.0
       },
       "confidence": 0.9777,
       "source": "candidate_refined",
@@ -2126,12 +2126,12 @@
       },
       "siteIndex": 115,
       "rectified": {
-        "x": 774.951,
-        "y": 599.4999
+        "x": 774.9512,
+        "y": 599.5
       },
       "original": {
-        "x": 634.001526,
-        "y": 579.999939
+        "x": 634.001587,
+        "y": 580.0
       },
       "confidence": 0.998,
       "source": "candidate_refined",
@@ -2144,12 +2144,12 @@
       },
       "siteIndex": 116,
       "rectified": {
-        "x": 834.6875,
-        "y": 599.5
+        "x": 834.6874,
+        "y": 599.4999
       },
       "original": {
         "x": 650.004333,
-        "y": 580.0
+        "y": 579.999939
       },
       "confidence": 0.9965,
       "source": "candidate_refined",
@@ -2162,7 +2162,7 @@
       },
       "siteIndex": 117,
       "rectified": {
-        "x": 894.3978,
+        "x": 894.3979,
         "y": 599.4999
       },
       "original": {
@@ -2199,11 +2199,11 @@
       "siteIndex": 119,
       "rectified": {
         "x": 1010.116,
-        "y": 599.4999
+        "y": 599.5
       },
       "original": {
         "x": 696.999878,
-        "y": 579.999939
+        "y": 580.0
       },
       "confidence": 0.9998,
       "source": "candidate_refined",
@@ -2253,7 +2253,7 @@
       "siteIndex": 122,
       "rectified": {
         "x": 304.6565,
-        "y": 659.2207
+        "y": 659.2206
       },
       "original": {
         "x": 508.014404,
@@ -2306,12 +2306,12 @@
       },
       "siteIndex": 125,
       "rectified": {
-        "x": 483.8334,
-        "y": 659.2116
+        "x": 483.8335,
+        "y": 659.2117
       },
       "original": {
         "x": 556.014099,
-        "y": 595.996094
+        "y": 595.996155
       },
       "confidence": 0.9675,
       "source": "candidate_refined",
@@ -2378,7 +2378,7 @@
       },
       "siteIndex": 129,
       "rectified": {
-        "x": 715.2042,
+        "x": 715.2043,
         "y": 659.2172
       },
       "original": {
@@ -2630,12 +2630,12 @@
       },
       "siteIndex": 143,
       "rectified": {
-        "x": 659.216,
-        "y": 715.2048
+        "x": 659.2161,
+        "y": 715.2049
       },
       "original": {
         "x": 602.997314,
-        "y": 610.996094
+        "y": 610.996155
       },
       "confidence": 0.9682,
       "source": "candidate_refined",
@@ -3243,11 +3243,11 @@
       "siteIndex": 177,
       "rectified": {
         "x": 894.4017,
-        "y": 834.6791
+        "y": 834.6792
       },
       "original": {
         "x": 666.00116,
-        "y": 643.002075
+        "y": 643.002136
       },
       "confidence": 0.9709,
       "source": "candidate_refined",
@@ -3351,11 +3351,11 @@
       "siteIndex": 183,
       "rectified": {
         "x": 364.3285,
-        "y": 894.4001
+        "y": 894.4002
       },
       "original": {
         "x": 523.999939,
-        "y": 659.000732
+        "y": 659.000793
       },
       "confidence": 0.9703,
       "source": "candidate_refined",
@@ -3494,12 +3494,12 @@
       },
       "siteIndex": 191,
       "rectified": {
-        "x": 834.6822,
-        "y": 894.3995
+        "x": 834.6823,
+        "y": 894.3997
       },
       "original": {
         "x": 650.00293,
-        "y": 659.000549
+        "y": 659.00061
       },
       "confidence": 0.9706,
       "source": "candidate_refined",
@@ -3627,7 +3627,7 @@
         "x": 524.000244,
         "y": 673.99646
       },
-      "confidence": 0.9885,
+      "confidence": 0.9884,
       "source": "candidate_refined",
       "flags": []
     },
@@ -4102,19 +4102,19 @@
   ],
   "geometry": {
     "model": "homography",
-    "candidateSupportRatio": 0.968889,
+    "candidateSupportRatio": 1.0,
     "trusted": true,
     "observedRatio": 1.0,
     "geometryRmsePx": 1.468087,
     "inlierCount": 225,
     "outlierCount": 0,
-    "meanConfidence": 0.980941
+    "meanConfidence": 0.98094
   },
   "frameQc": [],
   "locatorName": "PG-Grid Python reference",
   "locatorVersion": "2.0-adapted-to-2.1",
   "referenceMetadata": {
-    "referenceCoreSha256": "67620a2ed5921d22f30e7f881872ad6edf6ff0fe2007849f649afb30a3577a84",
+    "referenceCoreSha256": "e85152fc4011edf3d3f0575a6a1063aa590deb5ed01e9733055b2e6ce960d210",
     "algorithm": "PG-Grid V2.0 bundle-adjusted localization with PG-Quant V1.0"
   }
 }

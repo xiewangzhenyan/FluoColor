@@ -220,6 +220,36 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migrate14To15_addsStructuredQuantificationIntervalColumns() {
+        migrationHelper.createDatabase(VALIDATION_DATABASE_NAME, 14).close()
+
+        migrationHelper.runMigrationsAndValidate(
+            VALIDATION_DATABASE_NAME,
+            15,
+            true,
+            DatabaseMigrations.MIGRATION_14_15
+        ).use { database ->
+            val columns = mutableSetOf<String>()
+            database.query("PRAGMA table_info(`site_measurements`)").use { cursor ->
+                val nameIndex = cursor.getColumnIndexOrThrow("name")
+                while (cursor.moveToNext()) columns += cursor.getString(nameIndex)
+            }
+            assertTrue(
+                columns.containsAll(
+                    setOf(
+                        "quantificationState",
+                        "concentrationLowerBound",
+                        "concentrationUpperBound",
+                        "intervalConfidenceLevel",
+                        "censoringDirection",
+                        "quantificationVersion"
+                    )
+                )
+            )
+        }
+    }
+
     /** 在 Room 11 中写入一条新检测链的真实科学信号，验证迁移不会丢失已有数据。 */
     private fun SupportSQLiteDatabase.insertVersion11SiteMeasurementFixture() {
         execSQL("INSERT INTO analytes (id, name) VALUES ('analyte-v11', 'CEA')")

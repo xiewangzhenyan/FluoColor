@@ -1,6 +1,7 @@
 package com.muc.fluocolorquant.domain.result
 
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapScaleMode
+import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapConcentrationScaleMode
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueState
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueInput
 import com.muc.fluocolorquant.ui.screens.result.array.buildAnalyteHeatmapModel
@@ -42,6 +43,36 @@ class ArrayHeatmapScaleTest {
         assertFalse(model.cells[1].qc.warning)
         assertTrue(model.cells[2].qc.warning)
         assertFalse(model.cells[2].qc.failure)
+    }
+
+    @Test
+    fun `本次分布使用稳健分位数展开颜色且不受单个离群值支配`() {
+        val analyte = analyte(reliableMin = 0.0, reliableMax = 1000.0).copy(
+            projectRangeMin = 0.0,
+            projectRangeMax = 1000.0
+        )
+        // 0～190构成主体分布，1000模拟单个偶发离群值。21个值的P5/P95恰好为10和190。
+        val concentrations = (0..19).map { it * 10.0 } + 1000.0
+        val model = buildAnalyteHeatmapModel(
+            rows = 1,
+            columns = concentrations.size,
+            analyte = analyte,
+            inputs = concentrations.mapIndexed { siteIndex, concentration ->
+                input(siteIndex = siteIndex, concentration = concentration)
+            },
+            concentrationScaleMode = ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION
+        )
+
+        assertEquals(ArrayHeatmapScaleMode.CONCENTRATION, model.scale.mode)
+        assertEquals(ArrayHeatmapConcentrationScaleMode.RUN_DISTRIBUTION, model.scale.concentrationScaleMode)
+        assertEquals(10.0, model.scale.minimum, 1e-9)
+        assertEquals(190.0, model.scale.maximum, 1e-9)
+        assertEquals(0.5f, model.cells[10].normalizedValue ?: Float.NaN, 1e-6f)
+        assertTrue(
+            model.scale.availableConcentrationScaleModes.containsAll(
+                ArrayHeatmapConcentrationScaleMode.entries
+            )
+        )
     }
 
     @Test
@@ -147,11 +178,14 @@ class ArrayHeatmapScaleTest {
         assertEquals(ArrayHeatmapValueState.QUANTIFIED, model.cells[0].valueState)
         assertEquals(ArrayHeatmapValueState.CALIBRATION_EXTRAPOLATED, model.cells[1].valueState)
         assertEquals(ArrayHeatmapValueState.ABOVE_PROJECT_RANGE, model.cells[2].valueState)
+        assertEquals(1.0f, model.cells[2].normalizedValue)
         assertEquals(ArrayHeatmapValueState.UNAVAILABLE, model.cells[3].valueState)
+        // 可信边界外属于“需要复测/仅报告界限”，不能被展示层伪装成项目量程外。
+        assertEquals(0, model.outsideProjectRangeCount)
     }
 
     @Test
-    fun `超项目量程使用端点颜色并保留方向状态`() {
+    fun `超项目量程保留方向状态并投影到色带端点`() {
         val analyte = analyte(reliableMin = 0.0, reliableMax = 100.0)
         val model = buildAnalyteHeatmapModel(
             rows = 1,

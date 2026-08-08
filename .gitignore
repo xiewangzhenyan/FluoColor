@@ -13,3 +13,10 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# 本地诊断数据库、ADB 截图和构建复验产物体积较大，只用于开发排查，不进入科研源码仓库。
+/tmp/
+
+# Python 回归语料生成工具的字节码依赖本机解释器版本，提交后既不可复现也会制造无意义差异。
+__pycache__/
+*.py[cod]
