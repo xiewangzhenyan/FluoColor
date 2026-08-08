@@ -1,21 +1,32 @@
 package com.muc.fluocolorquant.di
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.muc.fluocolorquant.data.AppDatabase
+import com.muc.fluocolorquant.data.DefaultResourceDatabaseCallback
+import com.muc.fluocolorquant.data.DefaultUserDatabaseCallback
+import com.muc.fluocolorquant.data.MicrofluidicDemoDatabaseCallback
+import com.muc.fluocolorquant.data.migration.DatabaseMigrations
 import com.muc.fluocolorquant.data.dao.DetectionRunDao
+import com.muc.fluocolorquant.data.dao.AcquisitionProfileDao
+import com.muc.fluocolorquant.data.dao.AnalysisModelDao
+import com.muc.fluocolorquant.data.dao.CaptureArtifactDao
+import com.muc.fluocolorquant.data.dao.CarrierProfileDao
 import com.muc.fluocolorquant.data.dao.ProjectDao
 import com.muc.fluocolorquant.data.dao.UserDao
 import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.dao.AnalyteDao
 import com.muc.fluocolorquant.data.dao.ReagentDao
+import com.muc.fluocolorquant.data.dao.ResultValidationDao
 import com.muc.fluocolorquant.data.dao.CurveModelDao
 import com.muc.fluocolorquant.data.dao.ProjectAnalyteJoinDao
 import com.muc.fluocolorquant.data.dao.ExperimentTemplateDao
 import com.muc.fluocolorquant.data.dao.SpectrumDao
+import com.muc.fluocolorquant.data.dao.SiteMeasurementDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -38,15 +49,38 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
-        return Room.databaseBuilder(
+        val builder = Room.databaseBuilder(
             context,
             AppDatabase::class.java,
             "fluocolor_database"
         )
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
-        .addCallback(prepopulateCallback)  // 添加预填充回调
-        .fallbackToDestructiveMigration() // 版本更新时，如果没有提供迁移路径，则重建数据库
-        .build()
+        .addMigrations(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7,
+            MIGRATION_7_8,
+            MIGRATION_8_9,
+            DatabaseMigrations.MIGRATION_9_10,
+            DatabaseMigrations.MIGRATION_10_11,
+            DatabaseMigrations.MIGRATION_11_12,
+            DatabaseMigrations.MIGRATION_12_13,
+            DatabaseMigrations.MIGRATION_13_14,
+            DatabaseMigrations.MIGRATION_14_15
+        )
+        .addCallback(prepopulateCallback)  // 首次建库时预填充分析物与试剂
+        .addCallback(DefaultUserDatabaseCallback) // 每次打开时幂等确保默认登录账户存在
+        .addCallback(DefaultResourceDatabaseCallback(context)) // 所有构建：幂等播种默认采集档案与常用载体
+
+        // 组会演示资源只进入可调试构建。Release 不注册该回调，真实实验数据库不会被
+        // 演示标准曲线和演示模板污染；Debug 则可在首次或已有数据库打开时幂等补齐。
+        val isDebuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        if (isDebuggable) {
+            builder.addCallback(MicrofluidicDemoDatabaseCallback(context))
+        }
+        return builder.build()
     }
     
     // 版本6到版本7的迁移策略
@@ -688,4 +722,35 @@ object DatabaseModule {
     fun provideExperimentTemplateDao(appDatabase: AppDatabase): ExperimentTemplateDao {
         return appDatabase.experimentTemplateDao()
     }
-} 
+
+    @Provides
+    fun provideCarrierProfileDao(appDatabase: AppDatabase): CarrierProfileDao {
+        return appDatabase.carrierProfileDao()
+    }
+
+    @Provides
+    fun provideAcquisitionProfileDao(appDatabase: AppDatabase): AcquisitionProfileDao {
+        return appDatabase.acquisitionProfileDao()
+    }
+
+    @Provides
+    fun provideAnalysisModelDao(appDatabase: AppDatabase): AnalysisModelDao {
+        return appDatabase.analysisModelDao()
+    }
+
+    @Provides
+    fun provideCaptureArtifactDao(appDatabase: AppDatabase): CaptureArtifactDao {
+        return appDatabase.captureArtifactDao()
+    }
+
+    @Provides
+    fun provideSiteMeasurementDao(appDatabase: AppDatabase): SiteMeasurementDao {
+        return appDatabase.siteMeasurementDao()
+    }
+
+    /** 预测精度验证使用独立DAO，禁止通过旧孔位结果表覆盖冻结浓度。 */
+    @Provides
+    fun provideResultValidationDao(appDatabase: AppDatabase): ResultValidationDao {
+        return appDatabase.resultValidationDao()
+    }
+}

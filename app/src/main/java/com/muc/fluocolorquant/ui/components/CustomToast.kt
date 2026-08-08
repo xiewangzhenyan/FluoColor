@@ -1,9 +1,6 @@
 package com.muc.fluocolorquant.ui.components
 
-import android.content.Context
-import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,32 +20,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 自定义Toast类型
  */
 enum class ToastType {
     SUCCESS, INFO, WARNING, ERROR
-}
-
-/**
- * 显示自定义Toast
- * @param message Toast消息内容
- * @param duration 显示时长（毫秒）
- * @param type Toast类型（成功、信息、警告、错误）
- */
-fun Context.showCustomToast(
-    message: String,
-    duration: Long = 2000,
-    type: ToastType = ToastType.INFO
-) {
-    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-    
-    // 实际项目中，可以在这里使用自定义View实现自定义Toast
-    // 但由于在Compose中，更优雅的方式是使用Composable函数
 }
 
 /**
@@ -84,7 +63,6 @@ fun CustomToast(
     duration: Long = 2000,
     onDismiss: () -> Unit
 ) {
-    val coroutineScope = rememberCoroutineScope()
     var visible by remember { mutableStateOf(true) }
     val alpha by animateFloatAsState(targetValue = if (visible) 1f else 0f)
     
@@ -114,7 +92,7 @@ fun CustomToast(
             modifier = Modifier
                 .padding(bottom = 90.dp, start = 16.dp, end = 16.dp)
                 .alpha(alpha),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(FluoRadius.chip),
             shadowElevation = 6.dp,
             color = backgroundColor.copy(alpha = 0.9f)
         ) {
@@ -185,4 +163,4 @@ fun ToastHost() {
             onDismiss = { toastManager.hideToast() }
         )
     }
-} 
+}

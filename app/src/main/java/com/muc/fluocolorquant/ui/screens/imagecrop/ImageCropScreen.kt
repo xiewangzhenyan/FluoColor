@@ -10,9 +10,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.yalantis.ucrop.UCrop
@@ -31,6 +34,11 @@ fun ImageCropScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // uCrop 的配置在 LaunchedEffect 里构造，而 stringResource 与 MaterialTheme 只能在
+    // Composable 上下文读取，因此先取到局部变量（AGENTS.md 5）。
+    val cropTitle = stringResource(R.string.image_crop_title)
+    val accentColorArgb = MaterialTheme.colorScheme.primary.toArgb()
     // var isLoading by remember { mutableStateOf(false) } // isLoading 似乎没有在UI中使用，可以考虑移除
 
     val destinationUri = remember {
@@ -103,13 +111,21 @@ fun ImageCropScreen(
             try {
                 val options = UCrop.Options()
 
-                options.setToolbarTitle("                   Edit Photo") // 设置Toolbar标题
-                options.setToolbarColor(android.graphics.Color.BLACK) // 示例橙色，与图2类似
-                options.setStatusBarColor(android.graphics.Color.BLACK) // 示例深橙色
-                options.setToolbarWidgetColor(android.graphics.Color.WHITE) // Toolbar控件颜色（如箭头）
-                options.setActiveControlsWidgetColor(android.graphics.Color.parseColor("#FFA500")) // 底部活动控件的颜色
-                options.setCropFrameColor(android.graphics.Color.WHITE) // 裁切框颜色
-                options.setCropGridColor(android.graphics.Color.parseColor("#80FFFFFF")) // 裁切网格颜色
+                // uCrop 运行在自己的 Activity 里，不受 Compose 主题影响，只能通过 Options
+                // 逐项配色。原实现把底部活动控件设成橙色 #FFA500（注释里还写着"示例橙色"），
+                // 从科研蓝的应用跳进裁剪页会突然出现一片橙，是全流程最明显的视觉断层。
+                // 这里改为跟随应用主色。
+                //
+                // 工具栏保持黑色不动：裁剪页整屏是照片，深色工具栏与暗化蒙版才能让用户
+                // 看清真实图像；此处的黑白与主题无关，属于"浮在照片上的控件"，
+                // 与热力图色带同理，不应跟随明暗主题。
+                options.setToolbarTitle(cropTitle)
+                options.setToolbarColor(android.graphics.Color.BLACK)
+                options.setStatusBarColor(android.graphics.Color.BLACK)
+                options.setToolbarWidgetColor(android.graphics.Color.WHITE)
+                options.setActiveControlsWidgetColor(accentColorArgb)
+                options.setCropFrameColor(android.graphics.Color.WHITE)
+                options.setCropGridColor(android.graphics.Color.parseColor("#80FFFFFF"))
 
 
                 options.setAllowedGestures(

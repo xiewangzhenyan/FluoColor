@@ -16,6 +16,8 @@ import java.util.UUID
  * @param name 模型名称
  * @param function 拟合函数类型
  * @param pixelType 像素类型
+ * @param signalFeatureCode 版本化信号特征编码；旧记录为空时回退 [pixelType] 的 Legacy 键
+ * @param processorVersion 生成该信号特征的处理器版本
  * @param parameters 函数参数映射表
  * @param metrics 评估指标映射表
  * @param dataPoints 原始数据点列表
@@ -32,9 +34,11 @@ data class CurveModel(
     val name: String,
     val function: FittingFunction,
     val pixelType: PixelType,
+    val signalFeatureCode: String? = null,
+    val processorVersion: String? = null,
     val parameters: Map<String, Double>,
     val metrics: Map<String, Double>? = null,
     val dataPoints: List<Pair<Double, Double>>? = null,
     val createdAt: Date = Date(),
     val updatedAt: Date = Date()
-) 
+)

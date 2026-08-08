@@ -1,0 +1,2874 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 14,
+    "identityHash": "002f766456f2374693ac6968d4540c22",
+    "entities": [
+      {
+        "tableName": "users",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `username` TEXT NOT NULL, `password` TEXT NOT NULL, `email` TEXT, `profilePicUrl` TEXT, `createdAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "username",
+            "columnName": "username",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "password",
+            "columnName": "password",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "email",
+            "columnName": "email",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "profilePicUrl",
+            "columnName": "profilePicUrl",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "projects",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `detectionMode` TEXT NOT NULL, `recognitionType` TEXT NOT NULL, `imageUri` TEXT NOT NULL, `rows` INTEGER NOT NULL, `columns` INTEGER NOT NULL, `lightSource` TEXT, `spectrumColumnCount` INTEGER NOT NULL, `spectrumColumnMappingJson` TEXT, `createTime` INTEGER NOT NULL, `userId` TEXT NOT NULL, `lastRunTimestamp` INTEGER, `analysisMethod` TEXT NOT NULL, `templateId` TEXT, `templateVersion` INTEGER, `templateSnapshotJson` TEXT, `overrideJson` TEXT, `projectBatch` TEXT, `sampleBatch` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "detectionMode",
+            "columnName": "detectionMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recognitionType",
+            "columnName": "recognitionType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageUri",
+            "columnName": "imageUri",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rows",
+            "columnName": "rows",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "columns",
+            "columnName": "columns",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lightSource",
+            "columnName": "lightSource",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "spectrumColumnCount",
+            "columnName": "spectrumColumnCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "spectrumColumnMappingJson",
+            "columnName": "spectrumColumnMappingJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createTime",
+            "columnName": "createTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "userId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastRunTimestamp",
+            "columnName": "lastRunTimestamp",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "analysisMethod",
+            "columnName": "analysisMethod",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "templateId",
+            "columnName": "templateId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "templateVersion",
+            "columnName": "templateVersion",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "templateSnapshotJson",
+            "columnName": "templateSnapshotJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "overrideJson",
+            "columnName": "overrideJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "projectBatch",
+            "columnName": "projectBatch",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sampleBatch",
+            "columnName": "sampleBatch",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "detection_runs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`runId` TEXT NOT NULL, `projectId` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `detectionModelUsed` TEXT, `concentrationModelUsed` TEXT, `status` TEXT NOT NULL, `errorMessage` TEXT, `confThreshold` REAL, `iouThreshold` REAL, `wellsDetected` INTEGER, `effectiveConfigSnapshotJson` TEXT, `acquisitionMetadataJson` TEXT, `processingVersionJson` TEXT, `frameQcJson` TEXT, `siteQcSummaryJson` TEXT, `configurationDeviationJson` TEXT, PRIMARY KEY(`runId`), FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "runId",
+            "columnName": "runId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "projectId",
+            "columnName": "projectId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "detectionModelUsed",
+            "columnName": "detectionModelUsed",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "concentrationModelUsed",
+            "columnName": "concentrationModelUsed",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "errorMessage",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "confThreshold",
+            "columnName": "confThreshold",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "iouThreshold",
+            "columnName": "iouThreshold",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "wellsDetected",
+            "columnName": "wellsDetected",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "effectiveConfigSnapshotJson",
+            "columnName": "effectiveConfigSnapshotJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "acquisitionMetadataJson",
+            "columnName": "acquisitionMetadataJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "processingVersionJson",
+            "columnName": "processingVersionJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "frameQcJson",
+            "columnName": "frameQcJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "siteQcSummaryJson",
+            "columnName": "siteQcSummaryJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "configurationDeviationJson",
+            "columnName": "configurationDeviationJson",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "runId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_detection_runs_projectId",
+            "unique": false,
+            "columnNames": [
+              "projectId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_detection_runs_projectId` ON `${TABLE_NAME}` (`projectId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "projects",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "projectId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "well_results",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`resultId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `runId` TEXT, `projectId` TEXT NOT NULL, `wellIndex` INTEGER NOT NULL, `predictedConcentration` REAL, `trueConcentration` REAL, `isStandard` INTEGER NOT NULL, `detectedRectLeft` REAL, `detectedRectTop` REAL, `detectedRectRight` REAL, `detectedRectBottom` REAL, `detectionConfidence` REAL, `croppedImageIdentifier` TEXT, `pixelValueJson` TEXT, `fkAnalyteId` TEXT, `isOutOfRange` INTEGER NOT NULL, `roleType` TEXT, `virtualRow` INTEGER, `virtualCol` INTEGER, FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`runId`) REFERENCES `detection_runs`(`runId`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`fkAnalyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "resultId",
+            "columnName": "resultId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runId",
+            "columnName": "runId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "projectId",
+            "columnName": "projectId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wellIndex",
+            "columnName": "wellIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "predictedConcentration",
+            "columnName": "predictedConcentration",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "trueConcentration",
+            "columnName": "trueConcentration",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isStandard",
+            "columnName": "isStandard",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "detectedRectLeft",
+            "columnName": "detectedRectLeft",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "detectedRectTop",
+            "columnName": "detectedRectTop",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "detectedRectRight",
+            "columnName": "detectedRectRight",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "detectedRectBottom",
+            "columnName": "detectedRectBottom",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "detectionConfidence",
+            "columnName": "detectionConfidence",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "croppedImageIdentifier",
+            "columnName": "croppedImageIdentifier",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "pixelValueJson",
+            "columnName": "pixelValueJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fkAnalyteId",
+            "columnName": "fkAnalyteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isOutOfRange",
+            "columnName": "isOutOfRange",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "roleType",
+            "columnName": "roleType",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "virtualRow",
+            "columnName": "virtualRow",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "virtualCol",
+            "columnName": "virtualCol",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "resultId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_well_results_projectId",
+            "unique": false,
+            "columnNames": [
+              "projectId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_well_results_projectId` ON `${TABLE_NAME}` (`projectId`)"
+          },
+          {
+            "name": "index_well_results_runId",
+            "unique": false,
+            "columnNames": [
+              "runId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_well_results_runId` ON `${TABLE_NAME}` (`runId`)"
+          },
+          {
+            "name": "index_well_results_fkAnalyteId",
+            "unique": false,
+            "columnNames": [
+              "fkAnalyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_well_results_fkAnalyteId` ON `${TABLE_NAME}` (`fkAnalyteId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "projects",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "projectId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "detection_runs",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "runId"
+            ],
+            "referencedColumns": [
+              "runId"
+            ]
+          },
+          {
+            "table": "analytes",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "fkAnalyteId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "spectrum_calibrations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `projectId` TEXT NOT NULL, `columnIndex` INTEGER NOT NULL, `roiRect` TEXT NOT NULL, `calibrationType` TEXT NOT NULL, `coefficients` TEXT NOT NULL, `referencePoints` TEXT, FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "projectId",
+            "columnName": "projectId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "columnIndex",
+            "columnName": "columnIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "roiRect",
+            "columnName": "roiRect",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "calibrationType",
+            "columnName": "calibrationType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coefficients",
+            "columnName": "coefficients",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "referencePoints",
+            "columnName": "referencePoints",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_spectrum_calibrations_projectId",
+            "unique": false,
+            "columnNames": [
+              "projectId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_spectrum_calibrations_projectId` ON `${TABLE_NAME}` (`projectId`)"
+          },
+          {
+            "name": "index_spectrum_calibrations_projectId_columnIndex",
+            "unique": true,
+            "columnNames": [
+              "projectId",
+              "columnIndex"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_spectrum_calibrations_projectId_columnIndex` ON `${TABLE_NAME}` (`projectId`, `columnIndex`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "projects",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "projectId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "spectrum_results",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`resultId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `projectId` TEXT NOT NULL, `columnIndex` INTEGER NOT NULL, `analyteId` TEXT, `imagePath` TEXT NOT NULL, `wavelengths` TEXT NOT NULL, `intensities` TEXT NOT NULL, `peakWavelength` REAL, FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "resultId",
+            "columnName": "resultId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "projectId",
+            "columnName": "projectId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "columnIndex",
+            "columnName": "columnIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyteId",
+            "columnName": "analyteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "imagePath",
+            "columnName": "imagePath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wavelengths",
+            "columnName": "wavelengths",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "intensities",
+            "columnName": "intensities",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "peakWavelength",
+            "columnName": "peakWavelength",
+            "affinity": "REAL",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "resultId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_spectrum_results_projectId",
+            "unique": false,
+            "columnNames": [
+              "projectId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_spectrum_results_projectId` ON `${TABLE_NAME}` (`projectId`)"
+          },
+          {
+            "name": "index_spectrum_results_analyteId",
+            "unique": false,
+            "columnNames": [
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_spectrum_results_analyteId` ON `${TABLE_NAME}` (`analyteId`)"
+          },
+          {
+            "name": "index_spectrum_results_projectId_columnIndex",
+            "unique": false,
+            "columnNames": [
+              "projectId",
+              "columnIndex"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_spectrum_results_projectId_columnIndex` ON `${TABLE_NAME}` (`projectId`, `columnIndex`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "projects",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "projectId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "analytes",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analyteId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "analytes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_analytes_name",
+            "unique": true,
+            "columnNames": [
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_analytes_name` ON `${TABLE_NAME}` (`name`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "reagents",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `analyteId` TEXT NOT NULL, `reagentName` TEXT NOT NULL, `reagentType` TEXT NOT NULL, `manufacturer` TEXT, `molecularWeight` REAL, `unit` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyteId",
+            "columnName": "analyteId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reagentName",
+            "columnName": "reagentName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reagentType",
+            "columnName": "reagentType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "manufacturer",
+            "columnName": "manufacturer",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "molecularWeight",
+            "columnName": "molecularWeight",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "unit",
+            "columnName": "unit",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_reagents_analyteId",
+            "unique": false,
+            "columnNames": [
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_reagents_analyteId` ON `${TABLE_NAME}` (`analyteId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "analytes",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analyteId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "curve_models",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `function` TEXT NOT NULL, `pixelType` TEXT NOT NULL, `signalFeatureCode` TEXT, `processorVersion` TEXT, `parameters` TEXT NOT NULL, `metrics` TEXT, `dataPoints` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "function",
+            "columnName": "function",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pixelType",
+            "columnName": "pixelType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signalFeatureCode",
+            "columnName": "signalFeatureCode",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "processorVersion",
+            "columnName": "processorVersion",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "parameters",
+            "columnName": "parameters",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "metrics",
+            "columnName": "metrics",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "dataPoints",
+            "columnName": "dataPoints",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "project_analytes_join",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`projectId` TEXT NOT NULL, `analyteId` TEXT NOT NULL, `maxConcentration` REAL, `concentrationUnit` TEXT, `fkTemplateId` TEXT, `dlModelName` TEXT, `fkCurveModelId` TEXT, PRIMARY KEY(`projectId`, `analyteId`), FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`fkTemplateId`) REFERENCES `experiment_templates`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`fkCurveModelId`) REFERENCES `curve_models`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "projectId",
+            "columnName": "projectId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyteId",
+            "columnName": "analyteId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxConcentration",
+            "columnName": "maxConcentration",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "concentrationUnit",
+            "columnName": "concentrationUnit",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fkTemplateId",
+            "columnName": "fkTemplateId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "dlModelName",
+            "columnName": "dlModelName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fkCurveModelId",
+            "columnName": "fkCurveModelId",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "projectId",
+            "analyteId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_project_analytes_join_projectId",
+            "unique": false,
+            "columnNames": [
+              "projectId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_project_analytes_join_projectId` ON `${TABLE_NAME}` (`projectId`)"
+          },
+          {
+            "name": "index_project_analytes_join_analyteId",
+            "unique": false,
+            "columnNames": [
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_project_analytes_join_analyteId` ON `${TABLE_NAME}` (`analyteId`)"
+          },
+          {
+            "name": "index_project_analytes_join_fkTemplateId",
+            "unique": false,
+            "columnNames": [
+              "fkTemplateId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_project_analytes_join_fkTemplateId` ON `${TABLE_NAME}` (`fkTemplateId`)"
+          },
+          {
+            "name": "index_project_analytes_join_fkCurveModelId",
+            "unique": false,
+            "columnNames": [
+              "fkCurveModelId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_project_analytes_join_fkCurveModelId` ON `${TABLE_NAME}` (`fkCurveModelId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "projects",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "projectId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "analytes",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analyteId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "experiment_templates",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "fkTemplateId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "curve_models",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "fkCurveModelId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "experiment_templates",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `templateName` TEXT NOT NULL, `analyteId` TEXT, `reagentAntigenId` TEXT, `reagentAntibodyId` TEXT, `fkCurveModelId` TEXT, `reliableRangeMin` REAL NOT NULL, `reliableRangeMax` REAL NOT NULL, `concentrationUnit` TEXT NOT NULL, `defaultLayoutJson` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `version` INTEGER NOT NULL DEFAULT 1, `status` TEXT NOT NULL DEFAULT 'DRAFT', `carrierProfileId` TEXT, `detectionMode` TEXT, `readoutLayout` TEXT, `acquisitionProfileId` TEXT, `inputProtocol` TEXT NOT NULL DEFAULT 'ENDPOINT_ONLY', `qcProfileJson` TEXT, `publishedAt` INTEGER, `purpose` TEXT, `versionNote` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`reagentAntigenId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`reagentAntibodyId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`fkCurveModelId`) REFERENCES `curve_models`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "templateName",
+            "columnName": "templateName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyteId",
+            "columnName": "analyteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "reagentAntigenId",
+            "columnName": "reagentAntigenId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "reagentAntibodyId",
+            "columnName": "reagentAntibodyId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fkCurveModelId",
+            "columnName": "fkCurveModelId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "reliableRangeMin",
+            "columnName": "reliableRangeMin",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reliableRangeMax",
+            "columnName": "reliableRangeMax",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "concentrationUnit",
+            "columnName": "concentrationUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "defaultLayoutJson",
+            "columnName": "defaultLayoutJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'DRAFT'"
+          },
+          {
+            "fieldPath": "carrierProfileId",
+            "columnName": "carrierProfileId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "detectionMode",
+            "columnName": "detectionMode",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "readoutLayout",
+            "columnName": "readoutLayout",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "acquisitionProfileId",
+            "columnName": "acquisitionProfileId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "inputProtocol",
+            "columnName": "inputProtocol",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'ENDPOINT_ONLY'"
+          },
+          {
+            "fieldPath": "qcProfileJson",
+            "columnName": "qcProfileJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "publishedAt",
+            "columnName": "publishedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "purpose",
+            "columnName": "purpose",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "versionNote",
+            "columnName": "versionNote",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_experiment_templates_analyteId",
+            "unique": false,
+            "columnNames": [
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_experiment_templates_analyteId` ON `${TABLE_NAME}` (`analyteId`)"
+          },
+          {
+            "name": "index_experiment_templates_reagentAntigenId",
+            "unique": false,
+            "columnNames": [
+              "reagentAntigenId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_experiment_templates_reagentAntigenId` ON `${TABLE_NAME}` (`reagentAntigenId`)"
+          },
+          {
+            "name": "index_experiment_templates_reagentAntibodyId",
+            "unique": false,
+            "columnNames": [
+              "reagentAntibodyId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_experiment_templates_reagentAntibodyId` ON `${TABLE_NAME}` (`reagentAntibodyId`)"
+          },
+          {
+            "name": "index_experiment_templates_fkCurveModelId",
+            "unique": false,
+            "columnNames": [
+              "fkCurveModelId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_experiment_templates_fkCurveModelId` ON `${TABLE_NAME}` (`fkCurveModelId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "analytes",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analyteId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "reagents",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "reagentAntigenId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "reagents",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "reagentAntibodyId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "curve_models",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "fkCurveModelId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "carrier_profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `carrierType` TEXT NOT NULL, `rows` INTEGER NOT NULL, `columns` INTEGER NOT NULL, `siteShape` TEXT NOT NULL, `orientationMarkerJson` TEXT, `roiConfigJson` TEXT, `locatorConfigJson` TEXT, `status` TEXT NOT NULL, `version` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "carrierType",
+            "columnName": "carrierType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rows",
+            "columnName": "rows",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "columns",
+            "columnName": "columns",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteShape",
+            "columnName": "siteShape",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orientationMarkerJson",
+            "columnName": "orientationMarkerJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "roiConfigJson",
+            "columnName": "roiConfigJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "locatorConfigJson",
+            "columnName": "locatorConfigJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_carrier_profiles_name_version",
+            "unique": true,
+            "columnNames": [
+              "name",
+              "version"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_carrier_profiles_name_version` ON `${TABLE_NAME}` (`name`, `version`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "acquisition_profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `supportedModesJson` TEXT NOT NULL, `compatibleCarrierTypesJson` TEXT NOT NULL, `deviceMatcherJson` TEXT, `opticalModuleName` TEXT, `fixtureId` TEXT, `cameraControlStrategy` TEXT NOT NULL, `cameraConstraintsJson` TEXT, `imageQcProfileJson` TEXT, `status` TEXT NOT NULL, `version` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supportedModesJson",
+            "columnName": "supportedModesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "compatibleCarrierTypesJson",
+            "columnName": "compatibleCarrierTypesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceMatcherJson",
+            "columnName": "deviceMatcherJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "opticalModuleName",
+            "columnName": "opticalModuleName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fixtureId",
+            "columnName": "fixtureId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "cameraControlStrategy",
+            "columnName": "cameraControlStrategy",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cameraConstraintsJson",
+            "columnName": "cameraConstraintsJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "imageQcProfileJson",
+            "columnName": "imageQcProfileJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_acquisition_profiles_name_version",
+            "unique": true,
+            "columnNames": [
+              "name",
+              "version"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_acquisition_profiles_name_version` ON `${TABLE_NAME}` (`name`, `version`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "template_analyte_configs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `templateId` TEXT NOT NULL, `analyteId` TEXT NOT NULL, `reagentAntigenId` TEXT, `reagentAntibodyId` TEXT, `analysisModelId` TEXT, `concentrationUnit` TEXT NOT NULL, `reliableRangeMin` REAL, `reliableRangeMax` REAL, `displayOrder` INTEGER NOT NULL, `displayConfigJson` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`templateId`) REFERENCES `experiment_templates`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`reagentAntigenId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`reagentAntibodyId`) REFERENCES `reagents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`analysisModelId`) REFERENCES `analysis_models`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "templateId",
+            "columnName": "templateId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyteId",
+            "columnName": "analyteId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reagentAntigenId",
+            "columnName": "reagentAntigenId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "reagentAntibodyId",
+            "columnName": "reagentAntibodyId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "analysisModelId",
+            "columnName": "analysisModelId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "concentrationUnit",
+            "columnName": "concentrationUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reliableRangeMin",
+            "columnName": "reliableRangeMin",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "reliableRangeMax",
+            "columnName": "reliableRangeMax",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "displayOrder",
+            "columnName": "displayOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayConfigJson",
+            "columnName": "displayConfigJson",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_template_analyte_configs_templateId",
+            "unique": false,
+            "columnNames": [
+              "templateId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_template_analyte_configs_templateId` ON `${TABLE_NAME}` (`templateId`)"
+          },
+          {
+            "name": "index_template_analyte_configs_analyteId",
+            "unique": false,
+            "columnNames": [
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_template_analyte_configs_analyteId` ON `${TABLE_NAME}` (`analyteId`)"
+          },
+          {
+            "name": "index_template_analyte_configs_reagentAntigenId",
+            "unique": false,
+            "columnNames": [
+              "reagentAntigenId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_template_analyte_configs_reagentAntigenId` ON `${TABLE_NAME}` (`reagentAntigenId`)"
+          },
+          {
+            "name": "index_template_analyte_configs_reagentAntibodyId",
+            "unique": false,
+            "columnNames": [
+              "reagentAntibodyId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_template_analyte_configs_reagentAntibodyId` ON `${TABLE_NAME}` (`reagentAntibodyId`)"
+          },
+          {
+            "name": "index_template_analyte_configs_analysisModelId",
+            "unique": false,
+            "columnNames": [
+              "analysisModelId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_template_analyte_configs_analysisModelId` ON `${TABLE_NAME}` (`analysisModelId`)"
+          },
+          {
+            "name": "index_template_analyte_configs_templateId_analyteId",
+            "unique": true,
+            "columnNames": [
+              "templateId",
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_template_analyte_configs_templateId_analyteId` ON `${TABLE_NAME}` (`templateId`, `analyteId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "experiment_templates",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "templateId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "analytes",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analyteId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "reagents",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "reagentAntigenId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "reagents",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "reagentAntibodyId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "analysis_models",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analysisModelId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "template_site_assignments",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `templateId` TEXT NOT NULL, `rowIndex` INTEGER NOT NULL, `columnIndex` INTEGER NOT NULL, `analyteId` TEXT, `roleType` TEXT NOT NULL, `standardConcentration` REAL, `repeatGroup` TEXT, `defaultSampleSlot` TEXT, `referenceScope` TEXT, `enabled` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`templateId`) REFERENCES `experiment_templates`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "templateId",
+            "columnName": "templateId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rowIndex",
+            "columnName": "rowIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "columnIndex",
+            "columnName": "columnIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyteId",
+            "columnName": "analyteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "roleType",
+            "columnName": "roleType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "standardConcentration",
+            "columnName": "standardConcentration",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "repeatGroup",
+            "columnName": "repeatGroup",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "defaultSampleSlot",
+            "columnName": "defaultSampleSlot",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "referenceScope",
+            "columnName": "referenceScope",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_template_site_assignments_templateId",
+            "unique": false,
+            "columnNames": [
+              "templateId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_template_site_assignments_templateId` ON `${TABLE_NAME}` (`templateId`)"
+          },
+          {
+            "name": "index_template_site_assignments_analyteId",
+            "unique": false,
+            "columnNames": [
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_template_site_assignments_analyteId` ON `${TABLE_NAME}` (`analyteId`)"
+          },
+          {
+            "name": "index_template_site_assignments_templateId_rowIndex_columnIndex",
+            "unique": true,
+            "columnNames": [
+              "templateId",
+              "rowIndex",
+              "columnIndex"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_template_site_assignments_templateId_rowIndex_columnIndex` ON `${TABLE_NAME}` (`templateId`, `rowIndex`, `columnIndex`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "experiment_templates",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "templateId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "analytes",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analyteId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "template_quantitation_bindings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `templateId` TEXT NOT NULL, `analyteId` TEXT NOT NULL, `method` TEXT NOT NULL, `sourceResourceId` TEXT, `resourceSnapshotJson` TEXT NOT NULL, `contentFingerprint` TEXT NOT NULL, `processorName` TEXT NOT NULL, `processorVersion` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`templateId`) REFERENCES `experiment_templates`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`sourceResourceId`) REFERENCES `analysis_models`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "templateId",
+            "columnName": "templateId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyteId",
+            "columnName": "analyteId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "method",
+            "columnName": "method",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceResourceId",
+            "columnName": "sourceResourceId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "resourceSnapshotJson",
+            "columnName": "resourceSnapshotJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentFingerprint",
+            "columnName": "contentFingerprint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "processorName",
+            "columnName": "processorName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "processorVersion",
+            "columnName": "processorVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_template_quantitation_bindings_templateId",
+            "unique": false,
+            "columnNames": [
+              "templateId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_template_quantitation_bindings_templateId` ON `${TABLE_NAME}` (`templateId`)"
+          },
+          {
+            "name": "index_template_quantitation_bindings_analyteId",
+            "unique": false,
+            "columnNames": [
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_template_quantitation_bindings_analyteId` ON `${TABLE_NAME}` (`analyteId`)"
+          },
+          {
+            "name": "index_template_quantitation_bindings_sourceResourceId",
+            "unique": false,
+            "columnNames": [
+              "sourceResourceId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_template_quantitation_bindings_sourceResourceId` ON `${TABLE_NAME}` (`sourceResourceId`)"
+          },
+          {
+            "name": "index_template_quantitation_bindings_templateId_analyteId",
+            "unique": true,
+            "columnNames": [
+              "templateId",
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_template_quantitation_bindings_templateId_analyteId` ON `${TABLE_NAME}` (`templateId`, `analyteId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "experiment_templates",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "templateId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "analytes",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analyteId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "analysis_models",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sourceResourceId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "analysis_models",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `modelType` TEXT NOT NULL, `analyteId` TEXT NOT NULL, `detectionMode` TEXT NOT NULL, `inputProtocol` TEXT NOT NULL, `primaryFeature` TEXT NOT NULL, `processorName` TEXT NOT NULL, `processorVersion` TEXT NOT NULL, `compatibleCarrierTypesJson` TEXT, `compatibleAcquisitionProfileIdsJson` TEXT, `concentrationUnit` TEXT NOT NULL, `reliableRangeMin` REAL NOT NULL, `reliableRangeMax` REAL NOT NULL, `validationMetricsJson` TEXT, `contentFingerprint` TEXT, `status` TEXT NOT NULL, `version` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modelType",
+            "columnName": "modelType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyteId",
+            "columnName": "analyteId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "detectionMode",
+            "columnName": "detectionMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputProtocol",
+            "columnName": "inputProtocol",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "primaryFeature",
+            "columnName": "primaryFeature",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "processorName",
+            "columnName": "processorName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "processorVersion",
+            "columnName": "processorVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "compatibleCarrierTypesJson",
+            "columnName": "compatibleCarrierTypesJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "compatibleAcquisitionProfileIdsJson",
+            "columnName": "compatibleAcquisitionProfileIdsJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "concentrationUnit",
+            "columnName": "concentrationUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reliableRangeMin",
+            "columnName": "reliableRangeMin",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reliableRangeMax",
+            "columnName": "reliableRangeMax",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "validationMetricsJson",
+            "columnName": "validationMetricsJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "contentFingerprint",
+            "columnName": "contentFingerprint",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_analysis_models_analyteId",
+            "unique": false,
+            "columnNames": [
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_analysis_models_analyteId` ON `${TABLE_NAME}` (`analyteId`)"
+          },
+          {
+            "name": "index_analysis_models_name_version",
+            "unique": true,
+            "columnNames": [
+              "name",
+              "version"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_analysis_models_name_version` ON `${TABLE_NAME}` (`name`, `version`)"
+          },
+          {
+            "name": "index_analysis_models_detectionMode_inputProtocol_primaryFeature",
+            "unique": false,
+            "columnNames": [
+              "detectionMode",
+              "inputProtocol",
+              "primaryFeature"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_analysis_models_detectionMode_inputProtocol_primaryFeature` ON `${TABLE_NAME}` (`detectionMode`, `inputProtocol`, `primaryFeature`)"
+          },
+          {
+            "name": "index_analysis_models_contentFingerprint",
+            "unique": false,
+            "columnNames": [
+              "contentFingerprint"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_analysis_models_contentFingerprint` ON `${TABLE_NAME}` (`contentFingerprint`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "analytes",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analyteId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "standard_curve_definitions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`analysisModelId` TEXT NOT NULL, `fittingFunction` TEXT NOT NULL, `parametersJson` TEXT NOT NULL, `monotonicDirection` TEXT NOT NULL, `inverseRuleJson` TEXT, `lod` REAL, `loq` REAL, PRIMARY KEY(`analysisModelId`), FOREIGN KEY(`analysisModelId`) REFERENCES `analysis_models`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "analysisModelId",
+            "columnName": "analysisModelId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fittingFunction",
+            "columnName": "fittingFunction",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parametersJson",
+            "columnName": "parametersJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "monotonicDirection",
+            "columnName": "monotonicDirection",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inverseRuleJson",
+            "columnName": "inverseRuleJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lod",
+            "columnName": "lod",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "loq",
+            "columnName": "loq",
+            "affinity": "REAL",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "analysisModelId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "analysis_models",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analysisModelId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "calibration_points",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `analysisModelId` TEXT NOT NULL, `concentration` REAL NOT NULL, `signalValue` REAL NOT NULL, `repeatIndex` INTEGER NOT NULL, `runId` TEXT, `baselineMeasurementId` INTEGER, `endpointMeasurementId` INTEGER, `batchId` TEXT, `excluded` INTEGER NOT NULL, `exclusionReason` TEXT, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`analysisModelId`) REFERENCES `analysis_models`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analysisModelId",
+            "columnName": "analysisModelId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "concentration",
+            "columnName": "concentration",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signalValue",
+            "columnName": "signalValue",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "repeatIndex",
+            "columnName": "repeatIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runId",
+            "columnName": "runId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "baselineMeasurementId",
+            "columnName": "baselineMeasurementId",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "endpointMeasurementId",
+            "columnName": "endpointMeasurementId",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "batchId",
+            "columnName": "batchId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "excluded",
+            "columnName": "excluded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exclusionReason",
+            "columnName": "exclusionReason",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_calibration_points_analysisModelId",
+            "unique": false,
+            "columnNames": [
+              "analysisModelId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_calibration_points_analysisModelId` ON `${TABLE_NAME}` (`analysisModelId`)"
+          },
+          {
+            "name": "index_calibration_points_analysisModelId_concentration_repeatIndex",
+            "unique": false,
+            "columnNames": [
+              "analysisModelId",
+              "concentration",
+              "repeatIndex"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_calibration_points_analysisModelId_concentration_repeatIndex` ON `${TABLE_NAME}` (`analysisModelId`, `concentration`, `repeatIndex`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "analysis_models",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analysisModelId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "deep_learning_model_definitions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`analysisModelId` TEXT NOT NULL, `modelFileName` TEXT NOT NULL, `checksumSha256` TEXT NOT NULL, `inputWidth` INTEGER NOT NULL, `inputHeight` INTEGER NOT NULL, `normalizationJson` TEXT NOT NULL, `trainingDataVersion` TEXT NOT NULL, `metadataJson` TEXT, PRIMARY KEY(`analysisModelId`), FOREIGN KEY(`analysisModelId`) REFERENCES `analysis_models`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "analysisModelId",
+            "columnName": "analysisModelId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modelFileName",
+            "columnName": "modelFileName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "checksumSha256",
+            "columnName": "checksumSha256",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputWidth",
+            "columnName": "inputWidth",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputHeight",
+            "columnName": "inputHeight",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizationJson",
+            "columnName": "normalizationJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trainingDataVersion",
+            "columnName": "trainingDataVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "metadataJson",
+            "columnName": "metadataJson",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "analysisModelId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "analysis_models",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analysisModelId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "capture_artifacts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `runId` TEXT NOT NULL, `captureRole` TEXT NOT NULL, `originalPath` TEXT NOT NULL, `derivedPath` TEXT, `capturedAt` INTEGER NOT NULL, `operatorId` TEXT, `actualMetadataJson` TEXT, `profileSnapshotJson` TEXT, `imageQcJson` TEXT, `checksumSha256` TEXT, `pairingKey` TEXT, `locked` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `supersedesArtifactId` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`runId`) REFERENCES `detection_runs`(`runId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runId",
+            "columnName": "runId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "captureRole",
+            "columnName": "captureRole",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalPath",
+            "columnName": "originalPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "derivedPath",
+            "columnName": "derivedPath",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operatorId",
+            "columnName": "operatorId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "actualMetadataJson",
+            "columnName": "actualMetadataJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "profileSnapshotJson",
+            "columnName": "profileSnapshotJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "imageQcJson",
+            "columnName": "imageQcJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "checksumSha256",
+            "columnName": "checksumSha256",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "pairingKey",
+            "columnName": "pairingKey",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "locked",
+            "columnName": "locked",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supersedesArtifactId",
+            "columnName": "supersedesArtifactId",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_capture_artifacts_runId",
+            "unique": false,
+            "columnNames": [
+              "runId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_capture_artifacts_runId` ON `${TABLE_NAME}` (`runId`)"
+          },
+          {
+            "name": "index_capture_artifacts_runId_captureRole_revision",
+            "unique": false,
+            "columnNames": [
+              "runId",
+              "captureRole",
+              "revision"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_capture_artifacts_runId_captureRole_revision` ON `${TABLE_NAME}` (`runId`, `captureRole`, `revision`)"
+          },
+          {
+            "name": "index_capture_artifacts_pairingKey",
+            "unique": false,
+            "columnNames": [
+              "pairingKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_capture_artifacts_pairingKey` ON `${TABLE_NAME}` (`pairingKey`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "detection_runs",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "runId"
+            ],
+            "referencedColumns": [
+              "runId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "site_measurements",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `runId` TEXT NOT NULL, `siteIndex` INTEGER NOT NULL, `analyteId` TEXT, `detectionMode` TEXT NOT NULL, `rawSignalJson` TEXT NOT NULL, `correctedSignalJson` TEXT, `primaryFeatureName` TEXT NOT NULL, `primaryFeatureValue` REAL, `backgroundValue` REAL, `signalToNoiseRatio` REAL, `confidence` REAL, `signalDetectable` INTEGER NOT NULL, `qualityReliable` INTEGER NOT NULL, `qcJson` TEXT, `processorName` TEXT NOT NULL, `processorVersion` TEXT NOT NULL, `concentrationValue` REAL, `concentrationUnit` TEXT, `reliableRangeStatus` TEXT, `modelSnapshotJson` TEXT, `quantificationQcJson` TEXT, FOREIGN KEY(`runId`) REFERENCES `detection_runs`(`runId`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`analyteId`) REFERENCES `analytes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runId",
+            "columnName": "runId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteIndex",
+            "columnName": "siteIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyteId",
+            "columnName": "analyteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "detectionMode",
+            "columnName": "detectionMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawSignalJson",
+            "columnName": "rawSignalJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "correctedSignalJson",
+            "columnName": "correctedSignalJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "primaryFeatureName",
+            "columnName": "primaryFeatureName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "primaryFeatureValue",
+            "columnName": "primaryFeatureValue",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "backgroundValue",
+            "columnName": "backgroundValue",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "signalToNoiseRatio",
+            "columnName": "signalToNoiseRatio",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "signalDetectable",
+            "columnName": "signalDetectable",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qualityReliable",
+            "columnName": "qualityReliable",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qcJson",
+            "columnName": "qcJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "processorName",
+            "columnName": "processorName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "processorVersion",
+            "columnName": "processorVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "concentrationValue",
+            "columnName": "concentrationValue",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "concentrationUnit",
+            "columnName": "concentrationUnit",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "reliableRangeStatus",
+            "columnName": "reliableRangeStatus",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "modelSnapshotJson",
+            "columnName": "modelSnapshotJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "quantificationQcJson",
+            "columnName": "quantificationQcJson",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_site_measurements_runId",
+            "unique": false,
+            "columnNames": [
+              "runId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_site_measurements_runId` ON `${TABLE_NAME}` (`runId`)"
+          },
+          {
+            "name": "index_site_measurements_analyteId",
+            "unique": false,
+            "columnNames": [
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_site_measurements_analyteId` ON `${TABLE_NAME}` (`analyteId`)"
+          },
+          {
+            "name": "index_site_measurements_runId_siteIndex_analyteId",
+            "unique": false,
+            "columnNames": [
+              "runId",
+              "siteIndex",
+              "analyteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_site_measurements_runId_siteIndex_analyteId` ON `${TABLE_NAME}` (`runId`, `siteIndex`, `analyteId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "detection_runs",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "runId"
+            ],
+            "referencedColumns": [
+              "runId"
+            ]
+          },
+          {
+            "table": "analytes",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analyteId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "result_validation_records",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`validationId` TEXT NOT NULL, `runId` TEXT NOT NULL, `analyteId` TEXT NOT NULL, `revision` INTEGER NOT NULL, `concentrationUnit` TEXT NOT NULL, `validationPointsJson` TEXT NOT NULL, `regressionResultJson` TEXT NOT NULL, `blandAltmanResultJson` TEXT NOT NULL, `processorVersion` TEXT NOT NULL, `inputFingerprint` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`validationId`), FOREIGN KEY(`runId`) REFERENCES `detection_runs`(`runId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "validationId",
+            "columnName": "validationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runId",
+            "columnName": "runId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyteId",
+            "columnName": "analyteId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "concentrationUnit",
+            "columnName": "concentrationUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "validationPointsJson",
+            "columnName": "validationPointsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "regressionResultJson",
+            "columnName": "regressionResultJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "blandAltmanResultJson",
+            "columnName": "blandAltmanResultJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "processorVersion",
+            "columnName": "processorVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputFingerprint",
+            "columnName": "inputFingerprint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "validationId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_result_validation_records_runId",
+            "unique": false,
+            "columnNames": [
+              "runId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_result_validation_records_runId` ON `${TABLE_NAME}` (`runId`)"
+          },
+          {
+            "name": "index_result_validation_records_runId_analyteId_revision",
+            "unique": true,
+            "columnNames": [
+              "runId",
+              "analyteId",
+              "revision"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_result_validation_records_runId_analyteId_revision` ON `${TABLE_NAME}` (`runId`, `analyteId`, `revision`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "detection_runs",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "runId"
+            ],
+            "referencedColumns": [
+              "runId"
+            ]
+          }
+        ]
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '002f766456f2374693ac6968d4540c22')"
+    ]
+  }
+}

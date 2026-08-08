@@ -45,6 +45,7 @@ import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.WellResultRepository
+import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import org.opencv.core.MatOfPoint
 import org.opencv.core.MatOfPoint2f
 
@@ -174,8 +175,8 @@ class DetectionViewModel @Inject constructor(
     private val _currentProject = MutableStateFlow<Project?>(null)
     val currentProject: StateFlow<Project?> = _currentProject.asStateFlow()
     
-    // 当前项目的最大孔位数（行×列）
-    private val _maxWellCount = MutableStateFlow<Int>(96) // 默认为96，会根据项目信息更新
+    // 当前项目的最大位点数；0 表示项目尚未加载，不能用旧 96 默认值提前截断 15×15 结果。
+    private val _maxWellCount = MutableStateFlow(0)
     val maxWellCount: StateFlow<Int> = _maxWellCount.asStateFlow()
 
     // 加载PyTorch模型
@@ -361,13 +362,7 @@ class DetectionViewModel @Inject constructor(
                         
                         // 返回最终处理结果
                         // 根据项目的行列限制检测数量
-                        val currentMaxCount = _maxWellCount.value
-                        if (scaledDetections.size > currentMaxCount) {
-                            scaledDetections.sortByDescending { it.confidence }
-                            scaledDetections.take(currentMaxCount)
-                        } else {
-                            scaledDetections
-                        }
+                        limitDetectionsToProjectCapacity(scaledDetections) { it.confidence }
                     } catch (e: Exception) {
                         Log.e("DetectionViewModel", "推理或后处理过程中出错: ${e.message}", e)
                         throw e // 重新抛出异常，以便外层catch块处理
@@ -851,13 +846,7 @@ class DetectionViewModel @Inject constructor(
                     val scaledDetections = scaleBoxes(nmsResults, letterboxInfo, bitmap.width, bitmap.height)
                     
                     // 根据项目的行列限制检测数量
-                    val currentMaxCount = _maxWellCount.value
-                    if (scaledDetections.size > currentMaxCount) {
-                        // 按置信度排序并只保留前 currentMaxCount 个
-                        scaledDetections.sortedByDescending { it.confidence }.take(currentMaxCount)
-                    } else {
-                        scaledDetections
-                    }
+                    limitDetectionsToProjectCapacity(scaledDetections) { it.confidence }
                 }
                 
                 // 进行霍夫圆变换和中心取色增强
@@ -890,24 +879,14 @@ class DetectionViewModel @Inject constructor(
                 }
                 
                 // 再次检查最终结果是否超过最大孔位数量限制
-                val currentMaxCount = _maxWellCount.value
-                val limitedDetections = if (finalDetections.size > currentMaxCount) {
-                    // 按置信度排序并只保留前 currentMaxCount 个
-                    finalDetections.sortedByDescending { it.confidence }.take(currentMaxCount)
-                } else {
-                    finalDetections
-                }
+                val limitedDetections = limitDetectionsToProjectCapacity(finalDetections) { it.confidence }
                 
                 // 更新状态为成功
                 _detectionState.value = DetectionState.Success(limitedDetections)
                 
                 // 保存增强型检测结果，可用于将来的浓度分析
                 // 同样限制增强型检测结果的数量
-                _enhancedDetections.value = if (enhancedDetections.size > currentMaxCount) {
-                    enhancedDetections.sortedByDescending { it.confidence }.take(currentMaxCount)
-                } else {
-                    enhancedDetections
-                }
+                _enhancedDetections.value = limitDetectionsToProjectCapacity(enhancedDetections) { it.confidence }
                 
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1443,6 +1422,22 @@ class DetectionViewModel @Inject constructor(
             null
         }
     }
+
+    /**
+     * 仅在项目尺寸已经加载时限制检测数量。
+     * 项目尚未加载时保留全部候选，避免历史默认值 96 静默截断 15×15 阵列的 225 个位点。
+     */
+    private fun <T> limitDetectionsToProjectCapacity(
+        detections: List<T>,
+        confidenceSelector: (T) -> Float
+    ): List<T> {
+        val capacity = _maxWellCount.value
+        return if (capacity > 0 && detections.size > capacity) {
+            detections.sortedByDescending(confidenceSelector).take(capacity)
+        } else {
+            detections
+        }
+    }
     
     /**
      * 加载项目信息
@@ -1454,13 +1449,10 @@ class DetectionViewModel @Inject constructor(
                 _currentProject.value = project
                 
                 // 根据项目的行列数更新最大孔位数
-                project?.let {
-                    _maxWellCount.value = it.rows * it.columns
-                }
+                _maxWellCount.value = project?.let(GridLayoutPolicy::resolveProject)?.siteCount ?: 0
             } catch (e: Exception) {
                 Log.e("DetectionViewModel", "加载项目失败: ${e.message}", e)
             }
         }
     }
-} 
- 
+}

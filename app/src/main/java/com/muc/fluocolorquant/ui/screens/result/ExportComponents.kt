@@ -94,6 +94,7 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 导出选项面板
@@ -318,7 +319,7 @@ fun AnalyteSelectionDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(FluoRadius.chip))
                                     .clickable {
                                         if (selectedAnalytes.contains(analyte)) {
                                             selectedAnalytes.remove(analyte)
@@ -411,7 +412,7 @@ fun ExportOptionsDialog(
                     .fillMaxWidth()
                     .padding(16.dp)
                     .clickable(enabled = false) { /* 拦截点击，防止关闭面板 */ },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
@@ -499,7 +500,7 @@ fun ExportOption(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(FluoRadius.chip))
             .background(backgroundColor.copy(alpha = 0.7f))
             .clickable { onClick() }
             .padding(16.dp),
@@ -508,7 +509,7 @@ fun ExportOption(
         Box(
             modifier = Modifier
                 .size(40.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(FluoRadius.chip))
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(8.dp),
             contentAlignment = Alignment.Center

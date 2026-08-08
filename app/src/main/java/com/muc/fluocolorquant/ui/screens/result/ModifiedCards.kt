@@ -59,7 +59,9 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.WellResult
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
+import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import com.muc.fluocolorquant.utils.math.WellMappingUtils
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 修改版的PlateHeatmapCard，支持按分析物过滤
@@ -76,8 +78,9 @@ fun PlateHeatmapCard(
     currentAnalyteId: String? = null,
     project: Project? = null
 ) {
-    val projectRows = project?.rows ?: 8
-    val projectColumns = project?.columns ?: 12
+    val dimensions = GridLayoutPolicy.resolveProject(project)
+    val projectRows = dimensions.rows
+    val projectColumns = dimensions.columns
 
     val filteredResults = if (showOnlyCurrentAnalyte && currentAnalyteId != null) {
         wellResults.filter { it.fkAnalyteId == currentAnalyteId }
@@ -91,7 +94,7 @@ fun PlateHeatmapCard(
             .padding(bottom = 16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(FluoRadius.control)
     ) {
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 16.dp)) { // 调整内边距
             Row(
@@ -118,19 +121,19 @@ fun PlateHeatmapCard(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1.5f)
-                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(8.dp)),
-                shape = RoundedCornerShape(8.dp),
+                    .aspectRatio(projectColumns.toFloat() / projectRows)
+                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(FluoRadius.chip)),
+                shape = RoundedCornerShape(FluoRadius.chip),
                 shadowElevation = 2.dp
             ) {
-                val wellsByVirtualCoord = remember(filteredResults) {
-                    filteredResults
-                        .filter { it.virtualRow != null && it.virtualCol != null }
-                        .associateBy { Pair(it.virtualRow!!, it.virtualCol!!) }
+                val wellsByVirtualCoord = remember(filteredResults, projectColumns) {
+                    filteredResults.associateBy { result ->
+                        WellMappingUtils.mapRealToVirtualCoordinates(result.wellIndex, projectColumns)
+                    }
                 }
 
-                val displayRows = 8
-                val displayCols = 12
+                val displayRows = projectRows
+                val displayCols = projectColumns
                 val labelSize = 16.dp // 减小标签占用空间
 
                 Box(modifier = Modifier
@@ -153,12 +156,12 @@ fun PlateHeatmapCard(
                                 .fillMaxWidth()
                                 .weight(1f), verticalAlignment = Alignment.CenterVertically) {
                                 Box(modifier = Modifier.size(labelSize), contentAlignment = Alignment.Center) { // 调整标签间距
-                                    Text(text = ('A' + row).toString(), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                                    Text(text = WellMappingUtils.getRowLabel(row), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                                 }
 
                                 for (col in 0 until displayCols) {
                                     val wellResult = wellsByVirtualCoord[Pair(row, col)]
-                                    val realIndex = WellMappingUtils.mapVirtualToRealIndex(row, col)
+                                    val realIndex = WellMappingUtils.mapVirtualToRealIndex(row, col, displayCols)
                                     val isWithinProjectBounds = realIndex < (projectRows * projectColumns)
 
                                     Box(modifier = Modifier
@@ -206,8 +209,9 @@ fun SquareHeatmapCard(
     currentAnalyteId: String? = null,
     project: Project? = null
 ) {
-    val projectRows = project?.rows ?: 8
-    val projectColumns = project?.columns ?: 12
+    val dimensions = GridLayoutPolicy.resolveProject(project)
+    val projectRows = dimensions.rows
+    val projectColumns = dimensions.columns
 
     val filteredResults = if (showOnlyCurrentAnalyte && currentAnalyteId != null) {
         wellResults.filter { it.fkAnalyteId == currentAnalyteId }
@@ -221,7 +225,7 @@ fun SquareHeatmapCard(
             .padding(bottom = 16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(FluoRadius.control)
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)) { // 调整内边距
             Row(
@@ -248,19 +252,19 @@ fun SquareHeatmapCard(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1.5f)
-                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(8.dp)),
-                shape = RoundedCornerShape(8.dp),
+                    .aspectRatio(projectColumns.toFloat() / projectRows)
+                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(FluoRadius.chip)),
+                shape = RoundedCornerShape(FluoRadius.chip),
                 shadowElevation = 2.dp
             ) {
-                val wellsByVirtualCoord = remember(filteredResults) {
-                    filteredResults
-                        .filter { it.virtualRow != null && it.virtualCol != null }
-                        .associateBy { Pair(it.virtualRow!!, it.virtualCol!!) }
+                val wellsByVirtualCoord = remember(filteredResults, projectColumns) {
+                    filteredResults.associateBy { result ->
+                        WellMappingUtils.mapRealToVirtualCoordinates(result.wellIndex, projectColumns)
+                    }
                 }
 
-                val displayRows = 8
-                val displayCols = 12
+                val displayRows = projectRows
+                val displayCols = projectColumns
                 val labelSize = 16.dp // 减小标签占用空间
 
                 Box(modifier = Modifier
@@ -282,11 +286,11 @@ fun SquareHeatmapCard(
                                 .fillMaxWidth()
                                 .weight(1f), verticalAlignment = Alignment.CenterVertically) {
                                 Box(modifier = Modifier.size(labelSize), contentAlignment = Alignment.Center) { // 调整标签间距
-                                    Text(text = ('A' + row).toString(), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                                    Text(text = WellMappingUtils.getRowLabel(row), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                                 }
                                 for (col in 0 until displayCols) {
                                     val wellResult = wellsByVirtualCoord[Pair(row, col)]
-                                    val realIndex = WellMappingUtils.mapVirtualToRealIndex(row, col)
+                                    val realIndex = WellMappingUtils.mapVirtualToRealIndex(row, col, displayCols)
                                     val isWithinProjectBounds = realIndex < (projectRows * projectColumns)
 
                                     Box(modifier = Modifier
@@ -374,12 +378,11 @@ fun PlateWell(
                         modifier = Modifier.padding(8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        val wellLabel = if (wellResult.virtualRow != null && wellResult.virtualCol != null) {
-                            WellMappingUtils.getWellLabel(wellResult.virtualRow!!, wellResult.virtualCol!!)
-                        } else {
-                            val (vRow, vCol) = WellMappingUtils.mapRealToVirtualCoordinates(wellResult.wellIndex)
-                            WellMappingUtils.getWellLabel(vRow, vCol)
-                        }
+                        val columns = GridLayoutPolicy.resolveProject(project).columns
+                        val wellLabel = WellMappingUtils.getWellLabelForIndex(
+                            index = wellResult.wellIndex,
+                            columns = columns
+                        )
 
                         Text(
                             text = wellLabel,
@@ -460,8 +463,8 @@ fun HeatmapLegend(minValue: Double, maxValue: Double, unit: String) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(24.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(FluoRadius.badge))
+                .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(FluoRadius.badge))
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
                 HeatmapColorUtil.getLegendColors(20).forEach { color ->
@@ -500,8 +503,10 @@ fun ConcentrationTrendCard(
     concentrationUnit: String,
     analyteName: String,
     maxConcentration: Double,
+    project: Project? = null,
     modifier: Modifier = Modifier
 ) {
+    val dimensions = GridLayoutPolicy.resolveProject(project)
     val validResults = wellResults.filter { it.predictedConcentration != null && it.predictedConcentration!!.isFinite() }
     val sortedResults = remember(validResults) { validResults.sortedBy { it.wellIndex } }
     var selectedPointIndex by remember { mutableStateOf<Int?>(null) }
@@ -523,8 +528,8 @@ fun ConcentrationTrendCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(chartHeight)
-                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(8.dp))
-                    .clip(RoundedCornerShape(8.dp))
+                    .border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(FluoRadius.chip))
+                    .clip(RoundedCornerShape(FluoRadius.chip))
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
                     .padding(start = 40.dp, end = 12.dp, top = 12.dp, bottom = 40.dp)
             ) {
@@ -565,16 +570,12 @@ fun ConcentrationTrendCard(
                         var tapSelectedIndex by remember { mutableStateOf<Int?>(null) }
                         LaunchedEffect(tapSelectedIndex) { selectedPointIndex = tapSelectedIndex }
 
-                        // 使用 virtualRow 和 virtualCol 生成正确的标签
-                        val xLabels = remember(sortedResults) {
+                        val xLabels = remember(sortedResults, dimensions.columns) {
                             sortedResults.map { result ->
-                                if (result.virtualRow != null && result.virtualCol != null) {
-                                    WellMappingUtils.getWellLabel(result.virtualRow!!, result.virtualCol!!)
-                                } else {
-                                    // 不使用虚拟坐标的旧数据回退
-                                    val (vRow, vCol) = WellMappingUtils.mapRealToVirtualCoordinates(result.wellIndex)
-                                    WellMappingUtils.getWellLabel(vRow, vCol)
-                                }
+                                WellMappingUtils.getWellLabelForIndex(
+                                    index = result.wellIndex,
+                                    columns = dimensions.columns
+                                )
                             }
                         }
 
@@ -741,8 +742,10 @@ fun ConcentrationTrendCard(
                 } else if (sortedResults.size == 1) { // 单个数据点的情况
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         val result = sortedResults[0]
-                        val rowChar = ('A' + result.wellIndex % 8).toChar()
-                        val colNumber = (result.wellIndex / 8) + 1
+                        val (row, column) = WellMappingUtils.mapRealToVirtualCoordinates(
+                            realIndex = result.wellIndex,
+                            columns = dimensions.columns
+                        )
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(
                                 modifier = Modifier
@@ -761,7 +764,11 @@ fun ConcentrationTrendCard(
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = stringResource(R.string.well_position_short, rowChar.toString(), colNumber),
+                                text = stringResource(
+                                    R.string.well_position_short,
+                                    WellMappingUtils.getRowLabel(row),
+                                    column + 1
+                                ),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -776,8 +783,10 @@ fun ConcentrationTrendCard(
             selectedPointIndex?.let { index ->
                 if (index < dataPointConcentrations.size) {
                     val (result, actualConcentrationValue) = dataPointConcentrations[index]
-                    val rowChar = ('A' + result.wellIndex % 8).toChar()
-                    val colNumber = (result.wellIndex / 8) + 1
+                    val (row, column) = WellMappingUtils.mapRealToVirtualCoordinates(
+                        realIndex = result.wellIndex,
+                        columns = dimensions.columns
+                    )
                     val percentValue = if (maxConcentration > 0) (actualConcentrationValue / maxConcentration) * 100.0 else 0.0
 
                     Card(
@@ -785,7 +794,7 @@ fun ConcentrationTrendCard(
                             .fillMaxWidth()
                             .padding(bottom = 12.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(FluoRadius.chip)
                     ) {
                         Row(
                             modifier = Modifier
@@ -796,7 +805,11 @@ fun ConcentrationTrendCard(
                         ) {
                             Column {
                                 Text(
-                                    text = stringResource(R.string.well_position_short, rowChar.toString(), colNumber),
+                                    text = stringResource(
+                                        R.string.well_position_short,
+                                        WellMappingUtils.getRowLabel(row),
+                                        column + 1
+                                    ),
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.bodyLarge
                                 )

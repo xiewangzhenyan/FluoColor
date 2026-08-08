@@ -63,6 +63,7 @@ import com.muc.fluocolorquant.ui.screens.result.getConcentrationUnit
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import android.util.Log
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 private const val TAG = "ValidationCard"
 
@@ -107,7 +108,7 @@ fun ValidationCard(
             containerColor = MaterialTheme.colorScheme.surface
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(FluoRadius.card)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(
@@ -118,7 +119,7 @@ fun ValidationCard(
                 Box(
                     modifier = Modifier
                         .size(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(FluoRadius.chip))
                         .background(MaterialTheme.colorScheme.primary),
                     contentAlignment = Alignment.Center
                 ) {

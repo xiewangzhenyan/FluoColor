@@ -51,7 +51,13 @@ data class CameraCaptureCapabilitiesSnapshot(
     val sensorExposureTimeRangeLabel: String?,
     val exposureCompensationRange: IntRange? = null,
     val sensorIsoRange: IntRange? = null,
-    val sensorExposureTimeRangeNs: LongRange? = null
+    val sensorExposureTimeRangeNs: LongRange? = null,
+    // 下列镜头字段均来自 CameraCharacteristics，自动记录而不要求用户建立设备档案。
+    val lensFacingLabel: String? = null,
+    val availableFocalLengthsMm: List<Float> = emptyList(),
+    val availableApertures: List<Float> = emptyList(),
+    val minimumFocusDistanceDiopters: Float? = null,
+    val sensorPixelArraySizeLabel: String? = null
 )
 
 /**

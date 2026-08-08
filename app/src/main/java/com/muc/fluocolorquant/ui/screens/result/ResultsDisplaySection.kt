@@ -31,7 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
@@ -67,6 +67,7 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.model.AnalyteResultDetails
 import com.muc.fluocolorquant.ui.components.LatexView
+import com.muc.fluocolorquant.ui.components.ScientificSectionTitle
 import com.muc.fluocolorquant.ui.components.charts.ChartData
 import com.muc.fluocolorquant.ui.components.charts.ChartPoint
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
@@ -77,6 +78,7 @@ import com.muc.fluocolorquant.utils.math.WellMappingUtils
 import kotlinx.coroutines.launch
 import java.util.Locale
 import android.util.Log
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 结果展示区域
@@ -97,27 +99,23 @@ fun ResultsDisplaySection(
         buildList {
             add(
                 ResultDisplayPageOption(
-                    titleRes = R.string.heatmap,
-                    descriptionRes = R.string.result_display_heatmap_desc
+                    titleRes = R.string.heatmap
                 )
             )
             add(
                 ResultDisplayPageOption(
-                    titleRes = R.string.value_map,
-                    descriptionRes = R.string.result_display_value_map_desc
+                    titleRes = R.string.value_map
                 )
             )
             add(
                 ResultDisplayPageOption(
-                    titleRes = R.string.concentration_chart,
-                    descriptionRes = R.string.result_display_chart_desc
+                    titleRes = R.string.concentration_chart
                 )
             )
             if (pageCount == 4) {
                 add(
                     ResultDisplayPageOption(
-                        titleRes = R.string.standard_curve,
-                        descriptionRes = R.string.result_display_standard_curve_desc
+                        titleRes = R.string.standard_curve
                     )
                 )
             }
@@ -133,35 +131,18 @@ fun ResultsDisplaySection(
         colors = CardDefaults.cardColors(
             containerColor = colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        shape = RoundedCornerShape(20.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        shape = RoundedCornerShape(FluoRadius.control),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            colorScheme.outlineVariant
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colorScheme.primary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Text(
-                    text = stringResource(R.string.result_display),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = colorScheme.onSurface
-                )
-            }
+            ScientificSectionTitle(
+                title = stringResource(R.string.result_display),
+                icon = Icons.Default.Assessment
+            )
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -173,14 +154,7 @@ fun ResultsDisplaySection(
                 onSelect = { page -> scope.launch { pagerState.animateScrollToPage(page) } }
             )
 
-            Text(
-                text = stringResource(pageOptions[pagerState.currentPage].descriptionRes),
-                style = MaterialTheme.typography.bodySmall,
-                color = colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 10.dp)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // 页面内容
             HorizontalPager(
@@ -211,8 +185,7 @@ fun ResultsDisplaySection(
 }
 
 private data class ResultDisplayPageOption(
-    val titleRes: Int,
-    val descriptionRes: Int
+    val titleRes: Int
 )
 
 @Composable
@@ -229,7 +202,7 @@ private fun ResultDisplaySegmentedControl(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(FluoRadius.control))
             .background(colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -246,7 +219,7 @@ private fun ResultDisplaySegmentedControl(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(FluoRadius.control))
                             .background(
                                 if (selected) colorScheme.primary
                                 else colorScheme.surface.copy(alpha = 0.9f)
@@ -254,7 +227,7 @@ private fun ResultDisplaySegmentedControl(
                             .border(
                                 width = if (selected) 0.dp else 1.dp,
                                 color = colorScheme.outline.copy(alpha = 0.22f),
-                                shape = RoundedCornerShape(14.dp)
+                                shape = RoundedCornerShape(FluoRadius.control)
                             )
                             .clickable { onSelect(currentIndex) }
                             .padding(horizontal = 12.dp, vertical = 14.dp),
@@ -340,7 +313,8 @@ fun ConcentrationTrendView(
         maxConcentration = details.wellResults
             .mapNotNull { it.predictedConcentration }
             .filter { it.isFinite() }
-            .maxOrNull() ?: 100.0
+            .maxOrNull() ?: 100.0,
+        project = details.project
     )
 }
 

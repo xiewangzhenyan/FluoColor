@@ -26,6 +26,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.navigation.Screen
@@ -55,6 +57,10 @@ fun ImageCorrectionScreen(
     val correctionSuccessMessage = stringResource(R.string.image_correction_success)
     val correctionFailedMessage = stringResource(R.string.image_correction_failed)
     val missingParamsMessage = stringResource(R.string.missing_parameters)
+    // 导航失败提示此前在 onClick 里硬编码中文字面量，英文环境下会直接显示中文。
+    // stringResource 只能在 Composable 上下文调用，因此先读到局部变量再供回调使用
+    // （AGENTS.md 5）。复用首页已有的 navigation_failed，中英文占位符一致。
+    val navigationFailedMessage = stringResource(R.string.navigation_failed)
     
     // 加载和处理图像
     LaunchedEffect(imageUri) {
@@ -83,22 +89,12 @@ fun ImageCorrectionScreen(
     
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        stringResource(R.string.image_correction),
-                        textAlign = TextAlign.Center
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, stringResource(R.string.back))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+            // 这是整条检测链路上唯一把顶栏染成 primaryContainer 的页面：从新建项目一路
+            // 走过来，到这里会突然多出一条蓝色横条，回到下一页又消失。改用统一顶栏后
+            // 与前后页面一致，同时修正了此处已废弃的 Icons.Default.ArrowBack（RTL 不镜像）。
+            FluoTopBar(
+                title = stringResource(R.string.image_correction),
+                onBack = { navController.navigateUp() }
             )
         }
     ) { paddingValues ->
@@ -129,12 +125,14 @@ fun ImageCorrectionScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(240.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF0F0F0))
+                        .clip(RoundedCornerShape(FluoRadius.control))
+                        // 原实现写死 0xFFF0F0F0 底色与 0xFFDDDDDD 描边，深色模式下这两个
+                        // 图片框会变成整屏最亮的两块白斑。改用主题表面色后自动跟随明暗。
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         .border(
                             width = 1.dp,
-                            color = Color(0xFFDDDDDD),
-                            shape = RoundedCornerShape(12.dp)
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            shape = RoundedCornerShape(FluoRadius.control)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -148,7 +146,7 @@ fun ImageCorrectionScreen(
                     } else {
                         Text(
                             text = stringResource(R.string.no_image_available),
-                            color = Color.Gray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -169,12 +167,14 @@ fun ImageCorrectionScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(240.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF0F0F0))
+                        .clip(RoundedCornerShape(FluoRadius.control))
+                        // 原实现写死 0xFFF0F0F0 底色与 0xFFDDDDDD 描边，深色模式下这两个
+                        // 图片框会变成整屏最亮的两块白斑。改用主题表面色后自动跟随明暗。
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         .border(
                             width = 1.dp,
-                            color = Color(0xFFDDDDDD),
-                            shape = RoundedCornerShape(12.dp)
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            shape = RoundedCornerShape(FluoRadius.control)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -210,7 +210,7 @@ fun ImageCorrectionScreen(
                     } else {
                         Text(
                             text = stringResource(R.string.no_image_available),
-                            color = Color.Gray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -231,7 +231,10 @@ fun ImageCorrectionScreen(
                                 )
                             } catch (e: Exception) {
                                 android.util.Log.e("ImageCorrection", "导航失败", e)
-                                toastManager.showToast("导航错误: ${e.message}", ToastType.ERROR)
+                                toastManager.showToast(
+                                    navigationFailedMessage.format(e.message ?: ""),
+                                    ToastType.ERROR
+                                )
                             }
                         } else {
                             toastManager.showToast(missingParamsMessage, ToastType.ERROR)
@@ -243,7 +246,7 @@ fun ImageCorrectionScreen(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     ),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(FluoRadius.control),
                     enabled = !isLoading
                 ) {
                     Text(stringResource(R.string.next_step))

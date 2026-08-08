@@ -11,6 +11,9 @@ sealed class Screen(open val route: String) {
     object NewProject : Screen("new_project") {
         fun createRoute(): String = route
     }
+    object QuickCreateProject : Screen("quick_create_project") {
+        fun createRoute(): String = route
+    }
     object ImageCapture : Screen("image_capture") {
         fun createRoute(
             outputPath: String,
@@ -41,19 +44,6 @@ sealed class Screen(open val route: String) {
             return "$route/$imageUri/$projectId"
         }
     }
-    object CurveFitting : Screen("curve_fitting") {
-        // projectId, runId, imageUri 现在都是路由路径的一部分
-        fun createRoute(projectId: String, runId: String, imageUri: String): String {
-            return "$route/$projectId/$runId/$imageUri"
-        }
-    }
-    // 添加了 CurveFittingResult 屏幕对象
-    object CurveFittingResult : Screen("curve_fitting_result") {
-        fun createRoute(projectId: String, analyteId: String): String {
-            return "$route/$projectId/$analyteId"
-        }
-    }
-
     object Result : Screen("result") {
         fun createRoute(runId: String): String {
             return "$route/$runId"
@@ -75,18 +65,42 @@ sealed class Screen(open val route: String) {
     object AnalyteManagement : Screen("analyte_management")
     object ReagentLibrary : Screen("reagent_library")
     object CurveModelLibrary : Screen("curve_model_library")
+    object CalibrationSettings : Screen("calibration_settings")
+    // 旧路由继续指向统一分析模型库；历史曲线使用独立兼容入口，避免旧项目数据丢失。
+    object LegacyCurveModelLibrary : Screen("legacy_curve_model_library")
+    object CarrierProfileManagement : Screen("carrier_profile_management")
+    object AcquisitionProfileManagement : Screen("acquisition_profile_management")
 
     // 实验模板管理相关路由
     object ExperimentTemplateManagement : Screen("experiment_template_management")
     object CreateExperimentTemplate : Screen("create_experiment_template") {
-        fun createRoute(templateId: String? = null): String {
-            return templateId?.let { "$route?templateId=$it" } ?: route
+        fun createRoute(
+            templateId: String? = null,
+            sourceTemplateId: String? = null
+        ): String {
+            val query = buildList {
+                templateId?.let { add("templateId=${android.net.Uri.encode(it)}") }
+                sourceTemplateId?.let {
+                    add("sourceTemplateId=${android.net.Uri.encode(it)}")
+                }
+            }
+            return if (query.isEmpty()) route else "$route?${query.joinToString("&")}"
         }
+
+        /** 从已发布模板创建下一草稿版本，禁止把发布版本直接放进原地编辑流程。 */
+        fun createCopyRoute(sourceTemplateId: String): String = createRoute(
+            sourceTemplateId = sourceTemplateId
+        )
     }
     
     // 曲线模型输入相关路由
     object ManualCurveInput : Screen("manual_curve_input")
-    object ManualDataInput : Screen("manual_data_input")
+    object ManualDataInput : Screen("manual_data_input") {
+        fun createRoute(modelId: String? = null): String = modelId
+            ?.takeIf(String::isNotBlank)
+            ?.let { "$route?modelId=${android.net.Uri.encode(it)}" }
+            ?: route
+    }
     
     // 光谱标定页面路由
     object SpectrumCalibration : Screen("spectrum_calibration/{projectId}/{imagePath}") {
@@ -102,6 +116,4 @@ sealed class Screen(open val route: String) {
         fun createRoute(projectId: String): String = "spectrum_result/$projectId"
     }
 
-    // 带参数的路由
-    class DetailRoute(val id: String) : Screen("detail/$id")
 }

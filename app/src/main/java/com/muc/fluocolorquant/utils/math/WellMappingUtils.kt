@@ -1,41 +1,67 @@
 package com.muc.fluocolorquant.utils.math
 
 /**
- * 孔位映射工具类 (最终修正版)
- * 在虚拟布局(固定8x12)和真实孔位(行列可变)之间进行索引和坐标转换
+ * 通用位点索引与坐标转换工具。
+ *
+ * 所有孔板、微流控芯片和自定义规则阵列都使用行优先顺序。列数必须由项目或载体
+ * 显式传入，避免 10×10、15×15 和非方阵被旧的固定 12 列公式错误映射。
  */
 object WellMappingUtils {
-
-    // 虚拟布局的固定尺寸
-    private const val VIRTUAL_COLS = 12
-
     /**
-     * 将【真实孔位索引】映射到【虚拟8x12布局坐标】
-     * 核心：无论真实板如何，都将其"拍平"成一个8x12的虚拟视图。
+     * 将行优先线性索引转换为零基行列坐标。
      */
-    fun mapRealToVirtualCoordinates(realIndex: Int): Pair<Int, Int> {
-        val virtualRow = realIndex / VIRTUAL_COLS
-        val virtualCol = realIndex % VIRTUAL_COLS
-        return Pair(virtualRow, virtualCol)
+    fun mapRealToVirtualCoordinates(realIndex: Int, columns: Int): Pair<Int, Int> {
+        require(realIndex >= 0) { "位点索引不能为负数" }
+        require(columns > 0) { "列数必须大于 0" }
+        return Pair(realIndex / columns, realIndex % columns)
     }
 
     /**
-     * 将【虚拟8x12布局坐标】映射到【真实孔位索引】
+     * 将零基行列坐标转换为行优先线性索引。
      */
     fun mapVirtualToRealIndex(
         virtualRow: Int,
-        virtualCol: Int
+        virtualCol: Int,
+        columns: Int
     ): Int {
-        return virtualRow * VIRTUAL_COLS + virtualCol
+        require(virtualRow >= 0) { "行索引不能为负数" }
+        require(virtualCol >= 0) { "列索引不能为负数" }
+        require(columns > 0) { "列数必须大于 0" }
+        require(virtualCol < columns) { "列索引超出当前阵列范围" }
+        return virtualRow * columns + virtualCol
     }
 
     /**
-     * 获取孔位的字母数字标识（如A1, B2等），始终基于8x12虚拟布局
+     * 获取孔板风格位点标识（如 A1、B2、AA3）。
+     * 微流控新结果页仍使用中性 R01C01；该标签只服务旧孔板兼容页面。
      */
     fun getWellLabel(row: Int, col: Int): String {
-        val rowLabel = ('A' + row).toString()
+        require(row >= 0) { "行索引不能为负数" }
+        require(col >= 0) { "列索引不能为负数" }
+        val rowLabel = getRowLabel(row)
         val colLabel = (col + 1).toString()
         return "$rowLabel$colLabel"
+    }
+
+    /** 根据行优先索引直接生成孔板风格标签。 */
+    fun getWellLabelForIndex(index: Int, columns: Int): String {
+        val (row, col) = mapRealToVirtualCoordinates(index, columns)
+        return getWellLabel(row, col)
+    }
+
+    /**
+     * 将零基行号转换为 Excel 风格字母，支持超过 26 行的自定义阵列。
+     */
+    fun getRowLabel(row: Int): String {
+        require(row >= 0) { "行索引不能为负数" }
+        var value = row + 1
+        val label = StringBuilder()
+        while (value > 0) {
+            val remainder = (value - 1) % 26
+            label.append(('A'.code + remainder).toChar())
+            value = (value - 1) / 26
+        }
+        return label.reverse().toString()
     }
     
     /**
@@ -44,16 +70,22 @@ object WellMappingUtils {
      * @return Pair(行, 列)，表示坐标（从0开始）
      */
     fun parseWellLabel(wellLabel: String): Pair<Int, Int>? {
-        if (wellLabel.length < 2) return null
-        
-        val rowChar = wellLabel[0].uppercaseChar()
-        if (rowChar !in 'A'..'Z') return null
-        
-        val colStr = wellLabel.substring(1)
+        val normalized = wellLabel.trim().uppercase()
+        if (normalized.length < 2) return null
+
+        val rowPart = normalized.takeWhile { it in 'A'..'Z' }
+        if (rowPart.isEmpty() || rowPart.length == normalized.length) return null
+
+        val colStr = normalized.substring(rowPart.length)
         val col = colStr.toIntOrNull()?.minus(1) ?: return null
         if (col < 0) return null
-        
-        val row = rowChar - 'A'
+
+        var rowNumber = 0L
+        rowPart.forEach { char ->
+            rowNumber = rowNumber * 26L + (char - 'A' + 1)
+            if (rowNumber > Int.MAX_VALUE.toLong()) return null
+        }
+        val row = (rowNumber - 1L).toInt()
         return Pair(row, col)
     }
-} 
+}

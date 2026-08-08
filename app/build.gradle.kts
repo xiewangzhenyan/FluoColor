@@ -66,6 +66,19 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
     }
+
+    // MigrationTestHelper 从 androidTest assets 读取历史 Room schema。
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+}
+
+// Room schema 会纳入版本控制，用于验证数据库迁移不会破坏历史科研数据。
+kapt {
+    arguments {
+        arg("room.schemaLocation", "$projectDir/schemas")
+        arg("room.incremental", "true")
+    }
 }
 
 dependencies {
@@ -116,10 +129,13 @@ dependencies {
     implementation("ru.noties:jlatexmath-android:0.2.0")
 
     testImplementation(libs.junit)
+    // ViewModel 单元测试需要可控的 Main 调度器，保证 Flow 收集和一次性事件可确定执行。
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

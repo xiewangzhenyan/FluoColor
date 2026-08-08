@@ -7,6 +7,7 @@ import com.muc.fluocolorquant.data.SessionManager
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
+import com.muc.fluocolorquant.data.repository.DetectionRunRepository
 import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.WellResultRepository
@@ -33,6 +34,7 @@ class HistoryViewModel @Inject constructor(
     private val projectRepository: ProjectRepository,
     private val sessionManager: SessionManager,
     private val wellResultRepository: WellResultRepository,
+    private val detectionRunRepository: DetectionRunRepository,
     private val analyteRepository: AnalyteRepository,
     private val projectAnalyteJoinRepository: ProjectAnalyteJoinRepository
 ) : ViewModel() {
@@ -357,7 +359,12 @@ class HistoryViewModel @Inject constructor(
      */
     suspend fun getLatestRunIdForProject(projectId: String): String? {
         return try {
-            wellResultRepository.getLatestRunIdForProject(projectId)
+            // 新微流控运行保存在 detection_runs + site_measurements，不会写入旧 well_results。
+            // 先读取统一运行主档；仅对没有运行主档的旧项目回退到历史孔位查询。
+            detectionRunRepository.getDetectionRunsByProjectId(projectId)
+                .firstOrNull()
+                ?.runId
+                ?: wellResultRepository.getLatestRunIdForProject(projectId)
         } catch (e: Exception) {
             android.util.Log.e("HistoryViewModel", "获取项目运行ID失败: ${e.message}", e)
             null

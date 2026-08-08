@@ -1,8 +1,6 @@
 package com.muc.fluocolorquant.ui.screens.result
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,16 +16,19 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.AnalyteResultDetails
+import com.muc.fluocolorquant.ui.components.ScientificExpandableSection
 import java.util.Locale
-import androidx.compose.material3.Icon
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 结果可追溯信息卡片。
@@ -39,8 +40,8 @@ fun ResultTraceabilityCard(
     modifier: Modifier = Modifier
 ) {
     val info = analyteDetails.traceabilityInfo ?: return
-    val colorScheme = MaterialTheme.colorScheme
     val missingValue = stringResource(R.string.result_traceability_not_available)
+    var expanded by rememberSaveable(analyteDetails.analyte.id) { mutableStateOf(false) }
 
     val recognitionType = when (info.recognitionType.uppercase(Locale.ROOT)) {
         "AUTO" -> stringResource(R.string.result_traceability_recognition_auto)
@@ -67,48 +68,22 @@ fun ResultTraceabilityCard(
         stringResource(R.string.result_traceability_threshold_value, formatDecimal(it.toDouble()))
     } ?: missingValue
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        shape = RoundedCornerShape(20.dp)
+    ScientificExpandableSection(
+        title = stringResource(R.string.result_traceability_title),
+        summary = stringResource(
+            R.string.result_traceability_compact_summary,
+            captureTime,
+            recognitionType
+        ),
+        icon = Icons.Default.Inventory2,
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        toggleContentDescription = stringResource(
+            if (expanded) R.string.result_details_collapse else R.string.result_details_expand
+        ),
+        modifier = modifier
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .background(
-                            color = colorScheme.primary,
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .padding(7.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Inventory2,
-                        contentDescription = null,
-                        tint = Color.White
-                    )
-                }
-                Column {
-                    Text(
-                        text = stringResource(R.string.result_traceability_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = colorScheme.onSurface
-                    )
-                    Text(
-                        text = stringResource(R.string.result_traceability_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
+        Column {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -183,7 +158,6 @@ fun ResultTraceabilityCard(
                     value = iouThreshold
                 )
             }
-
         }
     }
 }
@@ -201,7 +175,7 @@ private fun TraceabilityMetricCard(
             containerColor = colorScheme.surfaceVariant.copy(alpha = 0.36f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(FluoRadius.control)
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp)) {
             Text(

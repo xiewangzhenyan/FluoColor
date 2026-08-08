@@ -10,8 +10,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.muc.fluocolorquant.ui.screens.auth.LoginScreen
 import com.muc.fluocolorquant.ui.screens.auth.RegisterScreen
-import com.muc.fluocolorquant.ui.screens.curvefitting.CurveFittingResultScreen
-import com.muc.fluocolorquant.ui.screens.curvefitting.CurveFittingScreen
 import com.muc.fluocolorquant.ui.screens.detection.WellDetectionScreen
 import com.muc.fluocolorquant.ui.screens.home.HomeScreen
 import com.muc.fluocolorquant.ui.screens.image.CameraCaptureScreen
@@ -19,7 +17,8 @@ import com.muc.fluocolorquant.ui.screens.imagecrop.ImageCropScreen
 import com.muc.fluocolorquant.ui.screens.image.ImageCorrectionScreen
 import com.muc.fluocolorquant.ui.screens.profile.ProfileScreen
 import com.muc.fluocolorquant.ui.screens.project.NewProjectScreen
-import com.muc.fluocolorquant.ui.screens.result.NewResultScreen
+import com.muc.fluocolorquant.ui.screens.project.DirectCreateProjectScreen
+import com.muc.fluocolorquant.ui.screens.result.ResultGatewayScreen
 import com.muc.fluocolorquant.ui.screens.settings.AppSettingsScreen
 import com.muc.fluocolorquant.ui.screens.settings.DetectionSettingsScreen
 import com.muc.fluocolorquant.ui.screens.settings.SettingsScreen
@@ -31,18 +30,31 @@ import com.muc.fluocolorquant.ui.screens.settings.ReagentLibraryScreen
 import com.muc.fluocolorquant.ui.screens.settings.CurveModelManagementScreen
 import com.muc.fluocolorquant.ui.screens.settings.ManualCurveInputScreen
 import com.muc.fluocolorquant.ui.screens.settings.ManualDataInputScreen
+import com.muc.fluocolorquant.ui.screens.settings.StandardCurveLibraryScreen
+import com.muc.fluocolorquant.ui.screens.settings.CalibrationSettingsScreen
 import com.muc.fluocolorquant.ui.screens.settings.ExperimentTemplateManagementScreen
-import com.muc.fluocolorquant.ui.screens.settings.CreateExperimentTemplateScreen
+import com.muc.fluocolorquant.ui.screens.settings.template.ExperimentTemplateWizardScreen
+import com.muc.fluocolorquant.ui.screens.settings.resources.AcquisitionProfileManagementScreen
+import com.muc.fluocolorquant.ui.screens.settings.resources.CarrierProfileManagementScreen
 import com.muc.fluocolorquant.ui.screens.spectrum.SpectrumCalibrationScreen
 import com.muc.fluocolorquant.ui.screens.spectrum.SpectrumResultScreen
 import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
-// import com.muc.fluocolorquant.utils.animatedComposable
+import com.muc.fluocolorquant.utils.fluoEnterTransition
+import com.muc.fluocolorquant.utils.fluoExitTransition
+import com.muc.fluocolorquant.utils.fluoPopEnterTransition
+import com.muc.fluocolorquant.utils.fluoPopExitTransition
 
 @Composable
 fun AppNavigation(navController: NavHostController, startDestination: String = Screen.Splash.route) {
     NavHost(
         navController = navController,
-        startDestination = startDestination
+        startDestination = startDestination,
+        // 过渡统一挂在 NavHost 上：所有页面共用同一节奏，页面自身不再各写一套动画，
+        // 也避免部分页面有动画、部分页面瞬间切换造成的体验断层（AGENTS.md 9.2）。
+        enterTransition = fluoEnterTransition,
+        exitTransition = fluoExitTransition,
+        popEnterTransition = fluoPopEnterTransition,
+        popExitTransition = fluoPopExitTransition
     ) {
         composable(route = Screen.Splash.route) {
             SplashScreen(navController = navController)
@@ -65,6 +77,15 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             route = Screen.NewProject.route
         ) {
             NewProjectScreen(navController = navController)
+        }
+
+        // 快速新建路由指向直接新建页。历史上曾存在一个独立的 QuickCreateProjectScreen
+        // （模板优先的一次性合成流程），该页早已不在任何导航路径上，已随死代码清理删除；
+        // 路由名保留是为了不破坏既有跳转与外部深链。
+        composable(
+            route = Screen.QuickCreateProject.route
+        ) {
+            DirectCreateProjectScreen(navController = navController)
         }
 
         composable(
@@ -161,46 +182,6 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         }
 
-        // 曲线拟合/浓度预测页面
-        composable(
-            // 1. 更新路由格式，imageUri现在是路径的一部分
-            route = Screen.CurveFitting.route + "/{projectId}/{runId}/{imageUri}",
-            arguments = listOf(
-                navArgument("projectId") { type = NavType.StringType },
-                navArgument("runId") { type = NavType.StringType },
-                // 2. imageUri不再是可空的查询参数
-                navArgument("imageUri") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val projectId = backStackEntry.arguments?.getString("projectId")
-            val runId = backStackEntry.arguments?.getString("runId")
-            // 3. 直接获取 imageUri，它现在是必需的
-            val imageUri = backStackEntry.arguments?.getString("imageUri")
-            CurveFittingScreen(
-                navController = navController,
-                projectId = projectId,
-                runId = runId,
-                imageUri = imageUri // 将获取到的（编码的）URI传递下去
-            )
-        }
-
-        // 曲线拟合结果页面
-        composable(
-            route = Screen.CurveFittingResult.route + "/{projectId}/{analyteId}",
-            arguments = listOf(
-                navArgument("projectId") { type = NavType.StringType },
-                navArgument("analyteId") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val projectId = backStackEntry.arguments?.getString("projectId")
-            val analyteId = backStackEntry.arguments?.getString("analyteId")
-            CurveFittingResultScreen(
-                navController = navController,
-                projectId = projectId ?: "",
-                analyteId = analyteId ?: ""
-            )
-        }
-
         // 结果展示页面 - 使用新的结果展示页面替代旧版
         composable(
             route = Screen.Result.createRoute("{runId}"),
@@ -211,7 +192,7 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         ) { backStackEntry ->
             val runId = backStackEntry.arguments?.getString("runId")
-            NewResultScreen(
+            ResultGatewayScreen(
                 navController = navController,
                 runId = runId
             )
@@ -227,7 +208,7 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         ) { backStackEntry ->
             val runId = backStackEntry.arguments?.getString("runId")
-            NewResultScreen(
+            ResultGatewayScreen(
                 navController = navController,
                 runId = runId
             )
@@ -273,9 +254,29 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         }
 
-        // 曲线模型库页面
+        // 普通设置统一进入标准曲线库。统一分析模型的底层表继续承载科学契约，
+        // 但不再把模型文件、SHA、尺寸和参数 JSON 表单暴露给普通用户。
         composable(route = Screen.CurveModelLibrary.route) {
+            StandardCurveLibraryScreen(navController = navController)
+        }
+
+        composable(route = Screen.CalibrationSettings.route) {
+            CalibrationSettingsScreen(navController = navController)
+        }
+
+        // 历史 CurveModel、手动曲线和旧项目查询继续从兼容入口访问。
+        composable(route = Screen.LegacyCurveModelLibrary.route) {
             CurveModelManagementScreen(navController = navController)
+        }
+
+        // 版本化载体与布局库
+        composable(route = Screen.CarrierProfileManagement.route) {
+            CarrierProfileManagementScreen(navController = navController)
+        }
+
+        // 版本化采集设备档案库
+        composable(route = Screen.AcquisitionProfileManagement.route) {
+            AcquisitionProfileManagementScreen(navController = navController)
         }
 
         // 手动曲线输入页面
@@ -284,7 +285,16 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         }
 
         // 手动数据输入页面
-        composable(route = Screen.ManualDataInput.route) {
+        composable(
+            route = "${Screen.ManualDataInput.route}?modelId={modelId}",
+            arguments = listOf(
+                navArgument("modelId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) {
             ManualDataInputScreen(navController = navController)
         }
 
@@ -295,9 +305,14 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
 
         // 创建/编辑实验模板页面
         composable(
-            route = Screen.CreateExperimentTemplate.createRoute("{templateId}"), // Use the createRoute pattern
+            route = "${Screen.CreateExperimentTemplate.route}?templateId={templateId}&sourceTemplateId={sourceTemplateId}",
             arguments = listOf(
                 navArgument("templateId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("sourceTemplateId") {
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
@@ -305,9 +320,12 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         ) { backStackEntry ->
             val templateId = backStackEntry.arguments?.getString("templateId")
-            CreateExperimentTemplateScreen(
+            val sourceTemplateId = backStackEntry.arguments?.getString("sourceTemplateId")
+            // 直接编辑仅用于草稿；复制已发布方案会先创建独立的新版本草稿。
+            ExperimentTemplateWizardScreen(
                 navController = navController,
-                templateId = templateId
+                templateId = templateId,
+                sourceTemplateId = sourceTemplateId
             )
         }
 

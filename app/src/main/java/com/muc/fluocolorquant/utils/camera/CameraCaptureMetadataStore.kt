@@ -48,6 +48,7 @@ object CameraCaptureMetadataStore {
         imageFile: File,
         request: FixedCameraCaptureRequest,
         capabilities: CameraCaptureCapabilitiesSnapshot,
+        zoomSnapshot: CameraZoomSnapshot? = null,
         metadataVersion: String = "1.0"
     ): File {
         val exifData = readExifMetadata(imageFile)
@@ -85,6 +86,20 @@ object CameraCaptureMetadataStore {
                 put("exposureCompensationRange", capabilities.exposureCompensationRangeLabel)
                 put("sensorIsoRange", capabilities.sensorIsoRangeLabel ?: "")
                 put("sensorExposureTimeRangeNs", capabilities.sensorExposureTimeRangeLabel ?: "")
+                put("lensFacing", capabilities.lensFacingLabel ?: "")
+                put("availableFocalLengthsMm", capabilities.availableFocalLengthsMm.joinToString(","))
+                put("availableApertures", capabilities.availableApertures.joinToString(","))
+                put(
+                    "minimumFocusDistanceDiopters",
+                    capabilities.minimumFocusDistanceDiopters ?: JSONObject.NULL
+                )
+                put("sensorPixelArraySize", capabilities.sensorPixelArraySizeLabel ?: "")
+                put("focusMode", "CONTINUOUS_PICTURE")
+            })
+            put("zoom", JSONObject().apply {
+                put("ratio", zoomSnapshot?.zoomRatio ?: CameraCaptureDefaults.ZOOM_RATIO)
+                put("minimumRatio", zoomSnapshot?.minZoomRatio ?: CameraCaptureDefaults.ZOOM_RATIO)
+                put("maximumRatio", zoomSnapshot?.maxZoomRatio ?: CameraCaptureDefaults.ZOOM_RATIO)
             })
             put("exif", JSONObject(exifData))
         }

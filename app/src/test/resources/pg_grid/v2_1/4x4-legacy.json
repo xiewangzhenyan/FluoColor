@@ -1,0 +1,366 @@
+{
+  "schemaVersion": "pg-grid-v2.1",
+  "rows": 4,
+  "columns": 4,
+  "rectifiedWidth": 720,
+  "rectifiedHeight": 720,
+  "targetPolarity": "dark",
+  "chipRegionMethod": "opencv_bright_region_wide",
+  "chipCorners": [
+    {
+      "x": 70.04367065429688,
+      "y": 89.11257934570312
+    },
+    {
+      "x": 629.926025390625,
+      "y": 70.07968139648438
+    },
+    {
+      "x": 648.9563598632812,
+      "y": 629.887451171875
+    },
+    {
+      "x": 89.07394409179688,
+      "y": 648.9202880859375
+    }
+  ],
+  "homography": {
+    "forward": [
+      1.282716210906,
+      -0.043605044831,
+      -85.960393802287,
+      0.043611058186,
+      1.282887241602,
+      -117.376069705293,
+      2.07e-10,
+      1.81e-10,
+      1.0
+    ],
+    "inverse": [
+      0.778695805012,
+      0.026467682988,
+      70.043670654297,
+      -0.026471357219,
+      0.778591989544,
+      89.112579345703,
+      -1.57e-10,
+      -1.46e-10,
+      1.0
+    ]
+  },
+  "sites": [
+    {
+      "key": {
+        "rowIndex": 0,
+        "columnIndex": 0
+      },
+      "siteIndex": 0,
+      "rectified": {
+        "x": 52.455,
+        "y": 51.6113
+      },
+      "original": {
+        "x": 112.256195,
+        "y": 127.908173
+      },
+      "confidence": 0.406,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 0,
+        "columnIndex": 1
+      },
+      "siteIndex": 1,
+      "rectified": {
+        "x": 277.3831,
+        "y": 74.7344
+      },
+      "original": {
+        "x": 288.018768,
+        "y": 139.957489
+      },
+      "confidence": 0.9997,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 0,
+        "columnIndex": 2
+      },
+      "siteIndex": 2,
+      "rectified": {
+        "x": 463.3871,
+        "y": 81.1167
+      },
+      "original": {
+        "x": 433.028259,
+        "y": 140.002914
+      },
+      "confidence": 0.9976,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 0,
+        "columnIndex": 3
+      },
+      "siteIndex": 3,
+      "rectified": {
+        "x": 654.4628,
+        "y": 87.5725
+      },
+      "original": {
+        "x": 581.989014,
+        "y": 139.971329
+      },
+      "confidence": 0.9997,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 1,
+        "columnIndex": 0
+      },
+      "siteIndex": 4,
+      "rectified": {
+        "x": 81.2528,
+        "y": 254.386
+      },
+      "original": {
+        "x": 140.047897,
+        "y": 285.024628
+      },
+      "confidence": 0.9992,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 1,
+        "columnIndex": 1
+      },
+      "siteIndex": 5,
+      "rectified": {
+        "x": 271.0239,
+        "y": 260.8464
+      },
+      "original": {
+        "x": 287.992859,
+        "y": 285.031158
+      },
+      "confidence": 0.999,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 1,
+        "columnIndex": 2
+      },
+      "siteIndex": 6,
+      "rectified": {
+        "x": 457.034,
+        "y": 267.0849
+      },
+      "original": {
+        "x": 433.003296,
+        "y": 284.964478
+      },
+      "confidence": 0.9968,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 1,
+        "columnIndex": 3
+      },
+      "siteIndex": 7,
+      "rectified": {
+        "x": 648.1727,
+        "y": 273.5935
+      },
+      "original": {
+        "x": 582.014526,
+        "y": 284.972321
+      },
+      "confidence": 0.999,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 2,
+        "columnIndex": 0
+      },
+      "siteIndex": 8,
+      "rectified": {
+        "x": 74.7274,
+        "y": 444.3207
+      },
+      "original": {
+        "x": 139.993729,
+        "y": 433.07901
+      },
+      "confidence": 0.9995,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 2,
+        "columnIndex": 1
+      },
+      "siteIndex": 9,
+      "rectified": {
+        "x": 264.6128,
+        "y": 450.7012
+      },
+      "original": {
+        "x": 288.025604,
+        "y": 433.020325
+      },
+      "confidence": 0.9992,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 2,
+        "columnIndex": 2
+      },
+      "siteIndex": 10,
+      "rectified": {
+        "x": 450.601,
+        "y": 456.9899
+      },
+      "original": {
+        "x": 433.020325,
+        "y": 432.993286
+      },
+      "confidence": 0.9975,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 2,
+        "columnIndex": 3
+      },
+      "siteIndex": 11,
+      "rectified": {
+        "x": 641.6552,
+        "y": 463.5186
+      },
+      "original": {
+        "x": 581.966248,
+        "y": 433.019012
+      },
+      "confidence": 0.9997,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 3,
+        "columnIndex": 0
+      },
+      "siteIndex": 12,
+      "rectified": {
+        "x": 68.3953,
+        "y": 631.5151
+      },
+      "original": {
+        "x": 140.017563,
+        "y": 578.99469
+      },
+      "confidence": 1.0,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 3,
+        "columnIndex": 1
+      },
+      "siteIndex": 13,
+      "rectified": {
+        "x": 258.2788,
+        "y": 637.9431
+      },
+      "original": {
+        "x": 288.049225,
+        "y": 578.973083
+      },
+      "confidence": 0.9994,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 3,
+        "columnIndex": 2
+      },
+      "siteIndex": 14,
+      "rectified": {
+        "x": 444.3038,
+        "y": 644.3136
+      },
+      "original": {
+        "x": 433.074738,
+        "y": 579.008728
+      },
+      "confidence": 0.9979,
+      "source": "candidate_refined",
+      "flags": []
+    },
+    {
+      "key": {
+        "rowIndex": 3,
+        "columnIndex": 3
+      },
+      "siteIndex": 15,
+      "rectified": {
+        "x": 635.3375,
+        "y": 650.7095
+      },
+      "original": {
+        "x": 582.001221,
+        "y": 578.931641
+      },
+      "confidence": 0.9999,
+      "source": "candidate_refined",
+      "flags": []
+    }
+  ],
+  "geometry": {
+    "model": "homography",
+    "candidateSupportRatio": 0.0,
+    "trusted": false,
+    "observedRatio": 1.0,
+    "geometryRmsePx": 9.913277,
+    "inlierCount": 16,
+    "outlierCount": 0,
+    "meanConfidence": 0.961881
+  },
+  "frameQc": [
+    {
+      "code": "grid_support_low",
+      "severity": "failure",
+      "measuredValue": 0.0,
+      "threshold": 0.6
+    }
+  ],
+  "locatorName": "PG-Grid Python reference",
+  "locatorVersion": "2.0-adapted-to-2.1",
+  "referenceMetadata": {
+    "referenceCoreSha256": "e85152fc4011edf3d3f0575a6a1063aa590deb5ed01e9733055b2e6ce960d210",
+    "generatedAtUtc": "2026-07-26T13:24:33.555725+00:00",
+    "algorithm": "PG-Grid V2.0 bundle-adjusted localization with PG-Quant V1.0"
+  }
+}

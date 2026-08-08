@@ -18,13 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
-import android.widget.Toast
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +38,7 @@ import com.muc.fluocolorquant.ui.navigation.Screen
 import coil.request.ImageRequest
 import coil.size.Size
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -46,6 +47,9 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.PermissionStatus
+import com.muc.fluocolorquant.ui.components.LocalToastManager
+import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
@@ -56,6 +60,21 @@ fun ProfileScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val currentUser by userViewModel.currentUser.collectAsState()
+    val toastManager = LocalToastManager.current
+
+    // 非 Composable 回调使用预先解析的资源文本，禁止在 launcher/coroutine 回调中调用 stringResource。
+    val photoCancelledMessage = stringResource(R.string.profile_photo_cancelled)
+    val tempImageFailedMessage = stringResource(R.string.profile_temp_image_failed)
+    val cameraPermissionMessage = stringResource(R.string.camera_permission_required)
+    val avatarUpdatedMessage = stringResource(R.string.profile_avatar_updated)
+    val profileSavedMessage = stringResource(R.string.profile_saved_success)
+    val passwordChangedMessage = stringResource(R.string.profile_password_changed)
+    val allPasswordFieldsMessage = stringResource(R.string.profile_password_all_fields_required)
+    val passwordMismatchMessage = stringResource(R.string.profile_password_mismatch)
+    val passwordTooShortMessage = stringResource(R.string.profile_password_too_short)
+    val currentPasswordIncorrectMessage = stringResource(R.string.profile_current_password_incorrect)
+    val passwordChangeFailedMessage = stringResource(R.string.profile_password_change_failed)
+    val passwordVisibilityDescription = stringResource(R.string.profile_toggle_password_visibility)
     
     // 图片处理相关变量
     val tempImageUri = remember { mutableStateOf<Uri?>(null) }
@@ -68,7 +87,7 @@ fun ProfileScreen(
             // 导航到裁剪页面
             navController.navigate("${Screen.ImageCrop.route}?imageUri=${Uri.encode(tempImageUri.value.toString())}")
         } else if (!success) {
-            Toast.makeText(context, "拍照已取消", Toast.LENGTH_SHORT).show()
+            toastManager.showToast(photoCancelledMessage, ToastType.INFO)
         }
     }
 
@@ -103,7 +122,7 @@ fun ProfileScreen(
             )
         } catch (e: Exception) {
             android.util.Log.e("ProfileScreen", "Error creating temp image uri", e)
-            Toast.makeText(context, "无法创建临时图像文件", Toast.LENGTH_SHORT).show()
+            toastManager.showToast(tempImageFailedMessage, ToastType.ERROR)
             null
         }
     }
@@ -119,7 +138,7 @@ fun ProfileScreen(
                 tempImageUri.value = createTempImageUri()
                 tempImageUri.value?.let { uri ->
                     cameraLauncher.launch(uri)
-                } ?: Toast.makeText(context, "无法创建临时图像文件", Toast.LENGTH_SHORT).show()
+                } ?: toastManager.showToast(tempImageFailedMessage, ToastType.ERROR)
             }
             // 请求相机权限
             else -> {
@@ -138,7 +157,7 @@ fun ProfileScreen(
             is PermissionStatus.Denied -> {
                 // 权限被拒绝，显示提示
                 if ((cameraPermissionState.status as PermissionStatus.Denied).shouldShowRationale) {
-                    Toast.makeText(context, "需要相机权限才能拍照", Toast.LENGTH_SHORT).show()
+                    toastManager.showToast(cameraPermissionMessage, ToastType.WARNING)
                 }
             }
         }
@@ -180,7 +199,7 @@ fun ProfileScreen(
                     )
                     // 清除savedStateHandle中的数据，防止重复处理
                     savedStateHandle.remove<String>("croppedImageUri")
-                    Toast.makeText(context, "头像已更新", Toast.LENGTH_SHORT).show()
+                    toastManager.showToast(avatarUpdatedMessage, ToastType.SUCCESS)
                 }
             }
         }
@@ -196,22 +215,15 @@ fun ProfileScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        "个人信息",
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, "返回")
-                    }
-                }
+            // 标题与返回描述原为硬编码中文，英文环境会直接显示中文；复用已有的
+            // profile 资源（中英文均已存在）。返回图标随统一顶栏换为 AutoMirrored 版本。
+            FluoTopBar(
+                title = stringResource(R.string.profile),
+                onBack = { navController.navigateUp() }
             )
         },
-        containerColor = Color(0xFFF5F5F5) // 浅灰色背景
+        // 原背景写死 0xFFF5F5F5，深色模式下会是一整屏浅灰。改用主题背景色。
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -275,7 +287,7 @@ fun ProfileScreen(
                     focusedBorderColor = Color(0xFF5D6B98),
                     unfocusedBorderColor = Color(0xFFDDDDDD)
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(FluoRadius.chip)
             )
 
             OutlinedTextField(
@@ -296,7 +308,7 @@ fun ProfileScreen(
                     focusedBorderColor = Color(0xFF5D6B98),
                     unfocusedBorderColor = Color(0xFFDDDDDD)
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(FluoRadius.chip)
             )
 
             // 保存修改按钮
@@ -304,7 +316,7 @@ fun ProfileScreen(
                 onClick = {
                     scope.launch {
                         userViewModel.updateUserProfile(username, email)
-                        Toast.makeText(context, "保存成功", Toast.LENGTH_SHORT).show()
+                        toastManager.showToast(profileSavedMessage, ToastType.SUCCESS)
                     }
                 },
                 modifier = Modifier
@@ -314,7 +326,7 @@ fun ProfileScreen(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF5D6B98)
                 ),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(FluoRadius.chip),
                 enabled = isModified
             ) {
                 Icon(
@@ -335,7 +347,7 @@ fun ProfileScreen(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF4E5C82)
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(FluoRadius.chip)
             ) {
                 Icon(
                     imageVector = Icons.Default.Lock,
@@ -358,7 +370,7 @@ fun ProfileScreen(
                         modifier = Modifier.padding(bottom = 8.dp)
                     ) 
                 },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 containerColor = Color.White,
                 text = {
                     Column(
@@ -382,7 +394,7 @@ fun ProfileScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(60.dp)
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(FluoRadius.badge))
                                         .background(Color(0xFF5D6B98).copy(alpha = 0.1f)),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -415,7 +427,7 @@ fun ProfileScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(60.dp)
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(FluoRadius.badge))
                                         .background(Color(0xFF5D6B98).copy(alpha = 0.1f)),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -445,7 +457,7 @@ fun ProfileScreen(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF5D6B98)
                         ),
-                        shape = RoundedCornerShape(24.dp)
+                        shape = RoundedCornerShape(FluoRadius.sheet)
                     ) {
                         Text("取消")
                     }
@@ -473,7 +485,7 @@ fun ProfileScreen(
                         color = Color(0xFF5D6B98)
                     ) 
                 },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(FluoRadius.control),
                 containerColor = Color.White,
                 text = {
                     Column(
@@ -507,7 +519,7 @@ fun ProfileScreen(
                                     Icon(
                                         imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff
                                                    else Icons.Default.Visibility,
-                                        contentDescription = "切换密码可见性"
+                                        contentDescription = passwordVisibilityDescription
                                     )
                                 }
                             },
@@ -582,15 +594,15 @@ fun ProfileScreen(
                                 // 验证输入
                                 when {
                                     oldPassword.isEmpty() || newPassword.isEmpty() || confirmPassword.isEmpty() -> {
-                                        passwordError = "所有字段都必须填写"
+                                        passwordError = allPasswordFieldsMessage
                                         isSubmitting = false
                                     }
                                     newPassword != confirmPassword -> {
-                                        passwordError = "新密码与确认密码不匹配"
+                                        passwordError = passwordMismatchMessage
                                         isSubmitting = false
                                     }
                                     newPassword.length < 6 -> {
-                                        passwordError = "新密码长度必须至少为6个字符"
+                                        passwordError = passwordTooShortMessage
                                         isSubmitting = false
                                     }
                                     else -> {
@@ -605,14 +617,17 @@ fun ProfileScreen(
                                                 
                                                 if (result) {
                                                     // 密码修改成功
-                                                    Toast.makeText(context, "密码修改成功", Toast.LENGTH_SHORT).show()
+                                                    toastManager.showToast(
+                                                        passwordChangedMessage,
+                                                        ToastType.SUCCESS
+                                                    )
                                                     showPasswordDialog = false
                                                 } else {
                                                     // 密码验证失败
-                                                    passwordError = "当前密码不正确"
+                                                    passwordError = currentPasswordIncorrectMessage
                                                 }
                                             } catch (e: Exception) {
-                                                passwordError = "密码修改失败: ${e.message}"
+                                                passwordError = passwordChangeFailedMessage
                                             }
                                         }
                                         isSubmitting = false
@@ -626,7 +641,7 @@ fun ProfileScreen(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF5D6B98)
                         ),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(FluoRadius.chip),
                         enabled = !isSubmitting
                     ) {
                         if (isSubmitting) {
@@ -648,7 +663,7 @@ fun ProfileScreen(
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = Color(0xFF5D6B98)
                         ),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(FluoRadius.chip),
                         border = ButtonDefaults.outlinedButtonBorder.copy(
                             brush = SolidColor(Color(0xFF5D6B98))
                         )
@@ -659,4 +674,4 @@ fun ProfileScreen(
             )
         }
     }
-} 
+}

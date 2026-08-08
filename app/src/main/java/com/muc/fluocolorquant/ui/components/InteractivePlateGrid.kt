@@ -25,7 +25,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.WellRoleType
+import com.muc.fluocolorquant.utils.math.WellMappingUtils
 
 /**
  * 交互式孔板网格组件
@@ -72,7 +75,7 @@ fun InteractivePlateGrid(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                // 行标题 (A-H)
+                // 行标题支持超过 26 行的自定义旧模板。
                 Box(
                     modifier = Modifier.weight(1f),
                     contentAlignment = Alignment.Center
@@ -82,7 +85,7 @@ fun InteractivePlateGrid(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = ('A' + row).toString(),
+                            text = WellMappingUtils.getRowLabel(row),
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -120,18 +123,18 @@ fun RoleSelector(
     modifier: Modifier = Modifier
 ) {
     val roles = listOf(
-        Pair(WellRoleType.SAMPLE.code, "样本"),
-        Pair(WellRoleType.STANDARD.code, "标准品"),
-        Pair(WellRoleType.BLANK.code, "空白"),
-        Pair(WellRoleType.QUALITY_CONTROL.code, "质控"),
-        Pair(WellRoleType.NONE.code, "清除")
+        WellRoleType.SAMPLE.code to R.string.role_sample,
+        WellRoleType.STANDARD.code to R.string.role_standard,
+        WellRoleType.BLANK.code to R.string.role_blank,
+        WellRoleType.QUALITY_CONTROL.code to R.string.role_qc,
+        WellRoleType.NONE.code to R.string.role_none
     )
 
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        roles.forEach { (role, label) ->
+        roles.forEach { (role, labelResource) ->
             val isSelected = role == selectedRole
             val roleType = WellRoleType.fromCode(role)
             val backgroundColor = roleType.color
@@ -160,7 +163,7 @@ fun RoleSelector(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = label,
+                        text = stringResource(labelResource),
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center,
                         color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface

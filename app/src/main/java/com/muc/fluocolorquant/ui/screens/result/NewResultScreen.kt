@@ -59,10 +59,12 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.ExportViewModel
 import com.muc.fluocolorquant.ui.viewmodels.ResultViewModel
 import kotlinx.coroutines.launch
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 新版结果展示页面
@@ -96,18 +98,11 @@ fun NewResultScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.detection_results)) },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        navController.navigate(Screen.Home.route) {
-                            popUpTo(Screen.Home.route) { inclusive = true }
-                        }
-                    }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
+            FluoTopBar(
+                title = stringResource(R.string.detection_results),
+                onBack = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
                     }
                 },
                 actions = {
@@ -115,17 +110,11 @@ fun NewResultScreen(
                         Icon(
                             painter = painterResource(id = R.drawable.export),
                             contentDescription = stringResource(R.string.export),
-                            tint = MaterialTheme.colorScheme.onPrimary,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(8.dp)
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
-                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                }
             )
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -175,7 +164,7 @@ fun NewResultScreen(
                             Spacer(modifier = Modifier.height(24.dp))
                             androidx.compose.material3.Button(
                                 onClick = { navController.navigate(Screen.Home.route) },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(FluoRadius.control),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary
                                 )
@@ -211,20 +200,22 @@ fun NewResultScreen(
                             val currentAnalyteId = selectedAnalyteId ?: ""
                             val currentAnalyteDetails = analyteResultsMap[currentAnalyteId]
                             if (currentAnalyteDetails != null) {
-                                ResultTraceabilityCard(currentAnalyteDetails)
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                AnalysisPlanCard(currentAnalyteDetails)
-                                Spacer(modifier = Modifier.height(16.dp))
-
+                                // 科研结果优先：分析物切换后立即看到热力图和浓度，不再先穿过
+                                // 追溯信息与方案说明。辅助信息保留在结果之后并默认折叠。
                                 ResultsDisplaySection(currentAnalyteDetails)
-                                Spacer(modifier = Modifier.height(16.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
 
                                 ValidationCard(
                                     analyteId = currentAnalyteId,
                                     analyteDetails = currentAnalyteDetails,
                                     viewModel = viewModel
                                 )
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                ResultTraceabilityCard(currentAnalyteDetails)
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                AnalysisPlanCard(currentAnalyteDetails)
                             } else {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
@@ -248,7 +239,7 @@ fun NewResultScreen(
                             androidx.compose.material3.Button(
                                 onClick = { navController.navigate(Screen.Home.route) },
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(FluoRadius.control),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary
                                 )
@@ -330,12 +321,12 @@ fun AnalyteTabRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(FluoRadius.card))
                 .background(MaterialTheme.colorScheme.surface)
                 .border(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
-                    shape = RoundedCornerShape(20.dp)
+                    shape = RoundedCornerShape(FluoRadius.card)
                 )
                 .padding(6.dp)
         ) {
@@ -352,7 +343,7 @@ fun AnalyteTabRow(
                         selected = selected,
                         onClick = { onAnalyteSelected(analyte.id) },
                         modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(FluoRadius.control))
                             .background(
                                 if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                                 else Color.Transparent

@@ -57,8 +57,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.Arrangement
@@ -104,16 +106,9 @@ fun DetectionSettingsScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.settings_detection_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.settings_detection_title),
+                onBack = { navController.navigateUp() }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -343,9 +338,9 @@ fun DetectionSettingsScreen(
                                 // 不再调用 viewModel.setDefaultRows(12)
                             } else if (value.matches(Regex("^[0-9]+$"))) {
                                 val numValue = value.toInt()
-                                // 检查行*列是否小于等于96
+                                // 旧检测偏好与载体档案共用 1..99 的逐维边界，不再限制为 96 位点。
                                 val columns: Int = defaultColumns
-                                if (numValue > 0 && numValue * columns <= 96) {
+                                if (GridLayoutPolicy.isValid(numValue, columns)) {
                                     rowsText = value
                                     viewModel.setDefaultRows(numValue)
                                     rowInputError = false
@@ -401,9 +396,9 @@ fun DetectionSettingsScreen(
                                 // 不再调用 viewModel.setDefaultColumns(8)
                             } else if (value.matches(Regex("^[0-9]+$"))) {
                                 val numValue = value.toInt()
-                                // 检查行*列是否小于等于96
+                                // 逐维校验可支持 10×10、15×15 和自定义阵列。
                                 val rows: Int = defaultRows
-                                if (numValue > 0 && rows * numValue <= 96) {
+                                if (GridLayoutPolicy.isValid(rows, numValue)) {
                                     columnsText = value
                                     viewModel.setDefaultColumns(numValue)
                                     columnInputError = false
@@ -469,9 +464,9 @@ fun DetectionSettingsScreen(
                         // 行为空，列不为空
                         if (columnsText.matches(Regex("^[0-9]+$"))) {
                             val numColumns = columnsText.toInt()
-                            // 检查行*列是否小于等于96
+                            // 只校验载体支持的行列边界，不再套用旧 96 孔总数上限。
                             val rows: Int = defaultRows
-                            if (rows * numColumns <= 96) {
+                            if (GridLayoutPolicy.isValid(rows, numColumns)) {
                                 viewModel.setDefaultColumns(numColumns)
                                 toastManager.showToast(
                                     message = context.getString(R.string.settings_update_success),
@@ -493,9 +488,9 @@ fun DetectionSettingsScreen(
                         // 列为空，行不为空
                         if (rowsText.matches(Regex("^[0-9]+$"))) {
                             val numRows = rowsText.toInt()
-                            // 检查行*列是否小于等于96
+                            // 只校验载体支持的行列边界，不再套用旧 96 孔总数上限。
                             val columns: Int = defaultColumns
-                            if (numRows * columns <= 96) {
+                            if (GridLayoutPolicy.isValid(numRows, columns)) {
                                 viewModel.setDefaultRows(numRows)
                                 toastManager.showToast(
                                     message = context.getString(R.string.settings_update_success),
@@ -518,8 +513,8 @@ fun DetectionSettingsScreen(
                         if (rowsText.matches(Regex("^[0-9]+$")) && columnsText.matches(Regex("^[0-9]+$"))) {
                             val numRows = rowsText.toInt()
                             val numColumns = columnsText.toInt()
-                            // 检查行*列是否小于等于96
-                            if (numRows * numColumns <= 96) {
+                            // 统一支持载体档案允许的自定义行列。
+                            if (GridLayoutPolicy.isValid(numRows, numColumns)) {
                                 viewModel.setDefaultRows(numRows)
                                 viewModel.setDefaultColumns(numColumns)
                                 toastManager.showToast(
@@ -869,4 +864,4 @@ fun ConcentrationUnitChips(
             }
         }
     }
-} 
+}

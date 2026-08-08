@@ -1,8 +1,6 @@
 package com.muc.fluocolorquant
 
-import android.app.ActivityManager
 import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -19,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
+import com.muc.fluocolorquant.data.repository.AppLanguageStore
 import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastHost
@@ -46,67 +45,60 @@ class MainActivity : ComponentActivity() {
     
     private val toastManager by lazy { ToastManager() }
     
+    /**
+     * 用当前语言包装 Activity 的 Context。
+     *
+     * 这一步不能省：`recreate()` 只重建 Activity，不会再次触发
+     * `FluoColorApp.attachBaseContext`，因此语言切换后必须由这里重新套用新 Locale，
+     * 否则界面要等到进程重启才会变。
+     *
+     * 这里也是全应用唯一读取语言偏好的地方。Application 的 attachBaseContext 无法可靠读取
+     * DataStore（那时 applicationContext 尚未就绪），因此不在那里做。首次读盘后结果进缓存，
+     * 语言切换触发的重建只命中内存。
+     */
     override fun attachBaseContext(newBase: Context) {
-        // FluoColorApp 提供的 newBase 上下文已经本地化。
-        // 无需在此处重新包装或再次应用语言环境。
-        super.attachBaseContext(newBase)
+        val languageCode = AppLanguageStore.currentLanguageBlocking(newBase)
+        Log.i(TAG, "attachBaseContext: 应用语言 $languageCode")
+        super.attachBaseContext(LocaleHelper.updateLocale(newBase, languageCode))
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // 直接读取并立即应用当前存储的语言设置
-        val currentLanguage = runBlocking { 
-            try {
-                settingsRepository.languageFlow.first()
-            } catch (e: Exception) {
-                LocaleHelper.getSystemLanguage()
-            }
-        }
-        val initialThemeMode = runBlocking {
-            try {
-                settingsRepository.themeModeFlow.first()
-            } catch (e: Exception) {
-                SettingsRepository.DEFAULT_THEME_MODE
-            }
-        }
 
-        // 强制更新当前Activity的配置
-        LocaleHelper.updateActivityLocale(this, currentLanguage)
-        Log.d(TAG, "onCreate: Forcefully applied language: $currentLanguage, theme: $initialThemeMode")
+        // 语言不在此处再读一次：FluoColorApp.attachBaseContext 已经用保存的语言构造了
+        // 本地化 Context，Activity 继承该 Context，stringResource() 直接取到正确资源。
+        // 原实现在这里又做了一次 runBlocking 读盘并调用已废弃的
+        // resources.updateConfiguration()，属于对同一件事的重复处理。
+        //
+        // 主题模式仍需一个初始值：themeModeFlow 是冷流，collectAsState 的首帧会先用
+        // initial 值渲染。若这里给 DEFAULT_THEME_MODE，深色模式用户每次冷启动都会先闪
+        // 一帧浅色。因此保留这次同步读取，代价是一次磁盘读。
+        val initialThemeMode = runBlocking {
+            runCatching { settingsRepository.themeModeFlow.first() }
+                .getOrDefault(SettingsRepository.DEFAULT_THEME_MODE)
+        }
+        Log.d(TAG, "onCreate: initial theme mode = $initialThemeMode")
 
         WindowCompat.setDecorFitsSystemWindows(window, true)
-        
-        // 监听语言变化 - 仅监听语言变化，不监听其他设置
+
+        // 语言变化需要重新创建 Activity，让 Application 的 attachBaseContext 用新语言
+        // 重新构造 Context。这里只监听语言，其他设置（主题等）由 Compose 重组处理，
+        // 不触发重建。
         lifecycleScope.launch {
-            // 直接使用languageFlow而不是通过DataStore间接监听
-            // 这样可以确保只有语言变化时才会触发重启
             settingsRepository.languageFlow
                 .drop(1) // 忽略初始值，只对后续变化做出反应
-                .distinctUntilChanged() 
+                .distinctUntilChanged()
                 .collect { newLanguage ->
-                    Log.d(TAG, "Language preference changed to: $newLanguage. Recreating activity.")
-                    // 使用更明确的方式重启Activity，确保重建时加载新语言
-                    restartActivity()
+                    Log.d(TAG, "语言偏好变为 $newLanguage，重建 Activity 以套用新资源")
+                    recreate()
                 }
         }
-        
+
         setContent {
-        // Activity 的上下文（因此默认情况下为 LocalContext.current）
-        // 已由 FluoColorApp.attachBaseContext 和此 Activity 的 attachmentBaseContext 配置。
-        // 可组合函数（如 stringResource()）将使用此上下文。
+            // Activity 的 Context 已由 FluoColorApp.attachBaseContext 本地化，
+            // stringResource() 等可组合函数直接使用该 Context。
             ActualAppContent(initialThemeMode = initialThemeMode)
         }
-    }
-
-    /**
-     * 使用更明确的方式重启Activity，确保正确应用语言设置
-     */
-    fun restartActivity() {
-        val intent = Intent(this, MainActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
-        finish()
-        startActivity(intent)
     }
 
     @Composable

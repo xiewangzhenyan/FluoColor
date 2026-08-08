@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.PixelType
 import com.muc.fluocolorquant.data.model.CurveModel
@@ -77,6 +78,7 @@ import com.muc.fluocolorquant.ui.viewmodels.CurveModelViewModel
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import androidx.compose.ui.text.font.FontWeight
 import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
  * 曲线模型管理页面
@@ -92,27 +94,21 @@ fun CurveModelManagementScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     
-    var showAddModelDialog by remember { mutableStateOf(false) }
     var modelToDelete by remember { mutableStateOf<CurveModel?>(null) }
     var modelToEdit by remember { mutableStateOf<CurveModel?>(null) }
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(text = stringResource(R.string.curve_model_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                }
+            FluoTopBar(
+                title = stringResource(R.string.curve_model_title),
+                onBack = { navController.navigateUp() }
             )
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showAddModelDialog = true },
+                // 普通创建入口直接进入“标定点 + 自动拟合”页面，不再让用户选择手工录入
+                // 函数参数的旧流程，也不会暴露参数 JSON。
+                onClick = { navController.navigate(Screen.ManualDataInput.route) },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
                 Icon(
@@ -150,7 +146,7 @@ fun CurveModelManagementScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 8.dp),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(FluoRadius.badge),
                             color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
                             tonalElevation = 3.dp
                         ) {
@@ -321,51 +317,6 @@ fun CurveModelManagementScreen(
                 )
             }
             
-            // 添加模型的底部弹窗
-            if (showAddModelDialog) {
-                val sheetState = rememberModalBottomSheetState()
-                ModalBottomSheet(
-                    onDismissRequest = { showAddModelDialog = false },
-                    sheetState = sheetState
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = stringResource(R.string.add_new_model),
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-                        
-                        Button(
-                            onClick = {
-                                showAddModelDialog = false
-                                navController.navigate(Screen.ManualCurveInput.route)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(stringResource(R.string.import_curve))
-                        }
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        Button(
-                            onClick = {
-                                showAddModelDialog = false
-                                navController.navigate(Screen.ManualDataInput.route)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(stringResource(R.string.import_data))
-                        }
-                        
-                        Spacer(modifier = Modifier.height(24.dp))
-                    }
-                }
-            }
         }
     }
 }
@@ -571,4 +522,4 @@ fun ExpandableCurveModelItem(
             }
         }
     }
-} 
+}

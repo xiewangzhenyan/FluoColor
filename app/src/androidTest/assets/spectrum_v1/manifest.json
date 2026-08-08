@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "spectrum-real-v1",
+  "description": "用户实拍多通道光谱图。图片保持原始 PNG 字节不变，仅改为 ASCII 文件名。冻结用于回归“通道数必须来自项目配置而不是硬编码 1”。",
+  "cases": [
+    {
+      "id": "spectrum_9ch",
+      "image": "images/spectrum_9ch.png",
+      "sourceName": "smartphoneSpectrum/spectrum.png",
+      "sourceCapturedAt": "2025-12-09T11:41:00",
+      "sha256": "5379FDF3A450EF4C0E80CE1871E348F4B6351BE92AC3FBBF08B70E52B2E2F9FF",
+      "pixelWidth": 1184,
+      "pixelHeight": 864,
+      "expectedTrackCount": 9,
+      "note": "轮廓法与列投影法均独立数出 9 条轨道，轨道宽约 55px、间距约 80px。"
+    }
+  ]
+}

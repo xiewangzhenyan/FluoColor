@@ -21,6 +21,7 @@ import com.muc.fluocolorquant.data.enums.PixelType
  * 处理各种数学拟合模型计算和数据拟合
  */
 object FittingEngine {
+    private const val CALIBRATION_INVERSE_EPSILON: Double = 1e-12
 
     /**
      * 将函数参数格式化为LaTeX表达式
@@ -277,7 +278,11 @@ object FittingEngine {
             }
         }
 
+        // 参数替换后统一相邻符号，避免科研结果页出现“+ -70.923”或“--0.5”这类
+        // 数学上可勉强解释、但排版明显不专业的表达。这里只规范符号，不改变参数数值。
         return latexString
+            .replace(Regex("""\+\s*-\s*"""), "- ")
+            .replace(Regex("""-\s*-\s*"""), "+ ")
     }
 
     /**
@@ -313,6 +318,72 @@ object FittingEngine {
     }
 
     /**
+     * 为自动标定模型执行解析浓度反算。
+     *
+     * 该入口只覆盖经过约束拟合的线性、Hill 3PL、4PL 和 5PL。返回 null 表示信号不在
+     * 当前模型的数学可达域、参数不可执行或反算结果为负。调用方不得把 null 夹到项目
+     * 量程端点，否则会把真正不可定量的观测伪造成精确浓度。
+     */
+    fun invertCalibrationSignal(
+        function: FittingFunction,
+        params: Map<String, Double>,
+        signal: Double
+    ): Double? {
+        if (!signal.isFinite() || params.values.any { !it.isFinite() }) return null
+        val concentration = when (function) {
+            FittingFunction.LINEAR -> {
+                val slope = params["a"] ?: return null
+                val intercept = params["b"] ?: return null
+                if (abs(slope) <= CALIBRATION_INVERSE_EPSILON) return null
+                (signal - intercept) / slope
+            }
+
+            FittingFunction.HILL -> {
+                val upperAsymptote = params["a"] ?: return null
+                val slope = params["b"] ?: return null
+                val center = params["c"] ?: return null
+                if (upperAsymptote <= 0.0 || slope <= 0.0 || center <= 0.0) return null
+                if (abs(signal) <= CALIBRATION_INVERSE_EPSILON) {
+                    0.0
+                } else {
+                    val remaining = upperAsymptote - signal
+                    if (signal <= 0.0 || remaining <= CALIBRATION_INVERSE_EPSILON) return null
+                    val powered = signal / remaining
+                    center * powered.pow(1.0 / slope)
+                }
+            }
+
+            FittingFunction.RODBARD,
+            FittingFunction.LOGISTIC -> {
+                val a = params["a"] ?: return null
+                val slope = params["b"] ?: return null
+                val center = params["c"] ?: return null
+                val d = params["d"] ?: return null
+                val asymmetry = if (function == FittingFunction.LOGISTIC) {
+                    params["g"] ?: return null
+                } else {
+                    1.0
+                }
+                if (slope <= 0.0 || center <= 0.0 || asymmetry <= 0.0) return null
+                val signalOffset = signal - d
+                if (abs(signalOffset) <= CALIBRATION_INVERSE_EPSILON) return null
+                val ratio = (a - d) / signalOffset
+                if (!ratio.isFinite() || ratio <= 0.0) return null
+                val powered = ratio.pow(1.0 / asymmetry) - 1.0
+                if (!powered.isFinite() || powered < -CALIBRATION_INVERSE_EPSILON) return null
+                if (powered <= CALIBRATION_INVERSE_EPSILON) {
+                    0.0
+                } else {
+                    center * powered.pow(1.0 / slope)
+                }
+            }
+
+            else -> return null
+        }
+        return concentration.takeIf { it.isFinite() && it >= 0.0 }
+    }
+
+    /**
      * 拟合数据点到最佳函数模型
      * @param dataPoints 数据点列表，每个点为 (x, y) 对
      * @return 拟合结果
@@ -332,23 +403,12 @@ object FittingEngine {
             )
         }
 
-        val results = mutableListOf<FittingResult>()
-
-        // 尝试拟合所有适用的函数类型
-        for (function in getApplicableFunctions(dataPoints)) {
-            try {
-                val result = fitSingle(dataPoints, function)
-                if (result.isSuccess) {
-                    results.add(result)
-                }
-            } catch (e: Exception) {
-                // 拟合失败，尝试下一个函数
-                continue
-            }
-        }
-
-        // 找到 R² 最高的结果
-        return results.maxByOrNull { it.rSquared }
+        /*
+         * 普通用户的自动推荐不再遍历全部函数并选择训练集 R² 最大值。成熟的标准曲线流程
+         * 只比较加权线性、4PL 和 5PL，并优先检查标准点反算浓度、端点接受情况、单调性
+         * 以及第五个参数是否确有必要。专家仍可通过 fitSingle 手动指定其他函数。
+         */
+        return fitCalibrationCandidates(dataPoints).firstOrNull()
             ?: FittingResult(
                 function = FittingFunction.LINEAR,
                 parameters = doubleArrayOf(),
@@ -360,6 +420,94 @@ object FittingEngine {
                 errorMessage = "所有函数拟合均失败",
                 allMetrics = mapOf("R²" to 0.0)
             )
+    }
+
+    /**
+     * 返回按科学验收质量排序的自动标准曲线候选。
+     *
+     * @param dataPoints 标准点，第一项是浓度，第二项是响应信号
+     * @param allowedFunctions 本次允许参加比较的函数；自动模式默认只含线性、4PL、5PL
+     */
+    fun fitCalibrationCandidates(
+        dataPoints: List<Pair<Double, Double>>,
+        allowedFunctions: Set<FittingFunction> = CalibrationModelSelector.automaticFunctions
+    ): List<FittingResult> {
+        val normalizedPoints = dataPoints.filter { (concentration, signal) ->
+            concentration.isFinite() && concentration >= 0.0 && signal.isFinite()
+        }.sortedBy { it.first }
+        return CalibrationModelSelector.rank(normalizedPoints, allowedFunctions).map { candidate ->
+            buildCalibrationResult(normalizedPoints, candidate)
+        }
+    }
+
+    /**
+     * 为统一阵列标定和标准曲线库生成用户明确允许的全部函数候选。
+     *
+     * 线性、4PL、5PL继续使用成熟的加权标定选择器；二次、指数、对数、幂函数以及
+     * 专家函数使用项目既有单函数拟合器。调用方仍负责浓度水平门槛和曲线单调性验收，
+     * 本入口只保证不同页面不会把系统设置中的非三大函数悄悄丢弃。
+     */
+    fun fitRequestedCalibrationFunctions(
+        dataPoints: List<Pair<Double, Double>>,
+        allowedFunctions: Set<FittingFunction>
+    ): List<FittingResult> {
+        val normalizedPoints = dataPoints.filter { (concentration, signal) ->
+            concentration.isFinite() && concentration >= 0.0 && signal.isFinite()
+        }.sortedBy { it.first }
+        return allowedFunctions.flatMap { function ->
+            // 对数与幂函数的旧拟合器会过滤定义域外点。统一入口必须整条拒绝，不能让
+            // 标准曲线库和现场标定在用户不知情时使用不同数量的标准点。
+            val domainValid = when (function) {
+                FittingFunction.LOG -> normalizedPoints.all { (concentration, _) ->
+                    concentration > 0.0
+                }
+                FittingFunction.POWER -> normalizedPoints.all { (concentration, signal) ->
+                    concentration > 0.0 && signal > 0.0
+                }
+                else -> true
+            }
+            if (!domainValid) {
+                emptyList()
+            } else if (function in CalibrationModelSelector.automaticFunctions) {
+                fitCalibrationCandidates(normalizedPoints, setOf(function))
+            } else {
+                listOf(fitSingle(normalizedPoints, function)).filter(FittingResult::isSuccess)
+            }
+        }
+    }
+
+    /** 普通自动模式支持的成熟曲线集合，供旧96孔板选择界面复用。 */
+    fun automaticCalibrationFunctions(): Set<FittingFunction> =
+        CalibrationModelSelector.automaticFunctions
+
+    /** 将新择优器内部候选转换为项目既有 FittingResult 契约。 */
+    private fun buildCalibrationResult(
+        dataPoints: List<Pair<Double, Double>>,
+        candidate: CalibrationFitCandidate
+    ): FittingResult {
+        val function = candidate.function
+        val parameters = function.requiredParams.map { key ->
+            candidate.parameters[key] ?: 0.0
+        }.toDoubleArray()
+        val observed = dataPoints.map { it.second }
+        val predicted = dataPoints.map { (concentration, _) ->
+            calculate(function, candidate.parameters, concentration)
+        }
+        val metrics = MetricsCalculator.calculateAllMetrics(
+            observed = observed,
+            predicted = predicted,
+            numParameters = parameters.size
+        ) + candidate.diagnostics.asMetrics(candidate.weighting)
+        return FittingResult(
+            function = function,
+            parameters = parameters,
+            formula = generateFormula(function, candidate.parameters),
+            rSquared = metrics["R²"] ?: 0.0,
+            standardPoints = dataPoints,
+            curvePoints = generateCurvePoints(function, candidate.parameters, dataPoints),
+            allMetrics = metrics,
+            isSuccess = true
+        )
     }
 
     /**
@@ -479,15 +627,6 @@ object FittingEngine {
             // 拟合失败
             return null
         }
-    }
-
-    /**
-     * 获取适用于给定数据点的函数类型
-     */
-    private fun getApplicableFunctions(dataPoints: List<Pair<Double, Double>>): List<FittingFunction> {
-        // 简化起见，返回所有函数，但排除INTERPOLATION
-        // 实际使用时可以根据数据特性筛选适用的函数
-        return FittingFunction.values().toList().filter { it != FittingFunction.INTERPOLATION }
     }
 
     /**
@@ -1850,10 +1989,8 @@ object FittingEngine {
             }
 
             FittingFunction.RODBARD -> {
-                // 对于4PL函数，需要数值求解
-                // y = d + (a-d)/(1+(x/c)^b)
-                // 求解 x，使得 f(x) = pixelValue
-                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+                // 4PL 有稳定解析反函数，避免旧固定二分范围把大于1000的真实浓度压错。
+                invertLogisticConcentration(paramMap, pixelValue, fiveParameter = false)
             }
 
             FittingFunction.GAMMA_VARIATE -> {
@@ -1900,8 +2037,8 @@ object FittingEngine {
             }
 
             FittingFunction.LOGISTIC -> {
-                // 5PL函数需要数值求解
-                solveBisection(paramMap, function, pixelValue, 0.001, 1000.0)
+                // 5PL 同样使用解析反函数；非法或超出渐近范围时保持旧接口的0兜底语义。
+                invertLogisticConcentration(paramMap, pixelValue, fiveParameter = true)
             }
 
             FittingFunction.GOMPERTZ -> {
@@ -1971,6 +2108,34 @@ object FittingEngine {
                 }
             }
         }
+    }
+
+    /**
+     * 解析反算4PL/5PL浓度。
+     *
+     * 4PL：x = c * (((a-d)/(y-d))-1)^(1/b)
+     * 5PL：x = c * ((((a-d)/(y-d))^(1/g))-1)^(1/b)
+     */
+    private fun invertLogisticConcentration(
+        parameters: Map<String, Double>,
+        signal: Double,
+        fiveParameter: Boolean
+    ): Double {
+        val a = parameters["a"] ?: return 0.0
+        val slope = parameters["b"] ?: return 0.0
+        val center = parameters["c"] ?: return 0.0
+        val d = parameters["d"] ?: return 0.0
+        val asymmetry = if (fiveParameter) parameters["g"] ?: return 0.0 else 1.0
+        val signalOffset = signal - d
+        if (abs(signalOffset) <= 1e-12 || slope <= 0.0 || center <= 0.0 || asymmetry <= 0.0) {
+            return 0.0
+        }
+        val ratio = (a - d) / signalOffset
+        if (!ratio.isFinite() || ratio <= 0.0) return 0.0
+        val powered = ratio.pow(1.0 / asymmetry) - 1.0
+        if (!powered.isFinite() || powered < -1e-12) return 0.0
+        val concentration = if (powered <= 1e-12) 0.0 else center * powered.pow(1.0 / slope)
+        return concentration.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
     }
 
     /**

@@ -1,7 +1,18 @@
 package com.muc.fluocolorquant.data.repository
 
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
+import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
+import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
+import com.muc.fluocolorquant.data.model.TemplateQuantitationBinding
 import kotlinx.coroutines.flow.Flow
+
+/** 模板主档与多分析物、通用阵列位点配置的原子数据包。 */
+data class ExperimentTemplateBundle(
+    val template: ExperimentTemplate,
+    val analyteConfigs: List<TemplateAnalyteConfig> = emptyList(),
+    val siteAssignments: List<TemplateSiteAssignment> = emptyList(),
+    val quantitationBindings: List<TemplateQuantitationBinding> = emptyList()
+)
 
 /**
  * 实验模板仓库接口
@@ -51,4 +62,12 @@ interface ExperimentTemplateRepository {
      * @param id 实验模板ID
      */
     suspend fun deleteTemplateById(id: String)
-} 
+
+    /** 以下接口供新模板向导使用，明确区分草稿、发布版本和归档。 */
+    suspend fun getBundle(id: String): ExperimentTemplateBundle?
+    suspend fun createDraft(bundle: ExperimentTemplateBundle): ExperimentTemplateBundle
+    suspend fun updateDraft(bundle: ExperimentTemplateBundle)
+    suspend fun createNextDraft(previousId: String): ExperimentTemplateBundle
+    suspend fun publish(id: String)
+    suspend fun archive(id: String)
+}

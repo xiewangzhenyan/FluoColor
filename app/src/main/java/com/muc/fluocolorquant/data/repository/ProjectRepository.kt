@@ -1,6 +1,7 @@
 package com.muc.fluocolorquant.data.repository
 
 import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.data.model.ProjectAnalyteJoin
 
 /**
  * 项目仓库接口
@@ -25,6 +26,16 @@ interface ProjectRepository {
      * @param project 项目对象
      */
     suspend fun createProject(project: Project)
+
+    /**
+     * 原子创建模板项目及其全部分析物关联。
+     *
+     * 新流程必须使用该接口，确保项目不可变快照和多分析物配置不会分批落库。
+     */
+    suspend fun createProjectWithAnalytes(
+        project: Project,
+        joins: List<ProjectAnalyteJoin>
+    )
     
     /**
      * 更新项目

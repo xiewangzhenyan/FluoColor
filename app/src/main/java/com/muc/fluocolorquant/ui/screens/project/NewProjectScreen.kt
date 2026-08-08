@@ -1,1532 +1,911 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.muc.fluocolorquant.ui.screens.project
 
-import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Biotech
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
+import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.InputProtocol
+import com.muc.fluocolorquant.domain.project.ProjectDetectionDestination
+import com.muc.fluocolorquant.domain.project.TemplatePreflightCode
+import com.muc.fluocolorquant.domain.project.TemplatePreflightIssue
+import com.muc.fluocolorquant.ui.components.LocalToastManager
+import com.muc.fluocolorquant.ui.components.ScientificMetadataChip
+import com.muc.fluocolorquant.ui.components.ScientificPickerOption
+import com.muc.fluocolorquant.ui.components.ScientificPickerSheet
+import com.muc.fluocolorquant.ui.components.ScientificSectionTitle
+import com.muc.fluocolorquant.ui.components.ScientificSelectionField
+import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.navigation.Screen
+import com.muc.fluocolorquant.ui.viewmodels.ProjectEvent
+import com.muc.fluocolorquant.ui.viewmodels.ProjectUiState
 import com.muc.fluocolorquant.ui.viewmodels.ProjectViewModel
 import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
-import com.muc.fluocolorquant.ui.viewmodels.ConcentrationViewModel
-import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
-import com.muc.fluocolorquant.ui.navigation.Screen
-import com.muc.fluocolorquant.data.enums.SpectrumLightSource
-import kotlinx.coroutines.launch
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberPermissionState
-import com.google.accompanist.permissions.PermissionState
-import com.google.accompanist.permissions.PermissionStatus
-import com.muc.fluocolorquant.ui.components.LocalToastManager
-import com.muc.fluocolorquant.ui.components.ToastType
-import androidx.compose.foundation.layout.heightIn
-import com.muc.fluocolorquant.ui.viewmodels.AnalyteConfig
-import com.muc.fluocolorquant.data.model.Analyte
-import androidx.compose.ui.text.style.TextOverflow
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
-// 检测模式枚举
-enum class DetectionMode {
-    FLUORESCENCE, COLORIMETRIC, SPECTRUM
+/** Compose UI 测试使用的稳定语义标签。 */
+object NewProjectTestTags {
+    const val TEMPLATE_SELECTOR = "template_selector"
+    const val TEMPLATE_SUMMARY = "template_summary"
+    const val PROJECT_NAME_INPUT = "project_name_input"
+    const val SAMPLE_GROUP_SUMMARY = "sample_group_summary"
+    const val SAMPLE_SITE_EDITOR = "sample_site_editor"
+    const val PREFLIGHT_ISSUES = "preflight_issue_list"
+    const val CREATE_BUTTON = "create_project_button"
 }
 
-// 分析方法枚举
-enum class AnalysisMethod {
-    DL_MODEL, CURVE_FIT
+/** 页面动作集中建模，便于纯内容函数独立做 Compose 测试。 */
+sealed interface TemplateProjectAction {
+    data object NavigateBack : TemplateProjectAction
+    data object OpenTemplateLibrary : TemplateProjectAction
+    data object ChooseImage : TemplateProjectAction
+    data object RemoveImage : TemplateProjectAction
+    data object CreateProject : TemplateProjectAction
+    data class SelectTemplate(val templateId: String) : TemplateProjectAction
+    data class ChangeProjectName(val value: String) : TemplateProjectAction
+    data class ChangeProjectBatch(val value: String) : TemplateProjectAction
+    data class ChangeSampleBatch(val value: String) : TemplateProjectAction
+    data class ApplySampleSlot(val siteKeys: List<String>, val value: String) : TemplateProjectAction
 }
 
+/**
+ * 新建项目页面外壳：负责导航、图片来源、登录会话和一次性 Toast；所有可测试布局由
+ * [TemplateProjectContent] 承担。
+ */
 @Composable
 fun NewProjectScreen(
     navController: NavController,
     projectViewModel: ProjectViewModel = hiltViewModel(),
-    userViewModel: UserViewModel = hiltViewModel(),
-    concentrationViewModel: ConcentrationViewModel = hiltViewModel(),
-    settingsViewModel: SettingsViewModel = hiltViewModel()
+    userViewModel: UserViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val toastManager = LocalToastManager.current
-
-    // 使用当前用户信息
+    val state by projectViewModel.uiState.collectAsState()
     val currentUser by userViewModel.currentUser.collectAsState()
+    var showImageSourceDialog by rememberSaveable { mutableStateOf(false) }
 
-    // 获取浓度预测状态
-    val concentrationState by concentrationViewModel.concentrationState.collectAsState()
+    val creationSuccess = stringResource(R.string.project_creation_success)
+    val formIncomplete = stringResource(R.string.project_form_incomplete_toast)
+    val preflightFailed = stringResource(R.string.project_preflight_failed_toast)
+    val unexpectedFailure = stringResource(R.string.project_unexpected_failure_toast)
+    val sessionInvalid = stringResource(R.string.project_session_invalid_toast)
+    val cameraPermissionRequired = stringResource(R.string.camera_permission_required)
+    val cameraFileFailed = stringResource(R.string.project_camera_file_failed_toast)
+    val routeUnavailable = stringResource(R.string.project_route_unavailable_toast)
 
-    // 刷新设置，确保获取最新的设置值
-    LaunchedEffect(Unit) {
-        settingsViewModel.refreshSettings()
-    }
+    LaunchedEffect(projectViewModel, navController) {
+        projectViewModel.events.collect { event ->
+            when (event) {
+                is ProjectEvent.Created -> {
+                    toastManager.showToast(creationSuccess, ToastType.SUCCESS)
+                    when (event.destination) {
+                        ProjectDetectionDestination.GRID_ENDPOINT -> {
+                            navController.navigate(
+                                Screen.WellDetection.createRoute(
+                                    imageUri = Uri.encode(event.imageUri),
+                                    projectId = event.projectId
+                                )
+                            )
+                        }
 
-    // 获取默认浓度单位和可用单位列表
-    val defaultDetectionMode by settingsViewModel.defaultDetectionMode.collectAsState()
-    val defaultConcentrationUnit by settingsViewModel.defaultConcentrationUnit.collectAsState()
-    val availableConcentrationUnits by settingsViewModel.concentrationUnits.collectAsState()
-    val defaultRows by settingsViewModel.defaultRows.collectAsState()
-    val defaultColumns by settingsViewModel.defaultColumns.collectAsState()
+                        ProjectDetectionDestination.SPECTRUM_SINGLE -> {
+                            navController.navigate(
+                                Screen.SpectrumCalibration.createRoute(
+                                    projectId = event.projectId,
+                                    imageUri = event.imageUri
+                                )
+                            )
+                        }
 
-    // 提前获取所有需要在非Composable上下文中使用的字符串资源
-    val tempFileCreationErrorMessage = stringResource(R.string.temp_file_creation_error)
-    val cameraPermissionRequiredMessage = stringResource(R.string.camera_permission_required)
-    val enterProjectNameMessage = stringResource(R.string.enter_project_name)
-    val selectImageMessage = stringResource(R.string.select_image)
-    val projectCreationSuccessMessage = stringResource(R.string.project_creation_success)
-    val analyzingImageMessage = stringResource(R.string.analyzing_image)
-    val projectCreationErrorMessage = stringResource(R.string.project_creation_error)
-
-    // 状态管理 - 使用rememberSaveable而不是remember
-    var projectName by rememberSaveable { mutableStateOf("") }
-
-    // 【最终修复】仅在首次组合时根据默认值初始化，之后不再受默认值变化影响
-    var detectionMode by rememberSaveable {
-        mutableStateOf(
-            if (defaultDetectionMode == "COLORIMETRIC") DetectionMode.COLORIMETRIC
-            else DetectionMode.FLUORESCENCE
-        )
-    }
-
-    var analysisMethod by rememberSaveable { mutableStateOf(AnalysisMethod.DL_MODEL) }
-    var projectImageUri by rememberSaveable { mutableStateOf<Uri?>(null) }
-    var maxConcentration by rememberSaveable { mutableStateOf("") }
-
-    // 根据默认设置初始化浓度单位
-    var concentrationUnit by rememberSaveable(defaultConcentrationUnit) {
-        mutableStateOf(defaultConcentrationUnit)
-    }
-
-    // 根据默认设置初始化行列
-    var rows by rememberSaveable(defaultRows) {
-        mutableStateOf(defaultRows)
-    }
-    var columns by rememberSaveable(defaultColumns) {
-        mutableStateOf(defaultColumns)
-    }
-
-    // 添加图像矫正选项
-    var enableImageCorrection by rememberSaveable { mutableStateOf(false) }
-
-    var showImagePickerDialog by remember { mutableStateOf(false) }
-    var isSubmitting by remember { mutableStateOf(false) }
-    var isAnalysisMethodMenuExpanded by remember { mutableStateOf(false) }
-    var isConcentrationUnitMenuExpanded by remember { mutableStateOf(false) }
-
-    // 检查裁剪后的图片URI
-    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
-    LaunchedEffect(savedStateHandle) {
-        savedStateHandle?.get<String>("croppedImageUri")?.let { uri ->
-            projectImageUri = Uri.parse(uri)
-            // 清除保存的状态，防止重复处理
-            savedStateHandle.remove<String>("croppedImageUri")
-        }
-    }
-
-    // 监听浓度预测状态变化，完成后导航到结果页面
-    LaunchedEffect(concentrationState) {
-        if (concentrationState is ConcentrationViewModel.ConcentrationState.Success) {
-            // 获取当前项目ID
-            val projectIdValue = concentrationViewModel.currentProjectId.value
-            if (projectIdValue != null) {
-                // 获取当前运行ID（如果有）
-                val runId = concentrationViewModel.getCurrentRunId()
-                // 导航到结果页面
-                if (runId != null) {
-                    navController.navigate(Screen.Result.createRoute(runId)) {
-                        // 可选: 设置导航选项，例如弹出当前页面
-                        popUpTo(Screen.NewProject.route) { inclusive = true }
+                        ProjectDetectionDestination.LSPR_PAIRED,
+                        ProjectDetectionDestination.UNSUPPORTED -> {
+                            toastManager.showToast(routeUnavailable, ToastType.ERROR)
+                        }
                     }
-                } else {
-                    // 如果没有runId，回退到使用projectId（较少情况）
-                    toastManager.showToast("未获取到运行ID，可能影响数据显示", ToastType.WARNING)
-                    navController.popBackStack()
+                }
+
+                is ProjectEvent.ValidationBlocked -> {
+                    toastManager.showToast(preflightFailed, ToastType.WARNING)
+                }
+
+                ProjectEvent.FormIncomplete -> {
+                    toastManager.showToast(formIncomplete, ToastType.WARNING)
+                }
+
+                ProjectEvent.UnexpectedFailure -> {
+                    toastManager.showToast(unexpectedFailure, ToastType.ERROR)
                 }
             }
         }
     }
 
-    // 图片选择器
+    // 裁剪页面把结果写回当前返回栈条目；消费后立即清除，避免重组时重复覆盖图片。
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    LaunchedEffect(savedStateHandle) {
+        savedStateHandle?.get<String>("croppedImageUri")?.let { imageUri ->
+            projectViewModel.updateImageUri(imageUri)
+            savedStateHandle.remove<String>("croppedImageUri")
+        }
+    }
+
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
+    ) { uri ->
         uri?.let {
-            // 导航到裁剪页面
-            navController.navigate("${Screen.ImageCrop.route}?imageUri=${Uri.encode(uri.toString())}")
+            navController.navigate(Screen.ImageCrop.createRoute(Uri.encode(it.toString())))
         }
     }
 
-    // 相机启动器
-    var pendingCameraCapture by remember { mutableStateOf(false) }
-    val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
-
-    val createTempImageFile: () -> java.io.File? = {
-        try {
-            val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
-            val imageFileName = "JPEG_${timeStamp}_"
-            val storageDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
-            java.io.File.createTempFile(
-                imageFileName,
-                ".jpg",
-                storageDir
-            )
-        } catch (e: Exception) {
-            android.util.Log.e("NewProjectScreen", "Error creating temp image file", e)
-            toastManager.showToast(tempFileCreationErrorMessage, ToastType.ERROR)
-            null
-        }
-    }
-
-    val launchCameraCapture: () -> Unit = {
-        val tempFile = createTempImageFile()
-        tempFile?.let { file ->
+    val launchCamera: () -> Unit = {
+        val directory = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val outputFile = runCatching {
+            File.createTempFile("JPEG_${timestamp}_", ".jpg", directory)
+        }.getOrNull()
+        if (outputFile == null) {
+            toastManager.showToast(cameraFileFailed, ToastType.ERROR)
+        } else {
             navController.navigate(
                 Screen.ImageCapture.createRoute(
-                    outputPath = Uri.encode(file.absolutePath),
-                    captureMode = detectionMode.name,
-                    expectedSpectrumTracks = if (detectionMode == DetectionMode.SPECTRUM) {
-                        projectViewModel.spectrumTrackCount.value.coerceAtLeast(1)
-                    } else {
-                        null
-                    }
+                    outputPath = Uri.encode(outputFile.absolutePath),
+                    captureMode = state.resolvedConfiguration?.snapshot?.template?.detectionMode,
+                    // 光谱通道与模板配置的分析物一一对应，拍摄页据此提示需要对齐的轨道数。
+                    expectedSpectrumTracks = state.resolvedConfiguration?.snapshot?.analytes
+                        ?.size?.coerceAtLeast(1) ?: 1
                 )
             )
-        } ?: toastManager.showToast(tempFileCreationErrorMessage, ToastType.ERROR)
-    }
-
-    val checkCameraPermissionAndLaunch: () -> Unit = {
-        when {
-            cameraPermissionState.status.isGranted -> {
-                launchCameraCapture()
-            }
-            else -> {
-                pendingCameraCapture = true
-                cameraPermissionState.launchPermissionRequest()
-            }
         }
     }
 
-    LaunchedEffect(cameraPermissionState.status) {
-        if (!pendingCameraCapture) return@LaunchedEffect
-
-        when (cameraPermissionState.status) {
-            is PermissionStatus.Granted -> {
-                pendingCameraCapture = false
-                launchCameraCapture()
-            }
-            is PermissionStatus.Denied -> {
-                pendingCameraCapture = false
-                toastManager.showToast(cameraPermissionRequiredMessage, ToastType.WARNING)
-            }
-        }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) launchCamera()
+        else toastManager.showToast(cameraPermissionRequired, ToastType.WARNING)
     }
 
-    val availableAnalytes by projectViewModel.availableAnalytes.collectAsState()
+    TemplateProjectContent(
+        state = state,
+        onAction = { action ->
+            when (action) {
+                TemplateProjectAction.NavigateBack -> navController.navigateUp()
+                TemplateProjectAction.OpenTemplateLibrary ->
+                    navController.navigate(Screen.ExperimentTemplateManagement.route)
+                TemplateProjectAction.ChooseImage -> showImageSourceDialog = true
+                TemplateProjectAction.RemoveImage -> projectViewModel.updateImageUri(null)
+                TemplateProjectAction.CreateProject -> {
+                    val userId = currentUser?.id?.toString().orEmpty()
+                    if (userId.isBlank()) {
+                        toastManager.showToast(sessionInvalid, ToastType.ERROR)
+                    } else {
+                        projectViewModel.createProject(userId)
+                    }
+                }
+                is TemplateProjectAction.SelectTemplate -> projectViewModel.selectTemplate(action.templateId)
+                is TemplateProjectAction.ChangeProjectName -> projectViewModel.updateProjectName(action.value)
+                is TemplateProjectAction.ChangeProjectBatch -> projectViewModel.updateProjectBatch(action.value)
+                is TemplateProjectAction.ChangeSampleBatch -> projectViewModel.updateSampleBatch(action.value)
+                is TemplateProjectAction.ApplySampleSlot ->
+                    projectViewModel.applySampleSlotToSites(action.siteKeys, action.value)
+            }
+        }
+    )
 
-    // 获取已选中的分析物配置
-    val selectedAnalyteConfigs by projectViewModel.selectedAnalyteConfigs.collectAsState()
+    if (showImageSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showImageSourceDialog = false },
+            title = { Text(stringResource(R.string.project_image_source_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FilledTonalButton(
+                        onClick = {
+                            showImageSourceDialog = false
+                            galleryLauncher.launch("image/*")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.PhotoLibrary, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.project_image_from_gallery))
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            showImageSourceDialog = false
+                            if (ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.CAMERA
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                launchCamera()
+                            } else {
+                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.project_image_from_camera))
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showImageSourceDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+}
 
-    // 光谱相关状态
-    val spectrumTrackCount by projectViewModel.spectrumTrackCount.collectAsState()
-    val spectrumMaxTrackCount by projectViewModel.spectrumMaxTrackCount.collectAsState()
-    val spectrumLightSource by projectViewModel.spectrumLightSource.collectAsState()
-    val spectrumMapping by projectViewModel.spectrumColumnMapping.collectAsState()
-    val availableLightSources = projectViewModel.availableLightSources
-
-    var showSpectrumAnalyteDialog by remember { mutableStateOf(false) }
-    var pendingTrackIndex by remember { mutableStateOf<Int?>(null) }
-
-    // 显示分析物选择对话框
-    var showAnalyteSelectionDialog by remember { mutableStateOf(false) }
-
-    val isSpectrum = detectionMode == DetectionMode.SPECTRUM
-    val colorScheme = MaterialTheme.colorScheme
-    val accentColor = colorScheme.primary
-    val borderColor = colorScheme.outline.copy(alpha = 0.35f)
-    val sectionTitleColor = colorScheme.onSurface
-    val secondaryTextColor = colorScheme.onSurfaceVariant
-    val subtleSurfaceColor = colorScheme.surfaceVariant.copy(alpha = 0.28f)
+/** 可独立测试的模板优先页面内容。 */
+@Composable
+fun TemplateProjectContent(
+    state: ProjectUiState,
+    onAction: (TemplateProjectAction) -> Unit
+) {
+    val scrollState = rememberScrollState()
+    var showSampleEditor by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        stringResource(R.string.new_project_title),
-                        textAlign = TextAlign.Center
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, stringResource(R.string.back))
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = colorScheme.surface,
-                    titleContentColor = colorScheme.onSurface,
-                    navigationIconContentColor = colorScheme.onSurface
-                )
+            FluoTopBar(
+                title = stringResource(R.string.new_project_title),
+                onBack = { onAction(TemplateProjectAction.NavigateBack) }
             )
-        },
-        containerColor = colorScheme.background
+        }
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 项目名称输入框
-            OutlinedTextField(
-                value = projectName,
-                onValueChange = { projectName = it },
-                label = { Text(stringResource(R.string.project_name)) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = null,
-                        tint = accentColor
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                colors = TextFieldDefaults.outlinedTextFieldColors(
-                    focusedBorderColor = accentColor,
-                    unfocusedBorderColor = borderColor
-                ),
-                shape = RoundedCornerShape(8.dp),
-                singleLine = true
-            )
+            TemplateSelectorCard(state, onAction)
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 检测模式选择
-            Text(
-                text = stringResource(R.string.detection_mode),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                fontWeight = FontWeight.Medium,
-                color = sectionTitleColor
-            )
-
-            DetectionModeSegmentedControl(
-                selectedMode = detectionMode,
-                onSelect = { mode ->
-                    detectionMode = mode
-                    projectViewModel.updateDetectionMode(mode)
-                }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Crossfade(targetState = isSpectrum) { spectrum ->
-                if (spectrum) {
-                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        SpectrumLightSourceDropdown(
-                            availableLightSources = availableLightSources,
-                            selectedLightSource = spectrumLightSource,
-                            onSelectLightSource = { projectViewModel.updateSpectrumLightSource(it) }
-                        )
-
-                        // Combined Channel Configuration Card
-                        SpectrumChannelConfigCard(
-                            spectrumTrackCount = spectrumTrackCount,
-                            spectrumMaxTrackCount = spectrumMaxTrackCount,
-                            spectrumMapping = spectrumMapping,
-                            onIncrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount + 1) },
-                            onDecrementTrack = { projectViewModel.updateSpectrumTrackCount(spectrumTrackCount - 1) },
-                            onSelectAnalyte = { track ->
-                                pendingTrackIndex = track
-                                showSpectrumAnalyteDialog = true
-                            }
-                        )
-                    }
-                } else {
-                    Column {
-                        // 分析方法下拉菜单
-                        Text(
-                            text = stringResource(R.string.analysis_method),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp),
-                            fontWeight = FontWeight.Medium,
-                            color = sectionTitleColor
-                        )
-
-                        ExposedDropdownMenuBox(
-                            expanded = isAnalysisMethodMenuExpanded,
-                            onExpandedChange = { isAnalysisMethodMenuExpanded = !isAnalysisMethodMenuExpanded },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            OutlinedTextField(
-                                value = when (analysisMethod) {
-                                    AnalysisMethod.DL_MODEL -> stringResource(R.string.dl_model_option)
-                                    AnalysisMethod.CURVE_FIT -> stringResource(R.string.curve_fit_option)
-                                },
-                                onValueChange = { /* No action needed for readOnly field */ },
-                                readOnly = true,
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isAnalysisMethodMenuExpanded) },
-                                modifier = Modifier
-                                    .menuAnchor() // Important for ExposedDropdownMenuBox
-                                    .fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = accentColor,
-                                    unfocusedBorderColor = borderColor,
-                                    focusedTrailingIconColor = accentColor,
-                                    unfocusedTrailingIconColor = secondaryTextColor,
-                                    disabledTextColor = LocalContentColor.current,
-                                    disabledBorderColor = borderColor,
-                                    disabledTrailingIconColor = secondaryTextColor
-                                ),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-
-                            ExposedDropdownMenu(
-                                expanded = isAnalysisMethodMenuExpanded,
-                                onDismissRequest = { isAnalysisMethodMenuExpanded = false },
-                                modifier = Modifier.fillMaxWidth() // 使下拉菜单宽度与输入框匹配
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.dl_model_option)) },
-                                    onClick = {
-                                        analysisMethod = AnalysisMethod.DL_MODEL
-                                        isAnalysisMethodMenuExpanded = false
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.AutoAwesome, // 更新为更合适的图标
-                                            contentDescription = null,
-                                            tint = accentColor
-                                        )
-                                    }
-                                )
-
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.curve_fit_option)) },
-                                    onClick = {
-                                        analysisMethod = AnalysisMethod.CURVE_FIT
-                                        isAnalysisMethodMenuExpanded = false
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.AutoGraph, // 更新为更合适的图标
-                                            contentDescription = null,
-                                            tint = accentColor
-                                        )
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (detectionMode != DetectionMode.SPECTRUM) {
-                // 分析物配置部分 - 仅标准模式显示
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 分析物选择和配置部分
-                Text(
-                    text = stringResource(R.string.analyte_configuration),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    fontWeight = FontWeight.Medium,
-                    color = sectionTitleColor
+            state.resolvedConfiguration?.let { configuration ->
+                TemplateLockedSummary(
+                    configuration = configuration,
+                    modifier = Modifier.testTag(NewProjectTestTags.TEMPLATE_SUMMARY)
                 )
-
-                if (selectedAnalyteConfigs.isEmpty()) {
-                    // 无分析物时显示提示和添加按钮
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = stringResource(R.string.no_analytes_selected),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = secondaryTextColor
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Button(
-                            onClick = { showAnalyteSelectionDialog = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = accentColor
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.add_analytes))
-                        }
-                    }
-                } else {
-                    // 显示已选择的分析物配置列表
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                    ) {
-                        // 分析物列表
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 300.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            selectedAnalyteConfigs.forEach { analyteConfig ->
-                                AnalyteConfigItem(
-                                    analyteConfig = analyteConfig,
-                                    availableUnits = availableConcentrationUnits.toList(),
-                                    onConfigChanged = { analyteId, newConcentration, newUnit ->
-                                        projectViewModel.updateAnalyteConfig(
-                                            analyteId = analyteId,
-                                            newConcentration = newConcentration,
-                                            newUnit = newUnit
-                                        )
-                                    },
-                                    onDelete = { analyteId ->
-                                        projectViewModel.removeAnalyteConfig(analyteId)
-                                    }
-                                )
-                            }
-                        }
-
-                        // 添加分析物按钮
-                        Button(
-                            onClick = { showAnalyteSelectionDialog = true },
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .padding(top = 8.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = accentColor
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.add_analytes))
-                        }
-                    }
-                }
             }
 
-//            // 添加图像矫正选项
-//            Spacer(modifier = Modifier.height(16.dp))
-//
-//            Text(
-//                text = stringResource(R.string.image_correction),
-//                modifier = Modifier
-//                    .fillMaxWidth()
-//                    .padding(bottom = 8.dp),
-//                fontWeight = FontWeight.Medium,
-//                color = Color(0xFF333333)
-//            )
-//
-//            Row(
-//                modifier = Modifier
-//                    .fillMaxWidth()
-//                    .padding(bottom = 16.dp),
-//                verticalAlignment = Alignment.CenterVertically
-//            ) {
-//                // 启用图像矫正
-//                Row(
-//                    verticalAlignment = Alignment.CenterVertically,
-//                    modifier = Modifier
-//                        .weight(1f)
-//                        .clickable { enableImageCorrection = true }
-//                ) {
-//                    RadioButton(
-//                        selected = enableImageCorrection,
-//                        onClick = { enableImageCorrection = true },
-//                        colors = RadioButtonDefaults.colors(
-//                            selectedColor = Color(0xFF5D6B98)
-//                        )
-//                    )
-//                    Text(
-//                        text = stringResource(R.string.yes),
-//                        modifier = Modifier.padding(start = 8.dp)
-//                    )
-//                }
-//
-//                // 禁用图像矫正
-//                Row(
-//                    verticalAlignment = Alignment.CenterVertically,
-//                    modifier = Modifier
-//                        .weight(1f)
-//                        .clickable { enableImageCorrection = false }
-//                ) {
-//                    RadioButton(
-//                        selected = !enableImageCorrection,
-//                        onClick = { enableImageCorrection = false },
-//                        colors = RadioButtonDefaults.colors(
-//                            selectedColor = Color(0xFF5D6B98)
-//                        )
-//                    )
-//                    Text(
-//                        text = stringResource(R.string.no),
-//                        modifier = Modifier.padding(start = 8.dp)
-//                    )
-//                }
-//            }
-//
-//            // 在项目图片部分之后添加图像矫正描述
-//            if (enableImageCorrection) {
-//                Text(
-//                    text = stringResource(R.string.image_correction_description),
-//                    style = MaterialTheme.typography.bodySmall,
-//                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-//                    modifier = Modifier.padding(bottom = 16.dp)
-//                )
-//            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 项目图片
-            Text(
-                text = stringResource(R.string.project_image),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                fontWeight = FontWeight.Medium,
-                color = sectionTitleColor
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(240.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(subtleSurfaceColor)
-                    .border(
-                        width = 1.dp,
-                        color = borderColor,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    .clickable { showImagePickerDialog = true },
-                contentAlignment = Alignment.Center
-            ) {
-                if (projectImageUri != null) {
-                    // 显示选择的图片
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(projectImageUri)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = stringResource(R.string.project_image),
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    // 添加删除按钮
-                    IconButton(
-                        onClick = { projectImageUri = null },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.6f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(R.string.delete),
-                            tint = Color.White
-                        )
-                    }
-                } else {
-                    // 显示上传图标
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = stringResource(R.string.project_image),
-                            tint = accentColor,
-                            modifier = Modifier.size(48.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = stringResource(R.string.upload_project_image),
-                            color = secondaryTextColor,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-
-            if (!isSpectrum) {
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 孔阵行列设置 - 移到项目图片之后
-                Text(
-                    text = stringResource(R.string.row_column_settings),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    fontWeight = FontWeight.Medium,
-                    color = sectionTitleColor
+            RunInformationCard(state, onAction)
+            if (state.form.requiredSampleSites.isNotEmpty()) {
+                SampleMappingCard(
+                    state = state,
+                    expanded = showSampleEditor,
+                    onToggleExpanded = { showSampleEditor = !showSampleEditor },
+                    onAction = onAction
                 )
-
-                // 行列输入框放在同一行
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // 行数输入框
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.rows),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = secondaryTextColor,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-
-                        // 使用与SettingsScreen相同的逻辑
-                        var rowsText by remember(rows) { mutableStateOf(rows.toString()) }
-                        var rowInputError by remember { mutableStateOf(false) }
-
-                        OutlinedTextField(
-                            value = rowsText,
-                            onValueChange = { value ->
-                                // 仅接受数字输入
-                                if (value.isEmpty()) {
-                                    rowsText = value
-                                    rowInputError = false
-                                } else if (value.matches(Regex("^[0-9]+$"))) {
-                                    val numValue = value.toInt()
-                                    // 检查行*列是否小于等于96
-                                    if (numValue > 0 && numValue * columns <= 96) {
-                                        rowsText = value
-                                        rows = numValue
-                                        rowInputError = false
-                                    } else {
-                                        rowInputError = true
-                                        toastManager.showToast(context.getString(R.string.plate_size_limit_exceeded), ToastType.WARNING)
-                                    }
-                                } else {
-                                    // 非数字输入，不更新值，显示错误
-                                    rowInputError = true
-                                    toastManager.showToast(context.getString(R.string.input_number_only), ToastType.ERROR)
-                                }
-                            },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number
-                            ),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Filled.GridView,
-                                    contentDescription = null,
-                                    tint = accentColor
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = TextFieldDefaults.outlinedTextFieldColors(
-                                focusedBorderColor = if (rowInputError) Color.Red else accentColor,
-                                unfocusedBorderColor = if (rowInputError) Color.Red else borderColor,
-                                errorBorderColor = Color.Red,
-                                errorTrailingIconColor = Color.Red
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            singleLine = true,
-                            isError = rowInputError
-                        )
-                    }
-
-                    // 列数输入框
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.columns),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = secondaryTextColor,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-
-                        // 使用与SettingsScreen相同的逻辑
-                        var columnsText by remember(columns) { mutableStateOf(columns.toString()) }
-                        var columnInputError by remember { mutableStateOf(false) }
-
-                        OutlinedTextField(
-                            value = columnsText,
-                            onValueChange = { value ->
-                                // 仅接受数字输入
-                                if (value.isEmpty()) {
-                                    columnsText = value
-                                    columnInputError = false
-                                } else if (value.matches(Regex("^[0-9]+$"))) {
-                                    val numValue = value.toInt()
-                                    // 检查行*列是否小于等于96
-                                    if (numValue > 0 && rows * numValue <= 96) {
-                                        columnsText = value
-                                        columns = numValue
-                                        columnInputError = false
-                                    } else {
-                                        columnInputError = true
-                                        toastManager.showToast(context.getString(R.string.plate_size_limit_exceeded), ToastType.WARNING)
-                                    }
-                                } else {
-                                    // 非数字输入，不更新值，显示错误
-                                    columnInputError = true
-                                    toastManager.showToast(context.getString(R.string.input_number_only), ToastType.ERROR)
-                                }
-                            },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number
-                            ),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Filled.GridView,
-                                    contentDescription = null,
-                                    tint = accentColor
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = TextFieldDefaults.outlinedTextFieldColors(
-                                focusedBorderColor = if (columnInputError) Color.Red else accentColor,
-                                unfocusedBorderColor = if (columnInputError) Color.Red else borderColor,
-                                errorBorderColor = Color.Red,
-                                errorTrailingIconColor = Color.Red
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            singleLine = true,
-                            isError = columnInputError
-                        )
-                    }
-                }
             }
+            ProjectImageCard(state, onAction)
+            PreflightCard(state)
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 提交按钮
             Button(
-                onClick = {
-                    if (projectName.isBlank()) {
-                        toastManager.showToast(enterProjectNameMessage, ToastType.WARNING)
-                        return@Button
-                    }
-                    if (projectImageUri == null) {
-                        toastManager.showToast(selectImageMessage, ToastType.WARNING)
-                        return@Button
-                    }
-
-                    if (isSpectrum) {
-                        // 光谱模式：每个通道需绑定分析物
-                        val missing = (1..spectrumTrackCount).any { spectrumMapping[it] == null }
-                        if (missing) {
-                            toastManager.showToast(
-                                context.getString(R.string.spectrum_mapping_incomplete),
-                                ToastType.WARNING
-                            )
-                            return@Button
-                        }
-                    } else {
-                        // 标准模式：至少一个分析物，行列有效
-                        if (selectedAnalyteConfigs.isEmpty()) {
-                            toastManager.showToast(
-                                context.getString(R.string.configure_at_least_one_analyte),
-                                ToastType.WARNING
-                            )
-                            return@Button
-                        }
-                        if (rows <= 0 || columns <= 0) {
-                            toastManager.showToast(
-                                context.getString(R.string.input_rows_columns),
-                                ToastType.WARNING
-                            )
-                            return@Button
-                        }
-                    }
-
-                    isSubmitting = true
-
-                    scope.launch {
-                        try {
-                            val newProjectId = if (isSpectrum) {
-                                // 光谱模式：不传递 analysisMethod, rows, columns
-                                projectViewModel.createProject(
-                                    name = projectName,
-                                    detectionMode = detectionMode,
-                                    imageUri = projectImageUri.toString(),
-                                    userId = currentUser?.id.toString()
-                                )
-                            } else {
-                                // 标准模式：传递所有参数
-                                projectViewModel.createProject(
-                                    name = projectName,
-                                    detectionMode = detectionMode,
-                                    analysisMethod = analysisMethod,
-                                    imageUri = projectImageUri.toString(),
-                                    userId = currentUser?.id.toString(),
-                                    rows = rows,
-                                    columns = columns
-                                )
-                            }
-
-                            if (newProjectId != null) {
-                                toastManager.showToast(projectCreationSuccessMessage, ToastType.SUCCESS)
-
-                                if (isSpectrum) {
-                                    // 光谱模式：跳转到标定页面
-                                    navController.navigate(
-                                        Screen.SpectrumCalibration.createRoute(newProjectId, projectImageUri.toString())
-                                    ) {
-                                        // 成功进入标定页后，弹出新建页，防止按返回键回到表单
-                                        popUpTo(Screen.NewProject.route) { inclusive = true }
-                                    }
-                                } else if (enableImageCorrection) {
-                                    navController.navigate(
-                                        Screen.ImageCorrection.createRoute(Uri.encode(projectImageUri.toString()), newProjectId)
-                                    ) {
-                                        popUpTo(Screen.NewProject.route) { inclusive = true }
-                                    }
-                                } else {
-                                    navController.navigate(
-                                        Screen.WellDetection.createRoute(Uri.encode(projectImageUri.toString()), newProjectId)
-                                    ) {
-                                        popUpTo(Screen.NewProject.route) { inclusive = true }
-                                    }
-                                }
-                            } else {
-                                toastManager.showToast(projectCreationErrorMessage, ToastType.ERROR)
-                                isSubmitting = false
-                            }
-                        } catch (e: Exception) {
-                            toastManager.showToast(
-                                context.getString(R.string.project_creation_error, e.message ?: ""),
-                                ToastType.ERROR
-                            )
-                            isSubmitting = false
-                        }
-                    }
-                },
+                onClick = { onAction(TemplateProjectAction.CreateProject) },
+                enabled = state.form.canSubmit,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = accentColor
-                ),
-                shape = RoundedCornerShape(8.dp),
-                enabled = !isSubmitting
+                    .height(52.dp)
+                    .testTag(NewProjectTestTags.CREATE_BUTTON),
+                shape = RoundedCornerShape(FluoRadius.control)
             ) {
-                if (isSubmitting) {
+                if (state.form.isSubmitting) {
                     CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
                     )
+                    Spacer(Modifier.width(10.dp))
+                    Text(stringResource(R.string.project_creating_button))
                 } else {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.create_project))
+                    Text(stringResource(R.string.project_create_button))
                 }
             }
-        }
-
-        // 图片选择对话框
-        if (showImagePickerDialog) {
-            AlertDialog(
-                onDismissRequest = { showImagePickerDialog = false },
-                title = {
-                    Text(
-                        stringResource(R.string.select_image_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                },
-                shape = RoundedCornerShape(16.dp),
-                containerColor = colorScheme.surface,
-                text = {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            // 从相册选择
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.clickable {
-                                    galleryLauncher.launch("image/*")
-                                    showImagePickerDialog = false
-                                }
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(60.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(accentColor.copy(alpha = 0.12f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Photo,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(30.dp),
-                                        tint = accentColor
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = stringResource(R.string.select_from_gallery),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = accentColor
-                                )
-                            }
-
-                            // 拍照
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.clickable {
-                                    // 启动相机
-                                    showImagePickerDialog = false
-
-                                    // 先检查相机权限
-                                    checkCameraPermissionAndLaunch()
-                                }
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(60.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(accentColor.copy(alpha = 0.12f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PhotoCamera,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(30.dp),
-                                        tint = accentColor
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = stringResource(R.string.take_photo),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = accentColor
-                                )
-                            }
-                        }
-                    }
-                },
-                dismissButton = {
-                    Button(
-                        onClick = { showImagePickerDialog = false },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = accentColor
-                        ),
-                        shape = RoundedCornerShape(24.dp)
-                    ) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                },
-                confirmButton = {}
-            )
-        }
-
-        // 分析物选择对话框
-        if (showAnalyteSelectionDialog) {
-            AnalyteSelectionDialog(
-                availableAnalytes = availableAnalytes,
-                selectedAnalytes = selectedAnalyteConfigs.map { it.analyte },
-                onConfirm = { analytes ->
-                    projectViewModel.onAnalyteSelectionChanged(analytes)
-                    showAnalyteSelectionDialog = false
-                },
-                onDismiss = {
-                    showAnalyteSelectionDialog = false
-                }
-            )
-        }
-
-        // 光谱模式的单通道绑定选择
-        if (showSpectrumAnalyteDialog) {
-            AnalyteSelectionDialog(
-                availableAnalytes = availableAnalytes,
-                selectedAnalytes = emptyList(),
-                onConfirm = { analytes ->
-                    val track = pendingTrackIndex
-                    if (track != null && analytes.isNotEmpty()) {
-                        // 批量绑定: 从当前通道开始,依次向下填充
-                        projectViewModel.bindAnalytesToConsecutiveTracks(track, analytes)
-                    }
-                    showSpectrumAnalyteDialog = false
-                    pendingTrackIndex = null
-                },
-                onDismiss = {
-                    showSpectrumAnalyteDialog = false
-                    pendingTrackIndex = null
-                }
-            )
+            Spacer(Modifier.height(18.dp))
         }
     }
 }
 
 @Composable
-fun SpectrumLightSourceDropdown(
-    availableLightSources: List<SpectrumLightSource>,
-    selectedLightSource: SpectrumLightSource,
-    onSelectLightSource: (SpectrumLightSource) -> Unit
+private fun TemplateSelectorCard(
+    state: ProjectUiState,
+    onAction: (TemplateProjectAction) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val colorScheme = MaterialTheme.colorScheme
-    val accentColor = colorScheme.primary
-    val borderColor = colorScheme.outline.copy(alpha = 0.35f)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(colorScheme.surface)
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
-            .padding(16.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.spectrum_light_source_label),
-            fontWeight = FontWeight.SemiBold,
-            color = colorScheme.onSurface
+    var showTemplatePicker by rememberSaveable { mutableStateOf(false) }
+    val selected = state.publishedTemplates.firstOrNull {
+        it.id == state.form.selectedTemplateId
+    }
+    SectionCard {
+        SectionHeader(
+            icon = Icons.Default.Science,
+            title = stringResource(R.string.project_template_select_label)
         )
+        Spacer(Modifier.height(12.dp))
 
-        Spacer(modifier = Modifier.height(10.dp))
+        when {
+            state.isLoadingTemplates -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text(stringResource(R.string.project_template_loading))
+                }
+            }
 
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = !expanded },
-            modifier = Modifier.fillMaxWidth()
+            state.publishedTemplates.isEmpty() -> {
+                EmptyTemplateState(onAction)
+            }
+
+            else -> {
+                ScientificSelectionField(
+                    label = null,
+                    value = selected?.templateName,
+                    supportingValue = selected?.let {
+                        stringResource(R.string.project_template_version, it.version)
+                    },
+                    placeholder = stringResource(R.string.project_template_select_support_short),
+                    icon = Icons.Default.Science,
+                    onClick = { showTemplatePicker = true },
+                    modifier = Modifier.testTag(NewProjectTestTags.TEMPLATE_SELECTOR)
+                )
+                if (state.isResolvingTemplate) {
+                    Row(
+                        modifier = Modifier.padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.project_template_resolving),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showTemplatePicker) {
+        ScientificPickerSheet(
+            title = stringResource(R.string.project_template_select_label),
+            options = state.publishedTemplates.map { template ->
+                ScientificPickerOption(
+                    id = template.id,
+                    title = template.templateName,
+                    subtitle = stringResource(
+                        R.string.project_template_version,
+                        template.version
+                    ),
+                    icon = Icons.Default.Science
+                )
+            },
+            selectedId = state.form.selectedTemplateId,
+            onSelect = { templateId ->
+                onAction(TemplateProjectAction.SelectTemplate(templateId))
+            },
+            onDismiss = { showTemplatePicker = false }
+        )
+    }
+}
+
+@Composable
+private fun EmptyTemplateState(onAction: (TemplateProjectAction) -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
+        shape = RoundedCornerShape(FluoRadius.badge)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedTextField(
-                value = stringResource(selectedLightSource.displayNameRes),
-                onValueChange = {},
-                readOnly = true,
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Lightbulb,
-                        contentDescription = null,
-                        tint = accentColor
-                    )
-                },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                modifier = Modifier
-                    .menuAnchor()
-                    .fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = accentColor,
-                    unfocusedBorderColor = borderColor
-                ),
-                shape = RoundedCornerShape(10.dp)
+            Text(
+                stringResource(R.string.project_no_published_templates_title),
+                fontWeight = FontWeight.SemiBold
             )
-
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                availableLightSources.forEach { lightSource ->
-                    DropdownMenuItem(
-                        text = { Text(stringResource(lightSource.displayNameRes)) },
-                        onClick = {
-                            onSelectLightSource(lightSource)
-                            expanded = false
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Lightbulb,
-                                contentDescription = null,
-                                tint = accentColor
-                            )
-                        }
-                    )
-                }
+            Text(
+                stringResource(R.string.project_no_published_templates_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            FilledTonalButton(onClick = { onAction(TemplateProjectAction.OpenTemplateLibrary) }) {
+                Text(stringResource(R.string.project_open_template_library))
             }
         }
     }
 }
 
 @Composable
-fun SpectrumTrackCountControl(
-    spectrumTrackCount: Int,
-    spectrumMaxTrackCount: Int,
-    onIncrementTrack: () -> Unit,
-    onDecrementTrack: () -> Unit
+private fun TemplateLockedSummary(
+    configuration: com.muc.fluocolorquant.domain.project.ResolvedTemplateProjectConfiguration,
+    modifier: Modifier = Modifier
 ) {
-    val colorScheme = MaterialTheme.colorScheme
-    val accentColor = colorScheme.primary
-    val borderColor = colorScheme.outline.copy(alpha = 0.35f)
-    val secondaryTextColor = colorScheme.onSurfaceVariant
-    val subtleSurfaceColor = colorScheme.surfaceVariant.copy(alpha = 0.28f)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(colorScheme.surface)
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
-            .padding(16.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.spectrum_channel_count_label),
-            fontWeight = FontWeight.SemiBold,
-            color = colorScheme.onSurface
+    val snapshot = configuration.snapshot
+    val listSeparator = stringResource(R.string.project_list_separator)
+    SectionCard(modifier) {
+        SectionHeader(
+            icon = Icons.Default.Lock,
+            title = stringResource(R.string.project_template_locked_title)
         )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
+        Spacer(Modifier.height(12.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(subtleSurfaceColor)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            IconButton(
-                onClick = onDecrementTrack,
-                enabled = spectrumTrackCount > 1
-            ) {
-                Icon(
-                    imageVector = Icons.Default.RemoveCircle,
-                    contentDescription = null,
-                    tint = if (spectrumTrackCount > 1) accentColor else secondaryTextColor.copy(alpha = 0.6f)
-                )
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.channel_count_with_limit, spectrumTrackCount, spectrumMaxTrackCount),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = colorScheme.onSurface
-                )
-            }
-
-            IconButton(
-                onClick = onIncrementTrack,
-                enabled = spectrumTrackCount < spectrumMaxTrackCount
-            ) {
-                Icon(
-                    imageVector = Icons.Default.AddCircle,
-                    contentDescription = null,
-                    tint = if (spectrumTrackCount < spectrumMaxTrackCount) accentColor else secondaryTextColor.copy(alpha = 0.6f)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SpectrumAnalyteBindingList(
-    spectrumTrackCount: Int,
-    spectrumMapping: Map<Int, Analyte>,
-    onSelectAnalyte: (Int) -> Unit
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    val accentColor = colorScheme.primary
-    val borderColor = colorScheme.outline.copy(alpha = 0.35f)
-    val secondaryTextColor = colorScheme.onSurfaceVariant
-    val subtleSurfaceColor = colorScheme.surfaceVariant.copy(alpha = 0.28f)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(colorScheme.surface)
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
-            .padding(16.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.spectrum_analyte_binding),
-            fontWeight = FontWeight.SemiBold,
-            color = colorScheme.onSurface
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            (1..spectrumTrackCount).forEach { track ->
-                val analyte = spectrumMapping[track]
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(subtleSurfaceColor)
-                        .border(
-                            1.dp,
-                            if (analyte != null) accentColor else borderColor,
-                            RoundedCornerShape(10.dp)
-                        )
-                        .clickable { onSelectAnalyte(track) }
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.spectrum_channel_label, track),
-                            fontWeight = FontWeight.SemiBold,
-                            color = colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = analyte?.name ?: stringResource(R.string.spectrum_select_analyte),
-                            color = if (analyte != null) accentColor else secondaryTextColor,
-                            fontSize = 14.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = accentColor
-                    )
-                }
-            }
-        }
-    }
-}
-@Composable
-fun SpectrumChannelConfigCard(
-    spectrumTrackCount: Int,
-    spectrumMaxTrackCount: Int,
-    spectrumMapping: Map<Int, Analyte>,
-    onIncrementTrack: () -> Unit,
-    onDecrementTrack: () -> Unit,
-    onSelectAnalyte: (Int) -> Unit
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    val accentColor = colorScheme.primary
-    val borderColor = colorScheme.outline.copy(alpha = 0.35f)
-    val secondaryTextColor = colorScheme.onSurfaceVariant
-    val subtleSurfaceColor = colorScheme.surfaceVariant.copy(alpha = 0.28f)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(colorScheme.surface)
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
-            .padding(16.dp)
-    ) {
-        // Card Title
-        Text(
-            text = stringResource(R.string.channel_config_title),
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 16.sp,
-            color = colorScheme.onSurface
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Sub-card 1: Channel Count
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(subtleSurfaceColor)
-                .padding(12.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.spectrum_channel_count_label),
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
-                color = secondaryTextColor
+            ScientificMetadataChip(
+                text = modalityLabel(snapshot.template.detectionMode),
+                icon = Icons.Default.Science
             )
+            ScientificMetadataChip(
+                text = protocolLabel(snapshot.template.inputProtocol),
+                icon = Icons.Default.CheckCircle
+            )
+            ScientificMetadataChip(
+                text = stringResource(
+                    R.string.project_template_carrier_compact,
+                    snapshot.carrierProfile.name,
+                    snapshot.carrierProfile.rows,
+                    snapshot.carrierProfile.columns
+                ),
+                icon = Icons.Default.GridView
+            )
+            ScientificMetadataChip(
+                text = snapshot.acquisitionProfile.name,
+                icon = Icons.Default.CameraAlt
+            )
+            ScientificMetadataChip(
+                text = snapshot.analytes.joinToString(separator = listSeparator) {
+                    it.analyte.name
+                },
+                icon = Icons.Default.Biotech
+            )
+            ScientificMetadataChip(
+                text = snapshot.analytes.joinToString(separator = listSeparator) {
+                    it.analysisModel.model.name
+                },
+                icon = Icons.Default.Lock
+            )
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
+@Composable
+private fun RunInformationCard(
+    state: ProjectUiState,
+    onAction: (TemplateProjectAction) -> Unit
+) {
+    var showTraceabilityFields by rememberSaveable { mutableStateOf(false) }
+    SectionCard {
+        SectionHeader(
+            icon = Icons.Default.FolderOpen,
+            title = stringResource(R.string.project_form_title)
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = state.form.projectName,
+            onValueChange = { onAction(TemplateProjectAction.ChangeProjectName(it)) },
+            label = { Text(stringResource(R.string.project_name_label)) },
+            leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth().testTag(NewProjectTestTags.PROJECT_NAME_INPUT),
+            singleLine = true
+        )
+        TextButton(
+            onClick = { showTraceabilityFields = !showTraceabilityFields },
+            modifier = Modifier.align(Alignment.End)
+        ) {
+            Icon(Icons.Default.Inventory2, contentDescription = null, Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(R.string.quick_create_traceability_optional))
+            Icon(
+                if (showTraceabilityFields) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null
+            )
+        }
+        if (showTraceabilityFields) {
+            OutlinedTextField(
+                value = state.form.projectBatch,
+                onValueChange = { onAction(TemplateProjectAction.ChangeProjectBatch(it)) },
+                label = { Text(stringResource(R.string.project_batch_label)) },
+                leadingIcon = { Icon(Icons.Default.Inventory2, contentDescription = null) },
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                IconButton(
-                    onClick = onDecrementTrack,
-                    enabled = spectrumTrackCount > 1,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.RemoveCircle,
-                        contentDescription = null,
-                        tint = if (spectrumTrackCount > 1) accentColor else secondaryTextColor.copy(alpha = 0.6f)
-                    )
-                }
+                singleLine = true
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = state.form.sampleBatch,
+                onValueChange = { onAction(TemplateProjectAction.ChangeSampleBatch(it)) },
+                label = { Text(stringResource(R.string.project_sample_batch_label)) },
+                leadingIcon = { Icon(Icons.Default.Fingerprint, contentDescription = null) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+        }
+    }
+}
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "$spectrumTrackCount",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        color = colorScheme.onSurface
-                    )
-                    Text(
-                        text = "/$spectrumMaxTrackCount",
-                        fontWeight = FontWeight.Normal,
-                        fontSize = 16.sp,
-                        color = secondaryTextColor
-                    )
-                }
-
-                IconButton(
-                    onClick = onIncrementTrack,
-                    enabled = spectrumTrackCount < spectrumMaxTrackCount,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AddCircle,
-                        contentDescription = null,
-                        tint = if (spectrumTrackCount < spectrumMaxTrackCount) accentColor else secondaryTextColor.copy(alpha = 0.6f)
-                    )
-                }
-            }
+@Composable
+private fun SampleMappingCard(
+    state: ProjectUiState,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onAction: (TemplateProjectAction) -> Unit
+) {
+    val listSeparator = stringResource(R.string.project_list_separator)
+    SectionCard {
+        SectionHeader(
+            icon = Icons.Default.Hub,
+            title = stringResource(R.string.project_sample_mapping_title)
+        )
+        Spacer(Modifier.height(12.dp))
+        if (state.form.requiredSampleSites.isEmpty()) {
+            Text(
+                stringResource(R.string.project_sample_mapping_none),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            return@SectionCard
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Sub-card 2: Channel Binding List
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(subtleSurfaceColor)
-                .padding(12.dp),
+            modifier = Modifier.testTag(NewProjectTestTags.SAMPLE_GROUP_SUMMARY),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            (1..spectrumTrackCount).forEach { track ->
-                val analyte = spectrumMapping[track]
-                val isBound = analyte != null
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colorScheme.surface)
-                        .border(
-                            1.dp,
-                            if (isBound) accentColor else borderColor,
-                            RoundedCornerShape(8.dp)
-                        )
-                        .clickable { onSelectAnalyte(track) }
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            Text(
+                text = stringResource(
+                    R.string.project_sample_group_count,
+                    state.form.sampleGroups.size,
+                    state.form.requiredSampleSites.size
+                ),
+                fontWeight = FontWeight.SemiBold
+            )
+            state.form.sampleGroups.take(6).forEach { group ->
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(FluoRadius.badge)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.spectrum_channel_label, track),
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                color = colorScheme.onSurface
-                            )
-                            // 已绑定标签
-                            if (isBound) {
-                                Row(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFF10B981).copy(alpha = 0.12f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = Color(0xFF10B981),
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.channel_bound_label),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color(0xFF10B981)
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = if (isBound) analyte!!.name else stringResource(R.string.spectrum_unbound_analyte),
-                            color = if (isBound) accentColor else secondaryTextColor,
-                            fontSize = 13.sp,
+                            group.sampleSlot,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Text(
+                            stringResource(
+                                R.string.project_sample_group_sites,
+                                group.siteKeys.size,
+                                group.analyteNames.joinToString(separator = listSeparator)
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
+                }
+            }
+            if (state.form.missingSampleSiteKeys.isNotEmpty()) {
+                Text(
+                    stringResource(
+                        R.string.project_sample_mapping_missing,
+                        state.form.missingSampleSiteKeys.size
+                    ),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
 
-                    // 右侧图标：已绑定显示箭头，未绑定显示添加图标
-                    Icon(
-                        imageVector = if (isBound) Icons.Default.ChevronRight else Icons.Default.AddCircleOutline,
-                        contentDescription = null,
-                        tint = if (isBound) accentColor else secondaryTextColor,
-                        modifier = Modifier.size(22.dp)
+        TextButton(onClick = onToggleExpanded, modifier = Modifier.align(Alignment.End)) {
+            Text(
+                stringResource(
+                    if (expanded) R.string.project_sample_mapping_hide
+                    else R.string.project_sample_mapping_manage
+                )
+            )
+            Icon(
+                if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null
+            )
+        }
+
+        if (expanded) {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 380.dp)
+                    .verticalScroll(rememberScrollState())
+                    .testTag(NewProjectTestTags.SAMPLE_SITE_EDITOR),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                state.form.sampleGroups.forEach { group ->
+                    OutlinedTextField(
+                        value = group.sampleSlot,
+                        onValueChange = {
+                            onAction(TemplateProjectAction.ApplySampleSlot(group.siteKeys, it))
+                        },
+                        label = { Text(stringResource(R.string.project_sample_slot_label)) },
+                        supportingText = {
+                            Text(
+                                stringResource(
+                                    R.string.project_sample_group_sites,
+                                    group.siteKeys.size,
+                                    group.analyteNames.joinToString(separator = listSeparator)
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
                     )
+                }
+                state.form.requiredSampleSites
+                    .filter { it.siteKey in state.form.missingSampleSiteKeys }
+                    .forEach { site ->
+                        OutlinedTextField(
+                            value = state.form.sampleSlotMapping[site.siteKey].orEmpty(),
+                            onValueChange = {
+                                onAction(
+                                    TemplateProjectAction.ApplySampleSlot(
+                                        listOf(site.siteKey),
+                                        it
+                                    )
+                                )
+                            },
+                            label = { Text(stringResource(R.string.project_sample_slot_label)) },
+                            supportingText = {
+                                Text(
+                                    stringResource(
+                                        R.string.project_sample_site_label,
+                                        site.siteKey,
+                                        site.analyteName
+                                    )
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectImageCard(
+    state: ProjectUiState,
+    onAction: (TemplateProjectAction) -> Unit
+) {
+    val isSpectrum = state.resolvedConfiguration
+        ?.snapshot
+        ?.template
+        ?.detectionMode == DetectionModality.SPECTRUM.code
+    val titleRes = if (isSpectrum) R.string.project_spectrum_image_title
+    else R.string.project_image_title
+    SectionCard {
+        SectionHeader(
+            icon = Icons.Default.Image,
+            title = stringResource(titleRes)
+        )
+        Spacer(Modifier.height(12.dp))
+        val imageUri = state.form.imageUri
+        if (imageUri.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(190.dp)
+                    .clip(RoundedCornerShape(FluoRadius.control))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                        RoundedCornerShape(FluoRadius.control)
+                    )
+                    .clickable { onAction(TemplateProjectAction.ChooseImage) },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.AddPhotoAlternate,
+                        contentDescription = null,
+                        modifier = Modifier.size(42.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.project_image_select))
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .clip(RoundedCornerShape(FluoRadius.control))
+                    .background(Color.Black.copy(alpha = 0.04f))
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(imageUri)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = stringResource(titleRes),
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+                IconButton(
+                    onClick = { onAction(TemplateProjectAction.RemoveImage) },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
+                ) {
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.65f),
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = stringResource(R.string.project_image_remove),
+                            tint = Color.White,
+                            modifier = Modifier.padding(7.dp).size(18.dp)
+                        )
+                    }
+                }
+            }
+            TextButton(
+                onClick = { onAction(TemplateProjectAction.ChooseImage) },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text(stringResource(R.string.project_image_change))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreflightCard(state: ProjectUiState) {
+    val issues = state.form.preflightIssues.distinct()
+    if (issues.isEmpty()) return
+
+    SectionCard {
+        SectionHeader(
+            icon = Icons.Default.WarningAmber,
+            title = stringResource(R.string.project_preflight_title)
+        )
+        Spacer(Modifier.height(10.dp))
+        Surface(
+            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(FluoRadius.badge)
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.project_preflight_blocked_title),
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (issues.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier.testTag(NewProjectTestTags.PREFLIGHT_ISSUES),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        issues.forEach { issue ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Icon(
+                                    Icons.Default.WarningAmber,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    stringResource(preflightIssueMessage(issue.code)),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1534,73 +913,72 @@ fun SpectrumChannelConfigCard(
 }
 
 @Composable
-fun DetectionModeSegmentedControl(
-    selectedMode: DetectionMode,
-    onSelect: (DetectionMode) -> Unit
+private fun SectionCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
 ) {
-    val colorScheme = MaterialTheme.colorScheme
-    val accentColor = colorScheme.primary
-    val borderColorBase = colorScheme.outline.copy(alpha = 0.35f)
-    val items = listOf(
-        DetectionMode.FLUORESCENCE to R.string.fluorescence_mode_short,
-        DetectionMode.COLORIMETRIC to R.string.colorimetric_mode_short,
-        DetectionMode.SPECTRUM to R.string.spectrum_mode_short
-    )
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(colorScheme.surface),
-        horizontalArrangement = Arrangement.spacedBy(0.dp)
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(FluoRadius.card),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        items.forEachIndexed { index, (mode, labelRes) ->
-            val selected = mode == selectedMode
-            val background by animateColorAsState(
-                targetValue = if (selected) accentColor.copy(alpha = 0.12f) else Color.Transparent,
-                label = "mode-bg"
-            )
-            val textColor by animateColorAsState(
-                targetValue = if (selected) accentColor else colorScheme.onSurfaceVariant,
-                label = "mode-text"
-            )
-            val borderColor by animateColorAsState(
-                targetValue = if (selected) accentColor else borderColorBase,
-                label = "mode-border"
-            )
-
-            val shape = when (index) {
-                0 -> RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)
-                items.lastIndex -> RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)
-                else -> RoundedCornerShape(0.dp)
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clip(shape)
-                    .background(background)
-                    .border(
-                        width = 1.dp,
-                        color = borderColor,
-                        shape = shape
-                    )
-                    .clickable { onSelect(mode) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = stringResource(labelRes),
-                    color = textColor,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 6.dp)
-                )
-            }
-        }
+        Column(modifier = Modifier.padding(16.dp), content = content)
     }
+}
+
+@Composable
+private fun SectionHeader(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String
+) {
+    ScientificSectionTitle(title = title, icon = icon)
+}
+
+@Composable
+private fun modalityLabel(code: String?): String = when (code) {
+    DetectionModality.COLORIMETRIC.code -> stringResource(R.string.project_modality_colorimetric)
+    DetectionModality.FLUORESCENCE.code -> stringResource(R.string.project_modality_fluorescence)
+    DetectionModality.SPECTRUM.code -> stringResource(R.string.project_modality_spectrum)
+    else -> stringResource(R.string.project_unknown_value)
+}
+
+@Composable
+private fun protocolLabel(code: String?): String = when (code) {
+    InputProtocol.ENDPOINT_ONLY.code -> stringResource(R.string.project_protocol_endpoint)
+    InputProtocol.SINGLE_SPECTRUM_ANALYSIS.code -> stringResource(R.string.project_protocol_single_spectrum)
+    InputProtocol.LSPR_PAIRED_QUANTIFICATION.code -> stringResource(R.string.project_protocol_lspr)
+    else -> stringResource(R.string.project_unknown_value)
+}
+
+private fun preflightIssueMessage(code: TemplatePreflightCode): Int = when (code) {
+    TemplatePreflightCode.TEMPLATE_NOT_FOUND,
+    TemplatePreflightCode.TEMPLATE_NOT_PUBLISHED -> R.string.project_preflight_issue_template
+    TemplatePreflightCode.CARRIER_MISSING,
+    TemplatePreflightCode.CARRIER_ARCHIVED -> R.string.project_preflight_issue_carrier
+    TemplatePreflightCode.ACQUISITION_MISSING,
+    TemplatePreflightCode.ACQUISITION_ARCHIVED,
+    TemplatePreflightCode.ACQUISITION_MODALITY_MISMATCH,
+    TemplatePreflightCode.ACQUISITION_CARRIER_MISMATCH -> R.string.project_preflight_issue_acquisition
+    TemplatePreflightCode.ANALYTE_CONFIG_MISSING,
+    TemplatePreflightCode.ANALYTE_MISSING -> R.string.project_preflight_issue_analyte
+    TemplatePreflightCode.ANALYSIS_MODEL_MISSING,
+    TemplatePreflightCode.ANALYSIS_MODEL_NOT_PUBLISHED -> R.string.project_preflight_issue_model
+    TemplatePreflightCode.MODEL_ANALYTE_MISMATCH,
+    TemplatePreflightCode.MODEL_MODALITY_MISMATCH,
+    TemplatePreflightCode.MODEL_PROTOCOL_MISMATCH,
+    TemplatePreflightCode.MODEL_CARRIER_MISMATCH,
+    TemplatePreflightCode.MODEL_ACQUISITION_MISMATCH ->
+        R.string.project_preflight_issue_model_compatibility
+    TemplatePreflightCode.MODEL_UNIT_MISMATCH,
+    TemplatePreflightCode.MODEL_RELIABLE_RANGE_MISMATCH ->
+        R.string.project_preflight_issue_model_range
+    TemplatePreflightCode.LAYOUT_INCOMPLETE,
+    TemplatePreflightCode.LAYOUT_OUT_OF_BOUNDS -> R.string.project_preflight_issue_layout
+    TemplatePreflightCode.SITE_ANALYTE_UNKNOWN -> R.string.project_preflight_issue_site
+    TemplatePreflightCode.UNSUPPORTED_DETECTION_ROUTE -> R.string.project_preflight_issue_route
+    TemplatePreflightCode.PROJECT_NAME_MISSING -> R.string.project_preflight_issue_name
+    TemplatePreflightCode.IMAGE_MISSING -> R.string.project_preflight_issue_image
+    TemplatePreflightCode.USER_MISSING -> R.string.project_preflight_issue_user
+    TemplatePreflightCode.SAMPLE_MAPPING_INCOMPLETE -> R.string.project_preflight_issue_sample
 }

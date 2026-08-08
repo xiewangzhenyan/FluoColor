@@ -3,6 +3,7 @@ package com.muc.fluocolorquant
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.net.Uri
 import android.os.Environment
 import android.util.Log
@@ -41,9 +42,23 @@ class ImageCorrectionTest {
      * 从资源中加载测试图像
      */
     private fun loadTestImage(resourceId: Int): Bitmap {
-        val inputStream = context.resources.openRawResource(resourceId)
-        return BitmapFactory.decodeStream(inputStream).also {
-            inputStream.close()
+        // PNG/JPEG/WebP 等栅格资源优先走 BitmapFactory，避免无意义的 Drawable 绘制开销。
+        val decodedBitmap = context.resources.openRawResource(resourceId).use { inputStream ->
+            BitmapFactory.decodeStream(inputStream)
+        }
+        if (decodedBitmap != null) return decodedBitmap
+
+        // `test_grid` 是 VectorDrawable XML，BitmapFactory 对 XML 会正常返回 null 而不是抛异常。
+        // 仪器测试必须显式把矢量资源绘制到 Bitmap，不能依赖 Kotlin 非空返回值触发 NPE。
+        val drawable = requireNotNull(context.getDrawable(resourceId)) {
+            "无法加载测试图像资源：$resourceId"
+        }
+        val width = drawable.intrinsicWidth.coerceAtLeast(1)
+        val height = drawable.intrinsicHeight.coerceAtLeast(1)
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            val canvas = Canvas(bitmap)
+            drawable.setBounds(0, 0, width, height)
+            drawable.draw(canvas)
         }
     }
     
@@ -417,4 +432,4 @@ class ImageCorrectionTest {
             return inputMat.clone()
         }
     }
-} 
+}

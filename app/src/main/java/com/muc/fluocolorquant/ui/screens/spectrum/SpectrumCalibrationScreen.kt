@@ -7,6 +7,8 @@ import android.graphics.PointF
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -89,6 +91,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
@@ -102,6 +105,7 @@ import kotlinx.coroutines.launch
 
 import kotlin.math.abs
 import kotlin.math.min
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -143,13 +147,11 @@ fun SpectrumCalibrationScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.spectrum_calibration_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
+            // 原实现使用已废弃的 Icons.Default.ArrowBack，在 RTL 语言下箭头方向不会镜像。
+            // 统一顶栏内部使用 AutoMirrored 版本，顺带修正该无障碍/国际化问题。
+            FluoTopBar(
+                title = stringResource(R.string.spectrum_calibration_title),
+                onBack = { navController.navigateUp() },
                 actions = {
                     // 手动标定模式下显示撤销和完成按钮
                     if (state.calibrationMode == CalibrationMode.MANUAL) {
@@ -290,18 +292,21 @@ fun SpectrumCalibrationScreen(
 
     // 自动标定失败重试建议对话框
     if (state.showRetryDialog) {
+        val retryGuidance = stringResource(R.string.auto_calibration_retry_message)
+        // errorMessage 可能为空，旧实现会在为空时把同一段建议渲染两遍。这里只在
+        // 存在独立错误原因时额外展示，通用排查建议始终只保留一份。
+        val detailedError = state.errorMessage
+            ?.asString(context)
+            ?.takeIf { it.isNotBlank() && it != retryGuidance }
         AlertDialog(
             onDismissRequest = { viewModel.dismissRetryDialog() },
             icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFE68A00)) },
             title = { Text(stringResource(R.string.auto_calibration_retry_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    detailedError?.let { error -> Text(text = error) }
                     Text(
-                        text = state.errorMessage?.asString(context)
-                            ?: stringResource(R.string.auto_calibration_retry_message)
-                    )
-                    Text(
-                        text = stringResource(R.string.auto_calibration_retry_message),
+                        text = retryGuidance,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -385,12 +390,22 @@ private fun AutoCalibrationSection(
         }
     }
 
+    // 主操作按钮固定在底部，其余内容独立滚动。
+    //
+    // 此前整页是一个不可滚动的 Column，并用 `Spacer(weight(1f))` 把按钮压到底：内容一旦
+    // 超过一屏——实测加到第 3 个参考波长就会——按钮被挤出可视区，而页面又滚不动，用户
+    // 完全无法提交标定。参考波长数量本来就是用户可增的，这条路径必然会被走到。
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+            .padding(16.dp)
     ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
         // ========== 标定图区域 ==========
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -425,7 +440,7 @@ private fun AutoCalibrationSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(FluoRadius.chip),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (state.calibrationImageBitmap != null) 
                         Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
@@ -511,7 +526,7 @@ private fun AutoCalibrationSection(
                     placeholder = { Text("nm") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(FluoRadius.chip),
                     trailingIcon = {
                         // 显示删除按钮（至少保留2个输入框）
                         if (wavelengthInputs.size > 2) {
@@ -532,7 +547,7 @@ private fun AutoCalibrationSection(
             OutlinedButton(
                 onClick = { wavelengthInputs.add("") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(FluoRadius.chip)
             ) {
                 Text("+ ${stringResource(R.string.add_wavelength)}")
             }
@@ -546,10 +561,11 @@ private fun AutoCalibrationSection(
                 )
             }
         }
+        }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // ========== 主操作按钮 ==========
+        // ========== 主操作按钮（常驻底部，不随内容滚走）==========
         Button(
             onClick = {
                 if (isFittingCompleted) {
@@ -562,7 +578,7 @@ private fun AutoCalibrationSection(
                 .fillMaxWidth()
                 .height(52.dp),
             enabled = !state.isAutoFitting && (canStartFitting || isFittingCompleted),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(FluoRadius.chip),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isFittingCompleted) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary,
                 disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -1047,7 +1063,7 @@ private fun ManualCalibrationSection(
                     Box(
                         modifier = Modifier
                             .size(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(FluoRadius.badge))
                             .background(Color(0xFF5D6B98)),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1085,7 +1101,7 @@ private fun ManualCalibrationSection(
                         enabled = state.currentTrackIndex > 0,
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(FluoRadius.badge))
                             .background(
                                 if (state.currentTrackIndex > 0) Color(0xFF5D6B98)
                                 else Color(0xFFE5E7EB)
@@ -1105,7 +1121,7 @@ private fun ManualCalibrationSection(
                         enabled = state.currentTrackIndex < state.trackRects.lastIndex,
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(FluoRadius.badge))
                             .background(
                                 if (state.currentTrackIndex < state.trackRects.lastIndex) Color(0xFF5D6B98)
                                 else Color(0xFFE5E7EB)
@@ -1139,7 +1155,7 @@ private fun ManualCalibrationSection(
                         containerColor = Color(0xFF5D6B98),
                         disabledContainerColor = Color(0xFFE5E7EB)
                     ),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
                     elevation = ButtonDefaults.buttonElevation(
                         defaultElevation = 4.dp,
                         pressedElevation = 8.dp,
@@ -1165,7 +1181,7 @@ private fun ManualCalibrationSection(
                 Row(
                     modifier = Modifier
                         .weight(1.2f)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(FluoRadius.badge))
                         .background(Color(0xFFF0F4F8))
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,

@@ -1,627 +1,1293 @@
 package com.muc.fluocolorquant.ui.screens.settings
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.AutoGraph
+import androidx.compose.material.icons.filled.Biotech
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Functions
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
-import com.muc.fluocolorquant.data.enums.PixelType
+import com.muc.fluocolorquant.ui.components.FluoTopBar
+import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
+import com.muc.fluocolorquant.data.enums.CarrierType
+import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.ui.components.LatexView
+import com.muc.fluocolorquant.ui.components.LocalToastManager
+import com.muc.fluocolorquant.ui.components.ScientificPickerOption
+import com.muc.fluocolorquant.ui.components.ScientificPickerSheet
+import com.muc.fluocolorquant.ui.components.ScientificSelectionField
+import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.components.analysisFeatureDescription
+import com.muc.fluocolorquant.ui.components.analysisFeatureLabel
+import com.muc.fluocolorquant.ui.components.analysisFeatureRangeLabel
 import com.muc.fluocolorquant.ui.components.charts.CurveChart
 import com.muc.fluocolorquant.ui.components.tables.MetricsTable
-import com.muc.fluocolorquant.ui.viewmodels.ColumnType
-import com.muc.fluocolorquant.ui.viewmodels.CreationFlowState
-import com.muc.fluocolorquant.ui.viewmodels.CurveModelViewModel
+import com.muc.fluocolorquant.ui.viewmodels.StandardCurveBuilderError
+import com.muc.fluocolorquant.ui.viewmodels.StandardCurveBuilderEvent
+import com.muc.fluocolorquant.ui.viewmodels.StandardCurveBuilderUiState
+import com.muc.fluocolorquant.ui.viewmodels.StandardCurveBuilderViewModel
+import com.muc.fluocolorquant.ui.viewmodels.StandardCurveFitCandidate
+import com.muc.fluocolorquant.ui.viewmodels.StandardCurveImportDraft
 import com.muc.fluocolorquant.utils.math.FittingEngine
-import kotlinx.coroutines.delay
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.muc.fluocolorquant.ui.theme.FluoRadius
+
+/** 普通创建页当前展示的数据来源。 */
+private enum class StandardCurveDataSource {
+    NONE,
+    CSV,
+    MANUAL
+}
 
 /**
- * 手动数据输入页面
+ * 普通用户结果页允许展示的拟合指标键，顺序同时就是页面展示顺序。
+ *
+ * 拟合引擎还会生成调整后 R²、ICH M10 裁决、权重方式等内部诊断信息。这些数据必须继续
+ * 供自动择优和科研追溯使用，但直接展示会让普通用户误以为需要理解法规裁决细节，因此这里
+ * 只建立展示白名单，不修改底层指标契约。
+ */
+private val STANDARD_CURVE_VISIBLE_METRIC_KEYS = listOf(
+    "R²",
+    "RMSE",
+    "MAE",
+    "Accepted Standard Ratio"
+)
+
+/**
+ * 从完整拟合诊断中提取普通用户真正需要查看的四项指标。
+ *
+ * 使用 [LinkedHashMap] 保持稳定顺序，避免底层 Map 实现变化导致界面上的指标顺序跳动。
+ * 该函数不负责本地化，UI 层随后使用字符串资源把内部稳定键转换为当前语言。
+ */
+internal fun selectStandardCurveVisibleMetrics(
+    allMetrics: Map<String, Double>
+): Map<String, Double> = linkedMapOf<String, Double>().apply {
+    STANDARD_CURVE_VISIBLE_METRIC_KEYS.forEach { key ->
+        allMetrics[key]?.takeIf(Double::isFinite)?.let { value -> put(key, value) }
+    }
+}
+
+/**
+ * 统一标准曲线创建页面。
+ *
+ * 页面不再写入旧 CurveModel，也不允许用户输入函数参数 JSON。分析物、检测模式、单位、
+ * 主信号和载体在保存时共同冻结到 AnalysisModel，保证创建项目时能够执行严格兼容匹配。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManualDataInputScreen(
     navController: NavController,
-    viewModel: CurveModelViewModel = hiltViewModel(),
+    viewModel: StandardCurveBuilderViewModel = hiltViewModel(),
     navigateBack: () -> Unit = { navController.navigateUp() }
 ) {
-    val creationFlowState by viewModel.activeCreationFlow.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
-    
-    // 本地状态
-    var modelName by remember { mutableStateOf("") }
-    var pixelTypeExpanded by remember { mutableStateOf(false) }
-    var showSaveDialog by remember { mutableStateOf(false) }
-    var selectedPixelType by remember { mutableStateOf<PixelType?>(PixelType.GRAY_LUMINOSITY) }
-    
-    // 行列数输入状态 - 默认为4行2列
-    var rowCountInput by remember { mutableStateOf("4") }
-    var columnCountInput by remember { mutableStateOf("2") }
-    
-    // 添加协程作用域用于处理延迟操作
+    val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val toastManager = LocalToastManager.current
     val scope = rememberCoroutineScope()
-    
-    // 屏幕宽度信息，用于计算列宽
-    val configuration = LocalConfiguration.current
-    val screenWidth = configuration.screenWidthDp.dp
-    val horizontalPadding = 16.dp * 2 // 屏幕左右两边的填充
-    val rowNumberWidth = 60.dp // 行号列宽度
-    val availableWidth = screenWidth - horizontalPadding - rowNumberWidth
-    
-    // 计算是否需要水平滚动
-    val columnCount = columnCountInput.toIntOrNull() ?: 2
-    val needsScroll = columnCount >= 4
-    
-    // 计算列宽度
-    val columnWidth = if (needsScroll) {
-        150.dp // 固定宽度，超过4列时使用
-    } else {
-        // 2-3列时等分可用宽度
-        availableWidth / columnCount
-    }
-    
-    // 从ViewModel的状态初始化本地状态
-    LaunchedEffect(key1 = Unit) {
-        if (creationFlowState == null) {
-            viewModel.startManualDataInput()
-            
-            // 确保初始表格大小与默认行列数匹配
-            val rowCount = rowCountInput.toIntOrNull() ?: 4
-            val columnCount = columnCountInput.toIntOrNull() ?: 2
-            
-            // 对于初始状态，需要添加行
-            for (i in 1 until rowCount) { // 默认已有1行，所以从1开始
-                viewModel.addDataRow()
-            }
-        }
-    }
-    
-    val manualDataState = (creationFlowState as? CreationFlowState.ManualDataInput)
-    
-    // 确保数据表格与用户输入行列数一致
-    LaunchedEffect(key1 = rowCountInput, key2 = columnCountInput) {
-        val rowCount = rowCountInput.toIntOrNull() ?: 4
-        val columnCount = columnCountInput.toIntOrNull() ?: 2
-        
-        if (rowCount > 0 && columnCount > 0 && manualDataState != null) {
-            // 调整数据表格大小
-            val currentRowCount = manualDataState.dataTable.size
-            val currentColumnCount = if (manualDataState.dataTable.isNotEmpty()) manualDataState.dataTable[0].size else 0
-            
-            // 先处理行数变化
-            if (rowCount > currentRowCount) {
-                // 增加行
-                for (i in 1..(rowCount - currentRowCount)) {
-                    viewModel.addDataRow()
+    var dataSource by remember { mutableStateOf(StandardCurveDataSource.NONE) }
+    var showAnalytePicker by remember { mutableStateOf(false) }
+    var showUnitPicker by remember { mutableStateOf(false) }
+    var showFeaturePicker by remember { mutableStateOf(false) }
+    var showFunctionPicker by remember { mutableStateOf(false) }
+    var showCsvMapping by remember { mutableStateOf(false) }
+    var mappingFeatureColumn by remember { mutableStateOf<Int?>(null) }
+
+    // 在 Composable 上下文中提前解析全部资源，事件协程只读取普通字符串。
+    val errorMessages = mapOf(
+        StandardCurveBuilderError.MODEL_NAME_REQUIRED to
+            stringResource(R.string.standard_curve_error_name_required),
+        StandardCurveBuilderError.MODEL_NAME_DUPLICATE to
+            stringResource(R.string.standard_curve_error_name_duplicate),
+        StandardCurveBuilderError.ANALYTE_REQUIRED to
+            stringResource(R.string.standard_curve_error_analyte_required),
+        StandardCurveBuilderError.UNIT_REQUIRED to
+            stringResource(R.string.standard_curve_error_unit_required),
+        StandardCurveBuilderError.CARRIER_REQUIRED to
+            stringResource(R.string.standard_curve_error_carrier_required),
+        StandardCurveBuilderError.POINTS_INVALID to
+            stringResource(R.string.standard_curve_points_invalid),
+        StandardCurveBuilderError.SIGNAL_OUT_OF_RANGE to
+            stringResource(R.string.standard_curve_error_signal_range),
+        StandardCurveBuilderError.IMPORT_MAPPING_REQUIRED to
+            stringResource(R.string.standard_curve_error_mapping_required),
+        StandardCurveBuilderError.FIT_FAILED to
+            stringResource(R.string.standard_curve_fit_failed),
+        StandardCurveBuilderError.FIT_FIRST to
+            stringResource(R.string.standard_curve_fit_first),
+        StandardCurveBuilderError.SAVE_FAILED to
+            stringResource(R.string.standard_curve_save_failed)
+    )
+
+    LaunchedEffect(viewModel, toastManager, navigateBack) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is StandardCurveBuilderEvent.Saved -> {
+                    toastManager.showToast(
+                        context.getString(R.string.standard_curve_saved_unified),
+                        ToastType.SUCCESS
+                    )
+                    navigateBack()
                 }
-            } else if (rowCount < currentRowCount) {
-                // 减少行
-                for (i in 1..(currentRowCount - rowCount)) {
-                    viewModel.removeDataRow()
-                }
-            }
-            
-            // 再处理列数变化
-            if (columnCount > currentColumnCount) {
-                // 增加列
-                for (i in 1..(columnCount - currentColumnCount)) {
-                    viewModel.addDataColumn()
-                }
-            } else if (columnCount < currentColumnCount) {
-                // 减少列
-                for (i in 1..(currentColumnCount - columnCount)) {
-                    viewModel.removeDataColumn()
+                is StandardCurveBuilderEvent.ValidationFailed -> {
+                    toastManager.showToast(
+                        errorMessages.getValue(event.error),
+                        if (event.error == StandardCurveBuilderError.SAVE_FAILED) {
+                            ToastType.ERROR
+                        } else {
+                            ToastType.WARNING
+                        }
+                    )
                 }
             }
         }
     }
-    
-    val dataTable = manualDataState?.dataTable ?: listOf(listOf(0.0, 0.0))
-    val columnTypes = manualDataState?.columnTypes ?: listOf(ColumnType.NONE, ColumnType.NONE)
-    val fittingResult = manualDataState?.fittingResult
-    
-    // 检查是否有一个浓度列和至少一个像素类型列
-    val hasConcAndPixel = remember(columnTypes) {
-        derivedStateOf {
-            columnTypes.contains(ColumnType.CONCENTRATION) && 
-            columnTypes.contains(ColumnType.PIXEL_VALUE)
+
+    // 编辑已有曲线时，ViewModel 会恢复真实标定点；页面自动展开手工数据区，让用户直接
+    // 看见并修改原始数据，不需要再猜测应该点击“CSV”还是“手工录入”。
+    LaunchedEffect(state.editingModelId) {
+        if (state.editingModelId != null && dataSource == StandardCurveDataSource.NONE) {
+            dataSource = StandardCurveDataSource.MANUAL
         }
     }
-    
-    // 添加水平滚动状态
-    val horizontalScrollState = rememberScrollState()
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val content = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use {
+                        it.readText()
+                    }
+                }.getOrNull()
+            }
+            if (content.isNullOrBlank()) {
+                toastManager.showToast(
+                    context.getString(R.string.standard_curve_import_failed),
+                    ToastType.ERROR
+                )
+            } else {
+                viewModel.importCalibrationText(content)
+                dataSource = StandardCurveDataSource.CSV
+                showCsvMapping = true
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(text = stringResource(R.string.import_data)) },
-                navigationIcon = {
-                    IconButton(onClick = { navigateBack() }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
+            FluoTopBar(
+                title = stringResource(
+                    if (state.editingModelId == null) {
+                        R.string.standard_curve_unified_title
+                    } else {
+                        R.string.standard_curve_edit_title
                     }
-                }
+                ),
+                onBack = navigateBack
             )
         }
-    ) { paddingValues ->
-        Box(modifier = Modifier
-            .fillMaxSize()
-            .padding(paddingValues)
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
         ) {
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    // 行列数输入区域
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                item {
+                    UnifiedCurveSection(
+                        icon = Icons.Default.Science,
+                        title = stringResource(R.string.standard_curve_identity_section),
+                        subtitle = stringResource(R.string.standard_curve_identity_help)
                     ) {
-                        // 行数输入
                         OutlinedTextField(
-                            value = rowCountInput,
-                            onValueChange = { input ->
-                                // 只接受正整数
-                                if (input.isEmpty() || input.all { it.isDigit() }) {
-                                    rowCountInput = input
-                                }
-                            },
-                            label = { Text(stringResource(R.string.row_count)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
+                            value = state.modelName,
+                            onValueChange = viewModel::updateModelName,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.standard_curve_name_label)) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(FluoRadius.control)
                         )
-                        
-                        Spacer(modifier = Modifier.width(8.dp))
-                        
-                        // 列数输入
-                        OutlinedTextField(
-                            value = columnCountInput,
-                            onValueChange = { input ->
-                                // 只接受正整数
-                                if (input.isEmpty() || input.all { it.isDigit() }) {
-                                    columnCountInput = input
-                                }
-                            },
-                            label = { Text(stringResource(R.string.column_count)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
+                        DetectionModeSelector(
+                            selected = state.detectionModality,
+                            onSelected = viewModel::updateDetectionModality
                         )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // 数据输入表格 - 根据列数决定是否使用水平滚动
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, MaterialTheme.colorScheme.outline)
-                    ) {
-                        Column {
-                            // 表头 - 列类型选择器
-                            Row(
-                                modifier = Modifier
-                                    .let { if (needsScroll) it.horizontalScroll(horizontalScrollState) else it.fillMaxWidth() }
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                // 行号列
-                                Box(
-                                    modifier = Modifier
-                                        .width(rowNumberWidth)
-                                        .height(48.dp)
-                                        .border(0.5.dp, MaterialTheme.colorScheme.outline),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "#",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                                
-                                // 数据列类型选择器
-                                columnTypes.forEachIndexed { colIndex, columnType ->
-                                    var expanded by remember { mutableStateOf(false) }
-                                    
-                                    ExposedDropdownMenuBox(
-                                        expanded = expanded,
-                                        onExpandedChange = { expanded = it },
-                                        modifier = Modifier
-                                            .width(columnWidth)
-                                            .height(48.dp)
-                                            .border(0.5.dp, MaterialTheme.colorScheme.outline)
-                                    ) {
-                                        TextField(
-                                            value = when (columnType) {
-                                                ColumnType.CONCENTRATION -> stringResource(R.string.concentration)
-                                                ColumnType.PIXEL_VALUE -> selectedPixelType?.displayName ?: stringResource(R.string.pixel_type)
-                                                else -> stringResource(R.string.column_type)
-                                            },
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .menuAnchor(),
-                                            textStyle = MaterialTheme.typography.bodyMedium,
-                                            colors = ExposedDropdownMenuDefaults.textFieldColors(
-                                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
-                                            )
-                                        )
-                                        
-                                        ExposedDropdownMenu(
-                                            expanded = expanded,
-                                            onDismissRequest = { expanded = false }
-                                        ) {
-                                            // 检查是否已有浓度列，如果有且当前列不是浓度列，则不显示浓度选项
-                                            val hasConcentration = columnTypes.contains(ColumnType.CONCENTRATION)
-                                            val canSetConcentration = !hasConcentration || columnType == ColumnType.CONCENTRATION
-                                            
-                                            if (canSetConcentration) {
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.concentration)) },
-                                                    onClick = {
-                                                        viewModel.updateColumnType(colIndex, ColumnType.CONCENTRATION)
-                                                        expanded = false
-                                                    }
-                                                )
-                                            }
-                                            
-                                            // 像素类型选项
-                                            DropdownMenuItem(
-                                                text = { 
-                                                    if (selectedPixelType == null) {
-                                                        Text("选择像素类型...")
-                                                    } else {
-                                                        Text(selectedPixelType!!.displayName)
-                                                    }
-                                                },
-                                                onClick = {
-                                                    // 先将列类型设置为像素值
-                                                    viewModel.updateColumnType(colIndex, ColumnType.PIXEL_VALUE)
-                                                    expanded = false
-                                                    // 然后打开像素类型选择对话框
-                                                    pixelTypeExpanded = true
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // 表格数据行 - 根据列数决定是否使用水平滚动
-                            dataTable.forEachIndexed { rowIndex, rowData ->
-                                Row(
-                                    modifier = Modifier
-                                        .let { if (needsScroll) it.horizontalScroll(horizontalScrollState) else it.fillMaxWidth() }
-                                ) {
-                                    // 行号
-                                    Box(
-                                        modifier = Modifier
-                                            .width(rowNumberWidth)
-                                            .height(48.dp)
-                                            .border(0.5.dp, MaterialTheme.colorScheme.outline)
-                                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = (rowIndex + 1).toString(),
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
-                                    
-                                    // 数据单元格
-                                    rowData.forEachIndexed { colIndex, cellValue ->
-                                        var cellValueText by remember(rowIndex, colIndex, cellValue) {
-                                            mutableStateOf(
-                                                if (cellValue == 0.0 && rowIndex > 0) "" 
-                                                else if (cellValue == cellValue.toInt().toDouble()) cellValue.toInt().toString()
-                                                else cellValue.toString()
-                                            )
-                                        }
-                                        
-                                        OutlinedTextField(
-                                            value = cellValueText,
-                                            onValueChange = { text ->
-                                                // 只允许输入数字和小数点
-                                                if (text.isEmpty() || text.matches(Regex("^-?\\d*\\.?\\d*$"))) {
-                                                    cellValueText = text
-                                                    val value = text.toDoubleOrNull() ?: 0.0
-                                                    viewModel.updateDataTableCell(rowIndex, colIndex, value)
-                                                }
-                                            },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            modifier = Modifier
-                                                .width(columnWidth)
-                                                .height(48.dp),
-                                            textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                                textAlign = TextAlign.Center
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // 开始拟合按钮
-                    Button(
-                        onClick = { viewModel.performFitFromData() },
-                        enabled = hasConcAndPixel.value && dataTable.size > 1,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(stringResource(R.string.start_fitting))
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // 显示拟合结果
-                    fittingResult?.let { result ->
-                        if (result.isSuccess) {
-                            // 提前获取所有需要的字符串资源
-                            val concentrationLabel = stringResource(R.string.concentration)
-                            val pixelTypeLabel = selectedPixelType?.displayName ?: ""
-                            val titleText = "${result.function.displayName} 拟合曲线"
-                            
-                            // 使用FittingEngine中的formatParametersToLatex函数生成LaTeX表达式
-                            val functionLatexExpression = remember(result.function, result.params) {
-                                FittingEngine.formatParametersToLatex(result.function, result.params)
-                            }
-                            
-                            // 直接使用FittingEngine的函数，不依赖ViewModel的计算
-                            val curveFunction = remember(result.function, result.params) {
-                                { x: Double -> FittingEngine.calculate(result.function, result.params, x) }
-                            }
-                            
-                            CurveChart(
-                                fittedCurve = curveFunction,
-                                selectedFunction = result.function,
-                                parameters = result.params,
-                                xAxisLabel = concentrationLabel,
-                                yAxisLabel = pixelTypeLabel,
-                                title = titleText,
-                                modifier = Modifier.height(250.dp),
-                                dataPoints = result.standardPoints
-                            )
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            // 函数表达式卡片 - 参考ManualCurveInputScreen.kt的实现
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                            ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(
-                                        text = stringResource(R.string.function_expression),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    // 使用 key 来强制重建LatexView，彻底清除其内部错误状态
-                                    key(functionLatexExpression) {
-                                        Box(
-                                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            LatexView(
-                                                latex = functionLatexExpression,
-                                                modifier = Modifier.padding(vertical = 8.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            // 拟合函数显示
-                            Text(
-                                text = "拟合函数: ${result.function.displayName}",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            
-                            Spacer(modifier = Modifier.height(8.dp))
-                            
-                            // 参数显示
-                            result.params.entries.toList().forEachIndexed { index, entry ->
-                                Text(
-                                    text = "${entry.key} = ${String.format("%.6f", entry.value)}",
-                                    style = MaterialTheme.typography.bodyMedium
+                        val analyteName = state.analytes
+                            .firstOrNull { it.id == state.selectedAnalyteId }
+                            ?.name
+                        ScientificSelectionField(
+                            label = stringResource(R.string.analyte),
+                            value = analyteName,
+                            placeholder = stringResource(R.string.direct_create_select_analyte),
+                            icon = Icons.Default.Biotech,
+                            onClick = { showAnalytePicker = true },
+                            enabled = !state.isLoading
+                        )
+                        ScientificSelectionField(
+                            label = stringResource(R.string.concentration_unit),
+                            value = state.concentrationUnit,
+                            placeholder = stringResource(R.string.direct_create_select_unit),
+                            icon = Icons.Default.Straighten,
+                            onClick = { showUnitPicker = true }
+                        )
+                        Text(
+                            stringResource(R.string.standard_curve_carrier_label),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(CarrierType.PLATE, CarrierType.MICROFLUIDIC_CHIP).forEach { carrier ->
+                                FilterChip(
+                                    selected = carrier in state.compatibleCarrierTypes,
+                                    onClick = { viewModel.toggleCarrier(carrier) },
+                                    label = { Text(carrierLabel(carrier)) },
+                                    leadingIcon = if (carrier in state.compatibleCarrierTypes) {
+                                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(17.dp)) }
+                                    } else null
                                 )
                             }
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            // 拟合质量指标表格 - 直接使用result.allMetrics，不在UI层计算
-                            val metricsTitle = stringResource(R.string.fitting_quality)
-                            
-                            MetricsTable(
-                                metrics = result.allMetrics.mapValues { (_, value) ->
-                                    String.format("%.4f", value)
-                                },
-                                title = metricsTitle
-                            )
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            // 保存模型按钮
-                            Button(
-                                onClick = { showSaveDialog = true },
-                                modifier = Modifier.fillMaxWidth()
+                        }
+                        Text(
+                            stringResource(R.string.standard_curve_carrier_help),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                item {
+                    UnifiedCurveSection(
+                        icon = Icons.Default.Analytics,
+                        title = stringResource(R.string.standard_curve_feature_section),
+                        subtitle = stringResource(R.string.standard_curve_feature_help)
+                    ) {
+                        ScientificSelectionField(
+                            label = stringResource(R.string.standard_curve_feature_label),
+                            value = analysisFeatureLabel(state.selectedFeature),
+                            placeholder = stringResource(R.string.standard_curve_feature_label),
+                            icon = Icons.Default.Analytics,
+                            onClick = { showFeaturePicker = true },
+                            supportingValue = analysisFeatureRangeLabel(state.selectedFeature)
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(FluoRadius.control),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.36f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.Top
                             ) {
-                                Icon(Icons.Default.Check, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(stringResource(R.string.save_model))
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary
+                                )
+                                Text(
+                                    analysisFeatureDescription(state.selectedFeature),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
                             }
                         }
                     }
                 }
-            }
-            
-            // 错误消息对话框
-            errorMessage?.let {
-                AlertDialog(
-                    onDismissRequest = { viewModel.clearErrorMessage() },
-                    title = { Text("错误") },
-                    text = { Text(it) },
-                    confirmButton = {
-                        Button(onClick = { viewModel.clearErrorMessage() }) {
-                            Text("确定")
-                        }
-                    }
-                )
-            }
-            
-            // 像素类型选择对话框
-            if (pixelTypeExpanded) {
-                AlertDialog(
-                    onDismissRequest = { pixelTypeExpanded = false },
-                    title = { Text(stringResource(R.string.pixel_type)) },
-                    text = {
-                        // 使用垂直滚动使得所有像素类型都可见
-                        Column(
-                            modifier = Modifier
-                                .verticalScroll(rememberScrollState())
-                                .padding(vertical = 8.dp)
-                        ) {
-                            PixelType.getByCategory().forEach { (category, pixelTypes) ->
-                                Text(
-                                    text = category,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.padding(vertical = 8.dp)
+
+                item {
+                    UnifiedCurveSection(
+                        icon = Icons.Default.GridView,
+                        title = stringResource(R.string.standard_curve_data_section),
+                        subtitle = stringResource(R.string.standard_curve_data_help)
+                    ) {
+                        DataSourceOption(
+                            title = stringResource(R.string.standard_curve_import_wide_csv),
+                            description = stringResource(R.string.standard_curve_import_wide_csv_desc),
+                            icon = Icons.Default.FileOpen,
+                            selected = dataSource == StandardCurveDataSource.CSV,
+                            onClick = {
+                                importLauncher.launch(
+                                    arrayOf(
+                                        "text/*",
+                                        "text/csv",
+                                        "text/comma-separated-values",
+                                        "application/csv",
+                                        "application/vnd.ms-excel",
+                                        // 部分 Android 文件提供方会把 CSV 标成二进制流；实际内容
+                                        // 仍由解析器严格验证，允许选择比让合法文件变灰更可靠。
+                                        "application/octet-stream"
+                                    )
                                 )
-                                
-                                pixelTypes.forEach { pixelType ->
-                                    TextButton(
-                                        onClick = {
-                                            selectedPixelType = pixelType
-                                            pixelTypeExpanded = false
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(pixelType.displayName)
-                                    }
-                                }
                             }
-                        }
-                    },
-                    confirmButton = {
-                        Button(onClick = { pixelTypeExpanded = false }) {
-                            Text(stringResource(R.string.cancel))
-                        }
-                    }
-                )
-            }
-            
-            // 保存对话框
-            if (showSaveDialog) {
-                AlertDialog(
-                    onDismissRequest = { 
-                        showSaveDialog = false
-                    },
-                    title = { Text(stringResource(R.string.save_model)) },
-                    text = {
-                        Column {
-                            OutlinedTextField(
-                                value = modelName,
-                                onValueChange = { modelName = it },
-                                label = { Text(stringResource(R.string.model_name)) },
-                                modifier = Modifier.fillMaxWidth()
+                        )
+                        DataSourceOption(
+                            title = stringResource(R.string.standard_curve_manual_advanced),
+                            description = stringResource(R.string.standard_curve_manual_advanced_desc),
+                            icon = Icons.Default.Functions,
+                            selected = dataSource == StandardCurveDataSource.MANUAL,
+                            onClick = {
+                                viewModel.clearImport()
+                                dataSource = StandardCurveDataSource.MANUAL
+                            }
+                        )
+
+                        state.importDraft?.let { importDraft ->
+                            ImportedDataSummary(
+                                importDraft = importDraft,
+                                onAdjust = { showCsvMapping = true },
+                                onRemove = {
+                                    viewModel.clearImport()
+                                    dataSource = StandardCurveDataSource.NONE
+                                }
                             )
                         }
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    // 添加小延迟，解决输入法连接问题
-                                    delay(50)
-                                    
-                                    viewModel.saveModel(modelName)
-                                    showSaveDialog = false
-                                    navigateBack()
+                    }
+                }
+
+                if (dataSource == StandardCurveDataSource.MANUAL && state.importDraft == null) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(FluoRadius.control),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.58f),
+                            border = BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.error.copy(alpha = 0.24f)
+                            )
+                        ) {
+                            Text(
+                                stringResource(R.string.standard_curve_manual_warning),
+                                modifier = Modifier.padding(14.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                    itemsIndexed(state.manualPoints) { index, point ->
+                        ManualCalibrationPointCard(
+                            index = index,
+                            point = point,
+                            concentrationUnit = state.concentrationUnit,
+                            signalLabel = analysisFeatureLabel(state.selectedFeature),
+                            signalRange = analysisFeatureRangeLabel(state.selectedFeature),
+                            allowDelete = state.manualPoints.size > 2,
+                            onConcentrationChange = {
+                                if (it.isDecimalInput(allowNegative = false)) {
+                                    viewModel.updateManualPoint(index, concentration = it)
                                 }
                             },
-                            enabled = modelName.isNotBlank()
-                        ) {
-                            Text(stringResource(R.string.confirm))
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { 
-                            showSaveDialog = false 
-                        }) { Text(stringResource(R.string.cancel)) }
+                            onSignalChange = {
+                                if (it.isDecimalInput(allowNegative = true)) {
+                                    viewModel.updateManualPoint(index, signal = it)
+                                }
+                            },
+                            onDelete = { viewModel.removeManualPoint(index) }
+                        )
                     }
+                    item {
+                        OutlinedButton(
+                            onClick = viewModel::addManualPoint,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(Modifier.width(7.dp))
+                            Text(stringResource(R.string.standard_curve_add_point))
+                        }
+                    }
+                }
+
+                if (dataSource != StandardCurveDataSource.NONE) {
+                    item {
+                        UnifiedCurveSection(
+                            icon = Icons.Default.AutoGraph,
+                            title = stringResource(R.string.standard_curve_result_section),
+                            subtitle = stringResource(R.string.standard_curve_auto_recommend_desc)
+                        ) {
+                            OutlinedButton(
+                                onClick = { showFunctionPicker = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    state.selectedFunction?.let { localizedFittingFunctionTitle(it) }
+                                        ?: stringResource(R.string.standard_curve_auto_recommend),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(Icons.Default.ExpandMore, contentDescription = null)
+                            }
+                            Button(
+                                onClick = viewModel::fit,
+                                enabled = !state.isFitting && !state.isSaving,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(vertical = 13.dp)
+                            ) {
+                                if (state.isFitting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(Icons.Default.AutoGraph, contentDescription = null)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.standard_curve_start_auto_fit))
+                            }
+                        }
+                    }
+                }
+
+                if (state.candidates.isNotEmpty()) {
+                    item {
+                        Text(
+                            stringResource(R.string.standard_curve_fit_candidates),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    itemsIndexed(state.candidates) { index, candidate ->
+                        CandidateCard(
+                            candidate = candidate,
+                            selected = candidate.id == state.selectedCandidateId,
+                            recommended = index == 0,
+                            onClick = { viewModel.selectCandidate(candidate.id) }
+                        )
+                    }
+                    state.selectedCandidate?.let { candidate ->
+                        item {
+                            SelectedCandidateResult(
+                                candidate = candidate,
+                                concentrationUnit = state.concentrationUnit
+                            )
+                        }
+                        item {
+                            Button(
+                                onClick = viewModel::save,
+                                enabled = !state.isSaving,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(vertical = 14.dp)
+                            ) {
+                                if (state.isSaving) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(Icons.Default.Check, contentDescription = null)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    stringResource(
+                                        if (state.editingModelId == null) {
+                                            R.string.standard_curve_save_and_use
+                                        } else {
+                                            R.string.standard_curve_save_changes
+                                        }
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item { Spacer(Modifier.height(28.dp)) }
+            }
+
+            if (state.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            }
+        }
+    }
+
+    if (showAnalytePicker) {
+        ScientificPickerSheet(
+            title = stringResource(R.string.direct_create_select_analyte),
+            options = state.analytes.map {
+                ScientificPickerOption(id = it.id, title = it.name, icon = Icons.Default.Biotech)
+            },
+            selectedId = state.selectedAnalyteId,
+            onSelect = viewModel::updateAnalyte,
+            onDismiss = { showAnalytePicker = false }
+        )
+    }
+    if (showUnitPicker) {
+        ScientificPickerSheet(
+            title = stringResource(R.string.direct_create_select_unit),
+            options = state.concentrationUnits.map {
+                ScientificPickerOption(id = it, title = it, icon = Icons.Default.Straighten)
+            },
+            selectedId = state.concentrationUnit,
+            onSelect = viewModel::updateConcentrationUnit,
+            onDismiss = { showUnitPicker = false }
+        )
+    }
+    if (showFeaturePicker) {
+        FeaturePicker(
+            state = state,
+            selectedFeature = state.selectedFeature,
+            onSelect = viewModel::updateFeature,
+            onDismiss = { showFeaturePicker = false }
+        )
+    }
+    if (showFunctionPicker) {
+        FunctionPicker(
+            selectedFunction = state.selectedFunction,
+            onSelect = viewModel::updateFunction,
+            onDismiss = { showFunctionPicker = false }
+        )
+    }
+    if (showCsvMapping) {
+        state.importDraft?.let { draft ->
+            CsvMappingSheet(
+                draft = draft,
+                onConcentrationColumn = viewModel::updateImportConcentrationColumn,
+                onSignalColumnToggle = viewModel::toggleImportSignalColumn,
+                onFeatureClick = { columnIndex ->
+                    showCsvMapping = false
+                    mappingFeatureColumn = columnIndex
+                },
+                onDismiss = { showCsvMapping = false }
+            )
+        }
+    }
+    mappingFeatureColumn?.let { columnIndex ->
+        FeaturePicker(
+            state = state,
+            selectedFeature = state.importDraft?.featureMappings?.get(columnIndex),
+            onSelect = { feature -> viewModel.updateImportFeature(columnIndex, feature) },
+            onDismiss = {
+                mappingFeatureColumn = null
+                showCsvMapping = true
+            }
+        )
+    }
+}
+
+@Composable
+private fun UnifiedCurveSection(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        shape = RoundedCornerShape(FluoRadius.card),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.size(38.dp),
+                    shape = RoundedCornerShape(FluoRadius.badge),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun DetectionModeSelector(
+    selected: DetectionModality,
+    onSelected: (DetectionModality) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(
+            stringResource(R.string.standard_curve_mode_label),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(DetectionModality.COLORIMETRIC, DetectionModality.FLUORESCENCE).forEach { mode ->
+                FilterChip(
+                    selected = selected == mode,
+                    onClick = { onSelected(mode) },
+                    label = { Text(detectionModeLabel(mode)) },
+                    leadingIcon = if (selected == mode) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(17.dp)) }
+                    } else null
                 )
             }
         }
     }
-} 
+}
+
+@Composable
+private fun DataSourceOption(
+    title: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(FluoRadius.control),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+            else MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (selected) Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+@Composable
+private fun ImportedDataSummary(
+    importDraft: StandardCurveImportDraft,
+    onAdjust: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(FluoRadius.control),
+        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.42f)
+    ) {
+        Column(
+            modifier = Modifier.padding(13.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                stringResource(
+                    R.string.standard_curve_csv_rows_summary,
+                    importDraft.table.rows.size,
+                    importDraft.table.columns.size
+                ),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                stringResource(
+                    R.string.standard_curve_csv_selected_summary,
+                    importDraft.readySignalColumnIndices.size
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onAdjust, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.standard_curve_csv_adjust_mapping))
+                }
+                TextButton(onClick = onRemove) {
+                    Text(stringResource(R.string.standard_curve_csv_remove))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualCalibrationPointCard(
+    index: Int,
+    point: com.muc.fluocolorquant.ui.viewmodels.StandardCurvePointDraft,
+    concentrationUnit: String,
+    signalLabel: String,
+    signalRange: String,
+    allowDelete: Boolean,
+    onConcentrationChange: (String) -> Unit,
+    onSignalChange: (String) -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(FluoRadius.control),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(13.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.standard_curve_point_number, index + 1),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                IconButton(onClick = onDelete, enabled = allowDelete) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = stringResource(R.string.remove))
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = point.concentration,
+                    onValueChange = onConcentrationChange,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.concentration)) },
+                    suffix = { Text(concentrationUnit) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = point.signal,
+                    onValueChange = onSignalChange,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(signalLabel) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true
+                )
+            }
+            Text(
+                signalRange,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun CandidateCard(
+    candidate: StandardCurveFitCandidate,
+    selected: Boolean,
+    recommended: Boolean,
+    onClick: () -> Unit
+) {
+    val acceptance = candidate.result.metrics["Accepted Standard Ratio"]
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(FluoRadius.control),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+        else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
+            else MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(11.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(22.dp),
+                shape = RoundedCornerShape(FluoRadius.badge),
+                color = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                if (selected) Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        localizedFittingFunctionTitle(candidate.result.function),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (recommended) {
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(FluoRadius.chip),
+                            color = MaterialTheme.colorScheme.tertiaryContainer
+                        ) {
+                            Text(
+                                stringResource(R.string.standard_curve_recommended_badge),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
+                Text(
+                    stringResource(
+                        R.string.standard_curve_candidate_feature,
+                        analysisFeatureLabel(candidate.feature)
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    stringResource(R.string.standard_curve_candidate_source, candidate.sourceLabel),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                acceptance?.let {
+                    Text(
+                        stringResource(
+                            R.string.standard_curve_candidate_acceptance,
+                            String.format(Locale.US, "%.0f%%", it * 100.0)
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            Text(
+                String.format(Locale.US, "R² %.4f", candidate.result.rSquared),
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectedCandidateResult(
+    candidate: StandardCurveFitCandidate,
+    concentrationUnit: String
+) {
+    val visibleMetrics = selectStandardCurveVisibleMetrics(candidate.result.metrics)
+    val localizedMetrics = buildMap {
+        visibleMetrics["R²"]?.let { value ->
+            put(
+                stringResource(R.string.standard_curve_metric_r_squared),
+                String.format(Locale.US, "%.4f", value)
+            )
+        }
+        visibleMetrics["RMSE"]?.let { value ->
+            put(
+                stringResource(R.string.standard_curve_metric_rmse),
+                String.format(Locale.US, "%.6g", value)
+            )
+        }
+        visibleMetrics["MAE"]?.let { value ->
+            put(
+                stringResource(R.string.standard_curve_metric_mae),
+                String.format(Locale.US, "%.6g", value)
+            )
+        }
+        visibleMetrics["Accepted Standard Ratio"]?.let { value ->
+            put(
+                stringResource(R.string.standard_curve_metric_standard_acceptance),
+                String.format(Locale.US, "%.0f%%", value * 100.0)
+            )
+        }
+    }
+    UnifiedCurveSection(
+        icon = Icons.Default.AutoGraph,
+        title = localizedFittingFunctionTitle(candidate.result.function),
+        subtitle = analysisFeatureLabel(candidate.feature)
+    ) {
+        CurveChart(
+            fittedCurve = { x ->
+                FittingEngine.calculate(candidate.result.function, candidate.result.params, x)
+            },
+            selectedFunction = candidate.result.function,
+            parameters = candidate.result.params,
+            xAxisLabel = "${stringResource(R.string.concentration)} ($concentrationUnit)",
+            yAxisLabel = analysisFeatureLabel(candidate.feature),
+            title = "",
+            dataPoints = candidate.points,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(300.dp)
+        )
+        LatexView(
+            latex = FittingEngine.formatParametersToLatex(
+                candidate.result.function,
+                candidate.result.params
+            ),
+            modifier = Modifier.fillMaxWidth(),
+            textSize = 18.sp
+        )
+        MetricsTable(
+            metrics = localizedMetrics,
+            title = stringResource(R.string.standard_curve_metrics_title)
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CsvMappingSheet(
+    draft: StandardCurveImportDraft,
+    onConcentrationColumn: (Int) -> Unit,
+    onSignalColumnToggle: (Int) -> Unit,
+    onFeatureClick: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp)
+        ) {
+            item {
+                Text(
+                    stringResource(R.string.standard_curve_csv_mapping_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            item {
+                Text(
+                    stringResource(R.string.standard_curve_csv_concentration_column),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    draft.table.columns.forEach { column ->
+                        FilterChip(
+                            selected = column.index == draft.concentrationColumnIndex,
+                            onClick = { onConcentrationColumn(column.index) },
+                            label = { Text(column.header) }
+                        )
+                    }
+                }
+            }
+            item {
+                HorizontalDivider()
+                Text(
+                    stringResource(R.string.standard_curve_csv_signal_columns),
+                    modifier = Modifier.padding(top = 12.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            itemsIndexed(draft.table.columns.filter { it.index != draft.concentrationColumnIndex }) { _, column ->
+                val selected = column.index in draft.selectedSignalColumnIndices
+                val feature = draft.featureMappings[column.index]
+                Surface(
+                    shape = RoundedCornerShape(FluoRadius.control),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = selected,
+                                onCheckedChange = { onSignalColumnToggle(column.index) }
+                            )
+                            Text(
+                                column.header,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { onFeatureClick(column.index) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = selected
+                        ) {
+                            Text(
+                                feature?.let { analysisFeatureLabel(it) }
+                                    ?: stringResource(R.string.standard_curve_csv_select_feature),
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(Icons.Default.ExpandMore, contentDescription = null)
+                        }
+                    }
+                }
+            }
+            item {
+                CsvPreview(draft)
+            }
+            item {
+                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.confirm))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CsvPreview(draft: StandardCurveImportDraft) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(
+            stringResource(R.string.standard_curve_csv_preview),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        if (draft.table.rows.isEmpty()) {
+            Text(
+                stringResource(R.string.standard_curve_csv_no_data),
+                color = MaterialTheme.colorScheme.error
+            )
+            return
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+        ) {
+            Row {
+                draft.table.columns.forEach { column ->
+                    Text(
+                        column.header,
+                        modifier = Modifier
+                            .width(128.dp)
+                            .padding(6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            draft.table.rows.take(5).forEach { row ->
+                Row {
+                    row.values.forEach { value ->
+                        Text(
+                            value?.let { String.format(Locale.US, "%.6g", it) }.orEmpty(),
+                            modifier = Modifier
+                                .width(128.dp)
+                                .padding(6.dp),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeaturePicker(
+    state: StandardCurveBuilderUiState,
+    selectedFeature: AnalysisPrimaryFeature?,
+    onSelect: (AnalysisPrimaryFeature) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ScientificPickerSheet(
+        title = stringResource(R.string.standard_curve_feature_label),
+        options = state.allowedFeatures.map { feature ->
+            ScientificPickerOption(
+                id = feature.code,
+                title = analysisFeatureLabel(feature),
+                subtitle = analysisFeatureRangeLabel(feature),
+                icon = Icons.Default.Analytics
+            )
+        },
+        selectedId = selectedFeature?.code,
+        onSelect = { code -> AnalysisPrimaryFeature.fromCode(code)?.let(onSelect) },
+        onDismiss = onDismiss
+    )
+}
+
+@Composable
+private fun FunctionPicker(
+    selectedFunction: FittingFunction?,
+    onSelect: (FittingFunction?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val autoId = "AUTO"
+    val functions = FittingFunction.entries.filter { it != FittingFunction.INTERPOLATION }
+    ScientificPickerSheet(
+        title = stringResource(R.string.standard_curve_function_picker_title),
+        options = listOf(
+            ScientificPickerOption(
+                id = autoId,
+                title = stringResource(R.string.standard_curve_auto_recommend),
+                subtitle = stringResource(R.string.standard_curve_auto_recommend_short_desc)
+            )
+        ) + functions.map { function ->
+            ScientificPickerOption(
+                id = function.identifier,
+                title = localizedFittingFunctionTitle(function),
+                latexSubtitle = function.latexFormula
+            )
+        },
+        selectedId = selectedFunction?.identifier ?: autoId,
+        onSelect = { id -> onSelect(if (id == autoId) null else FittingFunction.fromIdentifier(id)) },
+        onDismiss = onDismiss
+    )
+}
+
+@Composable
+private fun detectionModeLabel(modality: DetectionModality): String = when (modality) {
+    DetectionModality.COLORIMETRIC -> stringResource(R.string.analysis_model_mode_colorimetric)
+    DetectionModality.FLUORESCENCE -> stringResource(R.string.analysis_model_mode_fluorescence)
+    DetectionModality.SPECTRUM -> stringResource(R.string.analysis_model_mode_spectrum)
+}
+
+@Composable
+private fun carrierLabel(carrierType: CarrierType): String = when (carrierType) {
+    CarrierType.PLATE -> stringResource(R.string.analysis_model_carrier_plate)
+    CarrierType.MICROFLUIDIC_CHIP -> stringResource(R.string.analysis_model_carrier_chip)
+    CarrierType.CUSTOM -> stringResource(R.string.analysis_model_carrier_custom)
+}
+
+@Composable
+private fun localizedFittingFunctionTitle(function: FittingFunction): String = stringResource(
+    when (function) {
+        FittingFunction.LINEAR -> R.string.fitting_function_linear
+        FittingFunction.QUADRATIC -> R.string.fitting_function_quadratic
+        FittingFunction.CUBIC -> R.string.fitting_function_cubic
+        FittingFunction.QUARTIC -> R.string.fitting_function_quartic
+        FittingFunction.EXPONENTIAL -> R.string.fitting_function_exponential
+        FittingFunction.POWER -> R.string.fitting_function_power
+        FittingFunction.LOG -> R.string.fitting_function_log
+        FittingFunction.RODBARD -> R.string.fitting_function_rodbard_4pl
+        FittingFunction.GAMMA_VARIATE -> R.string.fitting_function_gamma_variate
+        FittingFunction.CUSTOM_LOG -> R.string.fitting_function_custom_log
+        FittingFunction.RODBARD_NIH -> R.string.fitting_function_rodbard_nih
+        FittingFunction.EXPONENTIAL_WITH_OFFSET -> R.string.fitting_function_exponential_offset
+        FittingFunction.GAUSSIAN -> R.string.fitting_function_gaussian
+        FittingFunction.EXPONENTIAL_RECOVERY -> R.string.fitting_function_exponential_recovery
+        FittingFunction.LOGISTIC -> R.string.fitting_function_logistic_5pl
+        FittingFunction.GOMPERTZ -> R.string.fitting_function_gompertz
+        FittingFunction.HILL -> R.string.fitting_function_hill
+        FittingFunction.GENERAL_GOMPERTZ -> R.string.fitting_function_general_gompertz
+        FittingFunction.RICHARDS -> R.string.fitting_function_richards
+        FittingFunction.INTERPOLATION -> R.string.fitting_function_interpolation
+    }
+)
+
+/** 过滤字母、重复小数点和非法负号，避免输入框把错误数据送入拟合器。 */
+private fun String.isDecimalInput(allowNegative: Boolean): Boolean {
+    if (isEmpty() || this == ".") return true
+    if (allowNegative && (this == "-" || this == "-.")) return true
+    val pattern = if (allowNegative) Regex("^-?\\d*(?:\\.\\d*)?$")
+    else Regex("^\\d*(?:\\.\\d*)?$")
+    return matches(pattern)
+}

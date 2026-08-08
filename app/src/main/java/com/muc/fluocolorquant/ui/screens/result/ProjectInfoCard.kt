@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,10 +53,12 @@ import coil.request.ImageRequest
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Project
+import com.muc.fluocolorquant.ui.components.ScientificExpandableSection
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 private fun formatDate(date: Date): String =
     SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(date)
@@ -69,77 +74,69 @@ fun ProjectInfoCard(
     analytesList: List<Analyte> = emptyList()
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        shape = RoundedCornerShape(20.dp)
+    val detectionModeLabel = when (project.detectionMode) {
+        "FLUORESCENCE" -> stringResource(R.string.fluorescence_detection_mode)
+        "COLORIMETRIC" -> stringResource(R.string.colorimetric_detection_mode)
+        else -> project.detectionMode
+    }
+    val analysisMethodLabel = when (project.analysisMethod) {
+        "DL_MODEL" -> stringResource(R.string.deep_learning_analysis)
+        "CURVE_FIT" -> stringResource(R.string.curve_fitting_analysis)
+        else -> project.analysisMethod
+    }
+    var expanded by rememberSaveable(project.id) { mutableStateOf(false) }
+
+    ScientificExpandableSection(
+        title = project.name,
+        summary = stringResource(
+            R.string.result_project_compact_summary,
+            detectionModeLabel,
+            analysisMethodLabel
+        ),
+        icon = Icons.Default.FolderOpen,
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        toggleContentDescription = stringResource(
+            if (expanded) R.string.result_details_collapse else R.string.result_details_expand
+        )
     ) {
-        Box(
-            modifier = Modifier.padding(20.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.Top
         ) {
             Column(
-                modifier = Modifier.padding(end = if (project.imageUri.isNotBlank()) 128.dp else 0.dp),
+                modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(
-                    text = project.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = colorScheme.onSurface
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                ResultInfoLabelValueText(
-                    label = stringResource(R.string.result_project_detection_mode_label),
-                    value = when (project.detectionMode) {
-                        "FLUORESCENCE" -> stringResource(R.string.fluorescence_detection_mode)
-                        "COLORIMETRIC" -> stringResource(R.string.colorimetric_detection_mode)
-                        else -> project.detectionMode
-                    },
-                    color = colorScheme.onSurfaceVariant
-                )
-
-                ResultInfoLabelValueText(
-                    label = stringResource(R.string.result_project_analysis_method_label),
-                    value = when (project.analysisMethod) {
-                        "DL_MODEL" -> stringResource(R.string.deep_learning_analysis)
-                        "CURVE_FIT" -> stringResource(R.string.curve_fitting_analysis)
-                        else -> project.analysisMethod
-                    },
-                    color = colorScheme.onSurfaceVariant
-                )
-
                 if (analytesList.isNotEmpty()) {
                     val analyteNames = analytesList.joinToString(", ") { it.name }
                     ResultInfoLabelValueText(
                         label = stringResource(R.string.result_project_analytes_label),
                         value = analyteNames,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = colorScheme.onSurfaceVariant
                     )
                 }
-
                 ResultInfoLabelValueText(
                     label = stringResource(R.string.result_project_creation_time_label),
                     value = formatDate(project.createTime),
+                    style = MaterialTheme.typography.bodyMedium,
                     color = colorScheme.onSurfaceVariant
                 )
-
                 ResultInfoLabelValueText(
                     label = stringResource(R.string.result_project_concentration_unit_label),
                     value = concentrationUnit,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = colorScheme.onSurfaceVariant
                 )
             }
 
+            // 原始采集图仍保留在项目详情中，默认折叠以避免把结果图表推到第二屏。
             if (project.imageUri.isNotBlank()) {
                 ProjectCaptureThumbnail(
                     imageUri = project.imageUri,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .width(112.dp)
+                    modifier = Modifier.width(96.dp)
                 )
             }
         }
@@ -183,7 +180,7 @@ private fun ProjectCaptureThumbnail(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(FluoRadius.control)
     ) {
         Box(
             modifier = Modifier
@@ -191,7 +188,7 @@ private fun ProjectCaptureThumbnail(
                 .border(
                     width = 1.5.dp,
                     color = Color.White.copy(alpha = 0.9f),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(FluoRadius.control)
                 )
         ) {
             AsyncImage(
@@ -212,7 +209,7 @@ private fun ProjectCaptureThumbnail(
                     .align(Alignment.TopStart)
                     .background(
                         color = Color.Black.copy(alpha = 0.58f),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(FluoRadius.badge)
                     )
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
@@ -271,7 +268,7 @@ private fun ProjectCapturePreviewDialog(
                 containerColor = MaterialTheme.colorScheme.surface
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
-            shape = RoundedCornerShape(24.dp)
+            shape = RoundedCornerShape(FluoRadius.sheet)
         ) {
             Box(
                 modifier = Modifier
@@ -298,7 +295,7 @@ private fun ProjectCapturePreviewDialog(
                         .align(Alignment.TopStart)
                         .background(
                             color = Color.Black.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(FluoRadius.badge)
                         )
                         .padding(horizontal = 10.dp, vertical = 5.dp)
                 ) {
