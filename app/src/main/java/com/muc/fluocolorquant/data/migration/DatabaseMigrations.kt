@@ -234,6 +234,51 @@ object DatabaseMigrations {
     }
 
     /**
+     * 版本 18 → 19：新增比色—荧光双模态判定修订表。
+     *
+     * 判定记录同时关联比色运行与荧光运行，任一侧删除即级联清理；记录只追加修订，
+     * 不回写 DetectionRun 或 SiteMeasurement，两次运行冻结的浓度保持不变。
+     */
+    val MIGRATION_18_19: Migration = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `dual_modal_adjudication_records` (
+                    `adjudicationId` TEXT NOT NULL,
+                    `colorimetricRunId` TEXT NOT NULL,
+                    `fluorescenceRunId` TEXT NOT NULL,
+                    `revision` INTEGER NOT NULL,
+                    `revoked` INTEGER NOT NULL,
+                    `ruleVersion` TEXT NOT NULL,
+                    `thresholdsJson` TEXT NOT NULL,
+                    `readingsJson` TEXT NOT NULL,
+                    `inputFingerprint` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`adjudicationId`),
+                    FOREIGN KEY(`colorimetricRunId`) REFERENCES `detection_runs`(`runId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`fluorescenceRunId`) REFERENCES `detection_runs`(`runId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_dual_modal_adjudication_records_colorimetricRunId` " +
+                    "ON `dual_modal_adjudication_records` (`colorimetricRunId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_dual_modal_adjudication_records_fluorescenceRunId` " +
+                    "ON `dual_modal_adjudication_records` (`fluorescenceRunId`)"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                    "`index_dual_modal_adjudication_records_colorimetricRunId_fluorescenceRunId_revision` " +
+                    "ON `dual_modal_adjudication_records` (`colorimetricRunId`, `fluorescenceRunId`, `revision`)"
+            )
+        }
+    }
+
+    /**
      * 重建模板主表并保持所有外部引用仍指向 `experiment_templates`。
      *
      * `legacy_alter_table` 防止 SQLite 在旧表改名时把子表外键同步改到临时表名；新表

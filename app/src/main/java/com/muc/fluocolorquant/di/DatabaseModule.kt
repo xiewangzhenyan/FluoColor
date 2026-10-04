@@ -12,6 +12,7 @@ import com.muc.fluocolorquant.data.DefaultUserDatabaseCallback
 import com.muc.fluocolorquant.data.MicrofluidicDemoDatabaseCallback
 import com.muc.fluocolorquant.data.migration.DatabaseMigrations
 import com.muc.fluocolorquant.data.dao.DetectionRunDao
+import com.muc.fluocolorquant.data.dao.DualModalAdjudicationDao
 import com.muc.fluocolorquant.data.dao.AcquisitionProfileDao
 import com.muc.fluocolorquant.data.dao.AnalysisModelDao
 import com.muc.fluocolorquant.data.dao.CaptureArtifactDao
@@ -71,7 +72,8 @@ object DatabaseModule {
             DatabaseMigrations.MIGRATION_14_15,
             DatabaseMigrations.MIGRATION_15_16,
             DatabaseMigrations.MIGRATION_16_17,
-            DatabaseMigrations.MIGRATION_17_18
+            DatabaseMigrations.MIGRATION_17_18,
+            DatabaseMigrations.MIGRATION_18_19
         )
         .addCallback(prepopulateCallback)  // 首次建库时预填充分析物与试剂
         .addCallback(DefaultUserDatabaseCallback) // 每次打开时幂等确保默认登录账户存在
@@ -755,5 +757,11 @@ object DatabaseModule {
     @Provides
     fun provideResultValidationDao(appDatabase: AppDatabase): ResultValidationDao {
         return appDatabase.resultValidationDao()
+    }
+
+    /** 双模态判定是两次运行之上的派生分析，使用独立DAO，不触碰冻结的逐位点结果。 */
+    @Provides
+    fun provideDualModalAdjudicationDao(appDatabase: AppDatabase): DualModalAdjudicationDao {
+        return appDatabase.dualModalAdjudicationDao()
     }
 }

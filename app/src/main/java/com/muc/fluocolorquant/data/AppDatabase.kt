@@ -11,6 +11,7 @@ import com.muc.fluocolorquant.data.dao.CaptureArtifactDao
 import com.muc.fluocolorquant.data.dao.CarrierProfileDao
 import com.muc.fluocolorquant.data.dao.CurveModelDao
 import com.muc.fluocolorquant.data.dao.DetectionRunDao
+import com.muc.fluocolorquant.data.dao.DualModalAdjudicationDao
 import com.muc.fluocolorquant.data.dao.ExperimentTemplateDao
 import com.muc.fluocolorquant.data.dao.ProjectAnalyteJoinDao
 import com.muc.fluocolorquant.data.dao.ProjectDao
@@ -29,6 +30,7 @@ import com.muc.fluocolorquant.data.model.CarrierProfile
 import com.muc.fluocolorquant.data.model.CurveModel
 import com.muc.fluocolorquant.data.model.DetectionRun
 import com.muc.fluocolorquant.data.model.DeepLearningModelDefinition
+import com.muc.fluocolorquant.data.model.DualModalAdjudicationRecord
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.ProjectAnalyteJoin
@@ -71,9 +73,10 @@ import com.muc.fluocolorquant.data.model.WellResult
         DeepLearningModelDefinition::class,
         CaptureArtifact::class,
         SiteMeasurement::class,
-        ResultValidationRecord::class
+        ResultValidationRecord::class,
+        DualModalAdjudicationRecord::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -94,4 +97,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun captureArtifactDao(): CaptureArtifactDao
     abstract fun siteMeasurementDao(): SiteMeasurementDao
     abstract fun resultValidationDao(): ResultValidationDao
+    abstract fun dualModalAdjudicationDao(): DualModalAdjudicationDao
 }

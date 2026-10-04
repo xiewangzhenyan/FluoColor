@@ -105,6 +105,8 @@ import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.ArrayResultUiState
 import com.muc.fluocolorquant.ui.viewmodels.ArrayResultViewModel
 import com.muc.fluocolorquant.ui.viewmodels.ArrayRunHistoryItem
+import com.muc.fluocolorquant.ui.viewmodels.DualModalAdjudicationViewModel
+import com.muc.fluocolorquant.ui.viewmodels.DualModalUiState
 import com.muc.fluocolorquant.utils.HeatmapColorUtil
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import kotlin.math.abs
@@ -134,10 +136,16 @@ private enum class ArrayResultTab(val icon: ImageVector) {
 fun ArrayResultScreen(
     navController: NavController,
     runId: String?,
-    viewModel: ArrayResultViewModel = hiltViewModel()
+    viewModel: ArrayResultViewModel = hiltViewModel(),
+    dualModalViewModel: DualModalAdjudicationViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val dualModalState by dualModalViewModel.uiState.collectAsState()
     LaunchedEffect(runId) { viewModel.load(runId) }
+    val loadedSnapshot = (state as? ArrayResultUiState.Success)?.snapshot
+    LaunchedEffect(loadedSnapshot?.runId, loadedSnapshot?.detectionMode) {
+        loadedSnapshot?.let { snapshot -> dualModalViewModel.bind(snapshot.runId, snapshot.detectionMode) }
+    }
     ArrayResultContent(
         state = state,
         onBack = {
@@ -149,7 +157,16 @@ fun ArrayResultScreen(
             }
         },
         onRetry = viewModel::retry,
-        onSelectRun = viewModel::selectRun
+        onSelectRun = viewModel::selectRun,
+        dualModalState = dualModalState,
+        dualModalActions = DualModalCardActions(
+            onLoadCandidates = dualModalViewModel::loadCandidates,
+            onPair = dualModalViewModel::pair,
+            onUnpair = dualModalViewModel::unpair,
+            onReAdjudicate = dualModalViewModel::reAdjudicate,
+            onDismissNotice = dualModalViewModel::dismissNotice,
+            onRetry = dualModalViewModel::retry
+        )
     )
 }
 
@@ -159,7 +176,9 @@ fun ArrayResultContent(
     state: ArrayResultUiState,
     onBack: () -> Unit,
     onRetry: () -> Unit,
-    onSelectRun: (String) -> Unit = {}
+    onSelectRun: (String) -> Unit = {},
+    dualModalState: DualModalUiState = DualModalUiState.Hidden,
+    dualModalActions: DualModalCardActions = DualModalCardActions()
 ) {
     // 加载、损坏快照和数据库错误同样属于完整页面状态，必须响应系统返回键。
     // 旧实现只在 Success 顶栏暴露返回动作，错误页因此会把用户困在当前导航目的地。
@@ -195,7 +214,9 @@ fun ArrayResultContent(
             switchingRunId = state.switchingRunId,
             historyReadFailed = state.historyReadFailed,
             onBack = onBack,
-            onSelectRun = onSelectRun
+            onSelectRun = onSelectRun,
+            dualModalState = dualModalState,
+            dualModalActions = dualModalActions
         )
     }
 }
@@ -208,7 +229,9 @@ private fun ArrayResultSuccess(
     switchingRunId: String?,
     historyReadFailed: Boolean,
     onBack: () -> Unit,
-    onSelectRun: (String) -> Unit
+    onSelectRun: (String) -> Unit,
+    dualModalState: DualModalUiState = DualModalUiState.Hidden,
+    dualModalActions: DualModalCardActions = DualModalCardActions()
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedSite by remember(snapshot.runId) { mutableStateOf<ArraySiteSelection?>(null) }
@@ -312,7 +335,9 @@ private fun ArrayResultSuccess(
                 when (tabs[tabIndex]) {
                     ArrayResultTab.OVERVIEW -> ArrayOverviewTab(
                         snapshot = snapshot,
-                        onSiteClick = { selectedSite = it }
+                        onSiteClick = { selectedSite = it },
+                        dualModalState = dualModalState,
+                        dualModalActions = dualModalActions
                     )
                     ArrayResultTab.ANALYSIS -> ArrayAnalytesTab(
                         snapshot = snapshot
@@ -353,7 +378,9 @@ private fun ArrayResultSuccess(
 @Composable
 private fun ArrayOverviewTab(
     snapshot: ArrayResultSnapshot,
-    onSiteClick: (ArraySiteSelection) -> Unit
+    onSiteClick: (ArraySiteSelection) -> Unit,
+    dualModalState: DualModalUiState = DualModalUiState.Hidden,
+    dualModalActions: DualModalCardActions = DualModalCardActions()
 ) {
     var selectedAnalyteId by rememberSaveable(snapshot.runId) {
         mutableStateOf(snapshot.analytes.firstOrNull()?.analyteId)
@@ -464,6 +491,15 @@ private fun ArrayOverviewTab(
                     analyte = selectedAnalyte,
                     onSiteClick = onSiteClick
                 )
+            }
+            if (dualModalState !is DualModalUiState.Hidden) {
+                item {
+                    ArrayDualModalCard(
+                        state = dualModalState,
+                        analyte = selectedAnalyte,
+                        actions = dualModalActions
+                    )
+                }
             }
             item {
                 AnalyteSnapshotCard(

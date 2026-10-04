@@ -42,6 +42,8 @@ import com.muc.fluocolorquant.data.repository.ArrayResultRepository
 import com.muc.fluocolorquant.data.repository.ArrayResultRepositoryImpl
 import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepository
 import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepositoryImpl
+import com.muc.fluocolorquant.data.repository.DualModalAdjudicationRepository
+import com.muc.fluocolorquant.data.repository.DualModalAdjudicationRepositoryImpl
 import com.muc.fluocolorquant.data.repository.ResultValidationRepository
 import com.muc.fluocolorquant.data.repository.ResultValidationRepositoryImpl
 import com.muc.fluocolorquant.utils.camera.CameraEngine
@@ -205,6 +207,13 @@ abstract class RepositoryModule {
     abstract fun provideResultValidationRepository(
         repository: ResultValidationRepositoryImpl
     ): ResultValidationRepository
+
+    /** 双模态判定只追加派生修订，读取两次运行的冻结快照，不写回任何检测结果。 */
+    @Binds
+    @Singleton
+    abstract fun provideDualModalAdjudicationRepository(
+        repository: DualModalAdjudicationRepositoryImpl
+    ): DualModalAdjudicationRepository
 
     /** 微流控主定位器；学习型定位器仅在离线 A/B 证明收益后替换此绑定。 */
     @Binds
