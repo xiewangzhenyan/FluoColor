@@ -4,33 +4,22 @@ import android.graphics.Bitmap
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import com.muc.fluocolorquant.application.detection.GridDetectionPersistenceAssembler
+import com.muc.fluocolorquant.application.detection.GridDetectionPersistenceInput
 import com.muc.fluocolorquant.data.enums.AnalysisModelType
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
-import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.CarrierType
-import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.data.enums.ReadoutLayout
 import com.muc.fluocolorquant.data.enums.SiteShape
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
-import com.muc.fluocolorquant.data.model.CaptureArtifact
-import com.muc.fluocolorquant.data.model.CalibrationPoint
-import com.muc.fluocolorquant.data.model.DetectionRun
-import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.SiteMeasurement
-import com.muc.fluocolorquant.data.model.StandardCurveDefinition
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
-import com.muc.fluocolorquant.data.repository.GridDetectionPersistenceBundle
 import com.muc.fluocolorquant.data.repository.GridDetectionRunRepository
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
-import com.muc.fluocolorquant.domain.calibration.ArrayCalibrationEngine
-import com.muc.fluocolorquant.domain.calibration.CalibrationDraft
-import com.muc.fluocolorquant.domain.calibration.CalibrationApplicationService
-import com.muc.fluocolorquant.domain.calibration.CalibrationInputFingerprint
 import com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
 import com.muc.fluocolorquant.domain.calibration.CalibrationResultSet
-import com.muc.fluocolorquant.domain.calibration.CalibrationStandardObservation
 import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
@@ -51,12 +40,21 @@ import com.muc.fluocolorquant.domain.detection.quantification.ENDPOINT_QUANTIFIE
 import com.muc.fluocolorquant.domain.detection.quantification.FORMULA_ENGINE_VERSION
 import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningBatchResult
 import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningExecutor
+import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningFailureReason
+import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningSiteFailure
+import com.muc.fluocolorquant.domain.detection.quantification.GRID_DEEP_LEARNING_QUANTIFIER_VERSION
+import com.muc.fluocolorquant.domain.detection.quantification.GridOnsiteCalibrationService
 import com.muc.fluocolorquant.domain.detection.quantification.UnavailableGridDeepLearningExecutor
 import com.muc.fluocolorquant.domain.detection.quantification.PreparedEndpointQuantificationResult
 import com.muc.fluocolorquant.domain.detection.quantification.PreparedStandardCurveQuantifier
 import com.muc.fluocolorquant.domain.detection.quantification.QuantificationObservation
 import com.muc.fluocolorquant.domain.detection.quantification.QuantificationCensoringDirection
 import com.muc.fluocolorquant.domain.detection.quantification.QuantificationState
+import com.muc.fluocolorquant.domain.detection.quantification.RangeCorrectionAnchor
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryDecision
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryEngine
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryObservation
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryStatus
 import com.muc.fluocolorquant.domain.detection.quantification.ReliableRangeStatus
 import com.muc.fluocolorquant.domain.detection.quantification.StandardCurveQuantifier
 import com.muc.fluocolorquant.domain.detection.photometry.BaseSitePhotometry
@@ -87,266 +85,12 @@ import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 import com.muc.fluocolorquant.domain.detection.segmentation.OpenCvArrayUnitSegmenter
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot
-import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshotCodec
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import java.util.Date
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-
-/** 根据冻结载体档案选择的检测主链。 */
-enum class GridCarrierRoute {
-    /** 微流控规则阵列使用 PG-Grid 几何和新的模态专用光度。 */
-    MICROFLUIDIC_PG_GRID,
-
-    /** 96孔板使用独立方向确认、圆孔定位和几何协议，定量层复用规则阵列内核。 */
-    PLATE96,
-
-    /** 自定义载体必须先声明定位协议，不能猜测为微流控或孔板。 */
-    UNSUPPORTED
-}
-
-/**
- * 载体路由解析器。
- *
- * 路由只读取项目模板快照中的 [CarrierType]，不读取行列数、位点形状或检测模态来
- * 猜测载体。10×10 孔板和 10×10 芯片在物理定位上仍是不同对象。
- */
-object GridDetectionRouteResolver {
-    fun resolve(carrierType: CarrierType): GridCarrierRoute {
-        return when (carrierType) {
-            CarrierType.MICROFLUIDIC_CHIP -> GridCarrierRoute.MICROFLUIDIC_PG_GRID
-            CarrierType.PLATE -> GridCarrierRoute.PLATE96
-            CarrierType.CUSTOM -> GridCarrierRoute.UNSUPPORTED
-        }
-    }
-}
-
-/** 深度快照结构预检结果；该结果在任何定位或位点索引访问之前生成。 */
-internal data class GridDetectionPreflightValidation(
-    val reasons: Set<GridDetectionBlockReason>
-)
-
-/**
- * 只依赖冻结项目和模板快照的结构预检器。
- *
- * 将结构校验与 Android Bitmap、OpenCV 定位器解耦，既保证损坏快照在定位前被阻止，
- * 也允许 JVM 测试直接覆盖空分析物、非法坐标、重复坐标和悬空分析物引用。
- */
-internal object GridDetectionPreflightValidator {
-    fun validate(
-        project: Project,
-        snapshot: TemplateProjectSnapshot
-    ): GridDetectionPreflightValidation {
-        val reasons = linkedSetOf<GridDetectionBlockReason>()
-        if (snapshot.analytes.isEmpty()) reasons += GridDetectionBlockReason.EMPTY_ANALYTE_SNAPSHOT
-        val analyteIdList = snapshot.analytes.map { it.analyte.id }
-        if (analyteIdList.toSet().size != analyteIdList.size) {
-            reasons += GridDetectionBlockReason.DUPLICATE_ANALYTE_SNAPSHOT
-        }
-        if (snapshot.analytes.any { !hasConsistentAnalyteRelations(snapshot, it) }) {
-            reasons += GridDetectionBlockReason.INCONSISTENT_ANALYTE_SNAPSHOT
-        }
-        // 顶层冻结对象同样属于一次历史运行的科学关系图。模板引用的载体/采集档案，
-        // 以及每个启用或禁用位点所属的模板都必须与快照根对象一致；不能只校验分析物子树。
-        if (
-            snapshot.template.carrierProfileId != snapshot.carrierProfile.id ||
-            snapshot.template.acquisitionProfileId != snapshot.acquisitionProfile.id ||
-            snapshot.siteAssignments.any { it.templateId != snapshot.template.id }
-        ) {
-            reasons += GridDetectionBlockReason.INCONSISTENT_ANALYTE_SNAPSHOT
-        }
-        val analyteIds = analyteIdList.toSet()
-        val enabledCoordinates = mutableSetOf<Pair<Int, Int>>()
-        snapshot.siteAssignments.filter(TemplateSiteAssignment::enabled).forEach { assignment ->
-            if (
-                assignment.rowIndex !in 0 until snapshot.carrierProfile.rows ||
-                assignment.columnIndex !in 0 until snapshot.carrierProfile.columns
-            ) {
-                reasons += GridDetectionBlockReason.INVALID_SITE_COORDINATE
-            }
-            if (!enabledCoordinates.add(assignment.rowIndex to assignment.columnIndex)) {
-                reasons += GridDetectionBlockReason.DUPLICATE_ENABLED_SITE
-            }
-            if (assignment.analyteId != null && assignment.analyteId !in analyteIds) {
-                reasons += GridDetectionBlockReason.ORPHAN_SITE_ANALYTE
-            }
-        }
-        if (
-            project.templateId != snapshot.template.id ||
-            project.templateVersion != snapshot.template.version ||
-            project.rows != snapshot.carrierProfile.rows ||
-            project.columns != snapshot.carrierProfile.columns ||
-            project.detectionMode != snapshot.template.detectionMode
-        ) {
-            reasons += GridDetectionBlockReason.PROJECT_SNAPSHOT_MISMATCH
-        }
-        return GridDetectionPreflightValidation(reasons)
-    }
-
-    /**
-     * 校验一个冻结分析物快照内部所有关系与类型专用定义。
-     *
-     * 快照是历史运行的唯一科学配置来源，因此不能容忍“显示分析物是 A、配置/模型却属于 B”
-     * 或标准曲线与智能模型定义混装；任一关系错配都必须在访问位点索引和调用定位器前阻断。
-     */
-    private fun hasConsistentAnalyteRelations(
-        snapshot: TemplateProjectSnapshot,
-        analyteSnapshot: TemplateProjectAnalyteSnapshot
-    ): Boolean {
-        val analyteId = analyteSnapshot.analyte.id
-        val config = analyteSnapshot.templateConfig
-        val bundle = analyteSnapshot.analysisModel
-        val model = bundle.model
-        if (
-            config.templateId != snapshot.template.id ||
-            config.analyteId != analyteId ||
-            config.analysisModelId != model.id ||
-            model.analyteId != analyteId ||
-            bundle.standardCurve?.analysisModelId?.let { it != model.id } == true ||
-            bundle.deepLearning?.analysisModelId?.let { it != model.id } == true ||
-            bundle.calibrationPoints.any { it.analysisModelId != model.id }
-        ) {
-            return false
-        }
-        return when (AnalysisModelType.fromCode(model.modelType)) {
-            AnalysisModelType.STANDARD_CURVE ->
-                bundle.standardCurve != null && bundle.deepLearning == null
-            AnalysisModelType.DEEP_LEARNING ->
-                bundle.deepLearning != null &&
-                    bundle.standardCurve == null &&
-                    bundle.calibrationPoints.isEmpty()
-            null -> false
-        }
-    }
-}
-
-/** 运行协调器对页面公开的阶段，页面可以立即展示处理进度而不阻塞主线程。 */
-enum class GridDetectionStage {
-    PREPARING,
-    LOCATING,
-    PHOTOMETRY,
-    RENDERING_EVIDENCE,
-    CHECKING_MODELS,
-    PERSISTING,
-    COMPLETED
-}
-
-/** 无法开始新阵列检测的稳定原因码。 */
-enum class GridDetectionBlockReason {
-    PROJECT_SNAPSHOT_MISMATCH,
-    UNSUPPORTED_CARRIER,
-    INVALID_TEMPLATE_PROTOCOL,
-    MISSING_LOCATOR_CONFIG,
-    INVALID_LOCATOR_CONFIG,
-    MISSING_ANALYTE_ASSIGNMENT,
-    MISSING_COLORIMETRIC_REFERENCE,
-    MISSING_FLUORESCENCE_CHANNEL,
-    INVALID_PRIMARY_FEATURE,
-    EMPTY_ANALYTE_SNAPSHOT,
-    DUPLICATE_ANALYTE_SNAPSHOT,
-    INCONSISTENT_ANALYTE_SNAPSHOT,
-    INVALID_SITE_COORDINATE,
-    DUPLICATE_ENABLED_SITE,
-    ORPHAN_SITE_ANALYTE
-}
-
-/** 执行一次模板驱动阵列检测所需的运行期输入。 */
-data class GridDetectionRequest(
-    val project: Project,
-    val snapshot: TemplateProjectSnapshot,
-    val endpointBitmap: Bitmap,
-    val endpointPath: String,
-    val operatorId: String?,
-    val runId: String = UUID.randomUUID().toString(),
-    val capturedAt: Date = Date(),
-    val acquisitionMetadataJson: String? = null,
-    val onStageChanged: (GridDetectionStage) -> Unit = {}
-)
-
-sealed interface GridDetectionOutcome {
-    data object LegacyPlateRequired : GridDetectionOutcome
-
-    data class Blocked(
-        val reasons: Set<GridDetectionBlockReason>
-    ) : GridDetectionOutcome
-
-    data class RetakeRequired(
-        val runId: String,
-        val frameQcJson: String
-    ) : GridDetectionOutcome
-
-    /**
-     * 几何和光度已保存；[signalOnlyAnalyteIds] 非空表示模型不兼容，只保存信号不输出浓度。
-     */
-    data class Completed(
-        val runId: String,
-        val measurementCount: Int,
-        val signalOnlyAnalyteIds: Set<String>,
-        /** 帧级 QC 只作为复核证据，不再阻止已经形成完整晶格的图片继续分析。 */
-        val frameQcIssueCount: Int = 0,
-        /** 本次真正执行并写入 DetectionRun 的校准后快照，项目草稿据此继续编辑。 */
-        val effectiveSnapshot: TemplateProjectSnapshot
-    ) : GridDetectionOutcome
-}
-
-/**
- * 定位确认页与最终定量之间共享的内存会话。
- *
- * 会话保留本次真实定位、光度和处理证据，用户完成孔位布局后直接继续定量，避免再次运行
- * OpenCV 导致同一张图片在两个页面得到轻微不同的定位结果。
- */
-data class GridLocalizationSession(
-    val request: GridDetectionRequest,
-    val grid: PgGridResult,
-    val quant: PgQuantResult,
-    val frameQcJson: String,
-    /** 应用长期目录中的未增强运行输入；写入失败时为空并兼容回退到请求原路径。 */
-    val persistedSourceInput: GridPersistedSourceInput?,
-    val processingEvidence: List<GridProcessingEvidenceRecord>,
-    /** 页面视觉和持久化分流必须读取明确载体语义，不能根据8×12或96个位点猜测。 */
-    val presentation: GridLocalizationPresentation,
-    /** 运行JSON中的稳定几何键；微流控为pgGrid，96孔板为plate96Geometry。 */
-    val geometryPersistence: GridGeometryPersistence,
-    val detectionModelUsed: String,
-    val processingVersions: Map<String, String>,
-    val confidenceThreshold: Float? = null,
-    val iouThreshold: Float? = null,
-    val frameQcIssueCount: Int = 0
-)
-
-/** 规则阵列工作台的物理呈现类型；结果页面仍保持各自独立。 */
-enum class GridLocalizationPresentation {
-    MICROFLUIDIC,
-    PLATE96
-}
-
-/** 几何JSON的持久化描述，防止96孔板被错误写入pgGrid字段。 */
-data class GridGeometryPersistence(
-    val jsonKey: String,
-    val schemaVersion: String,
-    val json: String
-) {
-    init {
-        require(jsonKey in setOf("pgGrid", "plate96Geometry")) { "不支持的阵列几何持久化键" }
-        require(schemaVersion.isNotBlank() && json.isNotBlank()) { "阵列几何版本和JSON不能为空" }
-    }
-}
-
-/** 只执行芯片定位、基础光度与处理证据生成后的稳定结果。 */
-sealed interface GridLocalizationOutcome {
-    data object LegacyPlateRequired : GridLocalizationOutcome
-
-    data class Blocked(
-        val reasons: Set<GridDetectionBlockReason>
-    ) : GridLocalizationOutcome
-
-    data class Ready(
-        val session: GridLocalizationSession
-    ) : GridLocalizationOutcome
-}
 
 /**
  * 模板驱动的微流控检测协调器。
@@ -363,14 +107,15 @@ class GridDetectionCoordinator @Inject constructor(
     /** JVM 测试省略该参数时安全降级；Hilt 生产图会注入真实 PyTorch Lite 实现。 */
     private val deepLearningExecutor: GridDeepLearningExecutor =
         UnavailableGridDeepLearningExecutor,
-    /** 只消费标准孔信号矩阵的通用阵列标定引擎，96孔板后续复用同一实现。 */
-    private val calibrationEngine: ArrayCalibrationEngine = ArrayCalibrationEngine(),
-    /** 将用户选择的候选冻结为分析物快照；该步骤绝不再次调用拟合。 */
-    private val calibrationApplicationService: CalibrationApplicationService =
-        CalibrationApplicationService(),
+    /** 现场标准品的信号组装、候选拟合和冻结适配由独立科学服务负责。 */
+    private val onsiteCalibrationService: GridOnsiteCalibrationService =
+        GridOnsiteCalibrationService(),
     /** 96孔板使用独立圆孔过程图；测试默认不写文件。 */
     private val plate96EvidenceWriter: Plate96ProcessingEvidenceWriter =
-        NoOpPlate96ProcessingEvidenceWriter
+        NoOpPlate96ProcessingEvidenceWriter,
+    /** 只组装运行、附件与位点实体，不执行数据库或文件 IO。 */
+    private val persistenceAssembler: GridDetectionPersistenceAssembler =
+        GridDetectionPersistenceAssembler()
 ) {
     private val gson = Gson()
 
@@ -628,22 +373,30 @@ class GridDetectionCoordinator @Inject constructor(
             }
         }
 
-        val bundle = buildPersistenceBundle(
-            request = request,
-            geometryPersistence = session.geometryPersistence,
-            frameQcJson = session.frameQcJson,
-            measurements = processed.measurements,
-            status = statusForQuantification(
-                signalOnlyAnalyteIds = processed.signalOnlyAnalyteIds,
-                measurements = processed.measurements
-            ),
-            modelUsageJson = gson.toJson(processed.modelUsage),
-            persistedSourceInput = session.persistedSourceInput,
-            processingEvidence = session.processingEvidence,
-            detectionModelUsed = session.detectionModelUsed,
-            processingVersions = session.processingVersions,
-            confidenceThreshold = session.confidenceThreshold,
-            iouThreshold = session.iouThreshold
+        val bundle = persistenceAssembler.assemble(
+            GridDetectionPersistenceInput(
+                project = request.project,
+                snapshot = request.snapshot,
+                runId = request.runId,
+                capturedAt = request.capturedAt,
+                endpointPath = request.endpointPath,
+                operatorId = request.operatorId,
+                acquisitionMetadataJson = request.acquisitionMetadataJson,
+                geometryPersistence = session.geometryPersistence,
+                frameQcJson = session.frameQcJson,
+                measurements = processed.measurements,
+                status = statusForQuantification(
+                    signalOnlyAnalyteIds = processed.signalOnlyAnalyteIds,
+                    measurements = processed.measurements
+                ),
+                modelUsageJson = gson.toJson(processed.modelUsage),
+                persistedSourceInput = session.persistedSourceInput,
+                processingEvidence = session.processingEvidence,
+                detectionModelUsed = session.detectionModelUsed,
+                processingVersions = session.processingVersions,
+                confidenceThreshold = session.confidenceThreshold,
+                iouThreshold = session.iouThreshold
+            )
         )
         request.onStageChanged(GridDetectionStage.PERSISTING)
         withContext(Dispatchers.IO) { repository.save(bundle) }
@@ -669,89 +422,13 @@ class GridDetectionCoordinator @Inject constructor(
         selectedCandidateId: String,
         runId: String,
         sourceResourceId: String? = null
-    ): TemplateProjectSnapshot {
-        val updatedAnalytes = snapshot.analytes.map { analyteSnapshot ->
-            if (analyteSnapshot.analyte.id != resultSet.analyteId) {
-                return@map analyteSnapshot
-            }
-            val candidate = requireNotNull(resultSet.candidate(selectedCandidateId)) {
-                "选中的现场曲线候选不存在"
-            }
-            val quantitationSnapshot = calibrationApplicationService.freezeOnsiteCalibration(
-                resultSet = resultSet,
-                selectedCandidateId = selectedCandidateId,
-                concentrationUnit = analyteSnapshot.templateConfig.concentrationUnit,
-                sourceResourceId = sourceResourceId
-            )
-            val calibration = requireNotNull(quantitationSnapshot.calibration)
-            val minimum = calibration.reliableRangeMin
-            val maximum = calibration.reliableRangeMax
-            val model = analyteSnapshot.analysisModel.model.copy(
-                name = "onsite-auto-fit",
-                modelType = AnalysisModelType.STANDARD_CURVE.code,
-                primaryFeature = calibration.primaryFeature,
-                reliableRangeMin = minimum,
-                reliableRangeMax = maximum,
-                validationMetricsJson = gson.toJson(
-                    linkedMapOf(
-                        "R2" to calibration.rSquared,
-                        "RMSE" to calibration.rmse,
-                        "NORMALIZED_RMSE" to calibration.normalizedRmse,
-                        "MAE" to calibration.mae,
-                        "BACK_CALCULATED_RMSE_PERCENT" to
-                            calibration.backCalculatedRmsePercent,
-                        "ACCEPTED_STANDARD_RATIO" to calibration.acceptedStandardRatio,
-                        "WEIGHTING_CODE" to calibration.weightingCode,
-                        "ACCEPTED" to calibration.accepted,
-                        "INPUT_FINGERPRINT" to calibration.inputFingerprint,
-                        "CALIBRATION_ENGINE_VERSION" to calibration.engineVersion,
-                        // V2 元数据随现场曲线一起冻结。StandardCurveQuantifier 只读取这里的
-                        // 快照，历史重开不会重新留一、重新求 Hessian 或改变可信范围。
-                        "CALIBRATION_ALGORITHM_SCHEMA" to "calibration-v2",
-                        "ROBUST_OBJECTIVE_VERSION" to calibration.robustObjectiveVersion,
-                        "CROSS_VALIDATION" to calibration.crossValidation,
-                        "TRUSTED_RANGE" to calibration.trustedRange
-                    )
-                ),
-                updatedAt = Date()
-            )
-            val curve = StandardCurveDefinition(
-                analysisModelId = model.id,
-                fittingFunction = calibration.fittingFunction,
-                parametersJson = gson.toJson(calibration.parameters),
-                monotonicDirection = "AUTO"
-            )
-            val calibrationPoints = calibration.standardPoints.mapIndexed {
-                    index, (concentration, signal) ->
-                CalibrationPoint(
-                    id = "$runId-${analyteSnapshot.analyte.id}-standard-$index",
-                    analysisModelId = model.id,
-                    concentration = concentration,
-                    signalValue = signal,
-                    repeatIndex = index
-                )
-            }
-            analyteSnapshot.copy(
-                templateConfig = analyteSnapshot.templateConfig.copy(
-                    // 即使调用方传入了旧版或被部分恢复的快照，也必须让模板配置明确
-                    // 指向本次真正冻结的曲线模型，避免关系校验依赖隐含的旧ID。
-                    // 项目量程属于项目分析物配置，不能被本次标准点覆盖范围替换；曲线的
-                    // 28～34 等标定范围只保存在 model 与 calibration 快照中。
-                    analysisModelId = model.id
-                ),
-                analysisModel = AnalysisModelBundle(
-                    model = model,
-                    standardCurve = curve,
-                    calibrationPoints = calibrationPoints
-                ),
-                quantitationMode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT.code,
-                onsiteSelectedFeature = candidate.primaryFeature.code,
-                onsiteSelectedFunction = candidate.function.identifier,
-                analyteQuantitationSnapshot = quantitationSnapshot
-            )
-        }
-        return snapshot.copy(analytes = updatedAnalytes)
-    }
+    ): TemplateProjectSnapshot = onsiteCalibrationService.applySelection(
+        snapshot = snapshot,
+        resultSet = resultSet,
+        selectedCandidateId = selectedCandidateId,
+        runId = runId,
+        sourceResourceId = sourceResourceId
+    )
 
     /**
      * 根据本次真实标准孔，为一个分析物比较“候选信号 × 线性/4PL/5PL”。
@@ -766,178 +443,12 @@ class GridDetectionCoordinator @Inject constructor(
         quant: PgQuantResult,
         analyteId: String,
         policy: CalibrationPolicy = CalibrationPolicy.DEFAULT
-    ): CalibrationResultSet {
-        val modality = DetectionModality.fromCode(snapshot.template.detectionMode)
-            ?: return unavailableCalibrationResult(analyteId, policy)
-        val analyteSnapshot = snapshot.analytes.firstOrNull { it.analyte.id == analyteId }
-            ?: return unavailableCalibrationResult(analyteId, policy)
-        val standards = validStandards(snapshot, analyteId)
-
-        val selectedFeatures = analyteSnapshot.onsiteSelectedFeatures.orEmpty()
-            .mapNotNull(AnalysisPrimaryFeature::fromCode)
-            .toCollection(linkedSetOf())
-            .ifEmpty {
-                analyteSnapshot.onsiteSelectedFeature
-                    ?.let(AnalysisPrimaryFeature::fromCode)
-                    ?.let(::setOf)
-                    .orEmpty()
-            }
-        val policyFeatures = when (modality) {
-            DetectionModality.COLORIMETRIC -> policy.colorimetricFeatures
-            DetectionModality.FLUORESCENCE -> policy.fluorescenceFeatures
-            DetectionModality.SPECTRUM -> emptySet()
-        }
-        val features = selectedFeatures.takeIf(Set<AnalysisPrimaryFeature>::isNotEmpty)
-            ?: AnalysisFeaturePolicy.allowedFeatures(modality).intersect(policyFeatures)
-        val selectedFunctions = analyteSnapshot.onsiteSelectedFunctions.orEmpty()
-            .mapNotNull(FittingFunction::fromIdentifier)
-            .filterTo(linkedSetOf()) { it != FittingFunction.INTERPOLATION }
-            .ifEmpty {
-                analyteSnapshot.onsiteSelectedFunction
-                    ?.let(FittingFunction::fromIdentifier)
-                    ?.takeIf { it != FittingFunction.INTERPOLATION }
-                    ?.let(::setOf)
-                    .orEmpty()
-            }
-        val functions = selectedFunctions.takeIf(Set<FittingFunction>::isNotEmpty)
-            ?: policy.allowedFunctions
-
-        // 每个信号只提取一次，再按标准孔组装稳定矩阵。拟合函数之间禁止重复执行光度处理。
-        val signalMatrix = features.associateWith { feature ->
-            signalValuesForFeature(
-                snapshot = snapshot,
-                quant = quant,
-                analyteSnapshot = analyteSnapshot,
-                modality = modality,
-                feature = feature
-            ).orEmpty()
-        }
-        val observations = standards.mapNotNull { assignment ->
-            val concentration = assignment.standardConcentration ?: return@mapNotNull null
-            val siteIndex = assignment.rowIndex * snapshot.carrierProfile.columns +
-                assignment.columnIndex
-            val basePhotometry = quant.sites.getOrNull(siteIndex)
-            CalibrationStandardObservation(
-                siteIndex = siteIndex,
-                concentration = concentration,
-                signals = features.associateWith { feature ->
-                    signalMatrix[feature]?.get(siteIndex)?.takeIf(Double::isFinite)
-                },
-                qualityReliable = basePhotometry?.qc?.qualityReliable,
-                saturationRatio = basePhotometry?.saturationRatio,
-                photometryFlags = basePhotometry?.qc?.flags
-                    ?.mapTo(linkedSetOf()) { it.name }
-                    .orEmpty()
-            )
-        }
-        val processorVersion = when (modality) {
-            DetectionModality.COLORIMETRIC -> COLORIMETRIC_PROCESSOR_VERSION
-            DetectionModality.FLUORESCENCE -> FLUORESCENCE_PROCESSOR_VERSION
-            DetectionModality.SPECTRUM -> PG_QUANT_PROCESSOR_VERSION
-        }
-        val fingerprint = CalibrationInputFingerprint.create(
-            analyteId = analyteId,
-            concentrationUnit = analyteSnapshot.templateConfig.concentrationUnit,
-            processorVersion = processorVersion,
-            observations = observations,
-            requestedFeatures = features,
-            requestedFunctions = functions,
-            policy = policy,
-            projectRangeMin = analyteSnapshot.templateConfig.reliableRangeMin,
-            projectRangeMax = analyteSnapshot.templateConfig.reliableRangeMax
-        )
-        return calibrationEngine.fit(
-            CalibrationDraft(
-                analyteId = analyteId,
-                modality = modality,
-                concentrationUnit = analyteSnapshot.templateConfig.concentrationUnit,
-                observations = observations,
-                requestedFeatures = features,
-                requestedFunctions = functions,
-                processorVersion = processorVersion,
-                policy = policy,
-                inputFingerprint = fingerprint,
-                projectRangeMin = analyteSnapshot.templateConfig.reliableRangeMin,
-                projectRangeMax = analyteSnapshot.templateConfig.reliableRangeMax
-            )
-        )
-    }
-
-    /** 缺少模态或分析物时仍返回结构化结果，避免调用方再次退回 nullable 契约。 */
-    private fun unavailableCalibrationResult(
-        analyteId: String,
-        policy: CalibrationPolicy
-    ): CalibrationResultSet {
-        val emptyDraft = CalibrationDraft(
-            analyteId = analyteId,
-            modality = DetectionModality.COLORIMETRIC,
-            concentrationUnit = "",
-            observations = emptyList(),
-            requestedFeatures = policy.colorimetricFeatures,
-            requestedFunctions = policy.allowedFunctions,
-            processorVersion = PG_QUANT_PROCESSOR_VERSION,
-            policy = policy,
-            inputFingerprint = "unavailable:$analyteId"
-        )
-        return calibrationEngine.fit(emptyDraft)
-    }
-
-    /** 获取一个分析物全部有效标准孔，保持物理行优先顺序。 */
-    private fun validStandards(
-        snapshot: TemplateProjectSnapshot,
-        analyteId: String
-    ): List<TemplateSiteAssignment> = snapshot.siteAssignments.filter { assignment ->
-        assignment.enabled &&
-            assignment.analyteId == analyteId &&
-            assignment.roleType == TemplateSiteRole.STANDARD.code &&
-            assignment.standardConcentration?.isFinite() == true &&
-            requireNotNull(assignment.standardConcentration) >= 0.0
-    }.sortedBy { it.rowIndex * snapshot.carrierProfile.columns + it.columnIndex }
-
-    /**
-     * 按候选主特征执行一次模态专用光度处理。
-     *
-     * 只有ΔE2000和相对光密度必须依赖真实参考位；经典灰度、RGB、Lab及扩展颜色特征
-     * 没有参考位也可直接计算。此前把所有比色信号统一拦截，是96孔板现场标定出现
-     * “没有有效信号”的根因。
-     */
-    private fun signalValuesForFeature(
-        snapshot: TemplateProjectSnapshot,
-        quant: PgQuantResult,
-        analyteSnapshot: TemplateProjectAnalyteSnapshot,
-        modality: DetectionModality,
-        feature: AnalysisPrimaryFeature
-    ): Map<Int, Double>? {
-        if (!AnalysisFeaturePolicy.isCompatible(modality, feature)) return null
-        return when (modality) {
-            DetectionModality.COLORIMETRIC -> {
-                val references = referenceIndices(snapshot, analyteSnapshot)
-                if (references.isEmpty() && AnalysisFeaturePolicy.requiresReference(feature)) {
-                    return null
-                }
-                ColorimetricPhotometryProcessor.process(
-                    quant,
-                    ColorimetricProcessorConfig(references, feature)
-                ).sites.mapNotNull { site ->
-                    site.primaryFeatureValue?.takeIf(Double::isFinite)?.let { value ->
-                        site.base.siteIndex to value
-                    }
-                }.toMap()
-            }
-
-            DetectionModality.FLUORESCENCE -> {
-                val channel = ScientificDetectionConfigCodec.decodeFluorescenceChannel(
-                    analyteSnapshot.templateConfig.displayConfigJson
-                ) ?: return null
-                FluorescencePhotometryProcessor.process(
-                    quant,
-                    FluorescenceProcessorConfig(channel, feature)
-                ).sites.associate { it.base.siteIndex to it.primaryFeatureValue }
-            }
-
-            DetectionModality.SPECTRUM -> null
-        }
-    }
+    ): CalibrationResultSet = onsiteCalibrationService.preview(
+        snapshot = snapshot,
+        quant = quant,
+        analyteId = analyteId,
+        policy = policy
+    )
 
     private fun preflight(
         request: GridDetectionRequest,
@@ -1058,9 +569,12 @@ class GridDetectionCoordinator @Inject constructor(
                 sourceBitmap = request.endpointBitmap,
                 grid = grid,
                 quant = quant
+            ).withDynamicRangeReview(
+                snapshot = request.snapshot,
+                analyteSnapshot = analyteSnapshot
             )
             measurements += quantified.measurements
-            if (!quantified.modelExecutable) signalOnly += analyteSnapshot.analyte.id
+            if (quantified.isSignalOnlyResult) signalOnly += analyteSnapshot.analyte.id
             modelUsage[analyteSnapshot.analyte.id] = modelUsageEntry(
                 analyteSnapshot = analyteSnapshot,
                 compatibility = compatibility,
@@ -1202,9 +716,12 @@ class GridDetectionCoordinator @Inject constructor(
                 sourceBitmap = request.endpointBitmap,
                 grid = grid,
                 quant = quant
+            ).withDynamicRangeReview(
+                snapshot = request.snapshot,
+                analyteSnapshot = analyteSnapshot
             )
             measurements += quantified.measurements
-            if (!quantified.modelExecutable) signalOnly += analyteSnapshot.analyte.id
+            if (quantified.isSignalOnlyResult) signalOnly += analyteSnapshot.analyte.id
             modelUsage[analyteSnapshot.analyte.id] = modelUsageEntry(
                 analyteSnapshot = analyteSnapshot,
                 compatibility = compatibility,
@@ -1496,8 +1013,8 @@ class GridDetectionCoordinator @Inject constructor(
     /**
      * 使用真实紧致单元裁切执行逐孔 PTL 推理。
      *
-     * 模型兼容、文件、SHA、输入协议或任意一个位点推理失败时，整分析物从原始测量重建
-     * 为“仅信号”；绝不保留故障发生前已经算出的部分浓度。
+     * 模型兼容、文件、SHA、输入协议或模型加载失败时，整分析物从原始测量重建为“仅信号”。
+     * 已成功执行但输出越出声明域的单个位点只影响自身，其余有效浓度必须保留。
      */
     private fun applyDeepLearningQuantification(
         measurements: List<SiteMeasurement>,
@@ -1558,30 +1075,101 @@ class GridDetectionCoordinator @Inject constructor(
                 reason = execution.reason.name
             )
         }
-        val predictions = (execution as GridDeepLearningBatchResult.Success).predictions
-        if (predictions.size != measurements.size ||
-            measurements.any { measurement -> measurement.siteIndex !in predictions }
+        val success = execution as GridDeepLearningBatchResult.Success
+        val predictions = success.predictions
+        val siteFailures = success.siteFailures
+        val overlappingIndices = predictions.keys intersect siteFailures.keys
+        val producedIndices = predictions.keys + siteFailures.keys
+        if (overlappingIndices.isNotEmpty() ||
+            producedIndices.size != measurements.size ||
+            measurements.any { measurement -> measurement.siteIndex !in producedIndices }
         ) {
             return signalOnlyBatch(
                 measurements = measurements,
                 reason = "INCOMPLETE_BATCH_OUTPUT"
             )
         }
+        val model = analyteSnapshot.analysisModel.model
+        val outputConsistent = model.reliableRangeMin.isFinite() &&
+            model.reliableRangeMax.isFinite() &&
+            model.reliableRangeMax > model.reliableRangeMin &&
+            predictions.all { (siteIndex, prediction) ->
+                prediction.siteIndex == siteIndex && when (prediction.rangeStatus) {
+                    ReliableRangeStatus.WITHIN_RANGE ->
+                        prediction.concentration?.isFinite() == true
+                    ReliableRangeStatus.BELOW_RANGE,
+                    ReliableRangeStatus.ABOVE_RANGE -> prediction.concentration == null
+                    // 深度学习执行器当前只声明模型可靠范围，不得把标准曲线的可信扩展或
+                    // 项目量程状态混入该批次，否则无法确定单侧界限来自哪一条冻结边界。
+                    else -> false
+                }
+            } && siteFailures.all { (siteIndex, failure) ->
+                failure.siteIndex == siteIndex &&
+                failure.reason == GridDeepLearningFailureReason.OUTPUT_OUT_OF_DECLARED_RANGE &&
+                    failure.rawModelOutput.isFinite() &&
+                    failure.transformedModelOutput.isFinite() &&
+                    failure.declaredOutputMin.isFinite() &&
+                    failure.declaredOutputMax.isFinite() &&
+                    failure.declaredOutputMax > failure.declaredOutputMin &&
+                    (failure.transformedModelOutput < failure.declaredOutputMin ||
+                        failure.transformedModelOutput > failure.declaredOutputMax) &&
+                    failure.modelSnapshotJson.isNotBlank()
+            }
+        if (!outputConsistent) {
+            return signalOnlyBatch(
+                measurements = measurements,
+                reason = "INCONSISTENT_BATCH_OUTPUT"
+            )
+        }
 
         var quantifiedCount = 0
         var outOfRangeCount = 0
+        var unavailableCount = 0
         val updated = measurements.map { measurement ->
-            val prediction = requireNotNull(predictions[measurement.siteIndex])
-            if (prediction.concentration != null) {
+            val siteFailure = siteFailures[measurement.siteIndex]
+            val prediction = predictions[measurement.siteIndex]
+            if (siteFailure != null) {
+                unavailableCount += 1
+                measurement.copy(
+                    concentrationValue = null,
+                    concentrationUnit = model.concentrationUnit,
+                    reliableRangeStatus = null,
+                    modelSnapshotJson = siteFailure.modelSnapshotJson,
+                    quantificationState = QuantificationState.UNAVAILABLE.name,
+                    concentrationLowerBound = null,
+                    concentrationUpperBound = null,
+                    intervalConfidenceLevel = null,
+                    censoringDirection = null,
+                    quantificationVersion = GRID_DEEP_LEARNING_QUANTIFIER_VERSION,
+                    quantificationQcJson = gson.toJson(
+                        linkedMapOf(
+                            "status" to QuantificationState.UNAVAILABLE.name,
+                            "scope" to "SITE",
+                            "method" to "DEEP_LEARNING",
+                            "reason" to siteFailure.reason.name,
+                            "rawModelOutput" to siteFailure.rawModelOutput,
+                            "transformedModelOutput" to siteFailure.transformedModelOutput,
+                            "declaredOutputMin" to siteFailure.declaredOutputMin,
+                            "declaredOutputMax" to siteFailure.declaredOutputMax
+                        )
+                    )
+                )
+            } else if (requireNotNull(prediction).concentration != null) {
                 quantifiedCount += 1
                 measurement.copy(
                     concentrationValue = prediction.concentration,
                     concentrationUnit = analyteSnapshot.analysisModel.model.concentrationUnit,
                     reliableRangeStatus = prediction.rangeStatus.name,
                     modelSnapshotJson = prediction.modelSnapshotJson,
+                    quantificationState = QuantificationState.QUANTIFIED.name,
+                    concentrationLowerBound = prediction.concentration,
+                    concentrationUpperBound = prediction.concentration,
+                    intervalConfidenceLevel = null,
+                    censoringDirection = QuantificationCensoringDirection.NONE.name,
+                    quantificationVersion = GRID_DEEP_LEARNING_QUANTIFIER_VERSION,
                     quantificationQcJson = gson.toJson(
                         mapOf(
-                            "status" to "QUANTIFIED",
+                            "status" to QuantificationState.QUANTIFIED.name,
                             "method" to "DEEP_LEARNING",
                             "rangeStatus" to prediction.rangeStatus.name
                         )
@@ -1589,17 +1177,38 @@ class GridDetectionCoordinator @Inject constructor(
                 )
             } else {
                 outOfRangeCount += 1
+                val belowRange = prediction.rangeStatus == ReliableRangeStatus.BELOW_RANGE
+                val concentrationBound = if (belowRange) {
+                    model.reliableRangeMin
+                } else {
+                    model.reliableRangeMax
+                }
+                val censoringDirection = if (belowRange) {
+                    QuantificationCensoringDirection.UPPER_BOUND
+                } else {
+                    QuantificationCensoringDirection.LOWER_BOUND
+                }
                 measurement.copy(
                     concentrationValue = null,
                     concentrationUnit = analyteSnapshot.analysisModel.model.concentrationUnit,
                     reliableRangeStatus = prediction.rangeStatus.name,
                     modelSnapshotJson = prediction.modelSnapshotJson,
+                    // 模型范围外不能伪造点浓度，但冻结的可靠范围本身足以形成单侧界限。
+                    // ABOVE_RANGE 保存“浓度 > 上限”，BELOW_RANGE 保存“浓度 < 下限”。
+                    quantificationState = QuantificationState.BOUND_ONLY.name,
+                    concentrationLowerBound = concentrationBound.takeIf { !belowRange },
+                    concentrationUpperBound = concentrationBound.takeIf { belowRange },
+                    intervalConfidenceLevel = null,
+                    censoringDirection = censoringDirection.name,
+                    quantificationVersion = GRID_DEEP_LEARNING_QUANTIFIER_VERSION,
                     quantificationQcJson = gson.toJson(
                         mapOf(
-                            "status" to "OUT_OF_RELIABLE_RANGE",
+                            "status" to QuantificationState.BOUND_ONLY.name,
                             "method" to "DEEP_LEARNING",
                             "rangeStatus" to prediction.rangeStatus.name,
-                            "concentrationSuppressed" to true
+                            "concentrationBound" to concentrationBound,
+                            "censoringDirection" to censoringDirection.name,
+                            "concentrationUnavailable" to true
                         )
                     )
                 )
@@ -1610,9 +1219,12 @@ class GridDetectionCoordinator @Inject constructor(
             modelExecutable = true,
             quantifiedCount = quantifiedCount,
             outOfRangeCount = outOfRangeCount,
-            siteSignalOnlyCount = 0,
+            siteSignalOnlyCount = unavailableCount,
             total = updated.size,
-            boundOnlyCount = outOfRangeCount
+            boundOnlyCount = outOfRangeCount,
+            unavailableCount = unavailableCount,
+            deepLearningSiteFailures = siteFailures.values.sortedBy { it.siteIndex },
+            diagnosticReasons = siteFailures.values.mapTo(linkedSetOf()) { it.reason.name }
         )
     }
 
@@ -1636,6 +1248,14 @@ class GridDetectionCoordinator @Inject constructor(
                     concentrationUnit = null,
                     reliableRangeStatus = null,
                     modelSnapshotJson = null,
+                    // 模型级失败必须同时清空强类型量化字段。否则同一内存测量被重试时，
+                    // 可能残留上一次成功得到的浓度界限，并在结果页被误认为本次结果。
+                    quantificationState = QuantificationState.UNAVAILABLE.name,
+                    concentrationLowerBound = null,
+                    concentrationUpperBound = null,
+                    intervalConfidenceLevel = null,
+                    censoringDirection = null,
+                    quantificationVersion = null,
                     quantificationQcJson = reasonJson
                 )
             },
@@ -1644,7 +1264,8 @@ class GridDetectionCoordinator @Inject constructor(
             outOfRangeCount = 0,
             siteSignalOnlyCount = 0,
             total = measurements.size,
-            unavailableCount = measurements.size
+            unavailableCount = measurements.size,
+            diagnosticReasons = setOf(reason)
         )
     }
 
@@ -1679,97 +1300,6 @@ class GridDetectionCoordinator @Inject constructor(
                 processorVersion = processorVersion
             )
         )
-    }
-
-    private fun buildPersistenceBundle(
-        request: GridDetectionRequest,
-        geometryPersistence: GridGeometryPersistence,
-        frameQcJson: String,
-        measurements: List<SiteMeasurement>,
-        status: String,
-        modelUsageJson: String?,
-        persistedSourceInput: GridPersistedSourceInput? = null,
-        processingEvidence: List<GridProcessingEvidenceRecord> = emptyList(),
-        detectionModelUsed: String,
-        processingVersions: Map<String, String>,
-        confidenceThreshold: Float? = null,
-        iouThreshold: Float? = null
-    ): GridDetectionPersistenceBundle {
-        // 运行快照必须描述“本次实际执行的配置对象”。不能照抄 Project 中可能来自旧版本、
-        // 人工导入或已损坏的 JSON 字符串，否则历史结果会与真实处理参数不一致。
-        val effectiveSnapshot = TemplateProjectSnapshotCodec.encode(request.snapshot)
-        val run = DetectionRun(
-            runId = request.runId,
-            projectId = request.project.id,
-            timestamp = request.capturedAt,
-            detectionModelUsed = detectionModelUsed,
-            concentrationModelUsed = modelUsageJson,
-            status = status,
-            errorMessage = null,
-            confThreshold = confidenceThreshold,
-            iouThreshold = iouThreshold,
-            wellsDetected = measurements.size,
-            effectiveConfigSnapshotJson = effectiveSnapshot,
-            acquisitionMetadataJson = request.acquisitionMetadataJson,
-            processingVersionJson = gson.toJson(processingVersions),
-            frameQcJson = frameQcJson,
-            siteQcSummaryJson = summarizeSiteQc(measurements),
-            // 项目样本槽映射和覆盖原因在检测时冻结到运行；结果页不得回读后来被修改的
-            // Project.overrideJson。旧项目没有覆盖记录时保持 null，不能套用当前默认值。
-            configurationDeviationJson = request.project.overrideJson
-        )
-        val artifact = CaptureArtifact(
-            id = "${request.runId}-endpoint-1",
-            runId = request.runId,
-            captureRole = CaptureRole.ENDPOINT.code,
-            // 优先引用应用私有长期文件，防止系统清理 cache 后历史原图和科研归档失效。
-            // 写入失败时仍保留请求原路径，让旧测试、content URI 和异常设备继续兼容。
-            originalPath = persistedSourceInput?.path ?: request.endpointPath,
-            capturedAt = request.capturedAt,
-            operatorId = request.operatorId,
-            actualMetadataJson = persistedSourceInput?.metadataJson ?: request.acquisitionMetadataJson,
-            profileSnapshotJson = gson.toJson(request.snapshot.acquisitionProfile),
-            imageQcJson = frameQcJson,
-            checksumSha256 = persistedSourceInput?.checksumSha256,
-            locked = true,
-            revision = 1
-        )
-        val diagnosticArtifacts = processingEvidence.mapIndexed { index, evidence ->
-            CaptureArtifact(
-                id = "${request.runId}-${evidence.role.code.lowercase()}-1",
-                runId = request.runId,
-                captureRole = evidence.role.code,
-                originalPath = evidence.path,
-                capturedAt = request.capturedAt,
-                operatorId = request.operatorId,
-                actualMetadataJson = evidence.metadataJson,
-                imageQcJson = frameQcJson,
-                checksumSha256 = evidence.checksumSha256,
-                pairingKey = "${request.runId}-processing",
-                locked = true,
-                revision = index + 1
-            )
-        }
-        // 几何JSON进入附件派生字段会误被解释为文件路径，因此保存在运行QC快照中。
-        // 键名由明确载体协议提供：96孔板绝不能为了复用结果页而冒充pgGrid。
-        val runWithGeometry = run.copy(
-            frameQcJson = gson.toJson(
-                linkedMapOf<String, Any?>(
-                    "frame" to gson.fromJson(frameQcJson, JsonObject::class.java),
-                    geometryPersistence.jsonKey to gson.fromJson(
-                        geometryPersistence.json,
-                        JsonObject::class.java
-                    ),
-                    "geometrySchemaVersion" to geometryPersistence.schemaVersion
-                )
-            )
-        )
-        return GridDetectionPersistenceBundle(
-            run = runWithGeometry,
-            endpointArtifact = artifact,
-            measurements = measurements,
-            diagnosticArtifacts = diagnosticArtifacts
-        ).requireValid()
     }
 
     /**
@@ -1823,6 +1353,274 @@ class GridDetectionCoordinator @Inject constructor(
         return snapshot.siteAssignments.filter { assignment ->
             assignment.enabled && assignment.analyteId == analyteSnapshot.analyte.id
         }.sortedBy { it.rowIndex * snapshot.carrierProfile.columns + it.columnIndex }
+    }
+
+    /**
+     * 在普通定量完成后执行批次级动态量程复核。
+     *
+     * 只有 SAMPLE 位点进入“多数越界”比例；标准孔、空白、参考和质控孔均被排除。正/负
+     * 质控若同时保存了已知浓度并成功定量，可作为独立锚点。没有独立锚点时仅冻结诊断，
+     * 绝不会依据未知样品分布把浓度强制压回项目量程。
+     */
+    internal fun QuantificationBatch.withDynamicRangeReview(
+        snapshot: TemplateProjectSnapshot,
+        analyteSnapshot: TemplateProjectAnalyteSnapshot
+    ): QuantificationBatch {
+        val projectMinimum = analyteSnapshot.templateConfig.reliableRangeMin
+            ?: analyteSnapshot.analysisModel.model.reliableRangeMin
+        val projectMaximum = analyteSnapshot.templateConfig.reliableRangeMax
+            ?: analyteSnapshot.analysisModel.model.reliableRangeMax
+        if (
+            !projectMinimum.isFinite() ||
+            !projectMaximum.isFinite() ||
+            projectMinimum < 0.0 ||
+            projectMaximum <= projectMinimum
+        ) return this
+        val frozenCalibrationMinimum = analyteSnapshot.analysisModel.model.reliableRangeMin
+        val frozenCalibrationMaximum = analyteSnapshot.analysisModel.model.reliableRangeMax
+        val hasValidCalibrationRange = frozenCalibrationMinimum.isFinite() &&
+            frozenCalibrationMaximum.isFinite() &&
+            frozenCalibrationMaximum > frozenCalibrationMinimum
+        val calibrationMinimum = if (hasValidCalibrationRange) {
+            frozenCalibrationMinimum
+        } else {
+            projectMinimum
+        }
+        val calibrationMaximum = if (hasValidCalibrationRange) {
+            frozenCalibrationMaximum
+        } else {
+            projectMaximum
+        }
+
+        val assignments = assignmentsForAnalyte(snapshot, analyteSnapshot)
+        val assignmentBySite = assignments.associateBy { assignment ->
+            assignment.rowIndex * snapshot.carrierProfile.columns + assignment.columnIndex
+        }
+        val observations = measurements.map { measurement ->
+            val assignment = assignmentBySite[measurement.siteIndex]
+            RangeRecoveryObservation(
+                siteIndex = measurement.siteIndex,
+                isSample = assignment?.roleType == TemplateSiteRole.SAMPLE.code,
+                concentration = measurement.concentrationValue,
+                lowerBound = measurement.concentrationLowerBound,
+                upperBound = measurement.concentrationUpperBound,
+                rangeStatus = measurement.reliableRangeStatus?.let { status ->
+                    runCatching { ReliableRangeStatus.valueOf(status) }.getOrNull()
+                },
+                quantificationState = measurement.quantificationState?.let { state ->
+                    runCatching { QuantificationState.valueOf(state) }.getOrNull()
+                }
+            )
+        }
+        val measurementBySite = measurements.associateBy(SiteMeasurement::siteIndex)
+        val anchors = assignmentBySite.mapNotNull { (siteIndex, assignment) ->
+            if (
+                assignment.roleType !in setOf(
+                    TemplateSiteRole.NEGATIVE_CONTROL.code,
+                    TemplateSiteRole.POSITIVE_CONTROL.code
+                )
+            ) return@mapNotNull null
+            val expected = assignment.standardConcentration?.takeIf(Double::isFinite)
+                ?: return@mapNotNull null
+            val measurement = measurementBySite[siteIndex] ?: return@mapNotNull null
+            val observed = measurement.concentrationValue?.takeIf(Double::isFinite)
+                ?: return@mapNotNull null
+            RangeCorrectionAnchor(
+                expectedConcentration = expected,
+                observedConcentration = observed,
+                reliable = measurement.qualityReliable
+            )
+        }
+        val decision = RangeRecoveryEngine.evaluate(
+            observations = observations,
+            projectMinimum = projectMinimum,
+            projectMaximum = projectMaximum,
+            anchors = anchors
+        )
+        val reviewedMeasurements = if (decision.status == RangeRecoveryStatus.CORRECTION_APPLIED) {
+            measurements.map { measurement ->
+                measurement.withAcceptedRangeCorrection(
+                    decision = decision,
+                    projectMinimum = projectMinimum,
+                    projectMaximum = projectMaximum,
+                    calibrationMinimum = calibrationMinimum,
+                    calibrationMaximum = calibrationMaximum
+                )
+            }
+        } else {
+            measurements
+        }
+        return withReviewedMeasurements(
+            reviewedMeasurements = reviewedMeasurements,
+            decision = decision
+        )
+    }
+
+    /**
+     * 将已经通过独立质控验收的仿射校正应用到点估计和双侧区间，并把原判定一并写入
+     * 位点 QC JSON。单侧界限和 null 浓度不在此阶段猜测，仍保持原始 <下限 / >上限。
+     */
+    private fun SiteMeasurement.withAcceptedRangeCorrection(
+        decision: RangeRecoveryDecision,
+        projectMinimum: Double,
+        projectMaximum: Double,
+        calibrationMinimum: Double,
+        calibrationMaximum: Double
+    ): SiteMeasurement {
+        val originalConcentration = concentrationValue?.takeIf(Double::isFinite) ?: return this
+        val originalState = quantificationState?.let { state ->
+            runCatching { QuantificationState.valueOf(state) }.getOrNull()
+        } ?: return this
+        if (originalState !in setOf(QuantificationState.QUANTIFIED, QuantificationState.ESTIMATED)) {
+            return this
+        }
+        val scale = decision.correctionScale?.takeIf(Double::isFinite) ?: return this
+        val offset = decision.correctionOffset?.takeIf(Double::isFinite) ?: return this
+        val rawCorrected = scale * originalConcentration + offset
+        if (!rawCorrected.isFinite()) return this
+
+        // 项目量程是本次运行允许报告精确点浓度的硬边界。质控校正后的点一旦越过该边界，
+        // 必须降为单侧界限，不能形成“超项目量程但仍携带精确浓度”的损坏历史快照。
+        val correctedStatus = when {
+            rawCorrected < projectMinimum -> ReliableRangeStatus.BELOW_PROJECT_RANGE
+            rawCorrected > projectMaximum -> ReliableRangeStatus.ABOVE_PROJECT_RANGE
+            rawCorrected < calibrationMinimum -> ReliableRangeStatus.BELOW_RANGE
+            rawCorrected > calibrationMaximum -> ReliableRangeStatus.ABOVE_RANGE
+            else -> ReliableRangeStatus.WITHIN_RANGE
+        }
+        val correctedState = when {
+            correctedStatus in setOf(
+                ReliableRangeStatus.BELOW_PROJECT_RANGE,
+                ReliableRangeStatus.ABOVE_PROJECT_RANGE
+            ) -> QuantificationState.BOUND_ONLY
+            originalState == QuantificationState.ESTIMATED ||
+                correctedStatus != ReliableRangeStatus.WITHIN_RANGE -> QuantificationState.ESTIMATED
+            else -> QuantificationState.QUANTIFIED
+        }
+        val pointConcentration = rawCorrected
+            .takeIf { correctedState != QuantificationState.BOUND_ONLY }
+            ?.coerceAtLeast(0.0)
+        fun correctedIntervalBound(value: Double?): Double? = value
+            ?.takeIf(Double::isFinite)
+            ?.let { bound -> scale * bound + offset }
+            ?.takeIf(Double::isFinite)
+            ?.coerceAtLeast(0.0)
+        val correctedLower = when (correctedStatus) {
+            ReliableRangeStatus.ABOVE_PROJECT_RANGE -> projectMaximum
+            ReliableRangeStatus.BELOW_PROJECT_RANGE -> null
+            else -> correctedIntervalBound(concentrationLowerBound)
+        }
+        val correctedUpper = when (correctedStatus) {
+            ReliableRangeStatus.BELOW_PROJECT_RANGE -> projectMinimum
+            ReliableRangeStatus.ABOVE_PROJECT_RANGE -> null
+            else -> correctedIntervalBound(concentrationUpperBound)
+        }
+        val correctedCensoring = when (correctedStatus) {
+            ReliableRangeStatus.BELOW_PROJECT_RANGE ->
+                QuantificationCensoringDirection.UPPER_BOUND.name
+            ReliableRangeStatus.ABOVE_PROJECT_RANGE ->
+                QuantificationCensoringDirection.LOWER_BOUND.name
+            else -> null
+        }
+        val qcRoot = runCatching {
+            quantificationQcJson?.let { gson.fromJson(it, JsonObject::class.java) }
+        }.getOrNull() ?: JsonObject()
+        val siteRecoverySnapshot = decision.toSnapshot().toMutableMap().apply {
+            // 每个位点同时冻结校正前后值，后续即使算法升级，也能独立审计本次转换。
+            put("originalConcentration", originalConcentration)
+            reliableRangeStatus?.let { put("originalRangeStatus", it) }
+            put("originalQuantificationState", originalState.name)
+            put("correctedRangeStatus", correctedStatus.name)
+            put("correctedQuantificationState", correctedState.name)
+            pointConcentration?.let { put("correctedConcentration", it) }
+            correctedLower?.let { put("correctedLowerBound", it) }
+            correctedUpper?.let { put("correctedUpperBound", it) }
+        }
+        qcRoot.add("rangeRecovery", gson.toJsonTree(siteRecoverySnapshot))
+        qcRoot.addProperty("status", correctedState.name)
+        qcRoot.addProperty("rangeStatus", correctedStatus.name)
+        if (correctedState == QuantificationState.BOUND_ONLY) {
+            qcRoot.addProperty("concentrationUnavailable", true)
+            qcRoot.addProperty(
+                "concentrationBound",
+                correctedLower ?: correctedUpper
+            )
+            qcRoot.addProperty("censoringDirection", correctedCensoring)
+        } else {
+            qcRoot.remove("concentrationUnavailable")
+            qcRoot.remove("concentrationBound")
+            qcRoot.remove("censoringDirection")
+        }
+        return copy(
+            concentrationValue = pointConcentration,
+            concentrationLowerBound = correctedLower,
+            concentrationUpperBound = correctedUpper,
+            intervalConfidenceLevel = intervalConfidenceLevel
+                .takeIf { correctedState != QuantificationState.BOUND_ONLY },
+            quantificationState = correctedState.name,
+            censoringDirection = correctedCensoring,
+            reliableRangeStatus = correctedStatus.name,
+            quantificationQcJson = gson.toJson(qcRoot)
+        )
+    }
+
+    /**
+     * 质控校正改变了逐孔浓度、量化状态和范围状态，批次摘要必须从更新后的冻结测量重新汇总。
+     * siteSignalOnlyCount 仍沿用量化阶段的原始语义，因为仅凭 UNAVAILABLE 无法区分模型失败与
+     * 位点非有限信号；动态校正不会改变这两类输入失败。
+     */
+    private fun QuantificationBatch.withReviewedMeasurements(
+        reviewedMeasurements: List<SiteMeasurement>,
+        decision: RangeRecoveryDecision
+    ): QuantificationBatch {
+        fun SiteMeasurement.state(): QuantificationState? = quantificationState?.let { value ->
+            runCatching { QuantificationState.valueOf(value) }.getOrNull()
+        }
+        fun SiteMeasurement.rangeStatus(): ReliableRangeStatus? = reliableRangeStatus?.let { value ->
+            runCatching { ReliableRangeStatus.valueOf(value) }.getOrNull()
+        }
+        val quantified = reviewedMeasurements.count { measurement ->
+            measurement.state() == QuantificationState.QUANTIFIED &&
+                measurement.concentrationValue?.isFinite() == true
+        }
+        val estimated = reviewedMeasurements.count { measurement ->
+            measurement.state() == QuantificationState.ESTIMATED &&
+                measurement.concentrationValue?.isFinite() == true
+        }
+        val boundOnly = reviewedMeasurements.count { measurement ->
+            measurement.state() == QuantificationState.BOUND_ONLY
+        }
+        val unavailable = reviewedMeasurements.count { measurement ->
+            measurement.state() == QuantificationState.UNAVAILABLE
+        }
+        val outOfRange = reviewedMeasurements.count { measurement ->
+            measurement.state() == QuantificationState.BOUND_ONLY ||
+                measurement.rangeStatus() in setOf(
+                    ReliableRangeStatus.BELOW_PROJECT_RANGE,
+                    ReliableRangeStatus.ABOVE_PROJECT_RANGE
+                )
+        }
+        val extrapolated = reviewedMeasurements.count { measurement ->
+            measurement.concentrationValue?.isFinite() == true &&
+                (
+                    measurement.state() == QuantificationState.ESTIMATED ||
+                        measurement.rangeStatus() in setOf(
+                            ReliableRangeStatus.BELOW_RANGE,
+                            ReliableRangeStatus.ABOVE_RANGE
+                        )
+                    )
+        }
+        return copy(
+            measurements = reviewedMeasurements,
+            quantifiedCount = quantified,
+            estimatedCount = estimated,
+            boundOnlyCount = boundOnly,
+            unavailableCount = unavailable,
+            outOfRangeCount = outOfRange,
+            extrapolatedCount = extrapolated,
+            total = reviewedMeasurements.size,
+            rangeRecovery = decision
+        )
     }
 
     private fun referenceIndices(
@@ -1902,20 +1700,33 @@ class GridDetectionCoordinator @Inject constructor(
         batch: QuantificationBatch
     ): Map<String, Any> {
         return when (compatibility) {
-            ModelCompatibilityResult.Compatible -> mapOf(
-                "modelId" to analyteSnapshot.analysisModel.model.id,
-                "compatible" to true,
-                "execution" to batch.execution,
-                "quantifiedCount" to batch.quantifiedCount,
-                "estimatedCount" to batch.estimatedCount,
-                "boundOnlyCount" to batch.boundOnlyCount,
-                "unavailableCount" to batch.unavailableCount,
-                "retestCount" to batch.retestCount,
-                "outOfRangeCount" to batch.outOfRangeCount,
-                "extrapolatedCount" to batch.extrapolatedCount,
-                "siteSignalOnlyCount" to batch.siteSignalOnlyCount,
-                "total" to batch.total
-            )
+            ModelCompatibilityResult.Compatible -> buildMap {
+                put("modelId", analyteSnapshot.analysisModel.model.id)
+                put("compatible", true)
+                put("execution", batch.execution)
+                put("quantifiedCount", batch.quantifiedCount)
+                put("estimatedCount", batch.estimatedCount)
+                put("boundOnlyCount", batch.boundOnlyCount)
+                put("unavailableCount", batch.unavailableCount)
+                put("retestCount", batch.retestCount)
+                put("outOfRangeCount", batch.outOfRangeCount)
+                put("extrapolatedCount", batch.extrapolatedCount)
+                put("siteSignalOnlyCount", batch.siteSignalOnlyCount)
+                put("total", batch.total)
+                if (batch.diagnosticReasons.isNotEmpty()) {
+                    put("reasons", batch.diagnosticReasons.sorted())
+                }
+                if (batch.deepLearningSiteFailures.isNotEmpty()) {
+                    val failures = batch.deepLearningSiteFailures
+                    put("outOfDeclaredDomainCount", failures.size)
+                    put("outOfDeclaredDomainSiteIndices", failures.map { it.siteIndex })
+                    put("outOfDeclaredDomainRawMin", failures.minOf { it.rawModelOutput })
+                    put("outOfDeclaredDomainRawMax", failures.maxOf { it.rawModelOutput })
+                    put("declaredOutputMin", failures.minOf { it.declaredOutputMin })
+                    put("declaredOutputMax", failures.maxOf { it.declaredOutputMax })
+                }
+                batch.rangeRecovery?.let { put("rangeRecovery", it.toSnapshot()) }
+            }
             is ModelCompatibilityResult.Incompatible -> mapOf(
                 "modelId" to analyteSnapshot.analysisModel.model.id,
                 "compatible" to false,
@@ -1951,39 +1762,6 @@ class GridDetectionCoordinator @Inject constructor(
             signalOnlyAnalyteIds.isEmpty() -> STATUS_COMPLETED
             measurements.any { it.concentrationValue?.isFinite() == true } -> STATUS_PARTIAL
             else -> STATUS_SIGNAL_ONLY
-        }
-    }
-
-    private fun summarizeSiteQc(measurements: List<SiteMeasurement>): String {
-        return gson.toJson(
-            mapOf(
-                "total" to measurements.size,
-                "reliable" to measurements.count(SiteMeasurement::qualityReliable),
-                "detectable" to measurements.count(SiteMeasurement::signalDetectable),
-                "quantified" to measurements.count { it.concentrationValue != null },
-                "outOfRange" to measurements.count {
-                    it.reliableRangeStatus in setOf("BELOW_RANGE", "ABOVE_RANGE")
-                },
-                "siteSignalOnly" to measurements.count { measurement ->
-                    quantificationScope(measurement.quantificationQcJson) == "SITE"
-                },
-                "referenceEvidence" to measurements.count {
-                    it.primaryFeatureName == COLORIMETRIC_REFERENCE_EVIDENCE_FEATURE
-                }
-            )
-        )
-    }
-
-    /** 损坏的量化 QC JSON 不应中断运行汇总；无法解析时只是不计入位点警告。 */
-    private fun quantificationScope(quantificationQcJson: String?): String? {
-        if (quantificationQcJson.isNullOrBlank()) return null
-        return try {
-            gson.fromJson(quantificationQcJson, JsonObject::class.java)
-                ?.get("scope")
-                ?.takeIf { it.isJsonPrimitive }
-                ?.asString
-        } catch (_: RuntimeException) {
-            null
         }
     }
 
@@ -2049,14 +1827,24 @@ class GridDetectionCoordinator @Inject constructor(
         /** 只能形成单侧浓度界限的数量。 */
         val boundOnlyCount: Int = 0,
         /** 模型、信号或质量证据不足，无法形成浓度或界限的数量。 */
-        val unavailableCount: Int = 0
+        val unavailableCount: Int = 0,
+        /** 批次级多数越界诊断和经独立质控验收的校正参数；随运行 modelUsage 冻结。 */
+        val rangeRecovery: RangeRecoveryDecision? = null,
+        /** 深度学习输出离域的逐孔证据；每孔原始输出还会进入 quantificationQcJson。 */
+        val deepLearningSiteFailures: List<GridDeepLearningSiteFailure> = emptyList(),
+        /** 结果历史摘要使用的稳定机器原因；为空时不渲染猜测性说明。 */
+        val diagnosticReasons: Set<String> = emptySet()
     ) {
         /** 结果页“复测”由单侧界限和真正不可用组成，两者在数据库中仍保持可区分。 */
         val retestCount: Int = boundOnlyCount + unavailableCount
 
+        /** 没有任何点浓度、估计值或单侧界限时，用户可见结果仍然只能称为“仅信号”。 */
+        val isSignalOnlyResult: Boolean = !modelExecutable ||
+            quantifiedCount + estimatedCount + boundOnlyCount == 0
+
         /** 模型可执行但存在范围或位点信号警告时，保留成功浓度并明确记录警告。 */
         val execution: String = when {
-            !modelExecutable -> "signal_only"
+            isSignalOnlyResult -> "signal_only"
             estimatedCount > 0 || boundOnlyCount > 0 || unavailableCount > 0 ||
                 outOfRangeCount > 0 || extrapolatedCount > 0 || siteSignalOnlyCount > 0 ->
                 "standard_curve_applied_with_warnings"

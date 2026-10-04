@@ -14,6 +14,9 @@ import com.muc.fluocolorquant.domain.detection.photometry.ColorimetricSitePhotom
 import com.muc.fluocolorquant.domain.detection.photometry.LabPhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.RgbPhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceSitePhotometry
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryDirection
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryReason
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryStatus
 
 /**
  * 阵列结果加载失败的稳定机器原因。
@@ -130,7 +133,22 @@ data class ArrayAnalyteResult(
     /** 标准曲线真实参与拟合的最低浓度；仅用于解释插值区间和外推状态。 */
     val calibrationRangeMin: Double? = null,
     /** 标准曲线真实参与拟合的最高浓度；不得覆盖项目量程。 */
-    val calibrationRangeMax: Double? = null
+    val calibrationRangeMax: Double? = null,
+    /** 多数样品越界后的冻结动态复核；旧运行或未执行复核时为空。 */
+    val rangeRecovery: ArrayRangeRecoveryResult? = null
+)
+
+/** 结果页使用的最小动态量程复核快照，不暴露协调器内部 JSON 结构。 */
+data class ArrayRangeRecoveryResult(
+    val status: RangeRecoveryStatus,
+    val reason: RangeRecoveryReason,
+    val direction: RangeRecoveryDirection,
+    val validSampleCount: Int,
+    val withinRangeCount: Int,
+    val belowRangeCount: Int,
+    val aboveRangeCount: Int,
+    val outOfRangeRatio: Double,
+    val algorithmVersion: String
 )
 
 /** 结果页绘图需要的最小标准点契约，避免 UI 依赖 Room 实体。 */
@@ -219,7 +237,13 @@ data class ArrayMeasurementQc(
     val photometryFlags: Set<String>,
     val quantificationStatus: String?,
     val quantificationScope: String?,
-    val quantificationReason: String?
+    val quantificationReason: String?,
+    /** 深度学习位点失败时冻结的 PTL 原始输出；其他量化方式或旧记录为空。 */
+    val rawModelOutput: Double? = null,
+    /** 应用模型 scale/offset 后参与声明域判断的输出。 */
+    val transformedModelOutput: Double? = null,
+    val declaredOutputMin: Double? = null,
+    val declaredOutputMax: Double? = null
 )
 
 /** 模态专用详情，避免比色和荧光再次被压成同一套通用数值。 */

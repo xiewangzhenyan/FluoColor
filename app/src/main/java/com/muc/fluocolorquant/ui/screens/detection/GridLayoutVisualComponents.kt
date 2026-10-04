@@ -108,6 +108,9 @@ internal object ArrayLayoutEditorTestTags {
     const val REAL_GRID: String = "array_layout_real_grid"
     const val VIRTUAL_GRID: String = "array_layout_virtual_grid"
     const val QUANTITATION: String = "array_layout_quantitation"
+    const val MODEL_SELECTOR: String = "array_layout_model_selector"
+    /** 模型菜单项使用稳定资源 ID 定位，避免测试依赖当前语言或语义树文本合并方式。 */
+    const val MODEL_OPTION_PREFIX: String = "array_layout_model_option_"
     const val CROP_PREFIX: String = "array_layout_crop_"
     const val CROP_DIALOG: String = "array_layout_crop_dialog"
 }

@@ -119,6 +119,7 @@ import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.components.localizedAnalysisMethodLabel
 import com.muc.fluocolorquant.ui.viewmodels.HistoryViewModel
 import com.muc.fluocolorquant.ui.navigation.Screen
 import java.text.SimpleDateFormat
@@ -210,7 +211,7 @@ fun HistoryScreen(
             }
             is HistoryViewModel.DeleteState.Error -> {
                 val message = (deleteState as HistoryViewModel.DeleteState.Error).message
-                toastManager.showToast(context.getString(R.string.toast_delete_failed, message), ToastType.ERROR) // 使用context
+                toastManager.showToast(message.asString(context), ToastType.ERROR)
             }
             else -> {}
         }
@@ -347,7 +348,7 @@ fun HistoryScreen(
                         .fillMaxSize()
                         .padding(paddingValues),
                     onCreateProject = {
-                        navController.navigate(Screen.QuickCreateProject.createRoute())
+                        navController.navigate(Screen.DirectCreateProject.createRoute())
                     }
                 )
             }
@@ -413,7 +414,7 @@ fun HistoryScreen(
             is HistoryViewModel.LoadingState.Error -> {
                 val message = (loadingState as HistoryViewModel.LoadingState.Error).message
                 ErrorView(
-                    message = message,
+                    message = message.asString(context),
                     onRetry = { viewModel.loadUserProjects() },
                     modifier = Modifier
                         .fillMaxSize()
@@ -512,11 +513,7 @@ private fun HistorySearchAndFilterBar(
 
     val analysisMethodLabel = when (filterSettings.analysisMethods.size) {
         0 -> stringResource(R.string.analysis_method)
-        1 -> when (filterSettings.analysisMethods.first()) {
-            "DL_MODEL" -> stringResource(R.string.dl_model_option)
-            "CURVE_FIT" -> stringResource(R.string.curve_fit_option)
-            else -> stringResource(R.string.analysis_method)
-        }
+        1 -> localizedAnalysisMethodLabel(filterSettings.analysisMethods.first())
         else -> stringResource(
             R.string.history_filter_selected_count,
             filterSettings.analysisMethods.size
@@ -768,12 +765,9 @@ fun ProjectItem(
                     else -> project.detectionMode
                 }
 
-                val analysisMethodText = when (project.analysisMethod) {
-                    "DL_MODEL" -> stringResource(R.string.dl_model_option)
-                    "CURVE_FIT" -> stringResource(R.string.curve_fit_option)
-                    "LSPR_SPECTRUM" -> stringResource(R.string.lspr_spectrum_analysis)
-                    else -> project.analysisMethod
-                }
+                // 持久化编码只用于程序判断；历史摘要必须使用统一的兼容映射，未知编码也不能
+                // 直接泄漏为 SIGNAL_ONLY/TEMPLATE_MANAGED 一类机器值。
+                val analysisMethodText = localizedAnalysisMethodLabel(project.analysisMethod)
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -907,7 +901,12 @@ fun FilterDialog(
                         title = stringResource(R.string.analysis_method),
                         icon = Icons.Default.Analytics
                     ) {
-                        val analysisMethods = setOf("DL_MODEL", "CURVE_FIT")
+                        val analysisMethods = listOf(
+                            "DL_MODEL",
+                            "CURVE_FIT",
+                            "SIGNAL_ONLY",
+                            "TEMPLATE_MANAGED"
+                        )
                         // 【已修改】使用Column使每个选项占一行
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             analysisMethods.forEach { method ->
@@ -919,12 +918,7 @@ fun FilterDialog(
                                         onAnalysisMethodsSelected(newSet)
                                     },
                                     label = {
-                                        Text(
-                                            when (method) {
-                                                "DL_MODEL" -> stringResource(R.string.dl_model_option)
-                                                else -> stringResource(R.string.curve_fit_option)
-                                            }
-                                        )
+                                        Text(localizedAnalysisMethodLabel(method))
                                     }
                                 )
                             }

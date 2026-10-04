@@ -111,7 +111,7 @@ object CalibrationPolicyCodec {
             .toCollection(linkedSetOf())
         CalibrationPolicy(
             schemaVersion = CalibrationPolicy.CURRENT_SCHEMA_VERSION,
-            strategy = CalibrationStrategy.valueOf(stored.strategy),
+            strategy = migrateStrategy(stored),
             allowedFunctions = functions,
             rSquaredSimplicityTolerance = stored.rSquaredSimplicityTolerance,
             lowQualityRSquaredThreshold = stored.lowQualityRSquaredThreshold
@@ -120,12 +120,49 @@ object CalibrationPolicyCodec {
             minimumFiveParameterLevels = stored.minimumFiveParameterLevels,
             lowQualityAction = LowQualityCalibrationAction.valueOf(stored.lowQualityAction),
             colorimetricFeatures = colorFeatures,
-            fluorescenceFeatures = fluorescenceFeatures,
+            fluorescenceFeatures = migrateFluorescenceFeatures(stored, fluorescenceFeatures),
             enabledWeightingCodes = stored.enabledWeightingCodes.toCollection(linkedSetOf()),
             saveToLibraryByDefault = stored.saveToLibraryByDefault,
             engineVersion = stored.engineVersion
         )
     }.getOrNull()
+
+    /**
+     * V1/V2 的 ROBUST 是当时的隐式默认值，大多数用户并未主动选择它。V3 已明确将
+     * “数学安全后按 R² 排序”设为现场标定默认，因此只迁移旧版本中的这个历史默认；
+     * SIMPLE_MODEL_FIRST 和已经明确保存的 R_SQUARED_FIRST 均保持用户原选择。
+     */
+    private fun migrateStrategy(stored: StoredCalibrationPolicy): CalibrationStrategy {
+        val restored = CalibrationStrategy.valueOf(stored.strategy)
+        return if (
+            stored.schemaVersion < 3 &&
+            restored == CalibrationStrategy.ROBUST
+        ) {
+            CalibrationStrategy.R_SQUARED_FIRST
+        } else {
+            restored
+        }
+    }
+
+    /**
+     * V1～V3 的荧光默认值只有净强度、积分强度和 SNR。只有保存内容与这份旧默认值
+     * 完全一致时才升级到 V4 推荐池；用户主动删减为单项或加入其他特征的设置原样保留。
+     */
+    private fun migrateFluorescenceFeatures(
+        stored: StoredCalibrationPolicy,
+        restored: Set<AnalysisPrimaryFeature>
+    ): Set<AnalysisPrimaryFeature> {
+        val legacyDefault = setOf(
+            AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
+            AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY,
+            AnalysisPrimaryFeature.FLUORESCENCE_SNR
+        )
+        return if (stored.schemaVersion < 4 && restored == legacyDefault) {
+            CalibrationPolicy.DEFAULT_FLUORESCENCE_FEATURES.toCollection(linkedSetOf())
+        } else {
+            restored
+        }
+    }
 
     /**
      * Gson DTO 使用基础类型，避免未来重命名领域属性时静默改变已安装用户的 JSON 结构。

@@ -384,6 +384,7 @@ private fun runStatusStyle(status: String): RunStatusStyle {
 internal fun arrayRunStatusLabel(status: String): String = when (status) {
     "Completed" -> stringResource(R.string.array_run_status_completed)
     "PartiallyQuantified" -> stringResource(R.string.array_run_status_partial)
+    "BoundaryOnlyCompleted" -> stringResource(R.string.array_run_status_boundary_only)
     "SignalOnlyCompleted" -> stringResource(R.string.array_run_status_signal_only)
     "RetakeRequired" -> stringResource(R.string.array_run_status_retake)
     "Failed" -> stringResource(R.string.array_run_status_failed)

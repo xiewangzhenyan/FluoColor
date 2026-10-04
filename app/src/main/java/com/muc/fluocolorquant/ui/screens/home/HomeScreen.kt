@@ -416,7 +416,7 @@ fun HomePageContent(
                     .clip(RoundedCornerShape(16.dp))
                     .clickable {
                         requireLoginThen {
-                            navController.navigate(Screen.QuickCreateProject.route)
+                            navController.navigate(Screen.DirectCreateProject.route)
                         }
                     },
                 colors = CardDefaults.cardColors(
@@ -472,7 +472,7 @@ fun HomePageContent(
                         onClick = {
                             requireLoginThen {
                                 try {
-                                    navController.navigate(Screen.QuickCreateProject.route)
+                                    navController.navigate(Screen.DirectCreateProject.route)
                                 } catch (e: Exception) {
                                     Log.e("HomeScreen", "导航错误: ${e.message}", e)
                                     toastManager.showToast(

@@ -1,7 +1,9 @@
 package com.muc.fluocolorquant.domain.calibration
 
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
+import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.FittingFunction
+import com.muc.fluocolorquant.domain.detection.AnalysisFeaturePolicy
 
 /**
  * 自动推荐曲线时采用的用户级策略。
@@ -10,10 +12,10 @@ import com.muc.fluocolorquant.data.enums.FittingFunction
  * 先通过这些条件。本枚举只决定已经可执行的候选之间如何排序。
  */
 enum class CalibrationStrategy {
-    /** R² 优先；R²近似相等时选择更简单的模型，并使用反算误差继续裁决。 */
+    /** 留一验证优先；仅供需要预测稳健性优先于训练集拟合度的高级场景。 */
     ROBUST,
 
-    /** 严格选择 R² 最大的可执行候选，不启用简单模型保护。 */
+    /** 严格按 R² 降序排列可执行候选；R²完全相同时才使用稳定性指标裁决。 */
     R_SQUARED_FIRST,
 
     /** 在质量可接受的候选中优先线性，其次4PL，最后5PL。 */
@@ -52,7 +54,9 @@ enum class CalibrationApplicationDecision {
  */
 data class CalibrationPolicy(
     val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
-    val strategy: CalibrationStrategy = CalibrationStrategy.ROBUST,
+    // V3 恢复现场科研标定最直观的默认语义：先完成数学安全门控，再按 R² 降序推荐。
+    // 留一、端点和反算指标仍会计算并可用于高级验证，但不再在普通模式中覆盖 R² 排名。
+    val strategy: CalibrationStrategy = CalibrationStrategy.R_SQUARED_FIRST,
     val allowedFunctions: Set<FittingFunction> = DEFAULT_FUNCTIONS,
     val rSquaredSimplicityTolerance: Double = 0.002,
     /** 低于该值的候选即使标准点反算通过，也只能作为低质量候选供用户复核。 */
@@ -83,7 +87,9 @@ data class CalibrationPolicy(
     }
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION: Int = 2
+        // V4 将荧光默认候选从三项原生强度扩展为“原生强度 + RGB/灰度/Lab”，
+        // 使已安装用户保存过的旧默认策略也能迁移到当前生产能力。
+        const val CURRENT_SCHEMA_VERSION: Int = 4
 
         val DEFAULT_FUNCTIONS: Set<FittingFunction> = linkedSetOf(
             FittingFunction.LINEAR,
@@ -112,11 +118,11 @@ data class CalibrationPolicy(
             AnalysisPrimaryFeature.CIE_B_STAR
         )
 
-        val DEFAULT_FLUORESCENCE_FEATURES: Set<AnalysisPrimaryFeature> = linkedSetOf(
-            AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
-            AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY,
-            AnalysisPrimaryFeature.FLUORESCENCE_SNR
-        )
+        // 默认策略直接读取生产特征契约，禁止设置页/拟合策略再次维护一份只有三项的旧清单。
+        // 返回副本，避免任何调用方通过可变 Set 污染全局默认候选顺序。
+        val DEFAULT_FLUORESCENCE_FEATURES: Set<AnalysisPrimaryFeature> =
+            AnalysisFeaturePolicy.recommendedFeatures(DetectionModality.FLUORESCENCE)
+                .toCollection(linkedSetOf())
 
         val DEFAULT_WEIGHTING_CODES: Set<Int> = linkedSetOf(0, 1, 2, 3)
 
@@ -125,7 +131,7 @@ data class CalibrationPolicy(
 }
 
 /** 新拟合必须写入资源和运行快照的标定引擎版本。 */
-const val CALIBRATION_ENGINE_VERSION: String = "ArrayCalibration-v1"
+const val CALIBRATION_ENGINE_VERSION: String = "ArrayCalibration-v2"
 
 /**
  * 根据拟合时冻结的策略裁决候选是否能够应用。

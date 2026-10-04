@@ -42,11 +42,17 @@ import com.muc.fluocolorquant.domain.detection.photometry.RgbPhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.SitePhotometryQc
 import com.muc.fluocolorquant.domain.detection.quantification.EndpointQuantificationReason
 import com.muc.fluocolorquant.domain.detection.quantification.ENDPOINT_QUANTIFIER_VERSION
+import com.muc.fluocolorquant.domain.detection.quantification.DeepLearningOutputMode
+import com.muc.fluocolorquant.domain.detection.quantification.DeepLearningOutputTransform
 import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningBatchResult
 import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningFailureReason
 import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningPrediction
+import com.muc.fluocolorquant.domain.detection.quantification.GridDeepLearningSiteFailure
+import com.muc.fluocolorquant.domain.detection.quantification.GRID_DEEP_LEARNING_QUANTIFIER_VERSION
 import com.muc.fluocolorquant.domain.detection.quantification.PreparedEndpointQuantificationResult
 import com.muc.fluocolorquant.domain.detection.quantification.PreparedStandardCurveQuantifier
+import com.muc.fluocolorquant.domain.detection.quantification.QuantificationState
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryStatus
 import com.muc.fluocolorquant.domain.detection.quantification.ReliableRangeStatus
 import com.muc.fluocolorquant.domain.detection.quantification.StandardCurveQuantifier
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
@@ -329,6 +335,133 @@ class GridDetectionCoordinatorTest {
     }
 
     @Test
+    fun `独立质控校正后逐孔状态与批次计数从冻结结果重新汇总`() {
+        val base = validSnapshot()
+        val baseAnalyte = base.analytes.single()
+        val calibratedModel = baseAnalyte.analysisModel.model.copy(
+            // 模型范围代表真实标准点覆盖，模板配置继续代表项目声明的 0～100 量程。
+            reliableRangeMin = 20.0,
+            reliableRangeMax = 80.0
+        )
+        val analyteSnapshot = baseAnalyte.copy(
+            analysisModel = baseAnalyte.analysisModel.copy(model = calibratedModel)
+        )
+        val sampleConcentrations = listOf(120.0, 140.0, 160.0, 180.0, 200.0, 220.0)
+        val assignments = sampleConcentrations.indices.map { index ->
+            TemplateSiteAssignment(
+                id = "sample-$index",
+                templateId = base.template.id,
+                rowIndex = index / 4,
+                columnIndex = index % 4,
+                analyteId = analyteSnapshot.analyte.id,
+                roleType = TemplateSiteRole.SAMPLE.code,
+                enabled = true
+            )
+        } + listOf(
+            TemplateSiteAssignment(
+                id = "negative-control",
+                templateId = base.template.id,
+                rowIndex = 1,
+                columnIndex = 2,
+                analyteId = analyteSnapshot.analyte.id,
+                roleType = TemplateSiteRole.NEGATIVE_CONTROL.code,
+                standardConcentration = 20.0,
+                enabled = true
+            ),
+            TemplateSiteAssignment(
+                id = "positive-control",
+                templateId = base.template.id,
+                rowIndex = 1,
+                columnIndex = 3,
+                analyteId = analyteSnapshot.analyte.id,
+                roleType = TemplateSiteRole.POSITIVE_CONTROL.code,
+                standardConcentration = 80.0,
+                enabled = true
+            )
+        )
+        val snapshot = base.copy(
+            carrierProfile = base.carrierProfile.copy(rows = 2, columns = 4),
+            analytes = listOf(analyteSnapshot),
+            siteAssignments = assignments
+        )
+        val measurements = (sampleConcentrations + listOf(40.0, 160.0)).mapIndexed {
+                index,
+                concentration ->
+            val isControl = index >= sampleConcentrations.size
+            measurement(index, concentration).copy(
+                concentrationValue = concentration,
+                concentrationUnit = "ng/mL",
+                reliableRangeStatus = if (isControl) {
+                    ReliableRangeStatus.WITHIN_RANGE.name
+                } else {
+                    ReliableRangeStatus.ABOVE_RANGE.name
+                },
+                quantificationState = if (isControl) {
+                    QuantificationState.QUANTIFIED.name
+                } else {
+                    QuantificationState.ESTIMATED.name
+                },
+                concentrationLowerBound = concentration,
+                concentrationUpperBound = concentration,
+                quantificationQcJson = "{}"
+            )
+        }
+        val beforeReview = GridDetectionCoordinator.QuantificationBatch(
+            measurements = measurements,
+            modelExecutable = true,
+            quantifiedCount = 2,
+            estimatedCount = 6,
+            boundOnlyCount = 0,
+            unavailableCount = 0,
+            outOfRangeCount = 0,
+            extrapolatedCount = 6,
+            siteSignalOnlyCount = 0,
+            total = measurements.size
+        )
+        val coordinator = coordinator()
+
+        val reviewed = with(coordinator) {
+            beforeReview.withDynamicRangeReview(snapshot, analyteSnapshot)
+        }
+
+        assertEquals(RangeRecoveryStatus.CORRECTION_APPLIED, reviewed.rangeRecovery?.status)
+        assertEquals(2, reviewed.quantifiedCount)
+        assertEquals(5, reviewed.estimatedCount)
+        assertEquals(1, reviewed.boundOnlyCount)
+        assertEquals(0, reviewed.unavailableCount)
+        assertEquals(1, reviewed.outOfRangeCount)
+        assertEquals(5, reviewed.extrapolatedCount)
+        assertEquals(8, reviewed.total)
+
+        val correctedWithin = reviewed.measurements.first { it.siteIndex == 0 }
+        assertEquals(60.0, requireNotNull(correctedWithin.concentrationValue), 1e-9)
+        // 原结果属于估计，质控校正不能因为数值回到标定区间就把证据等级升级为精确定量。
+        assertEquals(QuantificationState.ESTIMATED.name, correctedWithin.quantificationState)
+        assertEquals(ReliableRangeStatus.WITHIN_RANGE.name, correctedWithin.reliableRangeStatus)
+
+        val correctedOutside = reviewed.measurements.first { it.siteIndex == 5 }
+        assertNull(correctedOutside.concentrationValue)
+        assertEquals(100.0, requireNotNull(correctedOutside.concentrationLowerBound), 1e-9)
+        assertNull(correctedOutside.concentrationUpperBound)
+        assertEquals(QuantificationState.BOUND_ONLY.name, correctedOutside.quantificationState)
+        assertEquals(ReliableRangeStatus.ABOVE_PROJECT_RANGE.name, correctedOutside.reliableRangeStatus)
+        assertEquals("LOWER_BOUND", correctedOutside.censoringDirection)
+        val siteRecovery = JsonParser.parseString(correctedOutside.quantificationQcJson)
+            .asJsonObject["rangeRecovery"].asJsonObject
+        assertEquals(220.0, siteRecovery["originalConcentration"].asDouble, 1e-9)
+        assertEquals("BOUND_ONLY", siteRecovery["correctedQuantificationState"].asString)
+
+        val modelUsage = coordinator.modelUsageEntry(
+            analyteSnapshot = analyteSnapshot,
+            compatibility = ModelCompatibilityResult.Compatible,
+            batch = reviewed
+        )
+        assertEquals(1, modelUsage["outOfRangeCount"])
+        assertEquals(5, modelUsage["estimatedCount"])
+        assertEquals(1, modelUsage["boundOnlyCount"])
+    }
+
+    @Test
     fun `模型级准备失败才将整个分析物标为仅信号`() {
         val snapshot = validSnapshot()
         val analyteSnapshot = snapshot.analytes.single().copy(
@@ -491,15 +624,84 @@ class GridDetectionCoordinatorTest {
         assertTrue(batch.modelExecutable)
         assertEquals(1, batch.quantifiedCount)
         assertEquals(1, batch.outOfRangeCount)
-        assertEquals(42.0, requireNotNull(batch.measurements[0].concentrationValue), 1e-6)
-        assertEquals("ng/mL", batch.measurements[0].concentrationUnit)
-        assertEquals("WITHIN_RANGE", batch.measurements[0].reliableRangeStatus)
-        assertNull(batch.measurements[1].concentrationValue)
-        assertEquals("ABOVE_RANGE", batch.measurements[1].reliableRangeStatus)
+        val quantified = batch.measurements[0]
+        assertEquals(42.0, requireNotNull(quantified.concentrationValue), 1e-6)
+        assertEquals("ng/mL", quantified.concentrationUnit)
+        assertEquals("WITHIN_RANGE", quantified.reliableRangeStatus)
+        assertEquals("QUANTIFIED", quantified.quantificationState)
+        assertEquals(42.0, quantified.concentrationLowerBound ?: Double.NaN, 0.0)
+        assertEquals(42.0, quantified.concentrationUpperBound ?: Double.NaN, 0.0)
+        assertEquals("NONE", quantified.censoringDirection)
+        assertEquals(GRID_DEEP_LEARNING_QUANTIFIER_VERSION, quantified.quantificationVersion)
+
+        val aboveRange = batch.measurements[1]
+        assertNull(aboveRange.concentrationValue)
+        assertEquals("ABOVE_RANGE", aboveRange.reliableRangeStatus)
+        assertEquals("BOUND_ONLY", aboveRange.quantificationState)
+        assertEquals(
+            analyte.analysisModel.model.reliableRangeMax,
+            aboveRange.concentrationLowerBound ?: Double.NaN,
+            0.0
+        )
+        assertNull(aboveRange.concentrationUpperBound)
+        assertEquals("LOWER_BOUND", aboveRange.censoringDirection)
+        assertEquals(GRID_DEEP_LEARNING_QUANTIFIER_VERSION, aboveRange.quantificationVersion)
+        assertEquals(
+            "BOUND_ONLY",
+            JsonParser.parseString(aboveRange.quantificationQcJson).asJsonObject["status"].asString
+        )
     }
 
     @Test
-    fun `深度学习任一模型级失败或输出不完整都会撤销整批浓度`() {
+    fun `百分比模型只在零到一百声明域内换算浓度`() {
+        val transform = DeepLearningOutputTransform(
+            mode = DeepLearningOutputMode.PERCENT_OF_RELIABLE_MAX,
+            scale = 1.0,
+            offset = 0.0
+        )
+
+        // 2.5% 应映射到完整可靠区间的 2.5% 位置；模型百分比不是 ng/mL 本身。
+        assertEquals(
+            12.5,
+            requireNotNull(
+                transform.toConcentrationOrNull(
+                    rawOutput = 2.5,
+                    reliableMinimum = 10.0,
+                    reliableMaximum = 110.0
+                )
+            ),
+            1e-9
+        )
+        assertEquals(
+            110.0,
+            requireNotNull(
+                transform.toConcentrationOrNull(
+                    rawOutput = 100.0 + 1e-5,
+                    reliableMinimum = 10.0,
+                    reliableMaximum = 110.0
+                )
+            ),
+            1e-9
+        )
+        // 明显越界表示模型离开声明域。禁止 clamp 到端点，也不能据此伪造 >110 ng/mL。
+        assertNull(
+            transform.toConcentrationOrNull(
+                rawOutput = -0.01,
+                reliableMinimum = 10.0,
+                reliableMaximum = 110.0
+            )
+        )
+        assertNull(
+            transform.toConcentrationOrNull(
+                rawOutput = 100.01,
+                reliableMinimum = 10.0,
+                reliableMaximum = 110.0
+            )
+        )
+    }
+
+    @Test
+    fun `深度学习批次级失败或输出不完整仍会撤销整批浓度`() {
         val coordinator = coordinator()
         val analyte = deepLearningAnalyteSnapshot()
         val measurements = listOf(
@@ -534,8 +736,118 @@ class GridDetectionCoordinatorTest {
         listOf(failed, incomplete).forEach { batch ->
             assertFalse(batch.modelExecutable)
             assertEquals(0, batch.quantifiedCount)
-            assertTrue(batch.measurements.all { it.concentrationValue == null })
+            assertTrue(batch.measurements.all { measurement ->
+                measurement.concentrationValue == null &&
+                    measurement.quantificationState == "UNAVAILABLE" &&
+                    measurement.concentrationLowerBound == null &&
+                    measurement.concentrationUpperBound == null &&
+                    measurement.censoringDirection == null
+            })
         }
+    }
+
+    @Test
+    fun `深度学习单孔输出离域时保留其他孔浓度并冻结原始输出`() {
+        val coordinator = coordinator()
+        val analyte = deepLearningAnalyteSnapshot()
+        val measurements = listOf(
+            measurement(siteIndex = 0, primaryFeatureValue = 10.0).copy(analyteId = "cea"),
+            measurement(siteIndex = 1, primaryFeatureValue = 20.0).copy(analyteId = "cea")
+        )
+        val modelSnapshot = "{\"model\":\"shared\"}"
+
+        val batch = coordinator.applyDeepLearningBatchResult(
+            measurements = measurements,
+            analyteSnapshot = analyte,
+            compatibility = ModelCompatibilityResult.Compatible,
+            execution = GridDeepLearningBatchResult.Success(
+                predictions = mapOf(
+                    0 to GridDeepLearningPrediction(
+                        siteIndex = 0,
+                        concentration = 42.0,
+                        rangeStatus = ReliableRangeStatus.WITHIN_RANGE,
+                        modelSnapshotJson = modelSnapshot
+                    )
+                ),
+                siteFailures = mapOf(
+                    1 to GridDeepLearningSiteFailure(
+                        siteIndex = 1,
+                        reason = GridDeepLearningFailureReason.OUTPUT_OUT_OF_DECLARED_RANGE,
+                        rawModelOutput = 127.5,
+                        transformedModelOutput = 127.5,
+                        declaredOutputMin = 0.0,
+                        declaredOutputMax = 100.0,
+                        modelSnapshotJson = modelSnapshot
+                    )
+                )
+            )
+        )
+
+        assertTrue(batch.modelExecutable)
+        assertFalse(batch.isSignalOnlyResult)
+        assertEquals(1, batch.quantifiedCount)
+        assertEquals(1, batch.unavailableCount)
+        assertEquals(1, batch.siteSignalOnlyCount)
+        assertEquals(42.0, requireNotNull(batch.measurements[0].concentrationValue), 0.0)
+        val unavailable = batch.measurements[1]
+        assertNull(unavailable.concentrationValue)
+        assertEquals(QuantificationState.UNAVAILABLE.name, unavailable.quantificationState)
+        assertEquals(GRID_DEEP_LEARNING_QUANTIFIER_VERSION, unavailable.quantificationVersion)
+        assertEquals(modelSnapshot, unavailable.modelSnapshotJson)
+        val qc = JsonParser.parseString(unavailable.quantificationQcJson).asJsonObject
+        assertEquals("SITE", qc["scope"].asString)
+        assertEquals(
+            GridDeepLearningFailureReason.OUTPUT_OUT_OF_DECLARED_RANGE.name,
+            qc["reason"].asString
+        )
+        assertEquals(127.5, qc["rawModelOutput"].asDouble, 0.0)
+        assertEquals(0.0, qc["declaredOutputMin"].asDouble, 0.0)
+        assertEquals(100.0, qc["declaredOutputMax"].asDouble, 0.0)
+
+        val usage = coordinator.modelUsageEntry(
+            analyteSnapshot = analyte,
+            compatibility = ModelCompatibilityResult.Compatible,
+            batch = batch
+        )
+        assertEquals(1, usage["outOfDeclaredDomainCount"])
+        assertEquals(listOf(1), usage["outOfDeclaredDomainSiteIndices"])
+        assertEquals(
+            listOf(GridDeepLearningFailureReason.OUTPUT_OUT_OF_DECLARED_RANGE.name),
+            usage["reasons"]
+        )
+    }
+
+    @Test
+    fun `深度学习全部孔输出离域时结果仍标记为仅信号`() {
+        val coordinator = coordinator()
+        val analyte = deepLearningAnalyteSnapshot()
+        val measurement = measurement(siteIndex = 0, primaryFeatureValue = 10.0)
+            .copy(analyteId = "cea")
+        val failure = GridDeepLearningSiteFailure(
+            siteIndex = 0,
+            reason = GridDeepLearningFailureReason.OUTPUT_OUT_OF_DECLARED_RANGE,
+            rawModelOutput = -3.0,
+            transformedModelOutput = -3.0,
+            declaredOutputMin = 0.0,
+            declaredOutputMax = 100.0,
+            modelSnapshotJson = "{\"model\":\"shared\"}"
+        )
+
+        val batch = coordinator.applyDeepLearningBatchResult(
+            measurements = listOf(measurement),
+            analyteSnapshot = analyte,
+            compatibility = ModelCompatibilityResult.Compatible,
+            execution = GridDeepLearningBatchResult.Success(
+                predictions = emptyMap(),
+                siteFailures = mapOf(0 to failure)
+            )
+        )
+
+        assertTrue(batch.modelExecutable)
+        assertTrue(batch.isSignalOnlyResult)
+        assertEquals("signal_only", batch.execution)
+        assertEquals(0, batch.quantifiedCount)
+        assertEquals(1, batch.unavailableCount)
     }
 
     @Test
@@ -664,19 +976,20 @@ class GridDetectionCoordinatorTest {
             analytes = listOf(first, second),
             siteAssignments = listOf(
                 standardAssignment(base.template.id, "cea-10", 0, 0, "cea", 10.0),
-                standardAssignment(base.template.id, "cea-110", 0, 1, "cea", 110.0),
+                standardAssignment(base.template.id, "cea-90", 0, 1, "cea", 90.0),
                 sampleAssignment(base.template.id, "cea-sample", 0, 2, "cea"),
                 standardAssignment(base.template.id, "afp-1", 1, 0, "afp", 1.0),
-                standardAssignment(base.template.id, "afp-11", 1, 1, "afp", 11.0),
+                standardAssignment(base.template.id, "afp-9", 1, 1, "afp", 9.0),
                 sampleAssignment(base.template.id, "afp-sample", 1, 2, "afp")
             )
         )
-        // CEA 的 10/110 标准对应信号 10/110，样本信号 60；AFP 的 1/11 标准对应
-        // 信号 20/120，样本信号 70。两条曲线共享算法，但单位与可靠范围必须完全独立。
+        // CEA 的 10/90 标准对应信号 10/90，样本信号 60；AFP 的 1/9 标准对应
+        // 信号 20/100，样本信号 70。标准浓度必须位于各自项目硬量程内，两条曲线
+        // 共享算法，但单位与标定范围仍必须完全独立。
         val quant = quantResult(
             rows = 2,
             columns = 3,
-            signals = listOf(10.0, 110.0, 60.0, 20.0, 120.0, 70.0)
+            signals = listOf(10.0, 90.0, 60.0, 20.0, 100.0, 70.0)
         )
         val coordinator = coordinator()
 
@@ -709,11 +1022,11 @@ class GridDetectionCoordinatorTest {
         assertEquals(0.0, requireNotNull(cea.templateConfig.reliableRangeMin), 0.0)
         assertEquals(100.0, requireNotNull(cea.templateConfig.reliableRangeMax), 0.0)
         assertEquals(10.0, cea.analysisModel.model.reliableRangeMin, 0.0)
-        assertEquals(110.0, cea.analysisModel.model.reliableRangeMax, 0.0)
+        assertEquals(90.0, cea.analysisModel.model.reliableRangeMax, 0.0)
         assertEquals(0.0, requireNotNull(afp.templateConfig.reliableRangeMin), 0.0)
         assertEquals(10.0, requireNotNull(afp.templateConfig.reliableRangeMax), 0.0)
         assertEquals(1.0, afp.analysisModel.model.reliableRangeMin, 0.0)
-        assertEquals(11.0, afp.analysisModel.model.reliableRangeMax, 0.0)
+        assertEquals(9.0, afp.analysisModel.model.reliableRangeMax, 0.0)
 
         val ceaBatch = coordinator.applyQuantification(
             measurements = listOf(measurement(2, 60.0).copy(analyteId = "cea")),

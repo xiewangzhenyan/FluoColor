@@ -76,6 +76,12 @@ class ArrayCalibrationEngine @Inject constructor() {
                 if (!pointsSatisfyFunctionDomain(function, points)) {
                     return@flatMap emptyList()
                 }
+                // 标准点本身合法并不代表函数能覆盖项目量程。例如标准点全部大于0时
+                // 对数拟合可以成功，但用户确认的项目下限若为0，log(0)仍然无定义。
+                // 这类候选必须在推荐阶段淘汰，不能等检测运行时才整批退回仅信号。
+                if (!requestedRangeSatisfiesStaticFunctionDomain(function, draft, points)) {
+                    return@flatMap emptyList()
+                }
                 // 统一入口确保现场标定与标准曲线库对同一组函数采用同一候选生成规则。
                 val fittingResults = FittingEngine.fitRequestedCalibrationFunctions(
                     dataPoints = points,
@@ -97,7 +103,10 @@ class ArrayCalibrationEngine @Inject constructor() {
                             policy = draft.policy
                         )
                     }
-                    .filter(::candidateIsMonotonicOverCalibrationRange)
+                    .filter { candidate -> candidateIsExecutableOverProjectRange(candidate, draft) }
+                    // 通用有界反算为专家函数补齐真实标准浓度复算指标；反算失败只隐藏
+                    // 对应高级指标，不会伪造数值，也不会覆盖前面的数学单调性安全门控。
+                    .map { candidate -> candidate.withUnifiedBackCalculation(policy = draft.policy) }
                     .filter { candidate ->
                         candidateSatisfiesCensoredStandards(candidate, censoredPoints)
                     }
@@ -135,18 +144,26 @@ class ArrayCalibrationEngine @Inject constructor() {
             }
         }
 
+        val rankedFunctionResults = CalibrationRecommendationEngine.rankFunctionResults(
+            results = functionResults,
+            policy = draft.policy
+        )
         val recommended = CalibrationRecommendationEngine.recommend(
-            candidates = functionResults.mapNotNull(CalibrationFunctionResult::candidate),
+            candidates = rankedFunctionResults.mapNotNull(CalibrationFunctionResult::candidate),
             policy = draft.policy
         )
         return CalibrationResultSet(
             analyteId = draft.analyteId,
             inputFingerprint = draft.inputFingerprint,
             policySnapshot = draft.policy,
-            functionResults = functionResults,
+            // 领域层冻结统一排名，Compose、导出和历史详情都消费相同顺序，避免页面各自
+            // 临时排序后出现“推荐 1”和系统实际应用候选不一致。
+            functionResults = rankedFunctionResults,
             recommendedCandidateId = recommended?.id,
             processorVersion = draft.processorVersion,
-            engineVersion = draft.policy.engineVersion
+            engineVersion = draft.policy.engineVersion,
+            projectRangeMin = draft.projectRangeMin,
+            projectRangeMax = draft.projectRangeMax
         )
     }
 
@@ -272,10 +289,15 @@ class ArrayCalibrationEngine @Inject constructor() {
                 val refitted = refittedByWeighting[weightingCode] ?: return@weightingLoop
                 val heldOut = points.filter { (concentration, _) -> concentration == heldLevel }
                 val errors = heldOut.mapNotNull { (concentration, signal) ->
+                    val fullMinimum = points.minOf(Pair<Double, Double>::first)
+                    val fullMaximum = points.maxOf(Pair<Double, Double>::first)
+                    val searchRange = inverseValidationRange(function, fullMinimum, fullMaximum)
                     FittingEngine.invertCalibrationSignal(
                         function = function,
                         params = refitted.params,
-                        signal = signal
+                        signal = signal,
+                        concentrationMinimum = searchRange.first,
+                        concentrationMaximum = searchRange.second
                     )?.let { estimated ->
                         abs(estimated - concentration) / concentration * 100.0
                     }?.takeIf(Double::isFinite)
@@ -730,6 +752,12 @@ class ArrayCalibrationEngine @Inject constructor() {
         if (featurePoints.all { points -> !pointsSatisfyFunctionDomain(function, points) }) {
             return setOf(CalibrationFailureReason.INVALID_FUNCTION_DOMAIN)
         }
+        if (featurePoints.all { points ->
+                !requestedRangeSatisfiesStaticFunctionDomain(function, draft, points)
+            }
+        ) {
+            return setOf(CalibrationFailureReason.INVALID_FUNCTION_DOMAIN)
+        }
         if (functionRequiresMonotonicResponse(function) && featurePoints.all { points ->
                 !levelMeansAreMonotonic(points)
             }
@@ -756,6 +784,27 @@ class ArrayCalibrationEngine @Inject constructor() {
         else -> true
     }
 
+    /**
+     * 校验无需拟合参数即可判断的项目量程定义域。
+     *
+     * 对数和当前幂函数拟合器都以 `ln(x)` 变换浓度，因此即使标准点从正数开始，也不能
+     * 生成覆盖项目零浓度端点的候选。其他函数的参数相关定义域由拟合后的连续采样继续校验。
+     */
+    private fun requestedRangeSatisfiesStaticFunctionDomain(
+        function: FittingFunction,
+        draft: CalibrationDraft,
+        points: List<Pair<Double, Double>>
+    ): Boolean {
+        val calibrationMinimum = points.minOfOrNull(Pair<Double, Double>::first) ?: return false
+        val projectMinimum = draft.projectRangeMin ?: calibrationMinimum
+        if (!projectMinimum.isFinite() || projectMinimum < 0.0) return false
+        return when (function) {
+            FittingFunction.LOG,
+            FittingFunction.POWER -> projectMinimum > 0.0
+            else -> true
+        }
+    }
+
     /** 标准浓度水平的均值趋势只用于解释失败，不代替最终曲线的严格数学验证。 */
     private fun levelMeansAreMonotonic(points: List<Pair<Double, Double>>): Boolean {
         val means = points.groupBy(Pair<Double, Double>::first)
@@ -770,14 +819,27 @@ class ArrayCalibrationEngine @Inject constructor() {
     }
 
     /**
-     * 专家函数必须在实际标定浓度闭区间保持单调，才能进入可应用候选。
+     * 所有函数必须在项目浓度闭区间有定义且保持单调，才能进入可应用候选。
      * 最终运行仍会由 StandardCurveQuantifier 使用解析导数再次严格验证；这里的采样检查
      * 用于提前给UI结构化反馈，避免用户选中后才在结果阶段整体退回仅信号。
      */
-    private fun candidateIsMonotonicOverCalibrationRange(candidate: CalibrationCandidate): Boolean {
-        val minimum = candidate.standardPoints.minOfOrNull(Pair<Double, Double>::first) ?: return false
-        val maximum = candidate.standardPoints.maxOfOrNull(Pair<Double, Double>::first) ?: return false
+    private fun candidateIsExecutableOverProjectRange(
+        candidate: CalibrationCandidate,
+        draft: CalibrationDraft
+    ): Boolean {
+        val calibrationMinimum = candidate.standardPoints
+            .minOfOrNull(Pair<Double, Double>::first) ?: return false
+        val calibrationMaximum = candidate.standardPoints
+            .maxOfOrNull(Pair<Double, Double>::first) ?: return false
+        if ((draft.projectRangeMin == null) != (draft.projectRangeMax == null)) return false
+        val minimum = draft.projectRangeMin ?: calibrationMinimum
+        val maximum = draft.projectRangeMax ?: calibrationMaximum
         if (!minimum.isFinite() || !maximum.isFinite() || maximum <= minimum) return false
+        if (
+            minimum < 0.0 ||
+            calibrationMinimum < minimum ||
+            calibrationMaximum > maximum
+        ) return false
         val values = buildList(CANDIDATE_MONOTONIC_SAMPLE_COUNT) {
             repeat(CANDIDATE_MONOTONIC_SAMPLE_COUNT) { index ->
                 val ratio = index.toDouble() / (CANDIDATE_MONOTONIC_SAMPLE_COUNT - 1)
@@ -793,6 +855,86 @@ class ArrayCalibrationEngine @Inject constructor() {
         val differences = values.zipWithNext { first, second -> second - first }
         return differences.all { it >= -tolerance } && differences.any { it > tolerance } ||
             differences.all { it <= tolerance } && differences.any { it < -tolerance }
+    }
+
+    /**
+     * 为全部单调专家函数计算统一的标准浓度复算指标。
+     *
+     * 标准点端部允许在标定域外留出 25% 搜索余量，用于测量噪声造成的小幅端点偏差；
+     * 该余量只服务验证指标，不会进入最终可靠范围或未知样品定量。
+     */
+    private fun CalibrationCandidate.withUnifiedBackCalculation(
+        policy: CalibrationPolicy
+    ): CalibrationCandidate {
+        val positivePoints = standardPoints.filter { (concentration, _) -> concentration > 0.0 }
+        if (positivePoints.isEmpty()) return this
+        val minimum = standardPoints.minOf(Pair<Double, Double>::first)
+        val maximum = standardPoints.maxOf(Pair<Double, Double>::first)
+        val searchRange = inverseValidationRange(function, minimum, maximum)
+        val errors = positivePoints.mapNotNull { (concentration, signal) ->
+            FittingEngine.invertCalibrationSignal(
+                function = function,
+                params = parameters,
+                signal = signal,
+                concentrationMinimum = searchRange.first,
+                concentrationMaximum = searchRange.second
+            )?.let { estimated ->
+                abs(estimated - concentration) / concentration * 100.0
+            }?.takeIf(Double::isFinite)
+        }
+        // 任一正浓度标准点无法反算时，指标集合不完整。保留底层拟合器已经提供的真实
+        // 指标；若底层也没有，就维持 null，让 UI 整体隐藏该高级指标。
+        if (errors.size != positivePoints.size) return this
+        val positiveLevels = positivePoints.map(Pair<Double, Double>::first).distinct().sorted()
+        val endpointLevels = setOf(positiveLevels.first(), positiveLevels.last())
+        val acceptedCount = positivePoints.indices.count { index ->
+            val concentration = positivePoints[index].first
+            val tolerance = if (concentration in endpointLevels) {
+                BACK_CALCULATION_ENDPOINT_TOLERANCE_PERCENT
+            } else {
+                BACK_CALCULATION_INTERNAL_TOLERANCE_PERCENT
+            }
+            errors[index] <= tolerance
+        }
+        val acceptedRatio = acceptedCount.toDouble() / positivePoints.size.toDouble()
+        val rmsePercent = sqrt(errors.sumOf { it.pow(2) } / errors.size.toDouble())
+        val hasNativeBackCalculationDecision = backCalculatedRmsePercent != null ||
+            acceptedStandardRatio != null
+        val acceptedByQuality = if (hasNativeBackCalculationDecision) {
+            // 线性、3PL、4PL、5PL 已由约束拟合器执行完整 ICH 风格端点和浓度水平
+            // 验收，通用反算只能补值，不能把原本未通过的两点曲线升级成稳定候选。
+            accepted
+        } else {
+            rSquared.isFinite() &&
+                rSquared >= policy.lowQualityRSquaredThreshold &&
+                acceptedRatio >= MINIMUM_BACK_CALCULATION_ACCEPTANCE_RATIO
+        }
+        return copy(
+            backCalculatedRmsePercent = backCalculatedRmsePercent ?: rmsePercent,
+            acceptedStandardRatio = acceptedStandardRatio ?: acceptedRatio,
+            accepted = acceptedByQuality,
+            status = if (acceptedByQuality) {
+                CalibrationCandidateStatus.AVAILABLE
+            } else {
+                CalibrationCandidateStatus.LOW_QUALITY
+            }
+        )
+    }
+
+    /** 为对数/幂函数保持严格正定义域，其余函数允许从零开始验证小幅端点外推。 */
+    private fun inverseValidationRange(
+        function: FittingFunction,
+        minimum: Double,
+        maximum: Double
+    ): Pair<Double, Double> {
+        val span = maximum - minimum
+        val lower = when (function) {
+            FittingFunction.LOG,
+            FittingFunction.POWER -> maxOf(minimum * 0.25, TRUSTED_CONCENTRATION_EPSILON)
+            else -> maxOf(0.0, minimum - span * BACK_CALCULATION_SEARCH_MARGIN_RATIO)
+        }
+        val upper = maximum + span * BACK_CALCULATION_SEARCH_MARGIN_RATIO
+        return lower to upper
     }
 
     private fun functionRequiresMonotonicResponse(function: FittingFunction): Boolean = when (function) {
@@ -867,6 +1009,10 @@ class ArrayCalibrationEngine @Inject constructor() {
         const val PARAMETER_MAD_SCALE: Double = 1.4826
         const val MINIMUM_RESIDUAL_SCALE_RATIO: Double = 1e-6
         const val TRUSTED_CONCENTRATION_EPSILON: Double = 1e-9
+        const val BACK_CALCULATION_SEARCH_MARGIN_RATIO: Double = 0.25
+        const val BACK_CALCULATION_ENDPOINT_TOLERANCE_PERCENT: Double = 25.0
+        const val BACK_CALCULATION_INTERNAL_TOLERANCE_PERCENT: Double = 20.0
+        const val MINIMUM_BACK_CALCULATION_ACCEPTANCE_RATIO: Double = 0.75
 
         val TRUSTED_RANGE_FUNCTIONS: Set<FittingFunction> = setOf(
             FittingFunction.LINEAR,
@@ -956,6 +1102,27 @@ object CalibrationRecommendationEngine {
     }
 
     /**
+     * 对结果页固定函数槽位排序：有候选的槽位严格服从同一推荐策略，不可用槽位保留
+     * 原请求顺序并统一置于末尾。失败项不能被删除，否则用户无法知道所选函数为何失败。
+     */
+    fun rankFunctionResults(
+        results: List<CalibrationFunctionResult>,
+        policy: CalibrationPolicy
+    ): List<CalibrationFunctionResult> {
+        val rankedCandidates = rank(
+            candidates = results.mapNotNull(CalibrationFunctionResult::candidate),
+            policy = policy
+        )
+        val rankById = rankedCandidates.mapIndexed { index, candidate ->
+            candidate.id to index
+        }.toMap()
+        return results.sortedWith(
+            compareBy<CalibrationFunctionResult> { it.candidate == null }
+                .thenBy { result -> result.candidate?.id?.let(rankById::get) ?: Int.MAX_VALUE }
+        )
+    }
+
+    /**
      * 通用排序入口。
      *
      * 调用方负责先完成数学安全过滤；本函数只执行用户可配置的推荐策略。返回列表首项为
@@ -973,39 +1140,44 @@ object CalibrationRecommendationEngine {
             candidates.filter { metricsOf(it).accepted }.ifEmpty { candidates }
         }
         val qualityComparator = candidateQualityComparator(metricsOf)
-        val recommended = when (policy.strategy) {
+        val rankedPool = when (policy.strategy) {
             CalibrationStrategy.R_SQUARED_FIRST -> pool.sortedWith(
+                // 用户要求候选与推荐均按 R² 从高到低。只有 R² 完全相同时，才用验收
+                // 状态和稳定性指标形成确定顺序；不能让次级指标把更低 R² 提到前面。
                 compareByDescending<T> { metricsOf(it).rSquared }
+                    .thenByDescending { metricsOf(it).accepted }
                     .then(qualityComparator)
-            ).first()
+            )
 
             CalibrationStrategy.SIMPLE_MODEL_FIRST -> pool.sortedWith(
                 compareBy<T> { modelComplexity(metricsOf(it).function) }
                     .then(qualityComparator)
-            ).first()
+            )
 
             CalibrationStrategy.ROBUST -> {
                 if (pool.any { metricsOf(it).crossValidation != null }) {
                     // V2 鲁棒推荐必须由真正的留一预测表现裁决。R²只保留为最后的同分项，
                     // 不再先用训练集 R² 容差把预测更稳定的简单模型排除出候选池。
-                    pool.sortedWith(qualityComparator).first()
+                    pool.sortedWith(qualityComparator)
                 } else {
                     // 旧资源、专家函数和不足以执行留一的稀疏数据没有 V2 指标，继续沿用
                     // 原有 R² 近似区间与简单模型保护，保证历史行为可解释且不突然漂移。
                     val bestRSquared = pool.maxOf { metricsOf(it).rSquared }
-                    pool.filter { candidate ->
+                    val preferred = pool.filter { candidate ->
                         bestRSquared - metricsOf(candidate).rSquared <=
                             policy.rSquaredSimplicityTolerance
                     }.sortedWith(
                         compareBy<T> { modelComplexity(metricsOf(it).function) }
                             .then(qualityComparator)
-                    ).first()
+                    )
+                    // 先展示进入 R² 近似窗口的稳健优选，再把窗口外候选按相同质量规则
+                    // 接到末尾，保证结果列表完整且首项与推荐结果严格一致。
+                    preferred + pool.filterNot(preferred::contains).sortedWith(qualityComparator)
                 }
             }
         }
-        return listOf(recommended) + candidates
-            .filterNot { it === recommended || it == recommended }
-            .sortedWith(qualityComparator)
+        // 非 R² 策略会先从 accepted 池产生推荐；低质量候选仍必须保留在末尾供专家查看。
+        return rankedPool + candidates.filterNot(rankedPool::contains).sortedWith(qualityComparator)
     }
 
     private fun <T> candidateQualityComparator(

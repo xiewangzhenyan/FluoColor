@@ -3,9 +3,11 @@ package com.muc.fluocolorquant.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.SiteShape
+import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
-import com.muc.fluocolorquant.data.repository.SettingsRepository
+import com.muc.fluocolorquant.data.repository.ProjectCreationPreferences
 import com.muc.fluocolorquant.domain.project.DirectCarrierPreset
 import com.muc.fluocolorquant.domain.project.DirectProjectAnalyteRequest
 import com.muc.fluocolorquant.domain.project.DirectProjectCreateRequest
@@ -22,6 +24,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -29,9 +33,12 @@ import javax.inject.Inject
 data class DirectProjectUiState(
     val analytes: List<Analyte> = emptyList(),
     val concentrationUnits: List<String> = emptyList(),
+    val defaultConcentrationUnit: String = DEFAULT_DIRECT_CONCENTRATION_UNIT,
     val form: DirectProjectFormState = DirectProjectFormState(),
     val isLoading: Boolean = true
 )
+
+private const val DEFAULT_DIRECT_CONCENTRATION_UNIT = "ng/mL"
 
 /** 导航和自定义 Toast 使用的一次性事件。 */
 sealed interface DirectProjectEvent {
@@ -54,7 +61,7 @@ sealed interface DirectProjectEvent {
 @HiltViewModel
 class DirectProjectViewModel @Inject constructor(
     private val analyteRepository: AnalyteRepository,
-    private val settingsRepository: SettingsRepository,
+    private val projectCreationPreferences: ProjectCreationPreferences,
     private val coordinator: DirectProjectCreationCoordinator
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DirectProjectUiState())
@@ -63,26 +70,50 @@ class DirectProjectViewModel @Inject constructor(
     private val _events = MutableSharedFlow<DirectProjectEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<DirectProjectEvent> = _events.asSharedFlow()
 
+    // DataStore 首次读取通常很快，但仍是异步过程。若用户在返回前已经操作表单，下面三个
+    // 标记可阻止迟到的默认值覆盖真实输入。
+    private var detectionModeEdited = false
+    private var customGridEdited = false
+    private var spectrumLightSourceEdited = false
+
     init {
-        observeAnalytes()
-        observeConcentrationUnits()
+        loadProjectCreationDefaults()
+        observeProjectCreationOptions()
     }
 
-    private fun observeAnalytes() {
+    /**
+     * 原子合并分析物、单位列表和默认单位，避免三个独立 Flow 的启动顺序让自动选择的
+     * 单一分析物短暂拿到列表首项，随后又因为该单位“仍合法”而永远错过用户默认单位。
+     */
+    private fun observeProjectCreationOptions() {
         viewModelScope.launch {
-            analyteRepository.getAllAnalytes().collect { analytes ->
+            combine(
+                analyteRepository.getAllAnalytes(),
+                projectCreationPreferences.concentrationUnitsFlow,
+                projectCreationPreferences.defaultConcentrationUnitFlow
+            ) { analytes, units, preferredUnit -> Triple(analytes, units, preferredUnit) }
+                .collect { (analytes, units, preferredUnit) ->
                 val sortedAnalytes = analytes.sortedBy(Analyte::name)
+                val sortedUnits = units
+                    .filter(String::isNotBlank)
+                    .sorted()
+                    .ifEmpty { DEFAULT_CONCENTRATION_UNITS }
+                val defaultUnit = preferredUnit.takeIf { it in sortedUnits }
+                    ?: sortedUnits.first()
                 _uiState.update { state ->
                     val validIds = sortedAnalytes.map(Analyte::id).toSet()
                     val retained = state.form.selectedAnalytes.filter {
                         it.analyteId in validIds
+                    }.map { selection ->
+                        selection.takeIf { it.concentrationUnit in sortedUnits }
+                            ?: selection.copy(concentrationUnit = defaultUnit)
                     }
                     // 只有数据库中恰好一个分析物时才自动选择，避免多分析物场景被静默缩成单选。
                     val nextSelections = if (retained.isEmpty() && sortedAnalytes.size == 1) {
                         listOf(
                             DirectAnalyteSelection(
                                 analyteId = sortedAnalytes.single().id,
-                                concentrationUnit = state.defaultConcentrationUnit()
+                                concentrationUnit = defaultUnit
                             )
                         )
                     } else {
@@ -90,6 +121,8 @@ class DirectProjectViewModel @Inject constructor(
                     }
                     state.copy(
                         analytes = sortedAnalytes,
+                        concentrationUnits = sortedUnits,
+                        defaultConcentrationUnit = defaultUnit,
                         form = state.form.copy(selectedAnalytes = nextSelections),
                         isLoading = false
                     )
@@ -98,46 +131,80 @@ class DirectProjectViewModel @Inject constructor(
         }
     }
 
-    private fun observeConcentrationUnits() {
+    /**
+     * 所有新建默认值只在页面首次初始化时读取一次。
+     *
+     * 持续收集设置 Flow 会在用户已经修改行列或光源后再次覆盖表单；使用 `first()` 明确
+     * 划分“设置预填”和“本项目输入”，项目创建后再由持久化快照承担历史边界。
+     */
+    private fun loadProjectCreationDefaults() {
         viewModelScope.launch {
-            settingsRepository.concentrationUnitsFlow.collect { units ->
-                val sortedUnits = units
-                    .filter(String::isNotBlank)
-                    .sorted()
-                    .ifEmpty { DEFAULT_CONCENTRATION_UNITS }
-                _uiState.update { state ->
-                    val defaultUnit = sortedUnits.first()
-                    state.copy(
-                        concentrationUnits = sortedUnits,
-                        form = state.form.copy(
-                            selectedAnalytes = state.form.selectedAnalytes.map { selection ->
-                                selection.takeIf {
-                                    it.concentrationUnit in sortedUnits
-                                } ?: selection.copy(concentrationUnit = defaultUnit)
-                            }
-                        )
+            val defaults = projectCreationPreferences.projectCreationDefaultsFlow.first()
+            val defaultMode = DetectionModality.fromCode(
+                defaults.detectionMode
+            ) ?: DetectionModality.FLUORESCENCE
+            _uiState.update { state ->
+                state.copy(
+                    form = state.form.copy(
+                        detectionModality = if (detectionModeEdited) {
+                            state.form.detectionModality
+                        } else {
+                            defaultMode
+                        },
+                        customRowsInput = if (customGridEdited) {
+                            state.form.customRowsInput
+                        } else {
+                            defaults.customGrid.rows.toString()
+                        },
+                        customColumnsInput = if (customGridEdited) {
+                            state.form.customColumnsInput
+                        } else {
+                            defaults.customGrid.columns.toString()
+                        },
+                        spectrumLightSource = if (spectrumLightSourceEdited) {
+                            state.form.spectrumLightSource
+                        } else {
+                            defaults.spectrumLightSource
+                        }
                     )
-                }
+                )
             }
         }
     }
 
     fun updateProjectName(value: String) = updateForm { copy(projectName = value) }
 
-    fun updateDetectionModality(value: DetectionModality) = updateForm {
-        copy(detectionModality = value)
+    fun updateDetectionModality(value: DetectionModality) {
+        detectionModeEdited = true
+        updateForm { copy(detectionModality = value) }
     }
 
     fun updateCarrierPreset(value: DirectCarrierPreset) = updateForm {
         copy(carrierPreset = value)
     }
 
-    fun updateCustomRows(value: String) = updateForm {
-        copy(customRowsInput = value.filter(Char::isDigit))
+    fun updateCustomRows(value: String) {
+        customGridEdited = true
+        updateForm { copy(customRowsInput = value.filter(Char::isDigit)) }
     }
 
-    fun updateCustomColumns(value: String) = updateForm {
-        copy(customColumnsInput = value.filter(Char::isDigit))
+    fun updateCustomColumns(value: String) {
+        customGridEdited = true
+        updateForm { copy(customColumnsInput = value.filter(Char::isDigit)) }
+    }
+
+    fun updateCustomSiteShape(value: SiteShape) = updateForm {
+        // POINT/CUSTOM 没有普通创建页可提供的稳定定位和分割协议，不能写入生产快照。
+        if (value == SiteShape.CIRCLE || value == SiteShape.SQUARE) {
+            copy(customSiteShape = value)
+        } else {
+            this
+        }
+    }
+
+    fun updateSpectrumLightSource(value: SpectrumLightSource) {
+        spectrumLightSourceEdited = true
+        updateForm { copy(spectrumLightSource = value) }
     }
 
     /**
@@ -246,6 +313,13 @@ class DirectProjectViewModel @Inject constructor(
                         carrierPreset = form.carrierPreset,
                         customRows = form.rows,
                         customColumns = form.columns,
+                        customSiteShape = form.customSiteShape
+                            .takeIf {
+                                form.carrierPreset == DirectCarrierPreset.MICROFLUIDIC_CUSTOM
+                            },
+                        spectrumLightSource = form.spectrumLightSource.takeIf {
+                            form.detectionModality == DetectionModality.SPECTRUM
+                        },
                         analytes = requestedAnalytes,
                         imageUri = form.imageUri.orEmpty(),
                         userId = userId
@@ -278,7 +352,9 @@ class DirectProjectViewModel @Inject constructor(
     }
 
     private fun DirectProjectUiState.defaultConcentrationUnit(): String =
-        concentrationUnits.firstOrNull() ?: DEFAULT_CONCENTRATION_UNITS.first()
+        defaultConcentrationUnit.takeIf { it in concentrationUnits }
+            ?: concentrationUnits.firstOrNull()
+            ?: DEFAULT_CONCENTRATION_UNITS.first()
 
     private companion object {
         val DEFAULT_CONCENTRATION_UNITS = listOf("ng/mL", "pg/mL", "μg/mL", "mg/mL")

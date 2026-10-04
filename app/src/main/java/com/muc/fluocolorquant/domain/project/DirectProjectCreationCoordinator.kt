@@ -10,6 +10,7 @@ import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.data.enums.ReadoutLayout
 import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.enums.SiteShape
+import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import com.muc.fluocolorquant.data.enums.TemplateLifecycleStatus
 import com.muc.fluocolorquant.data.model.AcquisitionProfile
 import com.muc.fluocolorquant.data.model.AnalysisModel
@@ -62,6 +63,8 @@ data class DirectProjectCreateRequest(
     val carrierPreset: DirectCarrierPreset,
     val customRows: Int? = null,
     val customColumns: Int? = null,
+    val customSiteShape: SiteShape? = null,
+    val spectrumLightSource: SpectrumLightSource? = null,
     val analytes: List<DirectProjectAnalyteRequest>,
     val imageUri: String,
     val userId: String
@@ -115,6 +118,11 @@ class DirectProjectCreationCoordinator @Inject constructor(
         }
 
         if (request.detectionModality == DetectionModality.SPECTRUM) {
+            // 光谱光源必须由新建表单明确确认；协调器不读取全局默认值，避免后台创建时
+            // 静默写入一个用户从未看见的采集条件。
+            if (request.spectrumLightSource == null) {
+                return DirectProjectCreationOutcome.InvalidRequest
+            }
             return createSpectrumProject(
                 request = request.copy(analytes = normalizedAnalytes),
                 normalizedName = normalizedName,
@@ -344,6 +352,8 @@ class DirectProjectCreationCoordinator @Inject constructor(
             imageUri = normalizedImageUri,
             rows = 1,
             columns = 1,
+            // 仅保存枚举稳定 name，显示名称由资源层本地化；该字段不参与任何光谱校正。
+            lightSource = requireNotNull(request.spectrumLightSource).name,
             spectrumColumnCount = channelCount,
             spectrumColumnMappingJson = encodeSpectrumColumnMapping(request.analytes),
             createTime = now,
@@ -423,12 +433,18 @@ class DirectProjectCreationCoordinator @Inject constructor(
                 val columns = request.customColumns
                     ?.takeIf(GridLayoutPolicy::isValidDimension)
                     ?: return null
+                val siteShape = request.customSiteShape
+                    ?.takeIf { it == SiteShape.CIRCLE || it == SiteShape.SQUARE }
+                    ?: return null
                 DirectGeometry(
                     displayName = "microfluidic-${rows}x$columns",
+                    // “自定义”描述的是行列规格，不表示定位协议未知。普通新建当前明确使用
+                    // PG-Grid，所以圆形位点也保持 MICROFLUIDIC_CHIP；若按 CIRCLE 改成
+                    // PLATE，会错误进入只接受固定 8×12 的 96 孔板定位链。
                     carrierType = CarrierType.MICROFLUIDIC_CHIP,
                     rows = rows,
                     columns = columns,
-                    siteShape = SiteShape.SQUARE,
+                    siteShape = siteShape,
                     polarity = GridTargetPolarity.DARK
                 )
             }

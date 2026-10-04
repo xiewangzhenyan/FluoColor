@@ -1,10 +1,15 @@
 package com.muc.fluocolorquant.domain.project
 
 import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.CarrierType
+import com.muc.fluocolorquant.data.enums.SiteShape
+import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.ProjectAnalyteJoin
 import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.domain.detection.GridCarrierRoute
+import com.muc.fluocolorquant.domain.detection.GridDetectionRouteResolver
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -35,6 +40,7 @@ class DirectProjectCreationCoordinatorTest {
         assertEquals(10, outcome.project.rows)
         assertEquals(10, outcome.project.columns)
         assertEquals("SIGNAL_ONLY", outcome.project.analysisMethod)
+        assertEquals(null, outcome.project.lightSource)
         assertEquals(listOf("cea", "afp"), snapshot.analytes.map { it.analyte.id })
         assertEquals(
             listOf("ng/mL", "pg/mL"),
@@ -105,6 +111,48 @@ class DirectProjectCreationCoordinatorTest {
     }
 
     @Test
+    fun `圆形自定义阵列冻结圆形掩膜但仍进入PGGrid路由`() = runTest {
+        val outcome = coordinator.create(
+            request(
+                carrierPreset = DirectCarrierPreset.MICROFLUIDIC_CUSTOM,
+                customRows = 6,
+                customColumns = 9,
+                customSiteShape = SiteShape.CIRCLE,
+                analytes = listOf(DirectProjectAnalyteRequest(cea, "ng/mL"))
+            )
+        ) as DirectProjectCreationOutcome.Created
+
+        val snapshot = TemplateProjectSnapshotCodec.decode(
+            requireNotNull(outcome.project.templateSnapshotJson)
+        )
+        assertEquals(6, snapshot.carrierProfile.rows)
+        assertEquals(9, snapshot.carrierProfile.columns)
+        assertEquals(SiteShape.CIRCLE.code, snapshot.carrierProfile.siteShape)
+        assertEquals(CarrierType.MICROFLUIDIC_CHIP.code, snapshot.carrierProfile.carrierType)
+        assertEquals(
+            GridCarrierRoute.MICROFLUIDIC_PG_GRID,
+            GridDetectionRouteResolver.resolve(
+                requireNotNull(CarrierType.fromCode(snapshot.carrierProfile.carrierType))
+            )
+        )
+    }
+
+    @Test
+    fun `自定义阵列拒绝没有采样契约的位点形状`() = runTest {
+        val outcome = coordinator.create(
+            request(
+                carrierPreset = DirectCarrierPreset.MICROFLUIDIC_CUSTOM,
+                customRows = 6,
+                customColumns = 9,
+                customSiteShape = SiteShape.POINT,
+                analytes = listOf(DirectProjectAnalyteRequest(cea, "ng/mL"))
+            )
+        )
+
+        assertTrue(outcome is DirectProjectCreationOutcome.InvalidRequest)
+    }
+
+    @Test
     fun `光谱项目同样保存全部分析物关联`() = runTest {
         val outcome = coordinator.create(
             request(
@@ -117,17 +165,39 @@ class DirectProjectCreationCoordinatorTest {
         ) as DirectProjectCreationOutcome.Created
 
         assertEquals(ProjectDetectionDestination.SPECTRUM_SINGLE, outcome.destination)
+        assertEquals(SpectrumLightSource.HALOGEN.name, outcome.project.lightSource)
         assertEquals(2, repository.savedJoins.size)
+    }
+
+    @Test
+    fun `光谱项目拒绝缺少人工确认的光源`() = runTest {
+        val outcome = coordinator.create(
+            request(
+                modality = DetectionModality.SPECTRUM,
+                spectrumLightSource = null,
+                analytes = listOf(DirectProjectAnalyteRequest(cea, "ng/mL"))
+            )
+        )
+
+        assertTrue(outcome is DirectProjectCreationOutcome.InvalidRequest)
     }
 
     private fun request(
         modality: DetectionModality = DetectionModality.FLUORESCENCE,
         carrierPreset: DirectCarrierPreset = DirectCarrierPreset.MICROFLUIDIC_10_X_10,
+        customRows: Int? = null,
+        customColumns: Int? = null,
+        customSiteShape: SiteShape? = null,
+        spectrumLightSource: SpectrumLightSource? = SpectrumLightSource.HALOGEN,
         analytes: List<DirectProjectAnalyteRequest>
     ) = DirectProjectCreateRequest(
         name = "多分析物项目",
         detectionModality = modality,
         carrierPreset = carrierPreset,
+        customRows = customRows,
+        customColumns = customColumns,
+        customSiteShape = customSiteShape,
+        spectrumLightSource = spectrumLightSource,
         analytes = analytes,
         imageUri = "content://chip/1",
         userId = "1"

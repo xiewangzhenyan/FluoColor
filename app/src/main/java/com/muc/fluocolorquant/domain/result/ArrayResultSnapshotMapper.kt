@@ -21,12 +21,17 @@ import com.muc.fluocolorquant.domain.detection.photometry.LabPhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.RgbPhotometry
 import com.muc.fluocolorquant.domain.detection.plate96.Plate96RunGeometryCodec
 import com.muc.fluocolorquant.domain.detection.plate96.toResultGrid
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryDirection
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryReason
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryStatus
+import com.muc.fluocolorquant.domain.detection.quantification.RANGE_RECOVERY_ALGORITHM_VERSION
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideCodec
 import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshotCodec
 import com.muc.fluocolorquant.domain.project.TemplateSiteKey
+import kotlin.math.abs
 
 /**
  * 将一次检测运行的冻结数据库证据映射为通用阵列结果。
@@ -129,7 +134,7 @@ object ArrayResultSnapshotMapper {
                     }
                 }
                 mappedMeasurements.getOrPut(measurement.siteIndex, ::mutableListOf) +=
-                    measurement.toResult(detail)
+                    measurement.toResult(detail = detail)
             }
 
         val sites = gridResult.sites.map { localizedSite ->
@@ -164,6 +169,9 @@ object ArrayResultSnapshotMapper {
             )
         }
 
+        val rangeRecoveryByAnalyte = parseRangeRecoveryByAnalyte(
+            source.run.concentrationModelUsed
+        )
         val snapshot = ArrayResultSnapshot(
             runId = source.run.runId,
             projectId = source.project.id,
@@ -183,7 +191,11 @@ object ArrayResultSnapshotMapper {
             columns = gridResult.columns,
             analytes = templateSnapshot.analytes
                 .sortedBy { it.templateConfig.displayOrder }
-                .map { analyteSnapshot -> analyteSnapshot.toResult() },
+                .map { analyteSnapshot ->
+                    analyteSnapshot.toResult(
+                        rangeRecovery = rangeRecoveryByAnalyte[analyteSnapshot.analyte.id]
+                    )
+                },
             sites = sites,
             frame = ArrayFrameResult(
                 locatorName = gridResult.locatorName,
@@ -513,7 +525,9 @@ object ArrayResultSnapshotMapper {
         }
     }
 
-    private fun SiteMeasurement.toResult(detail: ArrayMeasurementDetail): ArraySiteMeasurementResult {
+    private fun SiteMeasurement.toResult(
+        detail: ArrayMeasurementDetail
+    ): ArraySiteMeasurementResult {
         val siteQcObject = parseJsonObject(qcJson)
         val quantificationQcObject = parseJsonObject(quantificationQcJson)
         return ArraySiteMeasurementResult(
@@ -549,15 +563,56 @@ object ArrayResultSnapshotMapper {
                 photometryFlags = parseStringSet(siteQcObject?.array("photometryFlags")),
                 quantificationStatus = quantificationQcObject?.string("status"),
                 quantificationScope = quantificationQcObject?.string("scope"),
-                quantificationReason = quantificationQcObject?.string("reason")
+                quantificationReason = quantificationQcObject?.string("reason"),
+                rawModelOutput = quantificationQcObject?.double("rawModelOutput")
+                    ?.takeIf(Double::isFinite),
+                transformedModelOutput = quantificationQcObject?.double("transformedModelOutput")
+                    ?.takeIf(Double::isFinite),
+                declaredOutputMin = quantificationQcObject?.double("declaredOutputMin")
+                    ?.takeIf(Double::isFinite),
+                declaredOutputMax = quantificationQcObject?.double("declaredOutputMax")
+                    ?.takeIf(Double::isFinite)
             ),
             detail = detail
         )
     }
 
-    private fun TemplateProjectAnalyteSnapshot.toResult(): ArrayAnalyteResult {
+    private fun TemplateProjectAnalyteSnapshot.toResult(
+        rangeRecovery: ArrayRangeRecoveryResult?
+    ): ArrayAnalyteResult {
         val model = analysisModel.model
         val standardCurve = analysisModel.standardCurve
+        val frozenCalibrationPoints = analysisModel.calibrationPoints
+            .asSequence()
+            .filter { point ->
+                point.concentration.isFinite() && point.signalValue.isFinite()
+            }
+            .sortedWith(
+                compareBy<com.muc.fluocolorquant.data.model.CalibrationPoint> {
+                    it.concentration
+                }.thenBy { it.repeatIndex }
+            )
+            .map { point ->
+                ArrayCalibrationPointResult(
+                    concentration = point.concentration,
+                    signalValue = point.signalValue,
+                    repeatIndex = point.repeatIndex
+                )
+            }
+            .toList()
+
+        /*
+         * “模型可靠范围”和“标定点覆盖范围”是两个不同概念：前者可以经过验证后主动收窄，
+         * 后者必须严格来自本次冻结且真实参与拟合的标准点。若继续把模型可靠范围写成标定
+         * 范围，报告会出现热力图页与曲线页量程互相矛盾，也会让用户误判哪些结果属于外推。
+         * 深度学习模型没有标准点时这里保持为空，不能伪造一个所谓的标定区间。
+         */
+        val calibrationRangeMin = frozenCalibrationPoints.minOfOrNull { point ->
+            point.concentration
+        }
+        val calibrationRangeMax = frozenCalibrationPoints.maxOfOrNull { point ->
+            point.concentration
+        }
         return ArrayAnalyteResult(
             analyteId = analyte.id,
             name = analyte.name,
@@ -574,30 +629,69 @@ object ArrayResultSnapshotMapper {
             processorVersion = model.processorVersion,
             fittingFunction = normalizeFittingFunction(standardCurve?.fittingFunction),
             fittingParameters = parseFiniteDoubleMap(standardCurve?.parametersJson),
-            calibrationPoints = analysisModel.calibrationPoints
-                .asSequence()
-                .filter { point ->
-                    point.concentration.isFinite() && point.signalValue.isFinite()
-                }
-                .sortedWith(
-                    compareBy<com.muc.fluocolorquant.data.model.CalibrationPoint> {
-                        it.concentration
-                    }.thenBy { it.repeatIndex }
-                )
-                .map { point ->
-                    ArrayCalibrationPointResult(
-                        concentration = point.concentration,
-                        signalValue = point.signalValue,
-                        repeatIndex = point.repeatIndex
-                    )
-                }
-                .toList(),
+            calibrationPoints = frozenCalibrationPoints,
             validationMetrics = parseFiniteDoubleMap(model.validationMetricsJson),
             projectRangeMin = templateConfig.reliableRangeMin,
             projectRangeMax = templateConfig.reliableRangeMax,
-            calibrationRangeMin = model.reliableRangeMin.takeIf(Double::isFinite),
-            calibrationRangeMax = model.reliableRangeMax.takeIf(Double::isFinite)
+            calibrationRangeMin = calibrationRangeMin,
+            calibrationRangeMax = calibrationRangeMax,
+            rangeRecovery = rangeRecovery
         )
+    }
+
+    /**
+     * modelUsage 是附加运行诊断，损坏时不能让原始信号和浓度快照整体不可读。这里只接受
+     * V1 写出的完整有限字段；未知版本、负计数或比例越界均按“无动态复核”处理。
+     */
+    private fun parseRangeRecoveryByAnalyte(json: String?): Map<String, ArrayRangeRecoveryResult> {
+        val root = parseJsonObject(json) ?: return emptyMap()
+        return root.entrySet().mapNotNull { (analyteId, usageElement) ->
+            val usage = usageElement.takeIf { it.isJsonObject }?.asJsonObject
+                ?: return@mapNotNull null
+            val recovery = usage.get("rangeRecovery")
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
+                ?: return@mapNotNull null
+            val schemaVersion = recovery.int("schemaVersion") ?: return@mapNotNull null
+            if (schemaVersion != 1) return@mapNotNull null
+            val status = recovery.string("status")?.let { value ->
+                runCatching { RangeRecoveryStatus.valueOf(value) }.getOrNull()
+            } ?: return@mapNotNull null
+            val reason = recovery.string("reason")?.let { value ->
+                runCatching { RangeRecoveryReason.valueOf(value) }.getOrNull()
+            } ?: return@mapNotNull null
+            val direction = recovery.string("direction")?.let { value ->
+                runCatching { RangeRecoveryDirection.valueOf(value) }.getOrNull()
+            } ?: return@mapNotNull null
+            val valid = recovery.int("validSampleCount") ?: return@mapNotNull null
+            val within = recovery.int("withinRangeCount") ?: return@mapNotNull null
+            val below = recovery.int("belowRangeCount") ?: return@mapNotNull null
+            val above = recovery.int("aboveRangeCount") ?: return@mapNotNull null
+            val ratio = recovery.double("outOfRangeRatio") ?: return@mapNotNull null
+            val version = recovery.string("algorithmVersion") ?: return@mapNotNull null
+            val expectedRatio = if (valid == 0) {
+                0.0
+            } else {
+                (below + above).toDouble() / valid.toDouble()
+            }
+            if (
+                analyteId.isBlank() || version != RANGE_RECOVERY_ALGORITHM_VERSION ||
+                valid < 0 || within < 0 || below < 0 || above < 0 ||
+                within + below + above != valid || ratio !in 0.0..1.0 ||
+                abs(ratio - expectedRatio) > RANGE_RECOVERY_RATIO_EPSILON
+            ) return@mapNotNull null
+            analyteId to ArrayRangeRecoveryResult(
+                status = status,
+                reason = reason,
+                direction = direction,
+                validSampleCount = valid,
+                withinRangeCount = within,
+                belowRangeCount = below,
+                aboveRangeCount = above,
+                outOfRangeRatio = ratio,
+                algorithmVersion = version
+            )
+        }.toMap()
     }
 
     /**
@@ -649,10 +743,21 @@ object ArrayResultSnapshotMapper {
         return get(key)?.takeIf { it.isJsonPrimitive }?.asString
     }
 
+    private fun JsonObject.int(key: String): Int? = runCatching {
+        get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
+    }.getOrNull()
+
+    private fun JsonObject.double(key: String): Double? = runCatching {
+        get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asDouble
+            ?.takeIf(Double::isFinite)
+    }.getOrNull()
+
     /** 非数组扩展字段按未知处理，不能让历史 QC JSON 的形态差异中断整个结果页。 */
     private fun JsonObject.array(key: String): JsonArray? {
         return get(key)?.takeIf { it.isJsonArray }?.asJsonArray
     }
+
+    private const val RANGE_RECOVERY_RATIO_EPSILON: Double = 1e-9
 
     private fun legacyDetail(measurement: SiteMeasurement): DetailParseResult.Success {
         return DetailParseResult.Success(

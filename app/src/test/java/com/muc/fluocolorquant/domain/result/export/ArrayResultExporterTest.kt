@@ -125,19 +125,21 @@ class ArrayResultExporterTest {
     @Test
     fun `ZIP补充文件进入清单并参与校验和`() {
         val png = byteArrayOf(1, 2, 3, 4)
+        // 使用中文条目名固定默认 ZIP 构造仍按 UTF-8 往返，避免 API 22 兼容修改破坏科研附件名称。
+        val archivePath = "charts/CEA-中文热力图.png"
         val archive = ArrayResultExporter.createArchive(
             snapshot = snapshot(),
             evidenceReader = ArrayExportEvidenceReader { null },
-            supplementalFiles = mapOf("charts/cea_heatmap.png" to png)
+            supplementalFiles = mapOf(archivePath to png)
         )
         val entries = unzip(archive)
-        assertArrayEquals(png, entries["charts/cea_heatmap.png"])
+        assertArrayEquals(png, entries[archivePath])
 
         val manifest = Gson().fromJson(
             String(entries.getValue("manifest.json"), StandardCharsets.UTF_8),
             ArrayArchiveManifest::class.java
         )
-        val record = manifest.entries.single { it.archivePath == "charts/cea_heatmap.png" }
+        val record = manifest.entries.single { it.archivePath == archivePath }
         assertEquals(ArrayResultExporter.sha256(png), record.sha256)
     }
 

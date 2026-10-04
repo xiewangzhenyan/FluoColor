@@ -629,7 +629,7 @@ fun CreateExperimentTemplateScreen(
 
                             // 默认布局说明
                             Text(
-                                text = "默认布局允许您为每个孔位分配角色（样本、标准品、空白等），以便在实验中快速参考。启用后可以设置孔板大小并通过点击为每个孔位分配角色。",
+                                text = stringResource(R.string.create_template_default_layout_description),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp)

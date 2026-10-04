@@ -662,7 +662,8 @@ class StandardCurveBuilderViewModel @Inject constructor(
     private fun calibrationPoints(candidate: StandardCurveFitCandidate): List<CalibrationPoint> {
         val repeatCounters = mutableMapOf<Double, Int>()
         return candidate.points.map { (concentration, signal) ->
-            val repeatIndex = repeatCounters.getOrDefault(concentration, 0)
+            // Kotlin Map 下标在 API 22 即可执行，避免调用 API 24 才提供的 java.util.Map#getOrDefault。
+            val repeatIndex = repeatCounters[concentration] ?: 0
             repeatCounters[concentration] = repeatIndex + 1
             CalibrationPoint(
                 id = UUID.randomUUID().toString(),

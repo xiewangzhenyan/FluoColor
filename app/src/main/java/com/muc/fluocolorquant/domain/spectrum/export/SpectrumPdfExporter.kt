@@ -14,6 +14,7 @@ import android.util.Log
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.SpectrumChannelExportModel
 import com.muc.fluocolorquant.data.model.SpectrumExportData
+import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import com.muc.fluocolorquant.domain.export.pdf.PdfPageCanvas
 import java.io.File
 import java.text.SimpleDateFormat
@@ -91,7 +92,7 @@ object SpectrumPdfExporter {
             canvas = canvas,
             context = context,
             projectName = data.project.name,
-            chapterTitle = "Cover",
+            chapterTitle = context.getString(R.string.spectrum_pdf_cover_chapter),
             pageNumber = pageNumber,
             totalPages = totalPages
         )
@@ -104,7 +105,7 @@ object SpectrumPdfExporter {
             PdfPageCanvas.textPaint(36f, isBold = true, align = Paint.Align.CENTER)
         )
         canvas.drawText(
-            "Spectrum Analysis Report",
+            context.getString(R.string.spectrum_pdf_cover_subtitle),
             centerX,
             320f,
             PdfPageCanvas.textPaint(18f, Color.GRAY, align = Paint.Align.CENTER)
@@ -113,7 +114,7 @@ object SpectrumPdfExporter {
         val cardLeft = PdfPageCanvas.MARGIN + 50f
         val cardRight = PdfPageCanvas.PAGE_WIDTH - PdfPageCanvas.MARGIN - 50f
         val cardTop = 400f
-        val cardBottom = 600f
+        val cardBottom = 650f
         canvas.drawRoundRect(
             cardLeft, cardTop, cardRight, cardBottom, 10f, 10f,
             Paint().apply {
@@ -125,9 +126,11 @@ object SpectrumPdfExporter {
         val infoPaint = PdfPageCanvas.textPaint(18f)
         val lineHeight = 45f
         var y = cardTop + 50f
+        val lightSourceName = localizedLightSourceName(context, data.lightSourceSnapshot)
         listOf(
             context.getString(R.string.spectrum_pdf_project_label, data.project.name),
             context.getString(R.string.spectrum_pdf_mode_label),
+            context.getString(R.string.spectrum_pdf_light_source_label, lightSourceName),
             context.getString(R.string.spectrum_pdf_channels_label, data.channels.size),
             context.getString(
                 R.string.spectrum_pdf_date_label,
@@ -138,6 +141,22 @@ object SpectrumPdfExporter {
             y += lineHeight
         }
     }
+
+    /**
+     * 将冻结的稳定光源编码映射为报告语言文案。
+     *
+     * 未知编码原样保留是为了兼容未来新增光源并保住采集证据；已知编码必须本地化，不能把
+     * `MERCURY` 一类机器值写进面向用户的报告。该函数开放给设备测试验证中英文契约。
+     */
+    internal fun localizedLightSourceName(context: Context, snapshot: String?): String =
+        snapshot
+            ?.takeIf(String::isNotBlank)
+            ?.let { stableCode ->
+                SpectrumLightSource.entries.firstOrNull {
+                    it.name.equals(stableCode, ignoreCase = true)
+                }?.let { context.getString(it.displayNameRes) } ?: stableCode
+            }
+            ?: context.getString(R.string.spectrum_light_source_unknown)
 
     private fun drawSummaryPage(
         canvas: Canvas,

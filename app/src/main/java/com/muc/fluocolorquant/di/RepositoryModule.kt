@@ -9,6 +9,10 @@ import com.muc.fluocolorquant.data.dao.WellResultDao
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepositoryImpl
 import com.muc.fluocolorquant.data.repository.SettingsRepository
+import com.muc.fluocolorquant.data.repository.ProjectCreationPreferences
+import com.muc.fluocolorquant.data.security.PasswordHasher
+import com.muc.fluocolorquant.data.security.Pbkdf2PasswordHasher
+import com.muc.fluocolorquant.data.storage.ProjectFileCleaner
 import com.muc.fluocolorquant.data.repository.ConcentrationUnitPreferences
 import com.muc.fluocolorquant.data.repository.CalibrationPolicyPreferences
 import com.muc.fluocolorquant.data.repository.CalibrationSettingsRepository
@@ -66,6 +70,13 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
 
+    /** 密码摘要实现集中注入，注册、登录升级和修改密码必须使用同一版本化协议。 */
+    @Binds
+    @Singleton
+    abstract fun providePasswordHasher(
+        implementation: Pbkdf2PasswordHasher
+    ): PasswordHasher
+
     /** PG-Grid 处理中间图写入应用私有目录，协调器只依赖可测试接口。 */
     @Binds
     @Singleton
@@ -86,6 +97,13 @@ abstract class RepositoryModule {
     abstract fun provideConcentrationUnitPreferences(
         settingsRepository: SettingsRepository
     ): ConcentrationUnitPreferences
+
+    /** 直接新建只读取确有生产作用的检测方式与浓度单位默认值。 */
+    @Binds
+    @Singleton
+    abstract fun provideProjectCreationPreferences(
+        settingsRepository: SettingsRepository
+    ): ProjectCreationPreferences
 
     /** 曲线拟合默认策略使用独立 DataStore，检测入口只读取不可变策略快照。 */
     @Binds
@@ -221,9 +239,10 @@ abstract class RepositoryModule {
         @Provides
         @Singleton
         fun provideUserRepository(
-            userDao: UserDao
+            userDao: UserDao,
+            passwordHasher: PasswordHasher
         ): UserRepository {
-            return UserRepository(userDao)
+            return UserRepository(userDao, passwordHasher)
         }
         
         @Provides
@@ -238,9 +257,10 @@ abstract class RepositoryModule {
         @Provides
         @Singleton
         fun provideProjectRepository(
-            projectDao: ProjectDao
+            projectDao: ProjectDao,
+            projectFileCleaner: ProjectFileCleaner
         ): ProjectRepository {
-            return ProjectRepositoryImpl(projectDao)
+            return ProjectRepositoryImpl(projectDao, projectFileCleaner)
         }
         
         @Provides

@@ -232,8 +232,12 @@ object ArrayResultExporter {
             addFile(staticFiles, path, bytes)
         }
 
-        // ZIP 自身需要 close 以释放 Deflater，但不能提前关闭由系统文件选择器提供的外层流。
-        ZipOutputStream(NonClosingOutputStream(output), StandardCharsets.UTF_8).use { zip ->
+        /*
+         * ZIP 自身需要 close 以释放 Deflater，但不能提前关闭由系统文件选择器提供的外层流。
+         * 单参数构造从 API 1 起就可用，并且同样固定使用 UTF-8 编码条目名称；不再调用
+         * API 24 才提供的显式 Charset 构造，保证声明支持的 Android 5.1 设备也能导出。
+         */
+        ZipOutputStream(NonClosingOutputStream(output)).use { zip ->
             for ((path, bytes) in staticFiles.toSortedMap()) {
                 writeZipEntry(zip, path, bytes)
                 entryRecords += includedEntry(path, bytes)

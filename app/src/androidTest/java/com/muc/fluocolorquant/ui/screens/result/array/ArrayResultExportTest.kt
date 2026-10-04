@@ -2,12 +2,16 @@ package com.muc.fluocolorquant.ui.screens.result.array
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.pdf.PdfRenderer
 import android.content.ContentValues
 import android.os.ParcelFileDescriptor
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -19,6 +23,7 @@ import com.muc.fluocolorquant.domain.detection.grid.GridGeometryDiagnostics
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
+import com.muc.fluocolorquant.domain.result.ArrayCalibrationPointResult
 import com.muc.fluocolorquant.domain.result.ArrayCarrierResult
 import com.muc.fluocolorquant.domain.result.ArrayFrameResult
 import com.muc.fluocolorquant.domain.result.ArrayMeasurementDetail
@@ -36,6 +41,7 @@ import com.muc.fluocolorquant.domain.result.validation.ResultValidationEngine
 import com.muc.fluocolorquant.domain.result.validation.ResultValidationPoint
 import com.muc.fluocolorquant.domain.result.validation.ResultValidationSnapshot
 import com.muc.fluocolorquant.ui.theme.FluoColorTheme
+import com.muc.fluocolorquant.utils.HeatmapColorUtil
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -204,6 +210,233 @@ class ArrayResultExportTest {
     }
 
     @Test
+    fun `PDF与独立PNG对同一冻结浓度使用完全相同的色带`() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val source = snapshot()
+        val expectedColor = HeatmapColorUtil.getColor(0.0, 0.0, 100.0).toArgb()
+        val pngBytes = ArrayResultPngExporter.createHeatmapPng(
+            snapshot = source,
+            analyteId = "analyte",
+            labels = ArrayResultPngLabels(
+                concentrationTitleFormat = "%1\$s concentration heatmap",
+                signalTitleFormat = "%1\$s signal heatmap",
+                concentration = "Concentration",
+                signal = "Signal",
+                noValue = "N/A"
+            )
+        )
+        val pngBitmap = requireNotNull(BitmapFactory.decodeByteArray(pngBytes, 0, pngBytes.size))
+        val pdfFile = File(context.cacheDir, "array-result-shared-heatmap.pdf")
+        try {
+            assertTrue(
+                "独立PNG应包含冻结浓度对应的标准色带颜色",
+                bitmapContainsColor(pngBitmap, expectedColor)
+            )
+            pdfFile.writeBytes(ArrayResultPdfExporter.createPdf(context, source, pdfLabels()))
+            ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer ->
+                    renderer.openPage(2).use { analytePage ->
+                        val rendered = Bitmap.createBitmap(
+                            analytePage.width,
+                            analytePage.height,
+                            Bitmap.Config.ARGB_8888
+                        )
+                        try {
+                            analytePage.render(
+                                rendered,
+                                null,
+                                null,
+                                PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+                            )
+                            assertTrue(
+                                "PDF分析物页必须与独立PNG包含同一个冻结浓度颜色",
+                                bitmapContainsColor(rendered, expectedColor)
+                            )
+                        } finally {
+                            rendered.recycle()
+                        }
+                    }
+                }
+            }
+        } finally {
+            pngBitmap.recycle()
+            pdfFile.delete()
+        }
+    }
+
+    @Test
+    fun `圆孔板PDF恢复逐孔裁切图与对应结果附录`() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val cropColor = Color.rgb(26, 170, 112)
+        val crop = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.TRANSPARENT)
+            Canvas(this).drawCircle(
+                width / 2f,
+                height / 2f,
+                width * 0.34f,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cropColor }
+            )
+        }
+        val requestedIndices = mutableListOf<Int>()
+        val baseSnapshot = snapshot(rows = 8, columns = 12)
+        val source = baseSnapshot.copy(
+            analytes = listOf(
+                baseSnapshot.analytes.single().copy(
+                    fittingFunction = "linear",
+                    fittingParameters = mapOf("a" to 2.0, "b" to 1.0),
+                    calibrationPoints = listOf(
+                        ArrayCalibrationPointResult(0.0, 1.0, 0),
+                        ArrayCalibrationPointResult(25.0, 51.0, 0),
+                        ArrayCalibrationPointResult(50.0, 101.0, 0),
+                        ArrayCalibrationPointResult(100.0, 201.0, 0)
+                    ),
+                    calibrationRangeMin = 0.0,
+                    calibrationRangeMax = 100.0,
+                    validationMetrics = mapOf("R2" to 0.9987)
+                )
+            )
+        )
+        val bytes = try {
+            ArrayResultPdfExporter.createPdf(
+                context = context,
+                snapshot = source,
+                labels = pdfLabels(),
+                wellImageProvider = { siteIndex ->
+                    requestedIndices += siteIndex
+                    crop
+                }
+            )
+        } finally {
+            // PdfDocument.writeTo返回后已经完成图片编码；测试用Bitmap不参与生产缓存，可立即回收。
+        }
+        val file = File(context.cacheDir, "array-result-well-details.pdf")
+        try {
+            file.writeBytes(bytes)
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer ->
+                    // 旧版标准曲线页恢复后为5页主体；96孔再按每页10行生成10页逐孔附录。
+                    assertEquals(15, renderer.pageCount)
+                    renderer.openPage(renderer.pageCount - 1).use { detailPage ->
+                        val rendered = Bitmap.createBitmap(
+                            detailPage.width,
+                            detailPage.height,
+                            Bitmap.Config.ARGB_8888
+                        )
+                        try {
+                            detailPage.render(
+                                rendered,
+                                null,
+                                null,
+                                PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+                            )
+                            assertTrue(
+                                "逐孔附录必须真正绘制裁切图，而不是只显示图片路径",
+                                bitmapContainsColor(rendered, cropColor, channelTolerance = 4)
+                            )
+                            val firstCropBounds = requireNotNull(
+                                bitmapColorBounds(
+                                    bitmap = rendered,
+                                    expected = cropColor,
+                                    searchBounds = Rect(78, 132, 128, 192),
+                                    channelTolerance = 4
+                                )
+                            ) { "逐孔附录第一页必须能定位到真实圆孔像素" }
+                            assertTrue(
+                                "PDF不得把圆孔裁切图拉成长椭圆，实际像素边界=${firstCropBounds.width()}×${firstCropBounds.height()}",
+                                kotlin.math.abs(firstCropBounds.width() - firstCropBounds.height()) <= 2
+                            )
+                        } finally {
+                            rendered.recycle()
+                        }
+                    }
+                }
+            }
+            assertEquals((0 until 96).toList(), requestedIndices)
+            if (InstrumentationRegistry.getArguments().getString("keepPdf") == "true") {
+                val displayName = "array-result-well-details.pdf"
+                runCatching {
+                    context.contentResolver.delete(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        "${MediaStore.Downloads.DISPLAY_NAME} = ?",
+                        arrayOf(displayName)
+                    )
+                }
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+                    put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val outputUri = requireNotNull(
+                    context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                )
+                context.contentResolver.openOutputStream(outputUri).use { output ->
+                    requireNotNull(output).write(bytes)
+                }
+            }
+        } finally {
+            crop.recycle()
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `方阵PDF逐孔裁切图保持原始宽高比`() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val cropColor = Color.rgb(184, 72, 125)
+        val crop = Bitmap.createBitmap(96, 48, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(cropColor)
+        }
+        val bytes = ArrayResultPdfExporter.createPdf(
+            context = context,
+            snapshot = snapshot(rows = 1, columns = 1, siteShape = "SQUARE"),
+            labels = pdfLabels(),
+            wellImageProvider = { crop }
+        )
+        val file = File(context.cacheDir, "array-result-rectangular-crop.pdf")
+        try {
+            file.writeBytes(bytes)
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer ->
+                    renderer.openPage(renderer.pageCount - 1).use { detailPage ->
+                        val rendered = Bitmap.createBitmap(
+                            detailPage.width,
+                            detailPage.height,
+                            Bitmap.Config.ARGB_8888
+                        )
+                        try {
+                            detailPage.render(
+                                rendered,
+                                null,
+                                null,
+                                PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+                            )
+                            val renderedBounds = requireNotNull(
+                                bitmapColorBounds(
+                                    bitmap = rendered,
+                                    expected = cropColor,
+                                    searchBounds = Rect(78, 132, 128, 192),
+                                    channelTolerance = 4
+                                )
+                            ) { "方形载体附录必须能定位到真实裁切图像素" }
+                            val renderedRatio = renderedBounds.width().toFloat() /
+                                renderedBounds.height().coerceAtLeast(1)
+                            assertTrue(
+                                "PDF必须保留非方形裁切图的2:1原始比例，实际比例=$renderedRatio",
+                                kotlin.math.abs(renderedRatio - 2f) <= 0.15f
+                            )
+                        } finally {
+                            rendered.recycle()
+                        }
+                    }
+                }
+            }
+        } finally {
+            crop.recycle()
+            file.delete()
+        }
+    }
+
+    @Test
     fun `导出面板同时提供CSVPNG与PDF和ZIP且回调独立`() {
         var selectedFormat: String? = null
         composeRule.setContent {
@@ -360,6 +593,61 @@ class ArrayResultExportTest {
             modelUsageJson = null,
             siteQcSummaryJson = null
         )
+    }
+
+    private fun bitmapContainsColor(
+        bitmap: Bitmap,
+        expected: Int,
+        channelTolerance: Int = 0
+    ): Boolean {
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        return pixels.any { actual ->
+            kotlin.math.abs(Color.red(actual) - Color.red(expected)) <= channelTolerance &&
+                kotlin.math.abs(Color.green(actual) - Color.green(expected)) <= channelTolerance &&
+                kotlin.math.abs(Color.blue(actual) - Color.blue(expected)) <= channelTolerance
+        }
+    }
+
+    /**
+     * 只在指定 PDF 单元格内测量目标颜色的真实像素包围框，避免表头或其他孔位干扰。
+     * 这个断言专门约束导出渲染比例；它不把测试布局坐标写入生产代码。
+     */
+    private fun bitmapColorBounds(
+        bitmap: Bitmap,
+        expected: Int,
+        searchBounds: Rect,
+        channelTolerance: Int
+    ): Rect? {
+        val safeBounds = Rect(
+            searchBounds.left.coerceIn(0, bitmap.width),
+            searchBounds.top.coerceIn(0, bitmap.height),
+            searchBounds.right.coerceIn(0, bitmap.width),
+            searchBounds.bottom.coerceIn(0, bitmap.height)
+        )
+        var minX = safeBounds.right
+        var minY = safeBounds.bottom
+        var maxX = -1
+        var maxY = -1
+        for (y in safeBounds.top until safeBounds.bottom) {
+            for (x in safeBounds.left until safeBounds.right) {
+                val actual = bitmap.getPixel(x, y)
+                val matches = kotlin.math.abs(Color.red(actual) - Color.red(expected)) <= channelTolerance &&
+                    kotlin.math.abs(Color.green(actual) - Color.green(expected)) <= channelTolerance &&
+                    kotlin.math.abs(Color.blue(actual) - Color.blue(expected)) <= channelTolerance
+                if (matches) {
+                    minX = minOf(minX, x)
+                    minY = minOf(minY, y)
+                    maxX = maxOf(maxX, x)
+                    maxY = maxOf(maxY, y)
+                }
+            }
+        }
+        return if (maxX >= minX && maxY >= minY) {
+            Rect(minX, minY, maxX + 1, maxY + 1)
+        } else {
+            null
+        }
     }
 
     private companion object {

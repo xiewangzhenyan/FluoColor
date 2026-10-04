@@ -6,6 +6,7 @@ import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationMethod
 import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationSnapshot
+import com.muc.fluocolorquant.domain.calibration.CalibrationResultSet
 import com.muc.fluocolorquant.domain.calibration.OnsiteCalibrationState
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 
@@ -85,6 +86,145 @@ fun GridAnalyteQuantitationDraft.isReadyForConfirmation(): Boolean = when (mode)
 /** 当前分析物是否已经真正冻结，而不是只完成了表单选择。 */
 fun GridAnalyteQuantitationDraft.isConfigurationComplete(): Boolean = appliedSnapshot != null
 
+/**
+ * 开始一次现场拟合，并立即让旧的已应用快照失效。
+ *
+ * [requestId] 是异步结果的唯一身份。后续成功或失败回调必须携带同一 ID；较早请求即使
+ * 最后才返回，也不能覆盖用户已经重新发起的拟合。
+ */
+fun GridAnalyteQuantitationDraft.startOnsiteFitting(
+    requestId: String,
+    inputFingerprint: String = "pending:$requestId"
+): GridAnalyteQuantitationDraft {
+    require(mode == GridAnalyteQuantitationMode.ONSITE_AUTO_FIT) {
+        "只有现场拟合模式可以开始拟合"
+    }
+    require(requestId.isNotBlank()) { "现场拟合请求ID不能为空" }
+    return copy(
+        onsiteState = OnsiteCalibrationState.Fitting(
+            requestId = requestId,
+            inputFingerprint = inputFingerprint
+        ),
+        appliedSnapshot = null
+    )
+}
+
+/**
+ * 接收拟合成功结果；请求已经过期时返回 null，由调用方静默丢弃旧异步回调。
+ */
+fun GridAnalyteQuantitationDraft.acceptOnsiteFitResult(
+    requestId: String,
+    resultSet: CalibrationResultSet,
+    saveToLibraryByDefault: Boolean
+): GridAnalyteQuantitationDraft? {
+    val fitting = onsiteState as? OnsiteCalibrationState.Fitting ?: return null
+    if (fitting.requestId != requestId || resultSet.analyteId != analyteId) return null
+    return copy(
+        onsiteState = OnsiteCalibrationState.Reviewing(
+            resultSet = resultSet,
+            saveToLibrary = saveToLibraryByDefault
+        ),
+        appliedSnapshot = null
+    )
+}
+
+/** 拟合技术失败只改变同一请求的状态，科学上“候选均不可用”仍由 Reviewing 表达。 */
+fun GridAnalyteQuantitationDraft.rejectOnsiteFitResult(
+    requestId: String
+): GridAnalyteQuantitationDraft? {
+    val fitting = onsiteState as? OnsiteCalibrationState.Fitting ?: return null
+    if (fitting.requestId != requestId) return null
+    return copy(
+        onsiteState = OnsiteCalibrationState.TechnicalFailure(
+            requestId = requestId,
+            inputFingerprint = fitting.inputFingerprint
+        ),
+        appliedSnapshot = null
+    )
+}
+
+/** 候选必须真实存在于当前结果集，禁止页面提交过期或伪造的候选 ID。 */
+fun GridAnalyteQuantitationDraft.selectOnsiteCandidate(
+    candidateId: String
+): GridAnalyteQuantitationDraft? {
+    val reviewing = onsiteState as? OnsiteCalibrationState.Reviewing ?: return null
+    if (reviewing.resultSet.candidate(candidateId) == null) return null
+    return copy(
+        onsiteState = reviewing.copy(selectedCandidateId = candidateId),
+        appliedSnapshot = null
+    )
+}
+
+/** 保存开关只控制是否发布可复用资源，不改变当前结果集中的科学参数。 */
+fun GridAnalyteQuantitationDraft.setOnsiteSaveToLibrary(
+    saveToLibrary: Boolean
+): GridAnalyteQuantitationDraft? {
+    val reviewing = onsiteState as? OnsiteCalibrationState.Reviewing ?: return null
+    return copy(onsiteState = reviewing.copy(saveToLibrary = saveToLibrary))
+}
+
+/** 返回浓度编辑后，旧候选和旧冻结快照必须同时失效。 */
+fun GridAnalyteQuantitationDraft.returnToOnsiteEditing(): GridAnalyteQuantitationDraft = copy(
+    onsiteState = OnsiteCalibrationState.Editing,
+    appliedSnapshot = null
+)
+
+/**
+ * 从审阅进入应用阶段。返回 null 表示当前没有合法候选，调用方不能启动资源写入或快照冻结。
+ */
+fun GridAnalyteQuantitationDraft.startOnsiteApplying(): GridAnalyteQuantitationDraft? {
+    val reviewing = onsiteState as? OnsiteCalibrationState.Reviewing ?: return null
+    val candidateId = reviewing.selectedCandidateId ?: return null
+    if (reviewing.resultSet.candidate(candidateId) == null) return null
+    return copy(
+        onsiteState = OnsiteCalibrationState.Applying(
+            resultSet = reviewing.resultSet,
+            selectedCandidateId = candidateId,
+            saveToLibrary = reviewing.saveToLibrary
+        )
+    )
+}
+
+/**
+ * 只允许当前 Applying 所对应的候选完成应用，防止迟到的保存回调覆盖新的编辑或拟合。
+ */
+fun GridAnalyteQuantitationDraft.completeOnsiteApplying(
+    selectedCandidateId: String,
+    snapshot: AnalyteQuantitationSnapshot
+): GridAnalyteQuantitationDraft? {
+    val applying = onsiteState as? OnsiteCalibrationState.Applying ?: return null
+    if (
+        applying.selectedCandidateId != selectedCandidateId ||
+        snapshot.analyteId != analyteId
+    ) {
+        return null
+    }
+    return copy(
+        onsiteState = OnsiteCalibrationState.Applied(
+            snapshot = snapshot,
+            resultSet = applying.resultSet,
+            selectedCandidateId = selectedCandidateId
+        ),
+        appliedSnapshot = snapshot
+    )
+}
+
+/** 应用失败回到原结果集供用户重试，不能更换候选或清除“保存到曲线库”选择。 */
+fun GridAnalyteQuantitationDraft.restoreOnsiteReviewingAfterApplyFailure(
+    selectedCandidateId: String
+): GridAnalyteQuantitationDraft? {
+    val applying = onsiteState as? OnsiteCalibrationState.Applying ?: return null
+    if (applying.selectedCandidateId != selectedCandidateId) return null
+    return copy(
+        onsiteState = OnsiteCalibrationState.Reviewing(
+            resultSet = applying.resultSet,
+            selectedCandidateId = applying.selectedCandidateId,
+            saveToLibrary = applying.saveToLibrary
+        ),
+        appliedSnapshot = null
+    )
+}
+
 /** 供孔位布局页展示的实验模板摘要；完整内容只在用户实际应用时从仓库重新读取。 */
 data class GridExperimentTemplateOption(
     val id: String,
@@ -105,7 +245,13 @@ data class GridAnalysisModelOption(
     val reliableRangeMin: Double? = null,
     val reliableRangeMax: Double? = null,
     /** 内置共享模型使用本地化名称，普通用户不看到数据库中的稳定机器资源名。 */
-    val builtInShared: Boolean = false
+    val builtInShared: Boolean = false,
+    /**
+     * 当前项目是否超出模型已有验证范围。
+     *
+     * 该标记只控制风险提示与显式确认，不绕过文件校验、运行兼容检查或输出域判断。
+     */
+    val requiresExplicitScopeConfirmation: Boolean = false
 )
 
 /**

@@ -1,9 +1,13 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import com.muc.fluocolorquant.data.repository.SettingsRepository
+import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,30 +30,20 @@ class SettingsViewModel @Inject constructor(
     init {
         // 收集光谱设置并更新UI状态
         viewModelScope.launch {
-            val spectrumBase = combine(
-                settingsRepository.spectrumMinWavelengthFlow,
-                settingsRepository.spectrumMaxWavelengthFlow,
-                settingsRepository.spectrumSmoothingFlow,
-                settingsRepository.spectrumSensitivityFlow,
-                settingsRepository.spectrumQualityCheckEnabledFlow
-            ) { min, max, smoothing, sensitivity, qualityCheckEnabled ->
-                SettingsUiState(
-                    spectrumMinWavelength = min,
-                    spectrumMaxWavelength = max,
-                    spectrumSmoothing = smoothing,
-                    spectrumSensitivity = sensitivity,
-                    spectrumQualityCheckEnabled = qualityCheckEnabled
-                )
-            }
-
             combine(
-                spectrumBase,
-                settingsRepository.spectrumDefaultTrackCountFlow,
-                settingsRepository.spectrumMaxTrackCountFlow
-            ) { base, defaultTracks, maxTracks ->
-                base.copy(
-                    spectrumDefaultTrackCount = defaultTracks,
-                    spectrumMaxTrackCount = maxTracks
+                settingsRepository.spectrumProcessingPreferencesFlow,
+                settingsRepository.spectrumQualityCheckEnabledFlow,
+                settingsRepository.projectCreationDefaultsFlow
+            ) { processing, qualityCheckEnabled, creationDefaults ->
+                SettingsUiState(
+                    spectrumMinWavelength = processing.minWavelength,
+                    spectrumMaxWavelength = processing.maxWavelength,
+                    spectrumSmoothing = processing.smoothingLevel,
+                    spectrumSensitivity = processing.sensitivity,
+                    spectrumQualityCheckEnabled = qualityCheckEnabled,
+                    defaultCustomRows = creationDefaults.customGrid.rows,
+                    defaultCustomColumns = creationDefaults.customGrid.columns,
+                    spectrumDefaultLightSource = creationDefaults.spectrumLightSource
                 )
             }.collect { state -> _uiState.value = state }
         }
@@ -120,15 +114,32 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.setDefaultDetectionModeWithoutLanguageChange(mode)
         }
     }
+
+    /**
+     * 原子保存自定义阵列默认规格。返回值只表示输入是否通过同步校验，实际写入仍在
+     * ViewModel 协程完成；页面据此避免对非法行列显示“保存成功”。
+     */
+    fun updateDefaultCustomGrid(rows: Int?, columns: Int?): Boolean {
+        if (rows == null || columns == null || !GridLayoutPolicy.isValid(rows, columns)) {
+            return false
+        }
+        viewModelScope.launch {
+            settingsRepository.setDefaultCustomGrid(rows, columns)
+        }
+        return true
+    }
     
     // 检测模式选项
     val detectionModeOptions = listOf(
-        DetectionModeOption("FLUORESCENCE", "Fluorescence Detection"),
-        DetectionModeOption("COLORIMETRIC", "Colorimetric Detection")
+        DetectionModeOption("FLUORESCENCE", R.string.fluorescence_detection),
+        DetectionModeOption("COLORIMETRIC", R.string.colorimetric_detection)
     )
     
     // 检测模式选项数据类
-    data class DetectionModeOption(val code: String, val name: String)
+    data class DetectionModeOption(
+        val code: String,
+        @StringRes val nameRes: Int
+    )
     
     // 当前默认浓度单位
     val defaultConcentrationUnit: StateFlow<String> = settingsRepository.defaultConcentrationUnitFlow
@@ -213,76 +224,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    // 当前默认行数
-    val defaultRows: StateFlow<Int> = settingsRepository.defaultRowsFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = SettingsRepository.DEFAULT_ROWS
-        )
-    
-    // 更新默认行数
-    fun setDefaultRows(rows: Int) {
-        viewModelScope.launch {
-            settingsRepository.setDefaultRows(rows)
-        }
-    }
-    
-    // 当前默认列数
-    val defaultColumns: StateFlow<Int> = settingsRepository.defaultColumnsFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = SettingsRepository.DEFAULT_COLUMNS
-        )
-    
-    // 更新默认列数
-    fun setDefaultColumns(columns: Int) {
-        viewModelScope.launch {
-            settingsRepository.setDefaultColumns(columns)
-        }
-    }
-    
-    // 像素提取方式
-    val pixelExtractionMethod: StateFlow<String> = settingsRepository.pixelExtractionMethodFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = "roi_avg" // 默认区域平均值
-        )
-    
-    // 像素提取方式选项
-    val pixelExtractionOptions = listOf(
-        PixelExtractionOption("roi_avg", "pixel_extraction_option_roi_avg"),
-        PixelExtractionOption("center_pixel", "pixel_extraction_option_center_pixel"),
-        PixelExtractionOption("gaussian_avg", "pixel_extraction_option_gaussian_avg")
-    )
-    
-    // 像素提取方式选项数据类
-    data class PixelExtractionOption(val code: String, val resourceId: String)
-    
-    // 设置像素提取方式
-    fun setPixelExtractionMethod(method: String) {
-        viewModelScope.launch {
-            settingsRepository.setPixelExtractionMethod(method)
-        }
-    }
-    
-    // 图像预处理设置
-    val imagePreprocessingEnabled: StateFlow<Boolean> = settingsRepository.imagePreprocessingEnabledFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = true // 默认开启
-        )
-    
-    // 设置图像预处理开关
-    fun setImagePreprocessingEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setImagePreprocessingEnabled(enabled)
-        }
-    }
-
     /**
      * 更新波长范围，需保证 max > min，否则不保存。
      */
@@ -292,8 +233,7 @@ class SettingsViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            settingsRepository.setSpectrumMinWavelength(min)
-            settingsRepository.setSpectrumMaxWavelength(max)
+            settingsRepository.setSpectrumWavelengthRange(min, max)
         }
     }
 
@@ -315,6 +255,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** 默认光源只影响下一次新建光谱项目，不会改变当前项目或任何历史结果。 */
+    fun updateSpectrumDefaultLightSource(lightSource: SpectrumLightSource) {
+        viewModelScope.launch {
+            settingsRepository.setSpectrumDefaultLightSource(lightSource)
+        }
+    }
+
     fun setSpectrumQualityCheckEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setSpectrumQualityCheckEnabled(enabled)
@@ -326,27 +273,7 @@ class SettingsViewModel @Inject constructor(
      */
     fun resetSpectrumDefaults() {
         viewModelScope.launch {
-            settingsRepository.setSpectrumMinWavelength(SettingsRepository.DEFAULT_SPECTRUM_MIN_WAVELENGTH)
-            settingsRepository.setSpectrumMaxWavelength(SettingsRepository.DEFAULT_SPECTRUM_MAX_WAVELENGTH)
-            settingsRepository.setSpectrumSmoothing(SettingsRepository.DEFAULT_SPECTRUM_SMOOTHING)
-            settingsRepository.setSpectrumSensitivity(SettingsRepository.DEFAULT_SPECTRUM_SENSITIVITY)
-            settingsRepository.setSpectrumDefaultTrackCount(SettingsRepository.DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT)
-            settingsRepository.setSpectrumMaxTrackCount(SettingsRepository.DEFAULT_SPECTRUM_MAX_TRACK_COUNT)
-            settingsRepository.setSpectrumQualityCheckEnabled(SettingsRepository.DEFAULT_SPECTRUM_QUALITY_CHECK_ENABLED)
-        }
-    }
-
-    /**
-     * 更新通道配置（默认/最大），需校验 default <= max 且 max > 0
-     */
-    fun updateTrackCountConfig(defaultTracks: Int, maxTracks: Int) {
-        if (maxTracks <= 0 || defaultTracks > maxTracks || defaultTracks <= 0) {
-            Log.w(TAG, "Invalid track config: default=$defaultTracks, max=$maxTracks")
-            return
-        }
-        viewModelScope.launch {
-            settingsRepository.setSpectrumDefaultTrackCount(defaultTracks)
-            settingsRepository.setSpectrumMaxTrackCount(maxTracks)
+            settingsRepository.resetSpectrumDefaults()
         }
     }
 
@@ -360,7 +287,9 @@ data class SettingsUiState(
     val spectrumMaxWavelength: Float = SettingsRepository.DEFAULT_SPECTRUM_MAX_WAVELENGTH,
     val spectrumSmoothing: Int = SettingsRepository.DEFAULT_SPECTRUM_SMOOTHING,
     val spectrumSensitivity: String = SettingsRepository.DEFAULT_SPECTRUM_SENSITIVITY,
-    val spectrumDefaultTrackCount: Int = SettingsRepository.DEFAULT_SPECTRUM_DEFAULT_TRACK_COUNT,
-    val spectrumMaxTrackCount: Int = SettingsRepository.DEFAULT_SPECTRUM_MAX_TRACK_COUNT,
-    val spectrumQualityCheckEnabled: Boolean = SettingsRepository.DEFAULT_SPECTRUM_QUALITY_CHECK_ENABLED
+    val spectrumQualityCheckEnabled: Boolean = SettingsRepository.DEFAULT_SPECTRUM_QUALITY_CHECK_ENABLED,
+    val defaultCustomRows: Int = SettingsRepository.DEFAULT_CUSTOM_GRID_ROWS,
+    val defaultCustomColumns: Int = SettingsRepository.DEFAULT_CUSTOM_GRID_COLUMNS,
+    val spectrumDefaultLightSource: SpectrumLightSource =
+        SettingsRepository.DEFAULT_SPECTRUM_LIGHT_SOURCE
 )

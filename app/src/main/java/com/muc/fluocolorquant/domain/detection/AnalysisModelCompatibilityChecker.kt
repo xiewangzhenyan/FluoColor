@@ -9,6 +9,7 @@ import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.data.model.AnalysisModel
+import com.muc.fluocolorquant.domain.detection.quantification.BuiltInSharedConcentrationModel
 
 /** 当前运行与分析模型比较时使用的完整科学输入契约。 */
 data class ModelCompatibilityRequest(
@@ -81,6 +82,13 @@ object AnalysisModelCompatibilityChecker {
         if (model.processorVersion != request.processorVersion) {
             reasons += ModelCompatibilityReason.PROCESSOR_VERSION_MISMATCH
         }
+        val builtInSharedCanExecute =
+            BuiltInSharedConcentrationModel.isBuiltInResourceName(model.name) &&
+                BuiltInSharedConcentrationModel.canExecute(
+                    carrierType = request.carrierType,
+                    modality = request.modality,
+                    inputProtocol = request.inputProtocol
+                )
 
         val carrierTypes = parseCompatibilitySet(
             json = model.compatibleCarrierTypesJson,
@@ -94,7 +102,9 @@ object AnalysisModelCompatibilityChecker {
         if (carrierTypes == null || acquisitionProfiles == null) {
             reasons += ModelCompatibilityReason.INVALID_COMPATIBILITY_METADATA
         } else {
-            if (request.carrierType.code !in carrierTypes) {
+            // 旧内置资源可能只记录 PLATE。用户在界面明确确认实验性使用后，技术兼容
+            // 由稳定资源身份恢复；普通上传模型仍严格服从其声明的载体集合。
+            if (!builtInSharedCanExecute && request.carrierType.code !in carrierTypes) {
                 reasons += ModelCompatibilityReason.CARRIER_TYPE_MISMATCH
             }
             if (!isAcquisitionProfileCompatible(acquisitionProfiles, request.acquisitionProfileId)) {

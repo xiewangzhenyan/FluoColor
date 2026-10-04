@@ -43,7 +43,9 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Biotech
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
@@ -99,6 +101,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.SiteShape
+import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import com.muc.fluocolorquant.domain.project.DirectCarrierPreset
 import com.muc.fluocolorquant.domain.project.ProjectDetectionDestination
 import com.muc.fluocolorquant.ui.components.FluoAnimatedSection
@@ -252,6 +256,8 @@ fun DirectCreateProjectScreen(
         onCarrierPresetChange = viewModel::updateCarrierPreset,
         onCustomRowsChange = viewModel::updateCustomRows,
         onCustomColumnsChange = viewModel::updateCustomColumns,
+        onCustomSiteShapeChange = viewModel::updateCustomSiteShape,
+        onSpectrumLightSourceChange = viewModel::updateSpectrumLightSource,
         onAnalytesChange = { analytes ->
             viewModel.updateSelectedAnalytes(analytes.map { it.id })
         },
@@ -325,6 +331,8 @@ private fun DirectCreateProjectContent(
     onCarrierPresetChange: (DirectCarrierPreset) -> Unit,
     onCustomRowsChange: (String) -> Unit,
     onCustomColumnsChange: (String) -> Unit,
+    onCustomSiteShapeChange: (SiteShape) -> Unit,
+    onSpectrumLightSourceChange: (SpectrumLightSource) -> Unit,
     onAnalytesChange: (List<com.muc.fluocolorquant.data.model.Analyte>) -> Unit,
     onAnalyteUnitChange: (String, String) -> Unit,
     onAnalyteMaxConcentrationChange: (String, String) -> Unit,
@@ -335,6 +343,7 @@ private fun DirectCreateProjectContent(
 ) {
     var showAnalytePicker by rememberSaveable { mutableStateOf(false) }
     var unitPickerAnalyteId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showLightSourcePicker by rememberSaveable { mutableStateOf(false) }
     val selectedAnalytes = state.form.selectedAnalytes.mapNotNull { selection ->
         state.analytes.firstOrNull { it.id == selection.analyteId }?.let { analyte ->
             analyte to selection
@@ -411,27 +420,33 @@ private fun DirectCreateProjectContent(
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier.padding(top = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            OutlinedTextField(
-                                value = state.form.customRowsInput,
-                                onValueChange = onCustomRowsChange,
-                                label = { Text(stringResource(R.string.direct_create_rows)) },
-                                modifier = Modifier.weight(1f),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                shape = RoundedCornerShape(FluoRadius.control),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = state.form.customColumnsInput,
-                                onValueChange = onCustomColumnsChange,
-                                label = { Text(stringResource(R.string.direct_create_columns)) },
-                                modifier = Modifier.weight(1f),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                shape = RoundedCornerShape(FluoRadius.control),
-                                singleLine = true
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                OutlinedTextField(
+                                    value = state.form.customRowsInput,
+                                    onValueChange = onCustomRowsChange,
+                                    label = { Text(stringResource(R.string.direct_create_rows)) },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    shape = RoundedCornerShape(FluoRadius.control),
+                                    singleLine = true
+                                )
+                                OutlinedTextField(
+                                    value = state.form.customColumnsInput,
+                                    onValueChange = onCustomColumnsChange,
+                                    label = { Text(stringResource(R.string.direct_create_columns)) },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    shape = RoundedCornerShape(FluoRadius.control),
+                                    singleLine = true
+                                )
+                            }
+                            DirectCustomSiteShapeSelector(
+                                selected = state.form.customSiteShape,
+                                onSelect = onCustomSiteShapeChange
                             )
                         }
                     }
@@ -443,6 +458,18 @@ private fun DirectCreateProjectContent(
                         icon = Icons.Default.Sensors,
                         title = stringResource(R.string.direct_create_spectrum_channel_section),
                         subtitle = stringResource(R.string.direct_create_spectrum_channel_help)
+                    )
+                    // 光源是本项目采集条件的人工确认项，不是自动校正开关。选择后会写入
+                    // Project，并在生成结果时再次冻结，后续更改默认设置不会影响本项目。
+                    ScientificSelectionField(
+                        label = stringResource(R.string.spectrum_light_source_label),
+                        value = stringResource(state.form.spectrumLightSource.displayNameRes),
+                        placeholder = stringResource(R.string.spectrum_light_source_label),
+                        icon = Icons.Default.Sensors,
+                        supportingValue = stringResource(
+                            R.string.direct_create_spectrum_light_source_help
+                        ),
+                        onClick = { showLightSourcePicker = true }
                     )
                     DirectSpectrumChannelBinding(
                         analytes = selectedAnalytes.map { it.first }
@@ -512,6 +539,25 @@ private fun DirectCreateProjectContent(
                 onAnalyteUnitChange(unitSelection.analyteId, unit)
             },
             onDismiss = { unitPickerAnalyteId = null }
+        )
+    }
+
+    if (showLightSourcePicker) {
+        ScientificPickerSheet(
+            title = stringResource(R.string.spectrum_light_source_label),
+            options = SpectrumLightSource.entries.map { lightSource ->
+                com.muc.fluocolorquant.ui.components.ScientificPickerOption(
+                    id = lightSource.name,
+                    title = stringResource(lightSource.displayNameRes),
+                    icon = Icons.Default.Sensors
+                )
+            },
+            selectedId = state.form.spectrumLightSource.name,
+            onSelect = { selectedName ->
+                SpectrumLightSource.entries.firstOrNull { it.name == selectedName }
+                    ?.let(onSpectrumLightSourceChange)
+            },
+            onDismiss = { showLightSourcePicker = false }
         )
     }
 }
@@ -600,6 +646,96 @@ private fun DirectDetectionModeSelector(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * 自定义阵列的物理位点形状选择。
+ *
+ * PG-Grid 只负责恢复规则晶格，不会可靠判断位点应使用圆形还是方形采样掩膜；
+ * 因此必须由用户依据真实载体显式选择，并随 CarrierProfile 冻结。
+ */
+@Composable
+private fun DirectCustomSiteShapeSelector(
+    selected: SiteShape,
+    onSelect: (SiteShape) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.direct_create_custom_shape_label),
+            style = MaterialTheme.typography.labelLarge
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            DirectSiteShapeOption(
+                label = stringResource(R.string.direct_create_custom_shape_circle),
+                icon = Icons.Default.Circle,
+                selected = selected == SiteShape.CIRCLE,
+                onClick = { onSelect(SiteShape.CIRCLE) },
+                modifier = Modifier.weight(1f)
+            )
+            DirectSiteShapeOption(
+                label = stringResource(R.string.direct_create_custom_shape_square),
+                icon = Icons.Default.CropSquare,
+                selected = selected == SiteShape.SQUARE,
+                onClick = { onSelect(SiteShape.SQUARE) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Text(
+            text = stringResource(R.string.direct_create_custom_shape_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun DirectSiteShapeOption(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(FluoRadius.control),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            width = if (selected) 1.5.dp else 1.dp,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            }
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            )
         }
     }
 }
@@ -1266,8 +1402,10 @@ private fun DirectImageSourceOption(
 
 @Composable
 private fun detectionModeLabel(modality: DetectionModality): String = when (modality) {
-    DetectionModality.COLORIMETRIC -> stringResource(R.string.colorimetric_detection)
-    DetectionModality.FLUORESCENCE -> stringResource(R.string.fluorescence_detection)
+    // 三等分控件使用已有短标签；完整检测名称已由上方章节标题和图标表达。这样在
+    // 360dp、1.3 倍字体下仍可完整显示，不会把末尾文字硬裁掉。
+    DetectionModality.COLORIMETRIC -> stringResource(R.string.colorimetric_mode_short)
+    DetectionModality.FLUORESCENCE -> stringResource(R.string.fluorescence_mode_short)
     DetectionModality.SPECTRUM -> stringResource(R.string.spectrum_detection)
 }
 

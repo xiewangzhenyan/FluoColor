@@ -367,6 +367,9 @@ private fun Plate96ResultSuccess(
         onDismiss = { showExport = false },
         selectedAnalyteId = analyte?.analyteId,
         validations = state.validations,
+        // PDF 逐孔附录必须读取孔板专属的冻结裁切边界；通用阵列快照本身只保存科学测量，
+        // 不足以恢复每个圆孔的真实图像，因此这里显式把同一次运行的孔板视觉快照传入。
+        plateSnapshot = snapshot,
         pdfLabelsOverride = arrayResultPdfLabels().copy(
             documentTitle = stringResource(R.string.plate96_pdf_document_title),
             overviewHeatmap = stringResource(R.string.plate96_pdf_overview_heatmap),

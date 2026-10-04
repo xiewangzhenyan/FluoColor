@@ -523,7 +523,7 @@ private fun AutoCalibrationSection(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(stringResource(R.string.reference_wavelength_item, index + 1)) },
-                    placeholder = { Text("nm") },
+                    placeholder = { Text(stringResource(R.string.unit_nanometer)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     shape = RoundedCornerShape(FluoRadius.chip),
@@ -549,7 +549,7 @@ private fun AutoCalibrationSection(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(FluoRadius.chip)
             ) {
-                Text("+ ${stringResource(R.string.add_wavelength)}")
+                Text(stringResource(R.string.add_wavelength_action))
             }
 
             // 输入状态提示

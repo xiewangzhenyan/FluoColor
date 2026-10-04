@@ -760,7 +760,7 @@ fun TemplateInfoRow(
         Spacer(modifier = Modifier.width(8.dp))
         
         Text(
-            text = "$label: ",
+            text = stringResource(R.string.label_with_colon, label),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium
         )

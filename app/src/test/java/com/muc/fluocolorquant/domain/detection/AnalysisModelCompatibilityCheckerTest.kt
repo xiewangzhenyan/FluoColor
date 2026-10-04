@@ -6,6 +6,7 @@ import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.data.model.AnalysisModel
+import com.muc.fluocolorquant.domain.detection.quantification.BuiltInSharedConcentrationModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -108,6 +109,24 @@ class AnalysisModelCompatibilityCheckerTest {
         assertTrue(result is ModelCompatibilityResult.Incompatible)
         result as ModelCompatibilityResult.Incompatible
         assertTrue(ModelCompatibilityReason.ACQUISITION_PROFILE_MISMATCH in result.reasons)
+    }
+
+    @Test
+    fun `旧内置模型在微流控确认试用后恢复技术兼容`() {
+        val result = AnalysisModelCompatibilityChecker.check(
+            model = compatibleModel().copy(
+                name = BuiltInSharedConcentrationModel.resourceName(
+                    analyteId = "cea",
+                    detectionMode = DetectionModality.FLUORESCENCE.code
+                ),
+                modelType = "DEEP_LEARNING",
+                // 模拟旧版按项目载体照抄出的错误兼容范围。
+                compatibleCarrierTypesJson = "[\"MICROFLUIDIC_CHIP\"]"
+            ),
+            request = compatibleRequest()
+        )
+
+        assertTrue(result is ModelCompatibilityResult.Compatible)
     }
 
     private fun compatibleModel(): AnalysisModel {

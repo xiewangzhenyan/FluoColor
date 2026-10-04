@@ -11,8 +11,10 @@ sealed class Screen(open val route: String) {
     object NewProject : Screen("new_project") {
         fun createRoute(): String = route
     }
-    object QuickCreateProject : Screen("quick_create_project") {
+    /** 直接新建项目的唯一生产路由；旧 quick_create_project 只在导航图中作为入站别名。 */
+    object DirectCreateProject : Screen("direct_create_project") {
         fun createRoute(): String = route
+        const val LEGACY_ROUTE: String = "quick_create_project"
     }
     object ImageCapture : Screen("image_capture") {
         fun createRoute(
@@ -48,13 +50,9 @@ sealed class Screen(open val route: String) {
         fun createRoute(runId: String): String {
             return "$route/$runId"
         }
-    }
-    
-    // 添加新的结果展示页面路由
-    object NewResult : Screen("new_result") {
-        fun createRoute(runId: String): String {
-            return "$route/$runId"
-        }
+
+        /** 2.x 旧入口继续接收历史返回栈，但所有新跳转只生成 [createRoute]。 */
+        fun legacyRoute(runId: String): String = "new_result/$runId"
     }
     object History : Screen("history")
     object Settings : Screen("settings")

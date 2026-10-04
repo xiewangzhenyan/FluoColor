@@ -65,8 +65,11 @@ import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 
 private const val TAG = "DetectionSettingsScreen"
 
@@ -88,21 +91,21 @@ fun DetectionSettingsScreen(
     val defaultConcentrationUnit by viewModel.defaultConcentrationUnit.collectAsState()
     val concentrationUnits by viewModel.concentrationUnits.collectAsState()
     val newUnitInput by viewModel.newUnitInput.collectAsState()
-    val defaultRows by viewModel.defaultRows.collectAsState()
-    val defaultColumns by viewModel.defaultColumns.collectAsState()
-    val pixelExtractionMethod by viewModel.pixelExtractionMethod.collectAsState()
-    val imagePreprocessingEnabled by viewModel.imagePreprocessingEnabled.collectAsState()
+    val settingsUiState by viewModel.uiState.collectAsState()
+    var defaultRowsInput by rememberSaveable { mutableStateOf("") }
+    var defaultColumnsInput by rememberSaveable { mutableStateOf("") }
+    val invalidGridMessage = stringResource(R.string.default_custom_grid_invalid)
+
+    // DataStore 首次返回后同步草稿；保存成功后的发射也会把规范化数值写回输入框。
+    LaunchedEffect(settingsUiState.defaultCustomRows, settingsUiState.defaultCustomColumns) {
+        defaultRowsInput = settingsUiState.defaultCustomRows.toString()
+        defaultColumnsInput = settingsUiState.defaultCustomColumns.toString()
+    }
 
     // 添加LaunchedEffect确保页面打开时刷新设置
     LaunchedEffect(Unit) {
         viewModel.refreshSettings()
     }
-
-    // 将行列输入框的状态提升到这里，使保存按钮可以访问
-    var rowsText by remember(defaultRows) { mutableStateOf(defaultRows.toString()) }
-    var rowInputError by remember { mutableStateOf(false) }
-    var columnsText by remember(defaultColumns) { mutableStateOf(defaultColumns.toString()) }
-    var columnInputError by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -120,75 +123,6 @@ fun DetectionSettingsScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            // 像素提取方式设置
-            Text(
-                text = stringResource(R.string.settings_pixel_extraction_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            
-            Text(
-                text = stringResource(R.string.settings_pixel_extraction_desc),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            
-            PixelExtractionSelector(
-                currentMethod = pixelExtractionMethod,
-                onMethodSelected = { method ->
-                    if (method != pixelExtractionMethod) {
-                        viewModel.setPixelExtractionMethod(method)
-                        toastManager.showToast(
-                            message = context.getString(R.string.settings_update_success),
-                            type = ToastType.SUCCESS
-                        )
-                    }
-                },
-                options = viewModel.pixelExtractionOptions
-            )
-            
-            Divider(
-                modifier = Modifier.padding(vertical = 16.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            )
-            
-            // 图像预处理设置
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.settings_preprocessing_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = stringResource(R.string.settings_preprocessing_desc),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                }
-                
-                Switch(
-                    checked = imagePreprocessingEnabled,
-                    onCheckedChange = { enabled ->
-                        viewModel.setImagePreprocessingEnabled(enabled)
-                        toastManager.showToast(
-                            message = context.getString(R.string.settings_update_success),
-                            type = ToastType.SUCCESS
-                        )
-                    }
-                )
-            }
-            
-            Divider(
-                modifier = Modifier.padding(vertical = 16.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            )
-
             // 默认检测模式选择
             Text(
                 text = stringResource(R.string.default_detection_mode),
@@ -211,6 +145,88 @@ fun DetectionSettingsScreen(
                 modeOptions = viewModel.detectionModeOptions
             )
             
+            Divider(
+                modifier = Modifier.padding(vertical = 16.dp),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+            )
+
+            // 这里只配置“新建自定义阵列”的预填值。固定 96 孔板和已有项目不会读取它；
+            // 行列经同一个 ViewModel 调用原子保存，不能分别写入造成半更新规格。
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GridView,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.default_custom_grid_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = stringResource(R.string.default_custom_grid_help),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = defaultRowsInput,
+                            onValueChange = { value ->
+                                defaultRowsInput = value.filter(Char::isDigit).take(2)
+                            },
+                            label = { Text(stringResource(R.string.direct_create_rows)) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        OutlinedTextField(
+                            value = defaultColumnsInput,
+                            onValueChange = { value ->
+                                defaultColumnsInput = value.filter(Char::isDigit).take(2)
+                            },
+                            label = { Text(stringResource(R.string.direct_create_columns)) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            val saved = viewModel.updateDefaultCustomGrid(
+                                rows = defaultRowsInput.toIntOrNull(),
+                                columns = defaultColumnsInput.toIntOrNull()
+                            )
+                            toastManager.showToast(
+                                message = if (saved) {
+                                    context.getString(R.string.settings_update_success)
+                                } else {
+                                    invalidGridMessage
+                                },
+                                type = if (saved) ToastType.SUCCESS else ToastType.ERROR
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(imageVector = Icons.Default.Save, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.save))
+                    }
+                }
+            }
+
             Divider(
                 modifier = Modifier.padding(vertical = 16.dp),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
@@ -305,310 +321,6 @@ fun DetectionSettingsScreen(
                 }
             )
             
-            Divider(
-                modifier = Modifier.padding(vertical = 16.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            )
-            
-            // 默认孔板尺寸设置
-            Text(
-                text = stringResource(R.string.default_plate_size),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // 行数输入
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    
-                    OutlinedTextField(
-                        value = rowsText,
-                        onValueChange = { value ->
-                            // 允许空输入，但不自动填充默认值
-                            if (value.isEmpty()) {
-                                rowsText = value
-                                rowInputError = false
-                                // 不再调用 viewModel.setDefaultRows(12)
-                            } else if (value.matches(Regex("^[0-9]+$"))) {
-                                val numValue = value.toInt()
-                                // 旧检测偏好与载体档案共用 1..99 的逐维边界，不再限制为 96 位点。
-                                val columns: Int = defaultColumns
-                                if (GridLayoutPolicy.isValid(numValue, columns)) {
-                                    rowsText = value
-                                    viewModel.setDefaultRows(numValue)
-                                    rowInputError = false
-                                } else {
-                                    rowInputError = true
-                                    toastManager.showToast(
-                                        message = context.getString(R.string.plate_size_limit_exceeded),
-                                        type = ToastType.WARNING
-                                    )
-                                }
-                            } else {
-                                // 非数字输入，不更新值，显示错误
-                                rowInputError = true
-                                toastManager.showToast(
-                                    message = context.getString(R.string.input_number_only),
-                                    type = ToastType.ERROR
-                                )
-                            }
-                        },
-                        label = { Text(stringResource(R.string.rows)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.GridView,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = if (rowInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = if (rowInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
-                            errorBorderColor = MaterialTheme.colorScheme.error
-                        ),
-                        shape = MaterialTheme.shapes.small,
-                        isError = rowInputError
-                    )
-                }
-                
-                // 列数输入
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    
-                    OutlinedTextField(
-                        value = columnsText,
-                        onValueChange = { value ->
-                            // 允许空输入，但不自动填充默认值
-                            if (value.isEmpty()) {
-                                columnsText = value
-                                columnInputError = false
-                                // 不再调用 viewModel.setDefaultColumns(8)
-                            } else if (value.matches(Regex("^[0-9]+$"))) {
-                                val numValue = value.toInt()
-                                // 逐维校验可支持 10×10、15×15 和自定义阵列。
-                                val rows: Int = defaultRows
-                                if (GridLayoutPolicy.isValid(rows, numValue)) {
-                                    columnsText = value
-                                    viewModel.setDefaultColumns(numValue)
-                                    columnInputError = false
-                                } else {
-                                    columnInputError = true
-                                    toastManager.showToast(
-                                        message = context.getString(R.string.plate_size_limit_exceeded),
-                                        type = ToastType.WARNING
-                                    )
-                                }
-                            } else {
-                                // 非数字输入，不更新值，显示错误
-                                columnInputError = true
-                                toastManager.showToast(
-                                    message = context.getString(R.string.input_number_only),
-                                    type = ToastType.ERROR
-                                )
-                            }
-                        },
-                        label = { Text(stringResource(R.string.columns)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.GridView,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = if (columnInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = if (columnInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
-                            errorBorderColor = MaterialTheme.colorScheme.error
-                        ),
-                        shape = MaterialTheme.shapes.small,
-                        isError = columnInputError
-                    )
-                }
-            }
-            
-            // 添加说明文字
-            Text(
-                text = stringResource(R.string.plate_size_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-
-            // 添加保存按钮
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Button(
-                onClick = {
-                    // 检查行列输入是否为空，如果为空则使用上次保存的合法值
-                    if (rowsText.isEmpty() && columnsText.isEmpty()) {
-                        // 两个都为空，不做任何操作，保持原来的值
-                        toastManager.showToast(
-                            message = context.getString(R.string.settings_update_success),
-                            type = ToastType.SUCCESS
-                        )
-                    } else if (rowsText.isEmpty()) {
-                        // 行为空，列不为空
-                        if (columnsText.matches(Regex("^[0-9]+$"))) {
-                            val numColumns = columnsText.toInt()
-                            // 只校验载体支持的行列边界，不再套用旧 96 孔总数上限。
-                            val rows: Int = defaultRows
-                            if (GridLayoutPolicy.isValid(rows, numColumns)) {
-                                viewModel.setDefaultColumns(numColumns)
-                                toastManager.showToast(
-                                    message = context.getString(R.string.settings_update_success),
-                                    type = ToastType.SUCCESS
-                                )
-                            } else {
-                                toastManager.showToast(
-                                    message = context.getString(R.string.plate_size_limit_exceeded),
-                                    type = ToastType.WARNING
-                                )
-                            }
-                        } else {
-                            toastManager.showToast(
-                                message = context.getString(R.string.input_number_only),
-                                type = ToastType.ERROR
-                            )
-                        }
-                    } else if (columnsText.isEmpty()) {
-                        // 列为空，行不为空
-                        if (rowsText.matches(Regex("^[0-9]+$"))) {
-                            val numRows = rowsText.toInt()
-                            // 只校验载体支持的行列边界，不再套用旧 96 孔总数上限。
-                            val columns: Int = defaultColumns
-                            if (GridLayoutPolicy.isValid(numRows, columns)) {
-                                viewModel.setDefaultRows(numRows)
-                                toastManager.showToast(
-                                    message = context.getString(R.string.settings_update_success),
-                                    type = ToastType.SUCCESS
-                                )
-                            } else {
-                                toastManager.showToast(
-                                    message = context.getString(R.string.plate_size_limit_exceeded),
-                                    type = ToastType.WARNING
-                                )
-                            }
-                        } else {
-                            toastManager.showToast(
-                                message = context.getString(R.string.input_number_only),
-                                type = ToastType.ERROR
-                            )
-                        }
-                    } else {
-                        // 两个都不为空
-                        if (rowsText.matches(Regex("^[0-9]+$")) && columnsText.matches(Regex("^[0-9]+$"))) {
-                            val numRows = rowsText.toInt()
-                            val numColumns = columnsText.toInt()
-                            // 统一支持载体档案允许的自定义行列。
-                            if (GridLayoutPolicy.isValid(numRows, numColumns)) {
-                                viewModel.setDefaultRows(numRows)
-                                viewModel.setDefaultColumns(numColumns)
-                                toastManager.showToast(
-                                    message = context.getString(R.string.settings_update_success),
-                                    type = ToastType.SUCCESS
-                                )
-                            } else {
-                                toastManager.showToast(
-                                    message = context.getString(R.string.plate_size_limit_exceeded),
-                                    type = ToastType.WARNING
-                                )
-                            }
-                        } else {
-                            toastManager.showToast(
-                                message = context.getString(R.string.input_number_only),
-                                type = ToastType.ERROR
-                            )
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Text(stringResource(R.string.save))
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PixelExtractionSelector(
-    currentMethod: String,
-    onMethodSelected: (String) -> Unit,
-    options: List<SettingsViewModel.PixelExtractionOption>
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val selectedOptionText = options.find { it.code == currentMethod }?.let {
-        stringResource(id = R.string::class.java.getField(it.resourceId).getInt(null))
-    } ?: options.first().let {
-        stringResource(id = R.string::class.java.getField(it.resourceId).getInt(null))
-    }
-
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            onClick = { expanded = true }
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Science,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    
-                    Spacer(modifier = Modifier.width(8.dp))
-                    
-                    Text(
-                        text = selectedOptionText,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-        }
-        
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.fillMaxWidth(0.7f)
-        ) {
-            options.forEach { option ->
-                val optionText = stringResource(id = R.string::class.java.getField(option.resourceId).getInt(null))
-                DropdownMenuItem(
-                    text = { Text(text = optionText) },
-                    onClick = {
-                        onMethodSelected(option.code)
-                        expanded = false
-                    }
-                )
-            }
         }
     }
 }
@@ -620,15 +332,16 @@ fun DetectionModeSelector(
     modeOptions: List<SettingsViewModel.DetectionModeOption>
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val currentModeName by remember(currentMode) {
-        mutableStateOf(
-            modeOptions.find { it.code == currentMode }?.name 
-                ?: if (currentMode == "FLUORESCENCE") 
-                    "Fluorescence Detection" 
-                else 
-                    "Colorimetric Detection"
+    // 显示名称必须在 Compose 资源上下文解析，不能由 ViewModel 固化成英文字符串。
+    val currentModeName = modeOptions.find { it.code == currentMode }
+        ?.let { stringResource(it.nameRes) }
+        ?: stringResource(
+            if (currentMode == "FLUORESCENCE") {
+                R.string.fluorescence_detection
+            } else {
+                R.string.colorimetric_detection
+            }
         )
-    }
     
     Box(modifier = Modifier.fillMaxWidth()) {
         Surface(
@@ -671,7 +384,7 @@ fun DetectionModeSelector(
         ) {
             modeOptions.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option.name) },
+                    text = { Text(stringResource(option.nameRes)) },
                     onClick = {
                         onModeSelected(option.code)
                         expanded = false
@@ -798,7 +511,7 @@ fun ConcentrationUnitChips(
             )
             
             Text(
-                text = "(${stringResource(R.string.default_unit)})",
+                text = stringResource(R.string.parenthesized_value, stringResource(R.string.default_unit)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary
             )

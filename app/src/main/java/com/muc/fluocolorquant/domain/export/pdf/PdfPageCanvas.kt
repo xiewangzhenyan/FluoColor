@@ -9,6 +9,8 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
+import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.Log
@@ -149,15 +151,42 @@ object PdfPageCanvas {
         paint: TextPaint,
         maxWidth: Float
     ): Float {
-        val layout = StaticLayout.Builder
-            .obtain(text, 0, text.length, paint, maxWidth.toInt().coerceAtLeast(1))
-            .build()
+        val layout = createStaticLayout(
+            text = text,
+            paint = paint,
+            width = maxWidth.toInt().coerceAtLeast(1)
+        )
         canvas.save()
         canvas.translate(x, y)
         layout.draw(canvas)
         canvas.restore()
         return y + layout.height
     }
+
+    /**
+     * 创建与系统版本匹配的折行布局。
+     *
+     * `StaticLayout.Builder` 从 API 23 才存在，而项目仍明确支持 API 22。两条分支使用相同的
+     * 对齐、行距和字体上下留白语义，低版本分支只解决平台接口差异，不改变 PDF 文本内容、
+     * 分页数据或科研数值。等未来最低版本统一提升到 API 23 以上后才可删除兼容构造。
+     */
+    @Suppress("DEPRECATION")
+    private fun createStaticLayout(text: String, paint: TextPaint, width: Int): StaticLayout =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            StaticLayout.Builder
+                .obtain(text, 0, text.length, paint, width)
+                .build()
+        } else {
+            StaticLayout(
+                text,
+                paint,
+                width,
+                Layout.Alignment.ALIGN_NORMAL,
+                1f,
+                0f,
+                true
+            )
+        }
 
     /**
      * 绘制带表头、隔行底色和边框的表格，返回表格下方的 Y 坐标。

@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.muc.fluocolorquant.data.SessionManager
 import com.muc.fluocolorquant.data.model.User
 import com.muc.fluocolorquant.data.repository.UserRepository
+import com.muc.fluocolorquant.data.repository.UserAccountError
+import com.muc.fluocolorquant.data.repository.UserAccountException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,10 +70,13 @@ class UserViewModel @Inject constructor(
                         _loginState.value = LoginState.Success
                     }
                 } else {
-                    _loginState.value = LoginState.Error(result.exceptionOrNull()?.message ?: "登录失败")
+                    _loginState.value = LoginState.Error(
+                        (result.exceptionOrNull() as? UserAccountException)?.reason
+                            ?: UserAccountError.LOGIN_FAILED
+                    )
                 }
-            } catch (e: Exception) {
-                _loginState.value = LoginState.Error(e.message ?: "登录出错")
+            } catch (_: Exception) {
+                _loginState.value = LoginState.Error(UserAccountError.LOGIN_FAILED)
             }
         }
     }
@@ -90,10 +95,13 @@ class UserViewModel @Inject constructor(
                         _loginState.value = LoginState.Success
                     }
                 } else {
-                    _loginState.value = LoginState.Error(result.exceptionOrNull()?.message ?: "注册失败")
+                    _loginState.value = LoginState.Error(
+                        (result.exceptionOrNull() as? UserAccountException)?.reason
+                            ?: UserAccountError.REGISTER_FAILED
+                    )
                 }
-            } catch (e: Exception) {
-                _loginState.value = LoginState.Error(e.message ?: "注册出错")
+            } catch (_: Exception) {
+                _loginState.value = LoginState.Error(UserAccountError.REGISTER_FAILED)
             }
         }
     }
@@ -166,14 +174,7 @@ class UserViewModel @Inject constructor(
         newPassword: String
     ): Boolean {
         return try {
-            val user = userRepository.getUserById(userId)
-            if (user != null && user.password == oldPassword) {
-                val updatedUser = user.copy(password = newPassword)
-                userRepository.updateUser(updatedUser)
-                true
-            } else {
-                false
-            }
+            userRepository.changePassword(userId, oldPassword, newPassword)
         } catch (_: Exception) {
             false
         }
@@ -183,6 +184,6 @@ class UserViewModel @Inject constructor(
         object Idle : LoginState()
         object Loading : LoginState()
         object Success : LoginState()
-        data class Error(val message: String) : LoginState()
+        data class Error(val reason: UserAccountError) : LoginState()
     }
 }

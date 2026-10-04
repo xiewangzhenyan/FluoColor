@@ -1,9 +1,12 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
+import com.muc.fluocolorquant.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,8 +27,9 @@ class AnalyteViewModel @Inject constructor(
     
     // 分析物列表状态
     private val _analytes = analyteRepository.getAllAnalytes()
-        .catch { e ->
-            _errorMessage.value = e.message ?: "未知错误"
+        .catch { error ->
+            Log.e(TAG, "加载分析物列表失败", error)
+            _errorMessage.value = UiText.StringResource(R.string.analyte_load_error)
         }
         .stateIn(
             scope = viewModelScope,
@@ -39,8 +43,8 @@ class AnalyteViewModel @Inject constructor(
     val isLoading: StateFlow<Boolean> = _isLoading
     
     // 错误信息
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage
+    private val _errorMessage = MutableStateFlow<UiText?>(null)
+    val errorMessage: StateFlow<UiText?> = _errorMessage
     
     /**
      * 添加分析物
@@ -48,7 +52,7 @@ class AnalyteViewModel @Inject constructor(
      */
     fun addAnalyte(name: String) {
         if (name.isBlank()) {
-            _errorMessage.value = "分析物名称不能为空"
+            _errorMessage.value = UiText.StringResource(R.string.analyte_name_empty)
             return
         }
         
@@ -58,10 +62,11 @@ class AnalyteViewModel @Inject constructor(
             try {
                 val result = analyteRepository.addAnalyte(name)
                 if (!result) {
-                    _errorMessage.value = "该分析物已存在"
+                    _errorMessage.value = UiText.StringResource(R.string.analyte_already_exists)
                 }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "添加分析物时发生错误"
+            } catch (error: Exception) {
+                Log.e(TAG, "添加分析物失败", error)
+                _errorMessage.value = UiText.StringResource(R.string.analyte_added_error)
             } finally {
                 _isLoading.value = false
             }
@@ -75,7 +80,7 @@ class AnalyteViewModel @Inject constructor(
      */
     fun updateAnalyte(id: String, name: String) {
         if (name.isBlank()) {
-            _errorMessage.value = "分析物名称不能为空"
+            _errorMessage.value = UiText.StringResource(R.string.analyte_name_empty)
             return
         }
         
@@ -85,10 +90,11 @@ class AnalyteViewModel @Inject constructor(
             try {
                 val result = analyteRepository.updateAnalyte(id, name)
                 if (!result) {
-                    _errorMessage.value = "该分析物名称已存在"
+                    _errorMessage.value = UiText.StringResource(R.string.analyte_already_exists)
                 }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "更新分析物时发生错误"
+            } catch (error: Exception) {
+                Log.e(TAG, "更新分析物失败: $id", error)
+                _errorMessage.value = UiText.StringResource(R.string.analyte_update_error)
             } finally {
                 _isLoading.value = false
             }
@@ -105,8 +111,9 @@ class AnalyteViewModel @Inject constructor(
             
             try {
                 analyteRepository.deleteAnalyte(analyteId)
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "删除分析物时发生错误"
+            } catch (error: Exception) {
+                Log.e(TAG, "删除分析物失败: $analyteId", error)
+                _errorMessage.value = UiText.StringResource(R.string.analyte_delete_error)
             } finally {
                 _isLoading.value = false
             }
@@ -119,4 +126,8 @@ class AnalyteViewModel @Inject constructor(
     fun clearErrorMessage() {
         _errorMessage.value = null
     }
-} 
+
+    private companion object {
+        const val TAG: String = "AnalyteViewModel"
+    }
+}

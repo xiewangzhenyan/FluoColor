@@ -155,7 +155,10 @@ data class CalibrationResultSet(
     val functionResults: List<CalibrationFunctionResult>,
     val recommendedCandidateId: String?,
     val processorVersion: String,
-    val engineVersion: String
+    val engineVersion: String,
+    /** 用户为本项目确认的预期量程，只用于展示、外推边界与运行追溯。 */
+    val projectRangeMin: Double? = null,
+    val projectRangeMax: Double? = null
 ) {
     val candidates: List<CalibrationCandidate>
         get() = functionResults.mapNotNull(CalibrationFunctionResult::candidate)

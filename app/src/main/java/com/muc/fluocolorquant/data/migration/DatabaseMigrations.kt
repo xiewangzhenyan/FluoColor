@@ -169,6 +169,71 @@ object DatabaseMigrations {
     }
 
     /**
+     * 版本 15 → 16：为每条光谱结果增加处理参数与算法版本快照。
+     *
+     * 旧记录保持 null，读取时由领域层明确映射为固定 Legacy 配置；迁移阶段不能拿安装设备
+     * 当前的 DataStore 设置回填，否则同一数据库在不同设备上的历史解释会不一致。
+     */
+    val MIGRATION_15_16: Migration = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `spectrum_results` ADD COLUMN `processingConfigJson` TEXT")
+            db.execSQL("ALTER TABLE `spectrum_results` ADD COLUMN `processorVersion` TEXT")
+        }
+    }
+
+    /**
+     * 版本 16 → 17：为光谱结果增加项目采集光源快照。
+     *
+     * 旧结果保持 null，不能拿 `projects.lightSource` 回填：项目元数据可能在结果生成后被修改，
+     * 回填会把“当前项目值”伪装成“当时采集值”，破坏历史结果的可追溯性。
+     */
+    val MIGRATION_16_17: Migration = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `spectrum_results` ADD COLUMN `lightSourceSnapshot` TEXT")
+        }
+    }
+
+    /**
+     * 版本 17 → 18：开始“完整运行快照 + 定量 V2”科研数据代际。
+     *
+     * 用户已经明确选择重新发布后不保留旧项目、历史运行、曲线、模板和载体配置。这里
+     * 采用显式表级清退而不是 destructive migration：账户、分析物、试剂以及数据库外的
+     * 语言/主题等普通设置均被保留。删除顺序从子表到主表，既满足外键约束，也让迁移测试
+     * 可以精确证明清理范围；默认载体和采集档案会在数据库打开回调中重新幂等播种。
+     */
+    val MIGRATION_17_18: Migration = object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 运行与项目数据：先删除全部子资源，禁止依赖某台设备是否启用了外键级联。
+            db.execSQL("DELETE FROM `result_validation_records`")
+            db.execSQL("DELETE FROM `capture_artifacts`")
+            db.execSQL("DELETE FROM `site_measurements`")
+            db.execSQL("DELETE FROM `well_results`")
+            db.execSQL("DELETE FROM `spectrum_results`")
+            db.execSQL("DELETE FROM `spectrum_calibrations`")
+            db.execSQL("DELETE FROM `detection_runs`")
+            db.execSQL("DELETE FROM `project_analytes_join`")
+            db.execSQL("DELETE FROM `projects`")
+
+            // 模板与定量绑定必须整体清退，避免新项目继续引用缺少 V2 快照语义的旧方案。
+            db.execSQL("DELETE FROM `template_quantitation_bindings`")
+            db.execSQL("DELETE FROM `template_site_assignments`")
+            db.execSQL("DELETE FROM `template_analyte_configs`")
+            db.execSQL("DELETE FROM `experiment_templates`")
+
+            // 旧曲线和模型没有完整量程/逐孔状态快照，不能进入新数据代际的自动匹配。
+            db.execSQL("DELETE FROM `deep_learning_model_definitions`")
+            db.execSQL("DELETE FROM `calibration_points`")
+            db.execSQL("DELETE FROM `standard_curve_definitions`")
+            db.execSQL("DELETE FROM `analysis_models`")
+            db.execSQL("DELETE FROM `curve_models`")
+
+            // 载体/采集档案可能携带旧路由和定位 JSON；清理后由 V2 默认资源重新播种。
+            db.execSQL("DELETE FROM `carrier_profiles`")
+            db.execSQL("DELETE FROM `acquisition_profiles`")
+        }
+    }
+
+    /**
      * 重建模板主表并保持所有外部引用仍指向 `experiment_templates`。
      *
      * `legacy_alter_table` 防止 SQLite 在旧表改名时把子表外键同步改到临时表名；新表

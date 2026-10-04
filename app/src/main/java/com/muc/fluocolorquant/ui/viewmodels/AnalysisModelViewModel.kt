@@ -1,7 +1,11 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.muc.fluocolorquant.data.enums.AnalysisModelLifecycleStatus
 import com.muc.fluocolorquant.data.enums.AnalysisModelType
 import com.muc.fluocolorquant.data.model.AcquisitionProfile
@@ -13,9 +17,14 @@ import com.muc.fluocolorquant.data.repository.AcquisitionProfileRepository
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.data.repository.AnalysisModelRepository
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
+import com.muc.fluocolorquant.data.storage.DeepLearningModelContractResult
+import com.muc.fluocolorquant.data.storage.DeepLearningModelFileFailureReason
+import com.muc.fluocolorquant.data.storage.DeepLearningModelFileManager
+import com.muc.fluocolorquant.data.storage.DeepLearningModelImportResult
 import com.muc.fluocolorquant.ui.screens.settings.analysis.AnalysisModelDraft
 import com.muc.fluocolorquant.ui.screens.settings.analysis.AnalysisModelFormError
 import com.muc.fluocolorquant.ui.screens.settings.analysis.AnalysisModelStatusFilter
+import com.muc.fluocolorquant.ui.screens.settings.analysis.DeepLearningModelOutputMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,7 +63,20 @@ sealed interface AnalysisModelEvent {
     data object VersionCreated : AnalysisModelEvent
     data object Published : AnalysisModelEvent
     data object Archived : AnalysisModelEvent
+    data class ModelContractValidationFailed(
+        val reason: DeepLearningModelFileFailureReason
+    ) : AnalysisModelEvent
     data class OperationFailed(val operation: AnalysisModelOperation) : AnalysisModelEvent
+}
+
+/** 模型文件导入是持续页面状态，不能只用瞬时 Toast 表达。 */
+sealed interface DeepLearningModelFileUiState {
+    data object Idle : DeepLearningModelFileUiState
+    data object Importing : DeepLearningModelFileUiState
+    data class Ready(val originalFileName: String, val byteCount: Long) :
+        DeepLearningModelFileUiState
+    data class Failed(val reason: DeepLearningModelFileFailureReason) :
+        DeepLearningModelFileUiState
 }
 
 /** 统一分析模型库的不可变页面状态。 */
@@ -68,7 +90,8 @@ data class AnalysisModelUiState(
     val editorMode: AnalysisModelEditorMode? = null,
     val editingModelId: String? = null,
     val isEditorVisible: Boolean = false,
-    val isSaving: Boolean = false
+    val isSaving: Boolean = false,
+    val modelFileState: DeepLearningModelFileUiState = DeepLearningModelFileUiState.Idle
 ) {
     /** 类型与生命周期筛选必须同时满足，避免筛选芯片互相覆盖。 */
     val visibleModels: List<AnalysisModel>
@@ -108,7 +131,9 @@ data class AnalysisModelUiState(
 class AnalysisModelViewModel @Inject constructor(
     private val analysisModelRepository: AnalysisModelRepository,
     private val analyteRepository: AnalyteRepository,
-    private val acquisitionProfileRepository: AcquisitionProfileRepository
+    private val acquisitionProfileRepository: AcquisitionProfileRepository,
+    // 默认值只用于不启动 Hilt 的 JVM 状态测试；生产 Hilt 始终注入真实文件管理器。
+    private val modelFileManager: DeepLearningModelFileManager? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AnalysisModelUiState())
@@ -149,7 +174,8 @@ class AnalysisModelViewModel @Inject constructor(
             draft = AnalysisModelDraft(),
             editorMode = AnalysisModelEditorMode.CREATE,
             editingModelId = null,
-            isEditorVisible = true
+            isEditorVisible = true,
+            modelFileState = DeepLearningModelFileUiState.Idle
         )
     }
 
@@ -171,12 +197,57 @@ class AnalysisModelViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(draft = draft)
     }
 
+    /**
+     * 从系统文件选择器导入真实 PTL，自动复制、计算 SHA-256 并完成 Lite 格式检查。
+     * 用户不再手工填写文件路径或校验和，避免路径不可访问和摘要抄错。
+     */
+    fun importDeepLearningModel(uri: Uri) {
+        val manager = modelFileManager ?: run {
+            _uiState.value = _uiState.value.copy(
+                modelFileState = DeepLearningModelFileUiState.Failed(
+                    DeepLearningModelFileFailureReason.READ_FAILED
+                )
+            )
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                modelFileState = DeepLearningModelFileUiState.Importing
+            )
+            when (val result = manager.importFromUri(uri)) {
+                is DeepLearningModelImportResult.Success -> {
+                    val imported = result.file
+                    val current = _uiState.value
+                    _uiState.value = current.copy(
+                        draft = current.draft.copy(
+                            modelFileName = imported.relativePath,
+                            modelOriginalFileName = imported.originalFileName,
+                            checksumSha256 = imported.checksumSha256
+                        ),
+                        modelFileState = DeepLearningModelFileUiState.Ready(
+                            originalFileName = imported.originalFileName,
+                            byteCount = imported.byteCount
+                        )
+                    )
+                }
+                is DeepLearningModelImportResult.Failure -> {
+                    _uiState.value = _uiState.value.copy(
+                        modelFileState = DeepLearningModelFileUiState.Failed(result.reason)
+                    )
+                }
+            }
+        }
+    }
+
     fun dismissEditor() {
-        if (_uiState.value.isSaving) return
+        if (_uiState.value.isSaving ||
+            _uiState.value.modelFileState is DeepLearningModelFileUiState.Importing
+        ) return
         _uiState.value = _uiState.value.copy(
             isEditorVisible = false,
             editorMode = null,
-            editingModelId = null
+            editingModelId = null,
+            modelFileState = DeepLearningModelFileUiState.Idle
         )
     }
 
@@ -244,6 +315,37 @@ class AnalysisModelViewModel @Inject constructor(
                     _events.emit(AnalysisModelEvent.ValidationFailed(errors))
                     return@launch
                 }
+                val validatedBundle = if (
+                    AnalysisModelType.fromCode(bundle.model.modelType) ==
+                    AnalysisModelType.DEEP_LEARNING
+                ) {
+                    val definition = requireNotNull(bundle.deepLearning)
+                    val manager = modelFileManager
+                        ?: throw IllegalStateException("模型文件校验器不可用")
+                    when (val validation = manager.validateRuntimeContract(definition)) {
+                        is DeepLearningModelContractResult.Success -> bundle.copy(
+                            deepLearning = definition.copy(
+                                metadataJson = DeepLearningModelMetadataCodec.markRuntimeValidated(
+                                    json = definition.metadataJson,
+                                    sampleOutput = validation.sampleOutput
+                                )
+                            )
+                        )
+                        is DeepLearningModelContractResult.Failure -> {
+                            _events.emit(
+                                AnalysisModelEvent.ModelContractValidationFailed(validation.reason)
+                            )
+                            return@launch
+                        }
+                    }
+                } else {
+                    bundle
+                }
+                if (validatedBundle !== bundle) {
+                    // 发布状态只接受已经通过当前 Android/PyTorch Lite 运行契约的定义；
+                    // 校验结论进入模型元数据，项目冻结快照可追溯本次验证运行库和时间。
+                    analysisModelRepository.updateDraft(validatedBundle)
+                }
                 analysisModelRepository.publish(modelId)
                 _events.emit(AnalysisModelEvent.Published)
             } catch (_: Exception) {
@@ -264,12 +366,22 @@ class AnalysisModelViewModel @Inject constructor(
     }
 
     private fun openBundleEditor(bundle: AnalysisModelBundle) {
+        val draft = bundle.toDraft()
         _uiState.value = _uiState.value.copy(
-            draft = bundle.toDraft(),
+            draft = draft,
             editorMode = AnalysisModelEditorMode.EDIT_DRAFT,
             editingModelId = bundle.model.id,
             isEditorVisible = true,
-            isSaving = false
+            isSaving = false,
+            modelFileState = bundle.deepLearning
+                ?.takeIf { definition -> definition.modelFileName.isNotBlank() }
+                ?.let { definition ->
+                DeepLearningModelFileUiState.Ready(
+                    originalFileName = draft.modelOriginalFileName
+                        .ifBlank { definition.modelFileName.substringAfterLast('/') },
+                    byteCount = 0L
+                )
+            } ?: DeepLearningModelFileUiState.Idle
         )
     }
 }
@@ -327,7 +439,8 @@ private fun AnalysisModelDraft.toBundle(currentModel: AnalysisModel?): AnalysisM
                 inputWidth = inputWidthInput.toIntOrNull() ?: 0,
                 inputHeight = inputHeightInput.toIntOrNull() ?: 0,
                 normalizationJson = normalizationJson.trim(),
-                trainingDataVersion = trainingDataVersion.trim()
+                trainingDataVersion = trainingDataVersion.trim(),
+                metadataJson = DeepLearningModelMetadataCodec.encode(this)
             )
         )
     }
@@ -336,6 +449,7 @@ private fun AnalysisModelDraft.toBundle(currentModel: AnalysisModel?): AnalysisM
 /** 将仓库数据包恢复为表单，供编辑和发布校验共用同一套契约。 */
 private fun AnalysisModelBundle.toDraft(): AnalysisModelDraft {
     val type = AnalysisModelType.fromCode(model.modelType) ?: AnalysisModelType.STANDARD_CURVE
+    val deepLearningMetadata = DeepLearningModelMetadataCodec.decode(deepLearning?.metadataJson)
     return AnalysisModelDraft(
         name = model.name,
         modelType = type,
@@ -360,12 +474,73 @@ private fun AnalysisModelBundle.toDraft(): AnalysisModelDraft {
         lodInput = standardCurve?.lod?.toInputText().orEmpty(),
         loqInput = standardCurve?.loq?.toInputText().orEmpty(),
         modelFileName = deepLearning?.modelFileName.orEmpty(),
+        modelOriginalFileName = deepLearningMetadata.originalFileName,
         checksumSha256 = deepLearning?.checksumSha256.orEmpty(),
         inputWidthInput = deepLearning?.inputWidth?.toString().orEmpty(),
         inputHeightInput = deepLearning?.inputHeight?.toString().orEmpty(),
         normalizationJson = deepLearning?.normalizationJson.orEmpty(),
-        trainingDataVersion = deepLearning?.trainingDataVersion.orEmpty()
+        trainingDataVersion = deepLearning?.trainingDataVersion.orEmpty(),
+        outputMode = deepLearningMetadata.outputMode,
+        outputScaleInput = deepLearningMetadata.outputScale.toInputText(),
+        outputOffsetInput = deepLearningMetadata.outputOffset.toInputText()
     )
+}
+
+/** 自训练模型元数据只保存稳定执行语义，不在此处写用户可见文本。 */
+private object DeepLearningModelMetadataCodec {
+    private val gson = Gson()
+
+    data class Fields(
+        val originalFileName: String = "",
+        val outputMode: DeepLearningModelOutputMode =
+            DeepLearningModelOutputMode.RAW_CONCENTRATION,
+        val outputScale: Double = 1.0,
+        val outputOffset: Double = 0.0
+    )
+
+    fun encode(draft: AnalysisModelDraft): String = gson.toJson(
+        linkedMapOf(
+            "originalFileName" to draft.modelOriginalFileName,
+            "outputMode" to draft.outputMode.name,
+            "outputScale" to (draft.outputScaleInput.toDoubleOrNull() ?: 1.0),
+            "outputOffset" to (draft.outputOffsetInput.toDoubleOrNull() ?: 0.0),
+            "runtimeValidated" to false
+        )
+    )
+
+    fun decode(json: String?): Fields {
+        val root = parseObject(json) ?: return Fields()
+        val mode = root.string("outputMode")?.let { code ->
+            DeepLearningModelOutputMode.entries.firstOrNull { it.name == code }
+        } ?: DeepLearningModelOutputMode.RAW_CONCENTRATION
+        return Fields(
+            originalFileName = root.string("originalFileName").orEmpty(),
+            outputMode = mode,
+            outputScale = root.finiteDouble("outputScale") ?: 1.0,
+            outputOffset = root.finiteDouble("outputOffset") ?: 0.0
+        )
+    }
+
+    fun markRuntimeValidated(json: String?, sampleOutput: Double): String {
+        val root = parseObject(json) ?: JsonObject()
+        root.addProperty("runtimeValidated", true)
+        root.addProperty("runtimeValidator", "pytorch-lite-scalar-contract-v1")
+        root.addProperty("runtimeValidatedAtEpochMillis", System.currentTimeMillis())
+        root.addProperty("runtimeValidationSampleOutput", sampleOutput)
+        return gson.toJson(root)
+    }
+
+    private fun parseObject(json: String?): JsonObject? = runCatching {
+        json?.takeIf(String::isNotBlank)?.let(JsonParser::parseString)?.asJsonObject
+    }.getOrNull()
+
+    private fun JsonObject.string(name: String): String? = runCatching {
+        get(name)?.takeIf { it.isJsonPrimitive }?.asString
+    }.getOrNull()
+
+    private fun JsonObject.finiteDouble(name: String): Double? = runCatching {
+        get(name)?.takeIf { it.isJsonPrimitive }?.asDouble?.takeIf(Double::isFinite)
+    }.getOrNull()
 }
 
 /** 避免把整数范围恢复成带 `.0` 的输入文本，使编辑表单更清晰。 */

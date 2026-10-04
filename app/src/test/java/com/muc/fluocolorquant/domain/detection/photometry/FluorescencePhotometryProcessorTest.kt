@@ -2,6 +2,7 @@ package com.muc.fluocolorquant.domain.detection.photometry
 
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -42,6 +43,35 @@ class FluorescencePhotometryProcessorTest {
 
         assertTrue(PhotometryFlag.HOT_PIXEL in result.sites.single().qc.flags)
         assertTrue(result.sites.single().qc.qualityReliable)
+    }
+
+    @Test
+    fun `荧光RGB和Lab及通道比率由生产处理器真实计算`() {
+        val site = baseSite(index = 0, green = 60.0, integratedGreen = 600.0, hotPixelRatio = 0.0)
+        val quant = quantResult(listOf(site))
+        val features = listOf(
+            AnalysisPrimaryFeature.RED_INTENSITY,
+            AnalysisPrimaryFeature.GREEN_INTENSITY,
+            AnalysisPrimaryFeature.BLUE_INTENSITY,
+            AnalysisPrimaryFeature.CIE_L_STAR,
+            AnalysisPrimaryFeature.CIE_A_STAR,
+            AnalysisPrimaryFeature.CIE_B_STAR,
+            AnalysisPrimaryFeature.RED_BLUE_RATIO
+        )
+
+        val values = features.associateWith { feature ->
+            FluorescencePhotometryProcessor.process(
+                quant = quant,
+                config = FluorescenceProcessorConfig(
+                    channel = FluorescenceChannel.GREEN,
+                    primaryFeature = feature
+                )
+            ).sites.single().primaryFeatureValue
+        }
+
+        // 这些值不仅要出现在选择器中，还必须能由正式运行使用的同一个处理器生成。
+        assertTrue(values.values.all { value -> value?.isFinite() == true })
+        assertEquals(18.0 / 15.0, requireNotNull(values[AnalysisPrimaryFeature.RED_BLUE_RATIO]), 1e-9)
     }
 
     private fun quantResult(sites: List<BaseSitePhotometry>): PgQuantResult {

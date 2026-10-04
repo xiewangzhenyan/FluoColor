@@ -1,6 +1,7 @@
 package com.muc.fluocolorquant.data.repository
 
 import com.muc.fluocolorquant.data.dao.ProjectDao
+import com.muc.fluocolorquant.data.dao.ProjectFileReference
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.ProjectAnalyteJoin
 import kotlinx.coroutines.test.runTest
@@ -87,6 +88,8 @@ class ProjectRepositoryTest {
         override suspend fun getProjectsByUserId(userId: String): List<Project> = emptyList()
         override suspend fun insertProject(project: Project) = Unit
         override suspend fun updateProject(project: Project) = Unit
+        override suspend fun getFileReferencesForProject(projectId: String): List<ProjectFileReference> = emptyList()
+        override suspend fun getAllPersistedFileReferences(): List<ProjectFileReference> = emptyList()
         override suspend fun updateSpectrumConfig(
             projectId: String,
             lightSource: String?,

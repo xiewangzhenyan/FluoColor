@@ -193,8 +193,37 @@ private fun CommonSiteInformation(
         )
         DetailRow(
             label = stringResource(R.string.array_site_reliable_range_status),
-            value = reliableRangeLabel(measurement?.reliableRangeStatus)
+            value = reliableRangeLabel(measurement)
         )
+        if (
+            measurement?.qc?.quantificationReason.equals(
+                "OUTPUT_OUT_OF_DECLARED_RANGE",
+                ignoreCase = true
+            )
+        ) {
+            DetailRow(
+                label = stringResource(R.string.array_site_quantification_issue),
+                value = stringResource(R.string.array_site_model_output_out_of_domain)
+            )
+            measurement?.qc?.rawModelOutput?.takeIf(Double::isFinite)?.let { rawOutput ->
+                DetailRow(
+                    label = stringResource(R.string.array_site_raw_model_output),
+                    value = formatArrayHeatmapValue(rawOutput)
+                )
+            }
+            val declaredMinimum = measurement?.qc?.declaredOutputMin?.takeIf(Double::isFinite)
+            val declaredMaximum = measurement?.qc?.declaredOutputMax?.takeIf(Double::isFinite)
+            if (declaredMinimum != null && declaredMaximum != null) {
+                DetailRow(
+                    label = stringResource(R.string.array_site_declared_model_output_range),
+                    value = stringResource(
+                        R.string.array_site_model_output_range_value,
+                        declaredMinimum,
+                        declaredMaximum
+                    )
+                )
+            }
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         DetailRow(
             label = stringResource(R.string.array_site_geometry_source),
@@ -549,15 +578,23 @@ private fun measurementResultText(
 }
 
 @Composable
-private fun reliableRangeLabel(status: String?): String {
-    return when (status?.uppercase()) {
-        "WITHIN_RANGE" -> stringResource(R.string.array_site_range_within)
-        "BELOW_RANGE" -> stringResource(R.string.array_site_range_below)
-        "ABOVE_RANGE" -> stringResource(R.string.array_site_range_above)
-        "BELOW_PROJECT_RANGE" -> stringResource(R.string.array_site_range_below_project)
-        "ABOVE_PROJECT_RANGE" -> stringResource(R.string.array_site_range_above_project)
-        "BELOW_TRUSTED_RANGE" -> stringResource(R.string.array_site_range_below_trusted)
-        "ABOVE_TRUSTED_RANGE" -> stringResource(R.string.array_site_range_above_trusted)
+private fun reliableRangeLabel(measurement: ArraySiteMeasurementResult?): String {
+    val status = measurement?.reliableRangeStatus?.uppercase()
+    val boundaryOnly = measurement?.quantificationState.equals("BOUND_ONLY", ignoreCase = true)
+    return when {
+        // BELOW/ABOVE_RANGE 对标准曲线点浓度表示外推；对深度学习单侧界限则表示
+        // 模型可靠范围之外。必须先看强类型状态，避免向用户宣称已经得到外推点浓度。
+        boundaryOnly && status == "BELOW_RANGE" ->
+            stringResource(R.string.array_qc_site_below_range_title)
+        boundaryOnly && status == "ABOVE_RANGE" ->
+            stringResource(R.string.array_qc_site_above_range_title)
+        status == "WITHIN_RANGE" -> stringResource(R.string.array_site_range_within)
+        status == "BELOW_RANGE" -> stringResource(R.string.array_site_range_below)
+        status == "ABOVE_RANGE" -> stringResource(R.string.array_site_range_above)
+        status == "BELOW_PROJECT_RANGE" -> stringResource(R.string.array_site_range_below_project)
+        status == "ABOVE_PROJECT_RANGE" -> stringResource(R.string.array_site_range_above_project)
+        status == "BELOW_TRUSTED_RANGE" -> stringResource(R.string.array_site_range_below_trusted)
+        status == "ABOVE_TRUSTED_RANGE" -> stringResource(R.string.array_site_range_above_trusted)
         else -> stringResource(R.string.array_site_range_not_available)
     }
 }

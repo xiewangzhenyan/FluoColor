@@ -50,7 +50,10 @@ class CalibrationPolicyCodecTest {
     @Test
     fun `旧版策略缺少R方质量门槛时按新默认值兼容读取`() {
         val legacyJson = CalibrationPolicyCodec.encode(CalibrationPolicy.DEFAULT)
-            .replace("\"schemaVersion\":2", "\"schemaVersion\":1")
+            .replace(
+                "\"schemaVersion\":${CalibrationPolicy.CURRENT_SCHEMA_VERSION}",
+                "\"schemaVersion\":1"
+            )
             .replace(Regex(",\"lowQualityRSquaredThreshold\":[^,}]+"), "")
 
         val restored = requireNotNull(CalibrationPolicyCodec.decodeOrNull(legacyJson))
@@ -60,5 +63,38 @@ class CalibrationPolicyCodecTest {
             restored.lowQualityRSquaredThreshold,
             0.0
         )
+    }
+
+    @Test
+    fun `旧版隐式稳健默认迁移为R方优先`() {
+        val legacyJson = CalibrationPolicyCodec.encode(
+            CalibrationPolicy.DEFAULT.copy(strategy = CalibrationStrategy.ROBUST)
+        ).replace(
+            "\"schemaVersion\":${CalibrationPolicy.CURRENT_SCHEMA_VERSION}",
+            "\"schemaVersion\":2"
+        )
+
+        val restored = requireNotNull(CalibrationPolicyCodec.decodeOrNull(legacyJson))
+
+        assertEquals(CalibrationStrategy.R_SQUARED_FIRST, restored.strategy)
+    }
+
+    @Test
+    fun `V3荧光旧默认三信号迁移为当前完整推荐池`() {
+        val legacyDefault = linkedSetOf(
+            AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
+            AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY,
+            AnalysisPrimaryFeature.FLUORESCENCE_SNR
+        )
+        val legacyJson = CalibrationPolicyCodec.encode(
+            CalibrationPolicy.DEFAULT.copy(fluorescenceFeatures = legacyDefault)
+        ).replace(
+            "\"schemaVersion\":${CalibrationPolicy.CURRENT_SCHEMA_VERSION}",
+            "\"schemaVersion\":3"
+        )
+
+        val restored = requireNotNull(CalibrationPolicyCodec.decodeOrNull(legacyJson))
+
+        assertEquals(CalibrationPolicy.DEFAULT_FLUORESCENCE_FEATURES, restored.fluorescenceFeatures)
     }
 }

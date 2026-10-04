@@ -91,11 +91,39 @@ object AnalysisFeaturePolicy {
         addAll(compatibilityColorimetricFeatures)
     }
 
-    private val fluorescenceFeatures = linkedSetOf(
+    /** 荧光原生强度特征继续位于首位，保持默认工作流和既有曲线语义不变。 */
+    private val nativeFluorescenceFeatures = linkedSetOf(
         AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
         AnalysisPrimaryFeature.INTEGRATED_FLUORESCENCE_INTENSITY,
         AnalysisPrimaryFeature.FLUORESCENCE_SNR
     )
+
+    /**
+     * 荧光自动比较池同时开放可由校正 ROI RGB 真实计算的基础颜色描述量。
+     *
+     * ΔE2000 和光密度依赖明确的比色参考语义，不能直接搬到荧光；RGB、经典灰度和 Lab
+     * 不依赖参考位，可与三项荧光原生信号一起参与 R² 排名。通道比率等仍放在扩展组，
+     * 由用户主动选择，避免默认候选过多造成偶然高 R²。
+     */
+    private val recommendedFluorescenceFeatures = linkedSetOf<AnalysisPrimaryFeature>().apply {
+        addAll(nativeFluorescenceFeatures)
+        addAll(
+            recommendedColorimetricFeatures.filterNot { feature ->
+                feature == AnalysisPrimaryFeature.DELTA_E_2000 ||
+                    feature == AnalysisPrimaryFeature.OPTICAL_DENSITY
+            }
+        )
+    }
+
+    private val fluorescenceFeatures = linkedSetOf<AnalysisPrimaryFeature>().apply {
+        addAll(nativeFluorescenceFeatures)
+        addAll(
+            colorimetricFeatures.filterNot { feature ->
+                feature == AnalysisPrimaryFeature.DELTA_E_2000 ||
+                    feature == AnalysisPrimaryFeature.OPTICAL_DENSITY
+            }
+        )
+    }
 
     /** 返回当前检测模式能够由生产处理器真实计算的主特征。 */
     fun allowedFeatures(modality: DetectionModality): Set<AnalysisPrimaryFeature> = when (modality) {
@@ -110,7 +138,7 @@ object AnalysisFeaturePolicy {
     /** 普通自动标定默认只比较推荐层，扩展和兼容信号由用户在高级设置中主动加入。 */
     fun recommendedFeatures(modality: DetectionModality): Set<AnalysisPrimaryFeature> = when (modality) {
         DetectionModality.COLORIMETRIC -> recommendedColorimetricFeatures
-        DetectionModality.FLUORESCENCE -> fluorescenceFeatures
+        DetectionModality.FLUORESCENCE -> recommendedFluorescenceFeatures
         DetectionModality.SPECTRUM -> linkedSetOf(AnalysisPrimaryFeature.PEAK_WAVELENGTH_NM)
     }
 

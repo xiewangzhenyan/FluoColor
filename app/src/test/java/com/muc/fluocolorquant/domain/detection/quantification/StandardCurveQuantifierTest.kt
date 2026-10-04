@@ -46,7 +46,7 @@ class StandardCurveQuantifierTest {
     }
 
     @Test
-    fun `V2曲线只在冻结可信范围内输出估计并在范围外给出单侧界限`() {
+    fun `V2可信范围不覆盖项目硬量程且超过项目上限才给出单侧界限`() {
         val bundle = linearBundle(
             parametersJson = """{"a":2.0,"b":1.0}""",
             reliableRangeMin = 0.0,
@@ -75,15 +75,19 @@ class StandardCurveQuantifierTest {
         ) as PreparedStandardCurveQuantifier.Ready
 
         val estimated = ready.quantify(31.0) as PreparedEndpointQuantificationResult.Quantified
-        val outside = ready.quantify(51.0) as PreparedEndpointQuantificationResult.OutOfRange
+        val beyondTrusted = ready.quantify(51.0) as PreparedEndpointQuantificationResult.Quantified
+        val outsideProject = ready.quantify(251.0) as PreparedEndpointQuantificationResult.OutOfRange
 
         assertEquals(15.0, estimated.concentration, 1e-6)
         assertEquals(QuantificationState.ESTIMATED, estimated.quantificationState)
         assertEquals(15.0, estimated.concentrationLowerBound ?: Double.NaN, 1e-6)
         assertEquals(15.0, estimated.concentrationUpperBound ?: Double.NaN, 1e-6)
-        assertEquals(ReliableRangeStatus.ABOVE_TRUSTED_RANGE, outside.rangeStatus)
-        assertEquals(20.0, outside.concentrationBound ?: Double.NaN, 1e-6)
-        assertEquals(QuantificationCensoringDirection.LOWER_BOUND, outside.censoringDirection)
+        assertEquals(25.0, beyondTrusted.concentration, 1e-6)
+        assertEquals(ReliableRangeStatus.ABOVE_RANGE, beyondTrusted.rangeStatus)
+        assertEquals(QuantificationState.ESTIMATED, beyondTrusted.quantificationState)
+        assertEquals(ReliableRangeStatus.ABOVE_PROJECT_RANGE, outsideProject.rangeStatus)
+        assertEquals(100.0, outsideProject.concentrationBound ?: Double.NaN, 1e-6)
+        assertEquals(QuantificationCensoringDirection.LOWER_BOUND, outsideProject.censoringDirection)
     }
 
     @Test
@@ -421,7 +425,7 @@ class StandardCurveQuantifierTest {
             linearBundle(
                 fittingFunction = "linear",
                 parametersJson = """{"a":2.0,"b":1.0}""",
-                reliableRangeMin = -10.0,
+                reliableRangeMin = 0.0,
                 reliableRangeMax = 10.0
             ),
             linearBundle(
@@ -430,12 +434,13 @@ class StandardCurveQuantifierTest {
                 reliableRangeMin = 0.0,
                 reliableRangeMax = 10.0
             ),
-            // y=x^3 的导数 3x^2 在 x=0 有孤立零点但不会改变符号，应允许反算。
+            // y=(x-1)^3 的导数 3(x-1)^2 在区间内部 x=1 有孤立零点但不会改变符号，
+            // 应允许反算；浓度量程本身仍保持非负，避免把导数测试混入非法业务输入。
             linearBundle(
                 fittingFunction = "cubic",
-                parametersJson = """{"a":1.0,"b":0.0,"c":0.0,"d":0.0}""",
-                reliableRangeMin = -1.0,
-                reliableRangeMax = 1.0
+                parametersJson = """{"a":1.0,"b":-3.0,"c":3.0,"d":-1.0}""",
+                reliableRangeMin = 0.0,
+                reliableRangeMax = 2.0
             ),
             linearBundle(
                 fittingFunction = "quartic",

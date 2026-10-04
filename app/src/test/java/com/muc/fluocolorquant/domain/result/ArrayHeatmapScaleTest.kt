@@ -6,6 +6,7 @@ import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueState
 import com.muc.fluocolorquant.ui.screens.result.array.ArrayHeatmapValueInput
 import com.muc.fluocolorquant.ui.screens.result.array.buildAnalyteHeatmapModel
 import com.muc.fluocolorquant.ui.screens.result.array.resolveArraySiteIndex
+import com.muc.fluocolorquant.ui.screens.result.array.resolveArrayResultRunStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,6 +19,37 @@ import org.junit.Test
  * 测试验证触摸与视觉节点，避免 UI 改版时把科研含义一并改坏。
  */
 class ArrayHeatmapScaleTest {
+
+    @Test
+    fun `全分析物只有单侧界限时首屏不得显示已定量或仅信号`() {
+        assertEquals(
+            "BoundaryOnlyCompleted",
+            resolveArrayResultRunStatus(
+                storedStatus = "Completed",
+                analyteIds = setOf("cea", "cyfra21-1"),
+                finiteConcentrationAnalyteIds = emptySet(),
+                boundaryAnalyteIds = setOf("cea", "cyfra21-1")
+            )
+        )
+        assertEquals(
+            "PartiallyQuantified",
+            resolveArrayResultRunStatus(
+                storedStatus = "Completed",
+                analyteIds = setOf("cea", "cyfra21-1"),
+                finiteConcentrationAnalyteIds = setOf("cea"),
+                boundaryAnalyteIds = setOf("cyfra21-1")
+            )
+        )
+        assertEquals(
+            "SignalOnlyCompleted",
+            resolveArrayResultRunStatus(
+                storedStatus = "Completed",
+                analyteIds = setOf("cea"),
+                finiteConcentrationAnalyteIds = emptySet(),
+                boundaryAnalyteIds = emptySet()
+            )
+        )
+    }
 
     @Test
     fun `范围和普通几何标志不再制造测量质量复核`() {
@@ -292,6 +324,38 @@ class ArrayHeatmapScaleTest {
         assertTrue(model.cells.none { it.qc.failure })
         assertTrue(model.cells.all { it.valueState == ArrayHeatmapValueState.QUANTIFIED })
         assertTrue(model.cells[2].qc.lowSignal)
+    }
+
+    @Test
+    fun `强类型单侧浓度界限保持浓度色带而不是误判为旧历史缺失`() {
+        val analyte = analyte(reliableMin = 0.0, reliableMax = 100.0)
+        val model = buildAnalyteHeatmapModel(
+            rows = 1,
+            columns = 2,
+            analyte = analyte,
+            inputs = listOf(
+                input(siteIndex = 0, concentration = null, primaryFeature = 8.0).copy(
+                    reliableRangeStatus = "BELOW_RANGE",
+                    quantificationStatus = "OUT_OF_RELIABLE_RANGE",
+                    quantificationState = "BOUND_ONLY",
+                    censoringDirection = "UPPER_BOUND"
+                ),
+                input(siteIndex = 1, concentration = null, primaryFeature = 92.0).copy(
+                    reliableRangeStatus = "ABOVE_RANGE",
+                    quantificationStatus = "OUT_OF_RELIABLE_RANGE",
+                    quantificationState = "BOUND_ONLY",
+                    censoringDirection = "LOWER_BOUND"
+                )
+            )
+        )
+
+        // 强类型单侧界限已经是完整浓度结论，不能再触发旧版“部分浓度丢失”的信号回退。
+        assertEquals(ArrayHeatmapScaleMode.CONCENTRATION, model.scale.mode)
+        assertFalse(model.historicalConcentrationIncomplete)
+        assertEquals(2, model.retestCount)
+        assertEquals(ArrayHeatmapValueState.BELOW_PROJECT_RANGE, model.cells[0].valueState)
+        assertEquals(ArrayHeatmapValueState.ABOVE_PROJECT_RANGE, model.cells[1].valueState)
+        assertEquals(listOf(0.0f, 1.0f), model.cells.map { it.normalizedValue })
     }
 
     @Test

@@ -79,12 +79,13 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             NewProjectScreen(navController = navController)
         }
 
-        // 快速新建路由指向直接新建页。历史上曾存在一个独立的 QuickCreateProjectScreen
-        // （模板优先的一次性合成流程），该页早已不在任何导航路径上，已随死代码清理删除；
-        // 路由名保留是为了不破坏既有跳转与外部深链。
+        // 直接新建只有一个生产路由；旧 quick_create_project 仅作为入站兼容别名。
         composable(
-            route = Screen.QuickCreateProject.route
+            route = Screen.DirectCreateProject.route
         ) {
+            DirectCreateProjectScreen(navController = navController)
+        }
+        composable(route = Screen.DirectCreateProject.LEGACY_ROUTE) {
             DirectCreateProjectScreen(navController = navController)
         }
 
@@ -198,9 +199,9 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         }
 
-        // 新的结果展示页面（显式路由）
+        // 旧 new_result 返回栈仍进入同一网关，不再维护第二套 Screen 类型或页面实现。
         composable(
-            route = Screen.NewResult.createRoute("{runId}"),
+            route = Screen.Result.legacyRoute("{runId}"),
             arguments = listOf(
                 navArgument("runId") {
                     type = NavType.StringType

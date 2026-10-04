@@ -104,7 +104,7 @@ fun WellDetectionScreen(
     // 保存成功后直接进入结果网关；96孔板与微流控会再按冻结载体协议分流。
     LaunchedEffect(gridState) {
         val completed = gridState as? GridDetectionUiState.Completed ?: return@LaunchedEffect
-        navController.navigate(Screen.NewResult.createRoute(completed.runId)) {
+        navController.navigate(Screen.Result.createRoute(completed.runId)) {
             popUpTo(Screen.WellDetection.route) { inclusive = true }
         }
     }

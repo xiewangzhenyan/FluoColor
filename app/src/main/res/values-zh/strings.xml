@@ -85,7 +85,7 @@
     <string name="about_laboratory_detail">本软件由中央民族大学传感器与微系统实验室研发，用于比色、荧光、微流控阵列和光谱检测的实验分析、质量控制与结果管理。</string>
     <string name="about_contact_detail">公开联系邮箱\nzxgeng@muc.edu.cn</string>
     <string name="about_privacy_detail">当前版本采用端侧离线处理，检测图像、实验项目、分析模型和结果记录默认保存在设备本地；除用户主动导出或分享外，应用不会自动上传实验数据。\n\n相机权限用于拍摄检测图像，照片与文件访问权限用于导入实验图片及导出科研结果。卸载应用或清除数据前，请先完成必要备份。\n\n当前尚未发布独立隐私政策文件；如果未来增加联网、云同步或远程分析功能，将在启用前补充并展示正式隐私政策。</string>
-    <string name="about_license_detail">FluoColor 当前未声明对外开源许可证；未经明确授权，不代表源代码可以自由复制、修改或分发。\n\n应用使用 AndroidX、Jetpack Compose、Room、CameraX、Hilt、Retrofit、OkHttp、Coil、OpenCV、PyTorch Android、Apache Commons Math、uCrop 和 JLaTeXMath 等第三方组件，各组件继续遵循其原始许可证。</string>
+    <string name="about_license_detail">FluoColor 当前未声明对外开源许可证；未经明确授权，不代表源代码可以自由复制、修改或分发。\n\n应用使用 AndroidX、Jetpack Compose、Room、CameraX、Hilt、Gson、Coil、OpenCV、PyTorch Android、Apache Commons Math、uCrop 和 JLaTeXMath 等第三方组件，各组件继续遵循其原始许可证。</string>
     <string name="about_update_detail">当前安装版本：%1$s（版本代码 %2$d）。\n\n应用尚未接入在线版本检查服务，因此不会自动判断是否为最新版本。请以实验室发布渠道提供的安装包和版本说明为准。</string>
     <string name="about_expand_detail">展开详细信息</string>
     <string name="about_collapse_detail">收起详细信息</string>
@@ -124,6 +124,12 @@
     <string name="sensitivity_low">低 (过滤噪点)</string>
     <string name="sensitivity_medium">中 (标准)</string>
     <string name="sensitivity_high">高 (检测微弱峰)</string>
+    <string name="sensitivity_level_low">低</string>
+    <string name="sensitivity_level_medium">中</string>
+    <string name="sensitivity_level_high">高</string>
+    <string name="sensitivity_hint_noise">抑制噪声</string>
+    <string name="sensitivity_hint_balanced">均衡识别</string>
+    <string name="sensitivity_hint_weak_peak">弱峰优先</string>
     <string name="btn_reset_defaults">恢复默认设置</string>
     <string name="error_invalid_wavelength">最大波长必须大于最小波长</string>
     <string name="label_track_config">通道数量配置</string>
@@ -142,6 +148,9 @@
     <string name="spectrum_light_sunlight">太阳光</string>
     <string name="spectrum_light_custom">自定义</string>
     <string name="spectrum_light_source_label">光源选择</string>
+    <string name="spectrum_default_light_source_title">默认光源</string>
+    <string name="spectrum_default_light_source_help">用于新建光谱项目预填；只记录采集元数据，不执行光谱校正。</string>
+    <string name="spectrum_light_source_unknown">未知</string>
     <string name="spectrum_channel_count_label">通道数量</string>
     <string name="channel_count_with_limit">%1$d / %2$d 个可用通道</string>
     <string name="channel_config_title">通道配置</string>
@@ -165,6 +174,8 @@
     <string name="reference_wavelengths_hint">请按光谱图像从下往上的顺序输入波长。</string>
     <string name="reference_wavelength_item">波长 %1$d (nm)</string>
     <string name="add_wavelength">添加波长</string>
+    <string name="add_wavelength_action">+ 添加波长</string>
+    <string name="unit_nanometer">nm</string>
     <string name="remove_wavelength">删除</string>
     <string name="start_fitting">开始拟合</string>
     <string name="fitting_in_progress">拟合中...</string>
@@ -222,6 +233,10 @@
     <string name="auth_show_password">显示密码</string>
     <string name="auth_hide_password">隐藏密码</string>
     <string name="auth_mode_switch_label">登录或注册</string>
+    <string name="auth_error_username_taken">用户名已被使用</string>
+    <string name="auth_error_invalid_credentials">用户名或密码不正确</string>
+    <string name="auth_error_login_failed">登录失败</string>
+    <string name="auth_error_register_failed">注册失败</string>
     <string name="image_crop_title">编辑图片</string>
     <string name="no_account">没有账号? 点击注册</string>
     <string name="have_account">已有账号? 点击登录</string>
@@ -560,6 +575,9 @@
     <string name="history_last_run_sort">最后运行</string>
     <string name="toast_delete_successful">删除成功</string>
     <string name="toast_delete_failed">删除失败: %1$s</string>
+    <string name="history_load_analytes_failed">无法加载历史筛选所需的分析物</string>
+    <string name="history_delete_project_failed">删除项目失败</string>
+    <string name="history_delete_projects_failed">删除所选项目失败</string>
     <string name="history_total_records">共 %1$d 条记录</string>
     <string name="history_total_records_icon_description">总记录图标</string>
     <string name="select_all">全选</string>
@@ -660,6 +678,9 @@
     <string name="analyte_added_success">分析物添加成功</string>
     <string name="analyte_added_error">添加分析物失败</string>
     <string name="analyte_deleted_success">分析物删除成功</string>
+    <string name="analyte_load_error">加载分析物失败</string>
+    <string name="analyte_update_error">更新分析物失败</string>
+    <string name="analyte_delete_error">删除分析物失败</string>
     <string name="analyte_name_empty">分析物名称不能为空</string>
     <string name="analyte_already_exists">分析物已存在</string>
     <string name="confirm_delete_analyte">确定要删除该分析物吗？</string>
@@ -927,6 +948,8 @@
 
     <!-- New additions -->
     <string name="analysis_method">分析方法</string>
+    <string name="analysis_method_template_managed">模板管理分析</string>
+    <string name="analysis_method_historical">历史分析方式</string>
     <string name="dl_model_option">浓度预测模型</string>
     <string name="curve_fit_option">标准曲线拟合</string>
 
@@ -1090,6 +1113,21 @@
     <string name="chart_error_missing_curve">请提供有效的拟合函数和参数。</string>
     <string name="chart_error_unknown">无法绘制图表。</string>
     <string name="chart_tooltip_pair_format">%1$s：%2$s\n%3$s：%4$s</string>
+    <string name="chart_concentration_with_unit">浓度（%1$s）</string>
+    <string name="chart_pixel_with_type">像素（%1$s）</string>
+    <string name="chart_analyte_concentration">%1$s 浓度</string>
+    <string name="chart_wells">孔位</string>
+    <string name="chart_well_label">孔位 %1$d</string>
+    <string name="chart_point_label">点 %1$d</string>
+    <string name="chart_validation">验证分析</string>
+    <string name="chart_bland_mean_axis">均值（（预测值 + 实际值）/ 2）</string>
+    <string name="chart_bland_difference_axis">差值（实际值 − 预测值）</string>
+    <string name="chart_metric_mean_difference">平均差</string>
+    <string name="chart_metric_standard_deviation">标准差</string>
+    <string name="chart_metric_upper_limit">上限（+1.96 SD）</string>
+    <string name="chart_metric_lower_limit">下限（−1.96 SD）</string>
+    <string name="chart_metric_points_within_limits">限值内点数</string>
+    <string name="chart_metric_intercept">截距</string>
 
     <!-- Validation Report -->
     <string name="generating_validation_report">正在生成验证报告...</string>
@@ -1125,6 +1163,13 @@
     <string name="pdf_validation_title">预测精度验证</string>
     <string name="pdf_regression_title">回归分析</string>
     <string name="pdf_bland_altman_title">Bland-Altman分析</string>
+    <string name="pdf_analyte_section_title">%1$s %2$s</string>
+    <string name="pdf_metric_value">%1$s = %2$s</string>
+    <string name="not_available_short">不适用</string>
+    <string name="label_value">%1$s：%2$s</string>
+    <string name="label_with_colon">%1$s：</string>
+    <string name="parenthesized_value">（%1$s）</string>
+    <string name="reagent_molecular_weight_value">分子量：%1$s kDa</string>
     <string name="pdf_metrics_title">性能指标</string>
     <string name="pdf_appendix_title">附录: 原始数据</string>
     <string name="pdf_generated_on">报告生成于: %1$s</string>
@@ -1137,8 +1182,11 @@
     <string name="spectrum_peak_info_format">峰值: %1$.1f nm, 强度: %2$.3f</string>
     <string name="spectrum_chart_tooltip_format">波长：%1$.1f nm\n强度：%2$.4f</string>
     <string name="spectrum_pdf_cover_title">光谱分析报告</string>
+    <string name="spectrum_pdf_cover_subtitle">光谱分析报告</string>
+    <string name="spectrum_pdf_cover_chapter">封面</string>
     <string name="spectrum_pdf_project_label">项目: %1$s</string>
     <string name="spectrum_pdf_mode_label">检测模式: 光谱</string>
+    <string name="spectrum_pdf_light_source_label">采集光源: %1$s</string>
     <string name="spectrum_pdf_channels_label">通道数: %1$d</string>
     <string name="spectrum_pdf_date_label">日期: %1$s</string>
     <string name="spectrum_pdf_page_format">第 %1$d 页 / 共 %2$d 页</string>
@@ -1497,6 +1545,14 @@
     <string name="profile_current_password_incorrect">当前密码不正确</string>
     <string name="profile_password_change_failed">密码修改失败</string>
     <string name="profile_toggle_password_visibility">切换密码可见性</string>
+    <string name="profile_add_avatar">添加头像</string>
+    <string name="profile_select_avatar">选择头像</string>
+    <string name="profile_change_password">修改密码</string>
+    <string name="profile_current_password">当前密码</string>
+    <string name="profile_new_password">新密码</string>
+    <string name="profile_confirm_new_password">确认新密码</string>
+    <string name="profile_confirm_change">确认修改</string>
+    <string name="create_template_default_layout_description">默认布局允许为每个位点分配样本、标准品或空白等角色，便于实验时快速使用。启用后可设置孔板尺寸，并点击位点分配角色。</string>
     <string name="analysis_model_library_title">分析模型库</string>
     <string name="analysis_model_library_subtitle">统一管理比色、荧光与光谱定量模型的版本、验证、兼容范围和发布状态。</string>
     <string name="analysis_model_add">新建模型</string>
@@ -1554,10 +1610,30 @@
     <string name="analysis_model_loq_label">定量限 LOQ（可选）</string>
     <string name="analysis_model_file_label">模型文件名</string>
     <string name="analysis_model_checksum_label">SHA-256 校验和</string>
+    <string name="analysis_model_import_title">导入 PyTorch Lite 模型</string>
+    <string name="analysis_model_import_desc">选择训练后导出的 .ptl 文件。应用会复制到私有目录并自动检查文件格式与 SHA-256。</string>
+    <string name="analysis_model_import_choose">选择 PTL 文件</string>
+    <string name="analysis_model_import_replace">更换 PTL 文件</string>
+    <string name="analysis_model_importing">正在复制并验证模型文件…</string>
+    <string name="analysis_model_import_ready">已导入 %1$s · %2$s</string>
+    <string name="analysis_model_checksum_auto_desc">由应用根据导入文件自动计算，不允许手工修改</string>
+    <string name="analysis_model_import_error_type">只支持 PyTorch Mobile Lite 导出的 .ptl 文件</string>
+    <string name="analysis_model_import_error_read">无法读取模型文件，请重新选择</string>
+    <string name="analysis_model_import_error_size">模型文件超过 512 MB，无法导入</string>
+    <string name="analysis_model_import_error_lite">该文件不能被当前 PyTorch Lite 运行库加载</string>
+    <string name="analysis_model_import_error_checksum">模型文件与冻结的 SHA-256 不一致</string>
+    <string name="analysis_model_import_error_contract">输入尺寸、归一化或标量输出契约校验失败</string>
     <string name="analysis_model_input_width_label">输入宽度</string>
     <string name="analysis_model_input_height_label">输入高度</string>
     <string name="analysis_model_normalization_label">归一化 JSON</string>
     <string name="analysis_model_training_version_label">训练数据版本</string>
+    <string name="analysis_model_output_mode_label">模型输出语义</string>
+    <string name="analysis_model_output_raw">直接浓度</string>
+    <string name="analysis_model_output_percent">0～100 百分比</string>
+    <string name="analysis_model_output_fraction">0～1 比例</string>
+    <string name="analysis_model_output_scale_label">输出缩放</string>
+    <string name="analysis_model_output_offset_label">输出偏移</string>
+    <string name="analysis_model_output_contract_desc">发布时会按当前输入尺寸和归一化执行一次零图试运行，确认模型能返回有限标量。该检查只证明模型可执行，不代表准确度或载体适用性已经验证。</string>
     <string name="analysis_model_save_draft">保存草稿</string>
     <string name="analysis_model_mode_colorimetric">比色</string>
     <string name="analysis_model_mode_fluorescence">荧光</string>
@@ -1591,6 +1667,7 @@
     <string name="analysis_model_validation_device">发布前请至少选择一个采集设备档案</string>
     <string name="analysis_model_validation_curve">请完整填写标准曲线函数和参数</string>
     <string name="analysis_model_validation_file">请完整填写模型文件、SHA-256、输入尺寸、归一化和训练版本</string>
+    <string name="analysis_model_validation_output_contract">请检查模型输出语义、缩放和偏移参数</string>
     <!-- 微流控模板阵列编辑器 -->
     <string name="template_array_title">阵列位点编辑器</string>
     <string name="template_array_summary">%1$d × %2$d · %3$d 位点</string>
@@ -1966,6 +2043,23 @@
     <string name="array_statistics_sample_result">样本结果</string>
     <string name="array_statistics_extrapolated">标定范围外推</string>
     <string name="array_statistics_outside_project_range">超出项目量程</string>
+    <string name="array_range_review_title">动态量程复核</string>
+    <string name="array_range_review_counts">%1$d 个有效样品 · %2$d 个过低 · %3$d 个过高 · %4$.0f%% 越界</string>
+    <string name="array_range_review_required">多数样品超出项目量程，且没有独立质控锚点通过验收；系统保留原始浓度和单侧界限，建议复核稀释、浓缩或标准范围。</string>
+    <string name="array_range_review_applied">独立质控已通过验收，冻结的批次校正已经应用，并可由本次运行快照重建。</string>
+    <string name="array_range_review_rejected">独立质控不足以支持安全的批次校正；系统保留原始浓度和单侧界限，请重建或扩展标定。</string>
+    <string name="array_deep_learning_output_warning_title">模型输出范围不匹配</string>
+    <string name="array_deep_learning_output_warning_expand">展开模型输出详情</string>
+    <string name="array_deep_learning_output_warning_collapse">收起模型输出详情</string>
+    <string name="array_deep_learning_output_warning_partial_body">%1$d/%2$d 个位点的输出超出模型声明范围，其余 %3$d 个位点的有效浓度已保留。</string>
+    <string name="array_deep_learning_output_warning_all_body">%1$d/%2$d 个位点的输出均超出模型声明范围，本次无法报告浓度。</string>
+    <string name="array_deep_learning_output_warning_range">声明输出 %1$.2f–%2$.2f · 异常原始输出 %3$.2f–%4$.2f</string>
+    <string name="array_deep_learning_output_warning_advice">离域输出不会被截断成端点浓度；若大量位点受影响，请改用现场标定或经过当前采集条件验证的荧光模型。</string>
+    <string name="array_site_quantification_issue">定量问题</string>
+    <string name="array_site_model_output_out_of_domain">模型输出超出声明范围</string>
+    <string name="array_site_raw_model_output">模型原始输出</string>
+    <string name="array_site_declared_model_output_range">模型声明输出范围</string>
+    <string name="array_site_model_output_range_value">%1$.2f–%2$.2f</string>
     <string name="array_statistics_more_rows">另有 %1$d 行，请通过 CSV/PDF 导出查看完整数据。</string>
     <string name="array_result_microfluidic_carrier_format">微流控 %1$d×%2$d</string>
     <string name="array_result_carrier_summary">%1$d × %2$d 阵列 · %3$s</string>
@@ -2010,6 +2104,7 @@
     <string name="array_run_history_reason">原因</string>
     <string name="array_run_status_completed">已定量</string>
     <string name="array_run_status_partial">部分定量</string>
+    <string name="array_run_status_boundary_only">仅报告界限</string>
     <string name="array_run_status_signal_only">仅信号</string>
     <string name="array_run_status_retake">需要重拍</string>
     <string name="array_run_status_failed">运行失败</string>
@@ -2039,7 +2134,7 @@
     <string name="array_export_png_title">热力图（PNG）</string>
     <string name="array_export_png_description">导出当前分析物的固定分辨率无损热力图。</string>
     <string name="array_export_pdf_title">可视化摘要（PDF）</string>
-    <string name="array_export_pdf_description">包含项目与运行摘要、总览/分析物热力图、QC 统计和追溯信息。</string>
+    <string name="array_export_pdf_description">专业报告包含项目摘要、统一热力图、标定证据、质控与追溯；圆孔板附带逐孔裁切图。</string>
     <string name="array_export_zip_title">完整证据归档（ZIP）</string>
     <string name="array_export_zip_description">包含清单、校验和、CSV、全部冻结 JSON 快照及可读取的原始/派生附件。</string>
     <string name="array_export_frozen_note">所有格式均从本次运行的不可变快照生成；缺失附件会写入 ZIP 清单，不会被静默省略。</string>
@@ -2079,6 +2174,16 @@
     <string name="array_pdf_processor">信号处理器</string>
     <string name="array_pdf_frozen_snapshot">有效配置快照</string>
     <string name="array_pdf_no_value">未记录</string>
+    <string name="array_pdf_standard_points">标准点</string>
+    <string name="array_pdf_well_details_title">逐孔图像与结果</string>
+    <string name="array_pdf_well_details_continued">逐孔图像与结果（续）</string>
+    <string name="array_pdf_well_details_note">每张裁切图和每个数值均来自本次运行的冻结证据；图像缺失时不会重新定位或补造替代图片。</string>
+    <string name="array_pdf_table_image">裁切图</string>
+    <string name="array_pdf_table_sample_role">样本 / 角色</string>
+    <string name="array_pdf_table_result_reference">结果 / 参考</string>
+    <string name="array_pdf_table_signal">冻结信号</string>
+    <string name="array_pdf_table_status">质量状态</string>
+    <string name="array_pdf_state_signal_only">仅信号</string>
     <string name="array_png_title_format">%1$s浓度热力图</string>
     <string name="array_png_signal_title_format">%1$s信号热力图</string>
     <string name="array_png_concentration">浓度</string>
@@ -2130,7 +2235,8 @@
     <string name="array_heatmap_concentration_reliable_subtitle">色带：项目量程 · %1$s</string>
     <string name="array_heatmap_concentration_observed_subtitle">色带：本次分布 · %1$s</string>
     <string name="array_heatmap_signal_subtitle">仅信号 · %1$s</string>
-    <string name="array_heatmap_historical_signal_subtitle">历史运行未保存完整浓度 · 统一显示 %1$s 信号</string>
+    <string name="array_heatmap_historical_signal_subtitle">历史运行没有可验证的完整逐孔浓度 · 显示 %1$s 信号</string>
+    <string name="array_heatmap_historical_deep_learning_signal_subtitle">历史运行仅保存了模型越界状态，未冻结可验证的原始百分比或浓度 · 显示 %1$s 信号</string>
     <string name="array_heatmap_overview_subtitle">逐位点可靠性总览</string>
     <string name="array_heatmap_scale_reliability">位点可靠性</string>
     <string name="array_heatmap_scale_concentration">浓度 · %1$s</string>
@@ -2385,8 +2491,8 @@
     <string name="quick_create_template_incomplete">请选择可用的已发布方案，并填写项目名、样本编号和图片。</string>
     <string name="analysis_model_advanced_compatibility">高级设备兼容性</string>
     <string name="analysis_model_acquisition_profiles_label">已验证采集档案</string>
-    <string name="analysis_model_acquisition_profiles_desc">仅选择实际用于验证该模型的手机、光学模块和固定装置版本；“通用未标定采集”只适合探索实验。</string>
-    <string name="analysis_model_no_acquisition_profiles">暂无可用采集档案，请先在“设备与载体”中创建。</string>
+    <string name="analysis_model_acquisition_profiles_desc">如模型只在固定设备上验证过，请仅选择实际使用的手机、光学模块和固定装置版本。留空时会自动记录本次真实设备与曝光元数据，但不代表已完成设备级验证。</string>
+    <string name="analysis_model_no_acquisition_profiles">暂无可选采集档案；可以留空，运行时会冻结当前手机、镜头与曝光元数据。</string>
     <!-- 直接新建项目：恢复普通用户无需模板、设备档案和已发布模型即可创建项目的流程。 -->
     <string name="direct_create_title">新建项目</string>
     <string name="direct_create_form_incomplete">请完成项目名称、检测方式、载体，至少选择一个分析物并设置最大浓度和单位，再选择图片</string>
@@ -2400,6 +2506,10 @@
     <string name="direct_create_analysis_section">分析设置</string>
     <string name="direct_create_rows">行数</string>
     <string name="direct_create_columns">列数</string>
+    <string name="default_custom_grid_title">默认自定义阵列规格</string>
+    <string name="default_custom_grid_help">选择“自定义阵列”时预填行列；不会修改已有项目。</string>
+    <string name="default_custom_grid_invalid">行数和列数都必须在 1 到 99 之间。</string>
+    <string name="direct_create_spectrum_light_source_help">仅作为采集元数据，请为本项目确认或修改。</string>
     <string name="direct_create_select_analyte">选择分析物</string>
     <string name="direct_create_select_analytes">选择一个或多个分析物</string>
     <string name="direct_create_analyte_count">已选择 %1$d 个分析物</string>
@@ -2598,6 +2708,11 @@
     <string name="grid_event_template_save_failed">实验模板保存失败，请稍后重试</string>
     <string name="grid_quant_model_dialog_title">选择兼容的定量资源</string>
     <string name="grid_quant_no_models">该分析物暂无兼容且已发布的资源</string>
+    <string name="grid_quant_no_compatible_deep_learning_hint">当前阵列没有通过载体兼容验证的深度学习模型；如需浓度，请使用现场拟合、已验证标准曲线或专用模型。</string>
+    <string name="grid_quant_model_scope_dialog_title">超出模型已验证范围</string>
+    <string name="grid_quant_model_scope_dialog_body">该内置模型仅在固定 8×12 圆孔板终点图上完成验证，尚未验证当前微流控或自定义阵列。继续后会真实执行模型并冻结原始输出；输出离域时不会截断为 0 或 100，也可能无法得到浓度。建议正式实验使用现场拟合、已验证曲线或载体专用模型。</string>
+    <string name="grid_quant_model_scope_confirm">了解风险并继续</string>
+    <string name="grid_quant_resource_experimental_summary">%1$s · 超范围试用</string>
     <string name="grid_quant_selected_model">%1$s · v%2$d · %3$s</string>
     <string name="grid_quant_standard_levels">%1$d 个标准孔 · %2$d 个浓度水平</string>
     <string name="grid_quant_preview_fit">生成拟合预览</string>
@@ -2612,6 +2727,7 @@
     <string name="grid_quant_signal_auto_summary">比较%1$d项推荐信号</string>
     <string name="grid_quant_selected_count">已选择%1$d项</string>
     <string name="grid_quant_classic_gray_formula">首选包含：0.299R + 0.587G + 0.114B</string>
+    <string name="grid_quant_fluorescence_feature_summary">包含荧光强度、RGB、Lab；通道比率位于扩展组</string>
     <string name="grid_quant_recommended_group">推荐</string>
     <string name="grid_quant_extended_group">扩展</string>
     <string name="grid_quant_compatibility_group">兼容</string>
@@ -2628,10 +2744,22 @@
     <string name="grid_quant_current_selection">当前选择</string>
     <string name="grid_quant_calibration_range">标定范围</string>
     <string name="grid_quant_calibration_range_value">%1$s–%2$s %3$s</string>
+    <string name="grid_quant_project_range">项目量程</string>
+    <string name="grid_quant_standard_summary">%1$d 个标准孔 · %2$d 个浓度水平</string>
+    <string name="grid_quant_standard_sites">标准数据</string>
+    <string name="grid_quant_curve_formula">拟合公式</string>
+    <string name="grid_quant_curve_preview">标定曲线与标准点</string>
+    <string name="grid_quant_chart_concentration_axis">浓度（%1$s）</string>
+    <string name="grid_quant_fit_rank">推荐 %1$d</string>
+    <string name="grid_quant_advanced_validation">高级验证</string>
+    <string name="grid_quant_advanced_validation_hint">仅展示由真实验证数据计算出的指标</string>
+    <string name="grid_quant_show_advanced_validation">查看验证</string>
+    <string name="grid_quant_hide_advanced_validation">收起验证</string>
+    <string name="grid_quant_fit_metric_stability">预测稳定性</string>
     <string name="grid_quant_apply_recommended_fit">应用推荐曲线</string>
     <string name="grid_quant_other_curves">其他曲线</string>
     <string name="grid_quant_fit_stable">稳定</string>
-    <string name="grid_quant_fit_inverse_error">反算误差</string>
+    <string name="grid_quant_fit_inverse_error">标准浓度复算误差</string>
     <string name="grid_quant_show_comparison">对比</string>
     <string name="grid_quant_hide_comparison">收起</string>
     <string name="grid_quant_candidate_comparison">候选与依据</string>
@@ -3017,4 +3145,12 @@
     <string name="result_summary_beyond_calibration">%1$d 孔超出曲线标定范围</string>
     <string name="result_summary_no_curve">仅信号，未建立浓度</string>
     <string name="result_summary_extrapolated">%1$d 孔由曲线外推</string>
+    <string name="spectrum_processing_compatibility_title">历史处理兼容说明</string>
+    <string name="spectrum_processing_legacy_message">该结果生成于处理参数快照功能之前，当前使用固定的旧版配置，设置页变化不会再改变它。</string>
+    <string name="spectrum_processing_invalid_message">已保存的处理参数快照无效，当前使用固定的旧版配置；形成结论前请复核该结果。</string>
+    <string name="spectrum_processing_inconsistent_message">各通道的处理参数快照不一致，当前统一使用固定的旧版配置，避免混合解释不兼容的数据。</string>
+    <string name="direct_create_custom_shape_label">位点形状</string>
+    <string name="direct_create_custom_shape_circle">圆形孔</string>
+    <string name="direct_create_custom_shape_square">方形单元</string>
+    <string name="direct_create_custom_shape_help">请选择载体的真实位点形状；网格定位不会自动推断圆形或方形。</string>
 </resources>

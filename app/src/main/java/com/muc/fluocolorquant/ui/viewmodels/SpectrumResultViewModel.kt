@@ -18,17 +18,19 @@ import com.muc.fluocolorquant.data.model.SpectrumChannelExportModel
 import com.muc.fluocolorquant.data.model.SpectrumExportData
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
-import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.data.repository.SpectrumRepository
+import com.muc.fluocolorquant.domain.spectrum.ResolvedSpectrumProcessingConfig
+import com.muc.fluocolorquant.domain.spectrum.SpectrumProcessingConfig
+import com.muc.fluocolorquant.domain.spectrum.SpectrumProcessingConfigOrigin
+import com.muc.fluocolorquant.domain.spectrum.SpectrumProcessingConfigSnapshot
+import com.muc.fluocolorquant.domain.spectrum.SpectrumSignalPeak
+import com.muc.fluocolorquant.domain.spectrum.SpectrumSignalProcessor
 import com.muc.fluocolorquant.ui.components.charts.ChartData
 import com.muc.fluocolorquant.ui.components.charts.ChartLine
 import com.muc.fluocolorquant.ui.components.charts.ChartPoint
 import com.muc.fluocolorquant.ui.components.charts.ChartVerticalMarker
 import com.muc.fluocolorquant.utils.UiText
 import com.muc.fluocolorquant.utils.math.SpectrumCalibrationMath
-import com.muc.fluocolorquant.utils.math.integrateSpectrumPeakArea
-import com.muc.fluocolorquant.utils.math.interpolateSpectrumHalfMaxCrossing
-import com.muc.fluocolorquant.utils.math.sortAndMergeSpectrumSamples
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -39,7 +41,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
-import kotlin.math.abs
 
 /**
  * 单个峰值的 UI 模型。
@@ -52,6 +53,17 @@ data class SpectrumPeakUiModel(
     val area: Double = 0.0,
     val fullWidthHalfMax: Double = 0.0,
     val signalToNoise: Double = 0.0
+)
+
+/** 领域峰值只在进入 Compose 状态时映射为 UI 模型，算法层不依赖界面包。 */
+private fun SpectrumSignalPeak.toUiModel(): SpectrumPeakUiModel = SpectrumPeakUiModel(
+    rank = rank,
+    wavelength = wavelength,
+    intensity = intensity,
+    prominence = prominence,
+    area = area,
+    fullWidthHalfMax = fullWidthHalfMax,
+    signalToNoise = signalToNoise
 )
 
 enum class SpectrumCurveMode { RAW, CLASSIC, BASELINE, ENHANCED }
@@ -145,22 +157,14 @@ data class SpectrumResultUiState(
     val isLoading: Boolean = false,
     val errorMessage: UiText? = null,
     val results: List<SpectrumChannelUiModel> = emptyList(),
-    val smoothingLevel: Int = SettingsRepository.DEFAULT_SPECTRUM_SMOOTHING,
-    val sensitivity: String = SettingsRepository.DEFAULT_SPECTRUM_SENSITIVITY,
+    val smoothingLevel: Int = SpectrumProcessingConfig.LEGACY_DEFAULT.smoothingLevel,
+    val sensitivity: String = SpectrumProcessingConfig.LEGACY_DEFAULT.sensitivity,
+    val processingConfigOrigin: SpectrumProcessingConfigOrigin = SpectrumProcessingConfigOrigin.LEGACY_DEFAULT,
+    val processorVersion: String = "legacy-unversioned",
     val curveMode: SpectrumCurveMode = SpectrumCurveMode.CLASSIC,
     val projectImageUri: String? = null,
     val comparisonChartData: ChartData? = null,
     val availableAnalytes: List<Analyte> = emptyList()
-)
-
-/**
- * 光谱结果处理参数。
- */
-private data class SpectrumProcessingConfig(
-    val minWavelength: Double,
-    val maxWavelength: Double,
-    val smoothingLevel: Int,
-    val sensitivity: String
 )
 
 /**
@@ -177,21 +181,6 @@ private data class CachedSpectrumChannelRaw(
     val calibrationComparison: SpectrumCalibrationComparisonUiModel?
 )
 
-private data class BaselineCorrectionResult(
-    val baseline: List<Double>,
-    val corrected: List<Double>
-)
-
-private data class PeakCandidate(
-    val index: Int,
-    val wavelength: Double,
-    val intensity: Double,
-    val prominence: Double,
-    val area: Double,
-    val fullWidthHalfMax: Double,
-    val signalToNoise: Double
-)
-
 /**
  * 光谱结果展示页面的 ViewModel。
  */
@@ -200,8 +189,8 @@ class SpectrumResultViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val spectrumRepository: SpectrumRepository,
     private val analyteRepository: AnalyteRepository,
-    private val settingsRepository: SettingsRepository,
-    private val projectRepository: ProjectRepository
+    private val projectRepository: ProjectRepository,
+    private val signalProcessor: SpectrumSignalProcessor
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SpectrumResultUiState())
@@ -211,6 +200,7 @@ class SpectrumResultViewModel @Inject constructor(
 
     // 当前项目与导出缓存
     private var currentProject: Project? = null
+    private var cachedLightSourceSnapshot: String? = null
     private val rawChannelData = mutableMapOf<Int, Pair<List<Double>, List<Double>>>()
     private val analyteIdMap = mutableMapOf<Int, String?>()
     private val channelImagePathMap = mutableMapOf<Int, String>()
@@ -218,6 +208,7 @@ class SpectrumResultViewModel @Inject constructor(
     // 内存缓存，避免重复读取数据库和 JSON 反序列化
     private var cachedProjectId: String? = null
     private var cachedRawChannels: List<CachedSpectrumChannelRaw> = emptyList()
+    private var cachedResolvedConfig: ResolvedSpectrumProcessingConfig? = null
     private var cachedProcessingConfig: SpectrumProcessingConfig? = null
     private var cachedProcessedResults: List<SpectrumChannelUiModel> = emptyList()
 
@@ -236,11 +227,14 @@ class SpectrumResultViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
 
             runCatching {
-                val config = loadProcessingConfig()
-
                 if (refreshSource || cachedProjectId != projectId || cachedRawChannels.isEmpty()) {
                     loadRawProjectData(projectId)
                 }
+
+                // 原始数据加载后才能读取随结果保存的配置快照；禁止从当前设置重建历史。
+                val resolvedConfig = cachedResolvedConfig
+                    ?: SpectrumProcessingConfigSnapshot.resolve(emptyList())
+                val config = resolvedConfig.config
 
                 val channelModels = buildOrReuseProcessedResults(config, forceRebuild = refreshSource)
                 val comparisonChart = buildComparisonChartData(channelModels, config)
@@ -251,6 +245,8 @@ class SpectrumResultViewModel @Inject constructor(
                     results = channelModels,
                     smoothingLevel = config.smoothingLevel,
                     sensitivity = config.sensitivity,
+                    processingConfigOrigin = resolvedConfig.origin,
+                    processorVersion = resolvedConfig.processorVersion,
                     curveMode = _uiState.value.curveMode,
                     projectImageUri = currentProject?.imageUri,
                     comparisonChartData = comparisonChart,
@@ -269,12 +265,14 @@ class SpectrumResultViewModel @Inject constructor(
 
     /**
      * 更新平滑等级，并基于缓存即时重算结果。
+     *
+     * 这是结果查看会话内的临时分析，不写 DataStore、也不覆盖历史快照。用户重新进入页面时
+     * 会恢复到该次实验冻结的参数，从而避免一个项目的调整污染其他项目或全局默认值。
      */
     fun updateSmoothing(level: Int) {
         if (_uiState.value.smoothingLevel == level) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            settingsRepository.setSpectrumSmoothing(level)
             rebuildResults(
                 smoothingLevel = level,
                 sensitivity = _uiState.value.sensitivity
@@ -283,13 +281,12 @@ class SpectrumResultViewModel @Inject constructor(
     }
 
     /**
-     * 更新灵敏度，并基于缓存即时重算结果。
+     * 更新灵敏度，并基于缓存即时重算结果；语义同 [updateSmoothing]，仅对当前会话生效。
      */
     fun updateSensitivity(sensitivity: String) {
         if (_uiState.value.sensitivity.equals(sensitivity, ignoreCase = true)) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            settingsRepository.setSpectrumSensitivity(sensitivity)
             rebuildResults(
                 smoothingLevel = _uiState.value.smoothingLevel,
                 sensitivity = sensitivity
@@ -342,7 +339,8 @@ class SpectrumResultViewModel @Inject constructor(
 
         return SpectrumExportData(
             project = project,
-            channels = exportChannels
+            channels = exportChannels,
+            lightSourceSnapshot = cachedLightSourceSnapshot
         )
     }
 
@@ -389,15 +387,20 @@ class SpectrumResultViewModel @Inject constructor(
     /**
      * 读取当前结果处理配置。
      */
-    private suspend fun loadProcessingConfig(
+    private fun loadProcessingConfig(
         smoothingLevelOverride: Int? = null,
         sensitivityOverride: String? = null
     ): SpectrumProcessingConfig {
-        return SpectrumProcessingConfig(
-            minWavelength = settingsRepository.spectrumMinWavelengthFlow.first().toDouble(),
-            maxWavelength = settingsRepository.spectrumMaxWavelengthFlow.first().toDouble(),
-            smoothingLevel = smoothingLevelOverride ?: settingsRepository.spectrumSmoothingFlow.first(),
-            sensitivity = sensitivityOverride ?: settingsRepository.spectrumSensitivityFlow.first()
+        val frozen = cachedResolvedConfig?.config ?: SpectrumProcessingConfig.LEGACY_DEFAULT
+        return frozen.copy(
+            smoothingLevel = (smoothingLevelOverride ?: frozen.smoothingLevel)
+                .coerceIn(
+                    SpectrumProcessingConfig.MIN_SMOOTHING_LEVEL,
+                    SpectrumProcessingConfig.MAX_SMOOTHING_LEVEL
+                ),
+            sensitivity = sensitivityOverride
+                ?.let(SpectrumProcessingConfig::normalizeSensitivity)
+                ?: frozen.sensitivity
         )
     }
 
@@ -413,6 +416,18 @@ class SpectrumResultViewModel @Inject constructor(
         rawChannelData.clear()
         analyteIdMap.clear()
         channelImagePathMap.clear()
+
+        // 同一批通道必须拥有完全一致的采集光源。若旧库为空或数据异常地混用了多个值，
+        // 报告明确显示未知，不能挑第一条掩盖快照不一致。
+        cachedLightSourceSnapshot = results.map { result ->
+            result.lightSourceSnapshot?.trim()?.takeIf(String::isNotEmpty)
+        }.distinct().singleOrNull()
+
+        cachedResolvedConfig = SpectrumProcessingConfigSnapshot.resolve(
+            results.sortedBy { it.columnIndex }.map { result ->
+                result.processingConfigJson to result.processorVersion
+            }
+        )
 
         val wavelengthsType = object : TypeToken<List<Double>>() {}.type
         val intensitiesType = object : TypeToken<List<Double>>() {}.type
@@ -525,62 +540,45 @@ class SpectrumResultViewModel @Inject constructor(
             )
         }
 
-        val orderedData = sortAndMergeSpectrumSamples(filteredData)
-        val wavelengths = orderedData.map { it.first }
-        val rawIntensities = orderedData.map { it.second }
-        val rawPeaks = findClassicPeaks(wavelengths, rawIntensities, config.sensitivity)
+        val processed = signalProcessor.process(
+            samples = filteredData,
+            smoothingLevel = config.smoothingLevel,
+            sensitivity = config.sensitivity
+        )
+        val wavelengths = processed.wavelengths
+        val rawPeaks = processed.rawPeaks.map { it.toUiModel() }
         val rawChartData = generateChartData(
             wavelengths = wavelengths,
-            intensities = rawIntensities,
+            intensities = processed.rawIntensities,
             peaks = rawPeaks,
             globalMinWavelength = config.minWavelength,
             globalMaxWavelength = config.maxWavelength
         )
-        val classicIntensities = if (config.smoothingLevel > 0) {
-            applyMovingAverage(rawIntensities, config.smoothingLevel)
-        } else {
-            rawIntensities
-        }
-        val classicPeaks = findClassicPeaks(wavelengths, classicIntensities, config.sensitivity)
+        val classicPeaks = processed.classicPeaks.map { it.toUiModel() }
         val classicChartData = generateChartData(
             wavelengths = wavelengths,
-            intensities = classicIntensities,
+            intensities = processed.classicIntensities,
             peaks = classicPeaks,
             globalMinWavelength = config.minWavelength,
             globalMaxWavelength = config.maxWavelength
         )
-
-        val baselineCorrection = applyBaselineCorrection(
-            data = rawIntensities,
-            smoothingLevel = config.smoothingLevel
-        )
-        val rawNormalized = normalizeSeries(rawIntensities)
-        val baselineNormalized = normalizeSeries(baselineCorrection.baseline)
-        val correctedNormalized = normalizeSeries(baselineCorrection.corrected)
-        val correctedIntensities = if (config.smoothingLevel > 0) {
-            applyMovingAverage(baselineCorrection.corrected, config.smoothingLevel)
-        } else {
-            baselineCorrection.corrected
-        }
-        val normalizedIntensities = normalizeSeries(correctedIntensities)
-
-        val enhancedPeaks = findEnhancedPeaks(wavelengths, normalizedIntensities, config.sensitivity)
+        val enhancedPeaks = processed.enhancedPeaks.map { it.toUiModel() }
         val baselineChartData = generateChartData(
             wavelengths = wavelengths,
-            intensities = correctedNormalized,
+            intensities = processed.correctedNormalized,
             peaks = enhancedPeaks,
             globalMinWavelength = config.minWavelength,
             globalMaxWavelength = config.maxWavelength,
             overlayLines = listOf(
                 ChartLine(
                     label = context.getString(R.string.spectrum_curve_mode_raw),
-                    points = wavelengths.zip(rawNormalized),
+                    points = wavelengths.zip(processed.rawNormalized),
                     color = Color(0xFF94A3B8),
                     strokeWidth = 2f
                 ),
                 ChartLine(
                     label = context.getString(R.string.spectrum_curve_mode_baseline_line),
-                    points = wavelengths.zip(baselineNormalized),
+                    points = wavelengths.zip(processed.baselineNormalized),
                     color = Color(0xFFF59E0B),
                     strokeWidth = 2f,
                     dashed = true
@@ -589,7 +587,7 @@ class SpectrumResultViewModel @Inject constructor(
         )
         val enhancedChartData = generateChartData(
             wavelengths = wavelengths,
-            intensities = normalizedIntensities,
+            intensities = processed.enhancedIntensities,
             peaks = enhancedPeaks,
             globalMinWavelength = config.minWavelength,
             globalMaxWavelength = config.maxWavelength
@@ -726,347 +724,6 @@ class SpectrumResultViewModel @Inject constructor(
             level = level,
             issues = issues.distinct()
         )
-    }
-
-    /**
-     * 移动平均平滑算法。
-     */
-    private fun applyMovingAverage(data: List<Double>, level: Int): List<Double> {
-        if (level <= 0 || data.size < 3) return data
-
-        val result = mutableListOf<Double>()
-        for (index in data.indices) {
-            val start = maxOf(0, index - level)
-            val end = minOf(data.lastIndex, index + level)
-            result += data.subList(start, end + 1).average()
-        }
-        return result
-    }
-
-    /**
-     * 使用滚动最小值近似基线，再做轻度平滑，减少背景抬升对寻峰的干扰。
-     */
-    private fun applyBaselineCorrection(
-        data: List<Double>,
-        smoothingLevel: Int
-    ): BaselineCorrectionResult {
-        if (data.isEmpty()) {
-            return BaselineCorrectionResult(emptyList(), emptyList())
-        }
-
-        val baselineRadius = maxOf(6, smoothingLevel * 3, data.size / 28)
-        val roughBaseline = data.indices.map { index ->
-            val start = maxOf(0, index - baselineRadius)
-            val end = minOf(data.lastIndex, index + baselineRadius)
-            data.subList(start, end + 1).minOrNull() ?: data[index]
-        }
-        val baseline = applyMovingAverage(roughBaseline, maxOf(2, baselineRadius / 4))
-        val corrected = data.indices.map { index ->
-            (data[index] - baseline[index]).coerceAtLeast(0.0)
-        }
-        return BaselineCorrectionResult(
-            baseline = baseline,
-            corrected = corrected
-        )
-    }
-
-    private fun normalizeSeries(data: List<Double>): List<Double> {
-        if (data.isEmpty()) return emptyList()
-        val minValue = data.minOrNull() ?: 0.0
-        val maxValue = data.maxOrNull() ?: minValue
-        val range = (maxValue - minValue).coerceAtLeast(1e-9)
-        return data.map { value -> ((value - minValue) / range).coerceIn(0.0, 1.0) }
-    }
-
-    /**
-     * 多峰检测。高灵敏度下保留更多候选峰，低灵敏度则更保守。
-     */
-    private fun findClassicPeaks(
-        wavelengths: List<Double>,
-        intensities: List<Double>,
-        sensitivity: String
-    ): List<SpectrumPeakUiModel> {
-        if (wavelengths.size < 3 || intensities.size < 3) return emptyList()
-
-        val threshold = when {
-            sensitivity.equals("High", ignoreCase = true) -> 0.20
-            sensitivity.equals("Low", ignoreCase = true) -> 0.55
-            else -> 0.35
-        }
-        val maxPeakCount = when {
-            sensitivity.equals("High", ignoreCase = true) -> 4
-            sensitivity.equals("Low", ignoreCase = true) -> 2
-            else -> 3
-        }
-        val minPeakDistance = maxOf(4, intensities.size / 18)
-
-        val candidates = mutableListOf<Pair<Int, Double>>()
-        for (index in 1 until intensities.lastIndex) {
-            val current = intensities[index]
-            if (current < threshold) continue
-
-            val previous = intensities[index - 1]
-            val next = intensities[index + 1]
-            if (current >= previous && current >= next) {
-                candidates += index to current
-            }
-        }
-
-        if (candidates.isEmpty()) {
-            val peakIndex = intensities.indices.maxByOrNull { intensities[it] } ?: return emptyList()
-            val peakIntensity = intensities[peakIndex]
-            if (peakIntensity < threshold) return emptyList()
-            return listOf(
-                SpectrumPeakUiModel(
-                    rank = 1,
-                    wavelength = wavelengths[peakIndex],
-                    intensity = peakIntensity
-                )
-            )
-        }
-
-        val mergedCandidates = mutableListOf<Pair<Int, Double>>()
-        candidates.sortedByDescending { it.second }.forEach { candidate ->
-            val tooClose = mergedCandidates.any { abs(it.first - candidate.first) < minPeakDistance }
-            if (!tooClose) {
-                mergedCandidates += candidate
-            }
-        }
-
-        return mergedCandidates
-            .sortedByDescending { it.second }
-            .take(maxPeakCount)
-            .mapIndexed { index, (peakIndex, peakIntensity) ->
-                SpectrumPeakUiModel(
-                    rank = index + 1,
-                    wavelength = wavelengths[peakIndex],
-                    intensity = peakIntensity
-                )
-            }
-    }
-
-    private fun findEnhancedPeaks(
-        wavelengths: List<Double>,
-        intensities: List<Double>,
-        sensitivity: String
-    ): List<SpectrumPeakUiModel> {
-        if (wavelengths.size < 3 || intensities.size < 3) return emptyList()
-
-        val noiseStd = estimateNoiseStdDev(intensities)
-        val prominenceThreshold = when {
-            sensitivity.equals("High", ignoreCase = true) -> maxOf(0.045, noiseStd * 1.6)
-            sensitivity.equals("Low", ignoreCase = true) -> maxOf(0.085, noiseStd * 2.7)
-            else -> maxOf(0.06, noiseStd * 2.1)
-        }
-        val minSignalToNoise = when {
-            sensitivity.equals("High", ignoreCase = true) -> 1.6
-            sensitivity.equals("Low", ignoreCase = true) -> 2.6
-            else -> 2.0
-        }
-        val maxPeakCount = when {
-            sensitivity.equals("High", ignoreCase = true) -> 4
-            sensitivity.equals("Low", ignoreCase = true) -> 2
-            else -> 3
-        }
-        val minPeakDistance = maxOf(4, intensities.size / 18)
-
-        val candidates = mutableListOf<PeakCandidate>()
-        for (index in 1 until intensities.lastIndex) {
-            val current = intensities[index]
-            val previous = intensities[index - 1]
-            val next = intensities[index + 1]
-            if (current >= previous && current >= next && current > 0.0) {
-                val candidate = buildPeakCandidate(
-                    wavelengths = wavelengths,
-                    intensities = intensities,
-                    peakIndex = index,
-                    noiseStd = noiseStd
-                )
-                if (candidate.prominence >= prominenceThreshold && candidate.signalToNoise >= minSignalToNoise) {
-                    candidates += candidate
-                }
-            }
-        }
-
-        if (candidates.isEmpty()) {
-            val peakIndex = intensities.indices.maxByOrNull { intensities[it] } ?: return emptyList()
-            val fallbackPeak = buildPeakCandidate(
-                wavelengths = wavelengths,
-                intensities = intensities,
-                peakIndex = peakIndex,
-                noiseStd = noiseStd
-            )
-            if (fallbackPeak.prominence < prominenceThreshold) return emptyList()
-            return listOf(
-                SpectrumPeakUiModel(
-                    rank = 1,
-                    wavelength = fallbackPeak.wavelength,
-                    intensity = fallbackPeak.intensity,
-                    prominence = fallbackPeak.prominence,
-                    area = fallbackPeak.area,
-                    fullWidthHalfMax = fallbackPeak.fullWidthHalfMax,
-                    signalToNoise = fallbackPeak.signalToNoise
-                )
-            )
-        }
-
-        val mergedCandidates = mutableListOf<PeakCandidate>()
-        candidates.sortedByDescending { it.prominence + it.intensity * 0.35 }.forEach { candidate ->
-            val tooClose = mergedCandidates.any { abs(it.index - candidate.index) < minPeakDistance }
-            if (!tooClose) {
-                mergedCandidates += candidate
-            }
-        }
-
-        return mergedCandidates
-            .sortedByDescending { it.prominence + it.intensity * 0.35 }
-            .take(maxPeakCount)
-            .mapIndexed { index, candidate ->
-                SpectrumPeakUiModel(
-                    rank = index + 1,
-                    wavelength = candidate.wavelength,
-                    intensity = candidate.intensity,
-                    prominence = candidate.prominence,
-                    area = candidate.area,
-                    fullWidthHalfMax = candidate.fullWidthHalfMax,
-                    signalToNoise = candidate.signalToNoise
-                )
-            }
-    }
-
-    private fun estimateNoiseStdDev(intensities: List<Double>): Double {
-        if (intensities.size < 3) return 0.01
-        val deltas = intensities.zipWithNext { left, right -> right - left }
-        if (deltas.isEmpty()) return 0.01
-        val mean = deltas.average()
-        val variance = deltas.sumOf { delta ->
-            val diff = delta - mean
-            diff * diff
-        } / deltas.size.toDouble()
-        return kotlin.math.sqrt(variance).coerceAtLeast(0.01)
-    }
-
-    private fun buildPeakCandidate(
-        wavelengths: List<Double>,
-        intensities: List<Double>,
-        peakIndex: Int,
-        noiseStd: Double
-    ): PeakCandidate {
-        val leftBaseIndex = findBaseIndex(
-            intensities = intensities,
-            startIndex = peakIndex,
-            direction = -1
-        )
-        val rightBaseIndex = findBaseIndex(
-            intensities = intensities,
-            startIndex = peakIndex,
-            direction = 1
-        )
-        val baseLevel = maxOf(intensities[leftBaseIndex], intensities[rightBaseIndex])
-        val peakIntensity = intensities[peakIndex]
-        val prominence = (peakIntensity - baseLevel).coerceAtLeast(0.0)
-        val halfMax = baseLevel + prominence / 2.0
-        val leftHalf = interpolateSpectrumHalfMaxCrossing(
-            wavelengths = wavelengths,
-            intensities = intensities,
-            startIndex = peakIndex,
-            boundaryIndex = leftBaseIndex,
-            target = halfMax,
-            direction = -1
-        )
-        val rightHalf = interpolateSpectrumHalfMaxCrossing(
-            wavelengths = wavelengths,
-            intensities = intensities,
-            startIndex = peakIndex,
-            boundaryIndex = rightBaseIndex,
-            target = halfMax,
-            direction = 1
-        )
-        val fwhm = (rightHalf - leftHalf).coerceAtLeast(0.0)
-        val area = integrateSpectrumPeakArea(
-            wavelengths = wavelengths,
-            intensities = intensities,
-            leftIndex = leftBaseIndex,
-            rightIndex = rightBaseIndex,
-            baseLevel = baseLevel
-        )
-        return PeakCandidate(
-            index = peakIndex,
-            wavelength = wavelengths[peakIndex],
-            intensity = peakIntensity,
-            prominence = prominence,
-            area = area,
-            fullWidthHalfMax = fwhm,
-            signalToNoise = (prominence / noiseStd).coerceAtLeast(0.0)
-        )
-    }
-
-    private fun findBaseIndex(
-        intensities: List<Double>,
-        startIndex: Int,
-        direction: Int
-    ): Int {
-        var index = startIndex
-        var candidateIndex = startIndex
-        var candidateValue = intensities[startIndex]
-
-        while (true) {
-            val nextIndex = index + direction
-            if (nextIndex !in intensities.indices) break
-            val nextValue = intensities[nextIndex]
-            if (nextValue <= candidateValue) {
-                candidateValue = nextValue
-                candidateIndex = nextIndex
-            }
-            if (nextValue > intensities[index] && candidateIndex != startIndex) {
-                break
-            }
-            index = nextIndex
-        }
-        return candidateIndex
-    }
-
-    private fun interpolateHalfMaxCrossing(
-        wavelengths: List<Double>,
-        intensities: List<Double>,
-        startIndex: Int,
-        boundaryIndex: Int,
-        target: Double,
-        direction: Int
-    ): Double {
-        var index = startIndex
-        while (index != boundaryIndex) {
-            val nextIndex = index + direction
-            if (nextIndex !in intensities.indices) break
-            val current = intensities[index]
-            val next = intensities[nextIndex]
-            val crossed = if (direction < 0) next <= target else next <= target
-            if (crossed) {
-                val denominator = (current - next).takeIf { kotlin.math.abs(it) > 1e-9 } ?: return wavelengths[nextIndex]
-                val ratio = ((current - target) / denominator).coerceIn(0.0, 1.0)
-                return wavelengths[index] + (wavelengths[nextIndex] - wavelengths[index]) * ratio
-            }
-            index = nextIndex
-        }
-        return wavelengths[boundaryIndex]
-    }
-
-    private fun integratePeakArea(
-        wavelengths: List<Double>,
-        intensities: List<Double>,
-        leftIndex: Int,
-        rightIndex: Int,
-        baseLevel: Double
-    ): Double {
-        if (rightIndex <= leftIndex) return 0.0
-        var area = 0.0
-        for (index in leftIndex until rightIndex) {
-            val leftValue = (intensities[index] - baseLevel).coerceAtLeast(0.0)
-            val rightValue = (intensities[index + 1] - baseLevel).coerceAtLeast(0.0)
-            val deltaX = wavelengths[index + 1] - wavelengths[index]
-            area += (leftValue + rightValue) * deltaX / 2.0
-        }
-        return area
     }
 
     /**

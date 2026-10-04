@@ -381,7 +381,7 @@ fun ReagentItem(
                     )
                     
                     Text(
-                        text = "${stringResource(R.string.analyte)}: $analyteName",
+                        text = stringResource(R.string.label_value, stringResource(R.string.analyte), analyteName),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -411,7 +411,7 @@ fun ReagentItem(
             reagent.manufacturer?.let {
                 if (it.isNotBlank()) {
                     Text(
-                        text = "${stringResource(R.string.manufacturer)}: $it",
+                        text = stringResource(R.string.label_value, stringResource(R.string.manufacturer), it),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(top = 4.dp)
                     )
@@ -424,7 +424,7 @@ fun ReagentItem(
             ) {
                 reagent.molecularWeight?.let {
                     Text(
-                        text = "${stringResource(R.string.molecular_weight)}: $it kDa",
+                        text = stringResource(R.string.reagent_molecular_weight_value, it),
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -433,7 +433,11 @@ fun ReagentItem(
                     if (it.isNotBlank()) {
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "${stringResource(R.string.concentration_unit)}: $it",
+                            text = stringResource(
+                                R.string.label_value,
+                                stringResource(R.string.concentration_unit),
+                                it
+                            ),
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -1024,4 +1028,4 @@ fun DeleteReagentDialog(
             }
         }
     )
-} 
+}

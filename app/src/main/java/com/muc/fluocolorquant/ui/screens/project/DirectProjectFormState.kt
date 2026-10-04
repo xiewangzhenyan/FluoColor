@@ -2,6 +2,8 @@ package com.muc.fluocolorquant.ui.screens.project
 
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.SiteShape
+import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import com.muc.fluocolorquant.domain.project.DirectCarrierPreset
 import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 
@@ -30,6 +32,10 @@ data class DirectProjectFormState(
     val carrierPreset: DirectCarrierPreset = DirectCarrierPreset.MICROFLUIDIC_10_X_10,
     val customRowsInput: String = "10",
     val customColumnsInput: String = "10",
+    // 旧版自定义阵列固定为方形；默认继续使用方形，避免升级后无故改变用户工作流。
+    val customSiteShape: SiteShape = SiteShape.SQUARE,
+    // 光源是用户确认的采集元数据，不参与波长映射、平滑或寻峰算法。
+    val spectrumLightSource: SpectrumLightSource = SpectrumLightSource.LED_WHITE,
     val selectedAnalytes: List<DirectAnalyteSelection> = emptyList(),
     val imageUri: String? = null,
     val isSubmitting: Boolean = false
@@ -59,6 +65,15 @@ data class DirectProjectFormState(
             CarrierType.MICROFLUIDIC_CHIP
         }
 
+    /** 位点形状是用户对真实载体的声明，不是 PG-Grid 从图片自动识别的结果。 */
+    val siteShape: SiteShape
+        get() = when (carrierPreset) {
+            DirectCarrierPreset.PLATE_96 -> SiteShape.CIRCLE
+            DirectCarrierPreset.MICROFLUIDIC_10_X_10,
+            DirectCarrierPreset.MICROFLUIDIC_15_X_15 -> SiteShape.SQUARE
+            DirectCarrierPreset.MICROFLUIDIC_CUSTOM -> customSiteShape
+        }
+
     /**
      * 创建按钮只依赖本次实验输入，不依赖模板、模型或资源生命周期。
      * 同一个分析物只允许出现一次；单位必须逐分析物填写，防止后续结果误用全局单位。
@@ -74,7 +89,9 @@ data class DirectProjectFormState(
             selectedAnalytes.map(DirectAnalyteSelection::analyteId).distinct().size ==
             selectedAnalytes.size &&
             !imageUri.isNullOrBlank() &&
-            rows != null &&
-            columns != null &&
+            // 光谱项目不使用规则阵列载体；用户从自定义阵列切换到光谱后，已经隐藏的
+            // 行列草稿即使未填完整，也不能继续阻断光谱项目创建。
+            (detectionModality == DetectionModality.SPECTRUM ||
+                (rows != null && columns != null)) &&
             !isSubmitting
 }

@@ -74,6 +74,7 @@ fun AnalyteManagementScreen(
     navigateBack: () -> Unit
 ) {
     val toastManager = LocalToastManager.current
+    val context = LocalContext.current
     
     // 状态收集
     val analytes by viewModel.analytes.collectAsState()
@@ -93,7 +94,7 @@ fun AnalyteManagementScreen(
     // 错误消息处理
     LaunchedEffect(errorMessage) {
         errorMessage?.let {
-            toastManager.showToast(it, ToastType.ERROR)
+            toastManager.showToast(it.asString(context), ToastType.ERROR)
             viewModel.clearErrorMessage()
         }
     }
@@ -456,4 +457,4 @@ fun DeleteAnalyteDialog(
             }
         }
     )
-} 
+}

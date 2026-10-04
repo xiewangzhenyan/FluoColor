@@ -272,9 +272,13 @@ fun ManualCurveInputScreen(
             errorMessage?.let {
                 AlertDialog(
                     onDismissRequest = { viewModel.clearErrorMessage() },
-                    title = { Text("错误") },
+                    title = { Text(stringResource(R.string.error)) },
                     text = { Text(it) },
-                    confirmButton = { Button(onClick = { viewModel.clearErrorMessage() }) { Text("确定") } }
+                    confirmButton = {
+                        Button(onClick = { viewModel.clearErrorMessage() }) {
+                            Text(stringResource(R.string.confirm))
+                        }
+                    }
                 )
             }
 

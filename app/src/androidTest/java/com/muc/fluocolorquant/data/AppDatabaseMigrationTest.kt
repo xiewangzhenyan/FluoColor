@@ -250,6 +250,254 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migrate15To16_preservesSpectrumResultAndLeavesLegacySnapshotUnknown() {
+        migrationHelper.createDatabase(SPECTRUM_SNAPSHOT_DATABASE_NAME, 15).apply {
+            insertVersion15SpectrumFixture()
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            SPECTRUM_SNAPSHOT_DATABASE_NAME,
+            16,
+            true,
+            DatabaseMigrations.MIGRATION_15_16
+        ).use { database ->
+            database.query(
+                """
+                SELECT wavelengths, intensities, processingConfigJson, processorVersion
+                FROM spectrum_results WHERE projectId = 'project-v15'
+                """.trimIndent()
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("[500.0,501.0]", cursor.getString(0))
+                assertEquals("[0.1,0.8]", cursor.getString(1))
+                // 迁移不能用设备当前设置伪造旧历史；null 会在领域层映射为固定 Legacy 配置。
+                assertTrue(cursor.isNull(2))
+                assertTrue(cursor.isNull(3))
+                assertFalse(cursor.moveToNext())
+            }
+        }
+    }
+
+    @Test
+    fun migrate16To17_doesNotBackfillResultLightSourceFromMutableProject() {
+        migrationHelper.createDatabase(SPECTRUM_LIGHT_SOURCE_DATABASE_NAME, 16).apply {
+            insertVersion15SpectrumFixture()
+            execSQL("UPDATE projects SET lightSource = 'HALOGEN' WHERE id = 'project-v15'")
+            execSQL(
+                """
+                UPDATE spectrum_results
+                SET processingConfigJson = '{"version":1}', processorVersion = 'test-v16'
+                WHERE projectId = 'project-v15'
+                """.trimIndent()
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            SPECTRUM_LIGHT_SOURCE_DATABASE_NAME,
+            17,
+            true,
+            DatabaseMigrations.MIGRATION_16_17
+        ).use { database ->
+            database.query(
+                """
+                SELECT p.lightSource, r.processingConfigJson, r.processorVersion,
+                       r.lightSourceSnapshot
+                FROM projects p
+                JOIN spectrum_results r ON r.projectId = p.id
+                WHERE p.id = 'project-v15'
+                """.trimIndent()
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("HALOGEN", cursor.getString(0))
+                assertEquals("{\"version\":1}", cursor.getString(1))
+                assertEquals("test-v16", cursor.getString(2))
+                // 项目字段是可变元数据，迁移不能把它伪装成旧结果生成时的采集快照。
+                assertTrue(cursor.isNull(3))
+                assertFalse(cursor.moveToNext())
+            }
+        }
+    }
+
+    @Test
+    fun migrate17To18_startsNewScientificGenerationButPreservesIdentityCatalogs() {
+        migrationHelper.createDatabase(SCIENTIFIC_GENERATION_DATABASE_NAME, 17).apply {
+            insertVersion17ScientificGenerationFixture()
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            SCIENTIFIC_GENERATION_DATABASE_NAME,
+            18,
+            true,
+            DatabaseMigrations.MIGRATION_17_18
+        ).use { database ->
+            // 账户和基础目录是用户资产，不属于旧科研结果，升级后必须原样保留。
+            assertEquals(1, database.rowCount("users"))
+            assertEquals(1, database.rowCount("analytes"))
+            assertEquals(1, database.rowCount("reagents"))
+
+            // V2 从空的科研代际开始；默认载体/采集档案随后由生产打开回调重新播种。
+            listOf(
+                "projects",
+                "detection_runs",
+                "well_results",
+                "spectrum_calibrations",
+                "spectrum_results",
+                "project_analytes_join",
+                "experiment_templates",
+                "template_analyte_configs",
+                "template_site_assignments",
+                "template_quantitation_bindings",
+                "curve_models",
+                "analysis_models",
+                "standard_curve_definitions",
+                "calibration_points",
+                "deep_learning_model_definitions",
+                "capture_artifacts",
+                "site_measurements",
+                "result_validation_records",
+                "carrier_profiles",
+                "acquisition_profiles"
+            ).forEach { table ->
+                assertEquals("迁移后 $table 应为空", 0, database.rowCount(table))
+            }
+        }
+    }
+
+    /** 构造同时包含用户资产与旧科研配置的 V17 数据，固定 V18 清退边界。 */
+    private fun SupportSQLiteDatabase.insertVersion17ScientificGenerationFixture() {
+        execSQL(
+            "INSERT INTO users (id, username, password, email, profilePicUrl, createdAt) " +
+                "VALUES (1, 'scientist', 'pbkdf2_sha256:test', NULL, NULL, 1)"
+        )
+        execSQL("INSERT INTO analytes (id, name) VALUES ('cea-v17', 'CEA-V17')")
+        execSQL(
+            "INSERT INTO reagents " +
+                "(id, analyteId, reagentName, reagentType, manufacturer, molecularWeight, unit) " +
+                "VALUES ('reagent-v17', 'cea-v17', 'Control', 'antigen', NULL, NULL, 'ng/mL')"
+        )
+        execSQL(
+            """
+            INSERT INTO projects (
+                id, name, detectionMode, recognitionType, imageUri, rows, columns,
+                lightSource, spectrumColumnCount, spectrumColumnMappingJson,
+                createTime, userId, lastRunTimestamp, analysisMethod,
+                templateId, templateVersion, templateSnapshotJson, overrideJson,
+                projectBatch, sampleBatch
+            ) VALUES (
+                'project-v17', '旧科研项目', 'FLUORESCENCE', 'AUTO', '/private/old.png',
+                10, 10, 'UV', 1, NULL, 1, '1', NULL, 'STANDARD_CURVE',
+                NULL, NULL, NULL, NULL, NULL, NULL
+            )
+            """.trimIndent()
+        )
+        execSQL(
+            """
+            INSERT INTO curve_models (
+                id, name, function, pixelType, signalFeatureCode, processorVersion,
+                parameters, metrics, dataPoints, createdAt, updatedAt
+            ) VALUES (
+                'curve-v17', '旧曲线', 'LINEAR', 'GRAY', NULL, NULL,
+                '{}', NULL, NULL, 1, 1
+            )
+            """.trimIndent()
+        )
+        execSQL(
+            """
+            INSERT INTO experiment_templates (
+                id, templateName, analyteId, reagentAntigenId, reagentAntibodyId,
+                fkCurveModelId, reliableRangeMin, reliableRangeMax, concentrationUnit,
+                defaultLayoutJson, createdAt, updatedAt, version, status,
+                carrierProfileId, detectionMode, readoutLayout, acquisitionProfileId,
+                inputProtocol, qcProfileJson, publishedAt, purpose, versionNote
+            ) VALUES (
+                'template-v17', '旧模板', 'cea-v17', 'reagent-v17', NULL,
+                'curve-v17', 0.0, 100.0, 'ng/mL', NULL, 1, 1, 1, 'PUBLISHED',
+                NULL, 'FLUORESCENCE', 'GRID_SITES', NULL,
+                'ENDPOINT_ONLY', NULL, NULL, NULL, NULL
+            )
+            """.trimIndent()
+        )
+        execSQL(
+            """
+            INSERT INTO analysis_models (
+                id, name, modelType, analyteId, detectionMode, inputProtocol,
+                primaryFeature, processorName, processorVersion,
+                compatibleCarrierTypesJson, compatibleAcquisitionProfileIdsJson,
+                concentrationUnit, reliableRangeMin, reliableRangeMax,
+                validationMetricsJson, contentFingerprint, status, version, createdAt, updatedAt
+            ) VALUES (
+                'model-v17', '旧模型', 'STANDARD_CURVE', 'cea-v17', 'FLUORESCENCE',
+                'ENDPOINT_ONLY', 'NET_FLUORESCENCE_INTENSITY', 'test', 'v1',
+                NULL, NULL, 'ng/mL', 0.0, 100.0, NULL, NULL, 'PUBLISHED', 1, 1, 1
+            )
+            """.trimIndent()
+        )
+        execSQL(
+            """
+            INSERT INTO carrier_profiles (
+                id, name, carrierType, rows, columns, siteShape,
+                orientationMarkerJson, roiConfigJson, locatorConfigJson,
+                status, version, createdAt, updatedAt
+            ) VALUES (
+                'carrier-v17', '旧载体', 'CUSTOM', 10, 10, 'CIRCLE',
+                NULL, NULL, NULL, 'ACTIVE', 1, 1, 1
+            )
+            """.trimIndent()
+        )
+        execSQL(
+            """
+            INSERT INTO acquisition_profiles (
+                id, name, supportedModesJson, compatibleCarrierTypesJson,
+                deviceMatcherJson, opticalModuleName, fixtureId, cameraControlStrategy,
+                cameraConstraintsJson, imageQcProfileJson, status, version, createdAt, updatedAt
+            ) VALUES (
+                'acquisition-v17', '旧采集', '[]', '[]', NULL, NULL, NULL, 'AUTO',
+                NULL, NULL, 'ACTIVE', 1, 1, 1
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun SupportSQLiteDatabase.rowCount(table: String): Int =
+        query("SELECT COUNT(*) FROM `$table`").use { cursor ->
+            check(cursor.moveToFirst())
+            cursor.getInt(0)
+        }
+
+    /** 在版本 15 中构造真实的单通道历史结果，验证追加快照列不会改写原始科学数据。 */
+    private fun SupportSQLiteDatabase.insertVersion15SpectrumFixture() {
+        execSQL(
+            """
+            INSERT INTO projects (
+                id, name, detectionMode, recognitionType, imageUri, rows, columns,
+                lightSource, spectrumColumnCount, spectrumColumnMappingJson,
+                createTime, userId, lastRunTimestamp, analysisMethod,
+                templateId, templateVersion, templateSnapshotJson, overrideJson,
+                projectBatch, sampleBatch
+            ) VALUES (
+                'project-v15', '版本15光谱项目', 'SPECTRUM', 'AUTO', '/spectrum.png',
+                1, 1, NULL, 1, NULL, 1, 'user-v15', NULL, 'SIGNAL_ONLY',
+                NULL, NULL, NULL, NULL, NULL, NULL
+            )
+            """.trimIndent()
+        )
+        execSQL(
+            """
+            INSERT INTO spectrum_results (
+                projectId, columnIndex, analyteId, imagePath,
+                wavelengths, intensities, peakWavelength
+            ) VALUES (
+                'project-v15', 0, NULL, '/legacy/channel.png',
+                '[500.0,501.0]', '[0.1,0.8]', 501.0
+            )
+            """.trimIndent()
+        )
+    }
+
     /** 在 Room 11 中写入一条新检测链的真实科学信号，验证迁移不会丢失已有数据。 */
     private fun SupportSQLiteDatabase.insertVersion11SiteMeasurementFixture() {
         execSQL("INSERT INTO analytes (id, name) VALUES ('analyte-v11', 'CEA')")
@@ -468,5 +716,10 @@ class AppDatabaseMigrationTest {
         const val RESULT_DATABASE_NAME = "result-v12-migration-test"
         const val TEMPLATE_BINDING_DATABASE_NAME = "template-binding-v13-migration-test"
         const val VALIDATION_DATABASE_NAME = "result-validation-v14-migration-test"
+        const val SPECTRUM_SNAPSHOT_DATABASE_NAME = "spectrum-snapshot-v16-migration-test"
+        const val SPECTRUM_LIGHT_SOURCE_DATABASE_NAME =
+            "spectrum-light-source-v17-migration-test"
+        const val SCIENTIFIC_GENERATION_DATABASE_NAME =
+            "scientific-generation-v18-migration-test"
     }
 }

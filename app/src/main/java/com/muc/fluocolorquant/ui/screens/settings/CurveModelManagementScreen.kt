@@ -357,18 +357,29 @@ fun ExpandableCurveModelItem(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "${stringResource(R.string.function_type)}: ${model.function.displayName}",
+                        text = stringResource(
+                            R.string.label_value,
+                            stringResource(R.string.function_type),
+                            model.function.displayName
+                        ),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "${stringResource(R.string.pixel_type)}: ${model.pixelType.displayName}",
+                        text = stringResource(
+                            R.string.label_value,
+                            stringResource(R.string.pixel_type),
+                            model.pixelType.displayName
+                        ),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     
                     // 如果有R²，显示它
                     model.metrics?.get("R²")?.let {
                         Text(
-                            text = "R² = ${String.format("%.4f", it)}",
+                            text = stringResource(
+                                R.string.standard_curve_r_squared,
+                                String.format("%.4f", it)
+                            ),
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }

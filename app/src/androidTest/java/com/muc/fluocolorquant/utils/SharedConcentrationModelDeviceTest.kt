@@ -2,8 +2,15 @@ package com.muc.fluocolorquant.utils
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.muc.fluocolorquant.data.model.DeepLearningModelDefinition
+import com.muc.fluocolorquant.data.storage.DeepLearningModelContractResult
+import com.muc.fluocolorquant.data.storage.DeepLearningModelFileManager
+import com.muc.fluocolorquant.data.storage.DeepLearningModelImportResult
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,6 +63,45 @@ class SharedConcentrationModelDeviceTest {
             // 设备测试可能与其他高分辨率图像回归连续运行，主动回收像素内存并清理临时模型副本。
             bitmap.recycle()
             extractedModel.delete()
+        }
+    }
+
+    @Test
+    fun `用户PTL导入后自动计算摘要并通过发布前运行契约`() = runBlocking {
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val source = File(targetContext.cacheDir, "user_import_shared_concentration_model.ptl")
+        targetContext.assets.open(DetectionModeSupport.SHARED_CONCENTRATION_MODEL_ASSET).use { input ->
+            source.outputStream().use(input::copyTo)
+        }
+        val manager = DeepLearningModelFileManager(targetContext)
+        var importedPrivateFile: File? = null
+        try {
+            val importResult = manager.importFromUri(Uri.fromFile(source))
+            assertTrue(importResult is DeepLearningModelImportResult.Success)
+            val imported = (importResult as DeepLearningModelImportResult.Success).file
+            assertEquals(source.name, imported.originalFileName)
+            assertEquals(64, imported.checksumSha256.length)
+            importedPrivateFile = File(targetContext.filesDir, imported.relativePath)
+            assertTrue(importedPrivateFile.isFile)
+
+            val validation = manager.validateRuntimeContract(
+                DeepLearningModelDefinition(
+                    analysisModelId = "device-import-test",
+                    modelFileName = imported.relativePath,
+                    checksumSha256 = imported.checksumSha256,
+                    inputWidth = 128,
+                    inputHeight = 128,
+                    normalizationJson =
+                        "{\"mean\":[0.485,0.456,0.406],\"std\":[0.229,0.224,0.225]}",
+                    trainingDataVersion = "device-test"
+                )
+            )
+            assertTrue("导入模型应满足生产标量输出契约：$validation", validation is DeepLearningModelContractResult.Success)
+            assertTrue((validation as DeepLearningModelContractResult.Success).sampleOutput.isFinite())
+        } finally {
+            source.delete()
+            // 测试导入副本位于明确的应用私有 model_uploads 目录，只清理本用例实际创建的文件。
+            importedPrivateFile?.delete()
         }
     }
 

@@ -5,17 +5,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.data.enums.AnalysisModelType
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
@@ -23,6 +30,7 @@ import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationMethod
 import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationSnapshot
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationDraft
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
+import com.muc.fluocolorquant.domain.detection.GridAnalysisModelOption
 import com.muc.fluocolorquant.domain.detection.GridDetectionStage
 import com.muc.fluocolorquant.domain.detection.GridExperimentTemplateOption
 import com.muc.fluocolorquant.domain.detection.GridLayoutConfigurationSource
@@ -159,12 +167,174 @@ class GridDetectionScreenTest {
         composeRule.onNodeWithText(string(R.string.grid_quant_mode_deep_learning))
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithText(
+            string(R.string.grid_quant_no_compatible_deep_learning_hint)
+        ).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.grid_quant_mode_signal_only))
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.grid_save_as_experiment_template))
             .performScrollTo()
             .assertIsDisplayed()
+    }
+
+    @Test
+    fun `第二分析物没有已发布曲线时标准曲线入口仍可进入但不能误确认`() {
+        var selectedAnalyteId: String? = null
+        var selectedMode: GridAnalyteQuantitationMode? = null
+        val initialPreview = quantitationPreview().copy(
+            analytes = listOf(
+                GridLocalizationAnalyte(
+                    id = "cea",
+                    name = "CEA",
+                    concentrationUnit = "ng/mL",
+                    maxConcentration = 100.0
+                ),
+                GridLocalizationAnalyte(
+                    id = "cyfra",
+                    name = "CYFRA21-1",
+                    concentrationUnit = "ng/mL",
+                    maxConcentration = 100.0
+                )
+            ),
+            selectedQuantitationAnalyteId = "cyfra",
+            // 只有第一个分析物拥有已发布曲线，用于固定“资源不能跨分析物复用”的边界。
+            availableModels = listOf(
+                GridAnalysisModelOption(
+                    id = "cea-curve",
+                    name = "CEA curve",
+                    version = 1,
+                    analyteId = "cea",
+                    modelType = AnalysisModelType.STANDARD_CURVE,
+                    primaryFeature = AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
+                    concentrationUnit = "ng/mL"
+                )
+            ),
+            quantitationDrafts = listOf(
+                quantitationPreview().quantitationDrafts.single(),
+                GridAnalyteQuantitationDraft(
+                    analyteId = "cyfra",
+                    mode = GridAnalyteQuantitationMode.ONSITE_AUTO_FIT
+                )
+            )
+        )
+
+        composeRule.setContent {
+            MaterialTheme {
+                var preview by remember { mutableStateOf(initialPreview) }
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    GridExperimentConfigurationSection(
+                        preview = preview,
+                        assignments = sampleAssignments(),
+                        onUseManualConfiguration = {},
+                        onApplyTemplate = {},
+                        onSetQuantitationMode = { analyteId, mode ->
+                            selectedAnalyteId = analyteId
+                            selectedMode = mode
+                            // 模拟 ViewModel 接收方式选择后的不可变状态更新，以继续核查空资源与确认门控。
+                            preview = preview.copy(
+                                quantitationDrafts = preview.quantitationDrafts.map { draft ->
+                                    if (draft.analyteId == analyteId) {
+                                        draft.copy(
+                                            mode = mode,
+                                            selectedAnalysisModelId = null,
+                                            appliedSnapshot = null
+                                        )
+                                    } else {
+                                        draft
+                                    }
+                                }
+                            )
+                        },
+                        onSelectAnalysisModel = { _, _ -> },
+                        onUpdateOnsiteAdvanced = { _, _, _ -> },
+                        onPreviewOnsiteFit = {},
+                        onSaveTemplate = {}
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText(string(R.string.grid_quant_mode_curve))
+            .performScrollTo()
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals("cyfra", selectedAnalyteId)
+            assertEquals(GridAnalyteQuantitationMode.EXISTING_STANDARD_CURVE, selectedMode)
+        }
+        composeRule.onNodeWithText(string(R.string.grid_quant_no_models))
+            .performScrollTo()
+            .assertIsDisplayed()
+        // 入口可以进入不代表允许空资源通过；必须选择当前分析物的真实兼容曲线后才能确认。
+        composeRule.onNodeWithText(string(R.string.grid_quant_complete_current))
+            .performScrollTo()
+            .assertIsNotEnabled()
+    }
+
+    @Test
+    fun `微流控内置模型不显示常驻警告但选择时必须确认`() {
+        var selectedModelId: String? = null
+        val preview = quantitationPreview().copy(
+            availableModels = listOf(
+                GridAnalysisModelOption(
+                    id = "builtin-shared",
+                    name = "stable-machine-name",
+                    version = 1,
+                    analyteId = "cea",
+                    modelType = AnalysisModelType.DEEP_LEARNING,
+                    primaryFeature = AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
+                    concentrationUnit = "ng/mL",
+                    reliableRangeMin = 0.0,
+                    reliableRangeMax = 100.0,
+                    builtInShared = true,
+                    requiresExplicitScopeConfirmation = true
+                )
+            ),
+            quantitationDrafts = listOf(
+                GridAnalyteQuantitationDraft(
+                    analyteId = "cea",
+                    mode = GridAnalyteQuantitationMode.DEEP_LEARNING_MODEL
+                )
+            )
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    GridExperimentConfigurationSection(
+                        preview = preview,
+                        assignments = sampleAssignments(),
+                        onUseManualConfiguration = {},
+                        onApplyTemplate = {},
+                        onSetQuantitationMode = { _, _ -> },
+                        onSelectAnalysisModel = { _, modelId -> selectedModelId = modelId },
+                        onUpdateOnsiteAdvanced = { _, _, _ -> },
+                        onPreviewOnsiteFit = {},
+                        onSaveTemplate = {}
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(ArrayLayoutEditorTestTags.MODEL_SELECTOR)
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag(
+            ArrayLayoutEditorTestTags.MODEL_OPTION_PREFIX + "builtin-shared"
+        )
+            .performClick()
+        composeRule.onNodeWithText(string(R.string.grid_quant_model_scope_dialog_title))
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.grid_quant_model_scope_confirm))
+            .performClick()
+        composeRule.runOnIdle { assertEquals("builtin-shared", selectedModelId) }
     }
 
     @Test

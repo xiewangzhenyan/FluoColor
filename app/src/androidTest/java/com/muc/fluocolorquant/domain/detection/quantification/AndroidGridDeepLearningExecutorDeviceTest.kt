@@ -11,30 +11,18 @@ import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.data.model.AnalysisModel
-import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.DeepLearningModelDefinition
 import com.muc.fluocolorquant.data.model.SiteMeasurement
-import com.muc.fluocolorquant.data.model.TemplateAnalyteConfig
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
-import com.muc.fluocolorquant.data.repository.GridDetectionPersistenceBundle
-import com.muc.fluocolorquant.data.repository.GridDetectionRunRepository
-import com.muc.fluocolorquant.domain.detection.AnalysisModelCompatibilityChecker
-import com.muc.fluocolorquant.domain.detection.GridDetectionCoordinator
-import com.muc.fluocolorquant.domain.detection.ModelCompatibilityRequest
-import com.muc.fluocolorquant.domain.detection.ModelCompatibilityResult
-import com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
 import com.muc.fluocolorquant.domain.detection.grid.OpenCvPgGridLocator
 import com.muc.fluocolorquant.domain.detection.grid.PgGridLocatorConfig
 import com.muc.fluocolorquant.domain.detection.photometry.FLUORESCENCE_PROCESSOR_NAME
 import com.muc.fluocolorquant.domain.detection.photometry.FLUORESCENCE_PROCESSOR_VERSION
-import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 import com.muc.fluocolorquant.domain.detection.segmentation.OpenCvArrayUnitSegmenter
-import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.utils.DetectionModeSupport
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -46,7 +34,9 @@ import org.opencv.android.OpenCVLoader
  *
  * 单输入冒烟测试只能证明模型可以加载。本测试继续使用生产定位、紧致方块分割、透视矫正、
  * 128×128 RGB/ImageNet 预处理和 [AndroidGridDeepLearningExecutor]，对225个真实单元逐一
- * 推理，并验证批次原子映射与每个位点冻结模型快照。
+ * 推理。该固定语料同时证明旧版路由错误：面向 96 孔裁切训练的内置模型用于方形微流控
+ * 单元时，225 个输出全部越过 0～100 声明域。资源选择层必须提前阻断这条组合；执行器
+ * 仍保留本测试作为最后一道防线，确保绕过选择层也不会伪造浓度。
  */
 @RunWith(AndroidJUnit4::class)
 class AndroidGridDeepLearningExecutorDeviceTest {
@@ -57,7 +47,7 @@ class AndroidGridDeepLearningExecutorDeviceTest {
     }
 
     @Test
-    fun `共享PTL在实拍十五乘十五芯片完成二百二十五孔批量推理`() {
+    fun `内置96孔PTL面对微流控实拍输入时全部失败闭合`() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val targetContext = instrumentation.targetContext
         val bitmap = instrumentation.context.assets.open(REAL_IMAGE_ASSET).use { input ->
@@ -81,21 +71,6 @@ class AndroidGridDeepLearningExecutorDeviceTest {
             assertEquals(225, segmentation.regions.size)
 
             val modelBundle = sharedModelBundle()
-            val analyteSnapshot = analyteSnapshot(modelBundle)
-            val compatibility = AnalysisModelCompatibilityChecker.check(
-                model = modelBundle.model,
-                request = ModelCompatibilityRequest(
-                    analyteId = ANALYTE_ID,
-                    modality = DetectionModality.FLUORESCENCE,
-                    inputProtocol = InputProtocol.ENDPOINT_ONLY,
-                    primaryFeature = AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY,
-                    carrierType = CarrierType.MICROFLUIDIC_CHIP,
-                    acquisitionProfileId = ACQUISITION_ID,
-                    processorName = FLUORESCENCE_PROCESSOR_NAME,
-                    processorVersion = FLUORESCENCE_PROCESSOR_VERSION
-                )
-            )
-            assertTrue(compatibility is ModelCompatibilityResult.Compatible)
             val measurements = List(225) { index -> measurement(index) }
 
             val execution = AndroidGridDeepLearningExecutor(targetContext).execute(
@@ -105,48 +80,31 @@ class AndroidGridDeepLearningExecutorDeviceTest {
                 measurements = measurements,
                 modelBundle = modelBundle
             )
+            assertTrue("模型文件和输入链有效时应形成逐孔结果：$execution", execution is GridDeepLearningBatchResult.Success)
+            val success = execution as GridDeepLearningBatchResult.Success
+            assertEquals(225, success.predictions.size + success.siteFailures.size)
+            assertTrue("未经验证的微流控输入不能产生伪浓度", success.predictions.isEmpty())
+            assertEquals(225, success.siteFailures.size)
+            val rawOutputRange = success.siteFailures.values
+                .map(GridDeepLearningSiteFailure::rawModelOutput)
+                .let { outputs -> outputs.minOrNull() to outputs.maxOrNull() }
             assertTrue(
-                "共享模型整批执行失败：$execution",
-                execution is GridDeepLearningBatchResult.Success
+                "固定实拍语料应稳定复现整体输入域失配，原始输出=" +
+                    "${rawOutputRange.first}～${rawOutputRange.second}",
+                rawOutputRange.first != null && rawOutputRange.first!! > 100.0
             )
-            val predictions = (execution as GridDeepLearningBatchResult.Success).predictions
-            assertEquals((0 until 225).toSet(), predictions.keys)
-            assertEquals(225, predictions.size)
-            predictions.values.forEach { prediction ->
-                assertTrue(prediction.siteIndex in 0 until 225)
-                prediction.concentration?.let { concentration ->
-                    assertTrue(concentration.isFinite())
-                    assertTrue(concentration in 0.0..100.0)
-                    assertEquals(ReliableRangeStatus.WITHIN_RANGE, prediction.rangeStatus)
-                }
-                assertTrue(prediction.modelSnapshotJson.contains(GRID_DEEP_LEARNING_EXECUTOR_VERSION))
-                assertTrue(prediction.modelSnapshotJson.contains(BuiltInSharedConcentrationModel.CHECKSUM_SHA256))
-                assertTrue(prediction.modelSnapshotJson.contains("\"checksumVerified\":true"))
+            assertTrue(success.predictions.keys.intersect(success.siteFailures.keys).isEmpty())
+            success.siteFailures.values.forEach { failure ->
+                assertEquals(
+                    GridDeepLearningFailureReason.OUTPUT_OUT_OF_DECLARED_RANGE,
+                    failure.reason
+                )
+                assertTrue(failure.rawModelOutput.isFinite())
+                assertTrue(
+                    failure.transformedModelOutput < failure.declaredOutputMin ||
+                        failure.transformedModelOutput > failure.declaredOutputMax
+                )
             }
-            // 同一批次使用同一冻结模型定义，225个位点不得生成互相漂移的快照。
-            assertEquals(1, predictions.values.map { it.modelSnapshotJson }.distinct().size)
-
-            val coordinator = GridDetectionCoordinator(
-                locator = OpenCvPgGridLocator(),
-                repository = NoOpGridRunRepository
-            )
-            val batch = coordinator.applyDeepLearningBatchResult(
-                measurements = measurements,
-                analyteSnapshot = analyteSnapshot,
-                compatibility = compatibility,
-                execution = execution
-            )
-            assertTrue(batch.modelExecutable)
-            assertEquals(225, batch.total)
-            assertEquals(225, batch.quantifiedCount + batch.outOfRangeCount)
-            assertEquals(0, batch.siteSignalOnlyCount)
-            assertTrue(batch.measurements.all { measurement ->
-                !measurement.modelSnapshotJson.isNullOrBlank() &&
-                    measurement.quantificationQcJson?.contains("DEEP_LEARNING") == true
-            })
-            assertFalse(batch.measurements.any { measurement ->
-                measurement.concentrationValue?.isFinite() == false
-            })
         } finally {
             if (!bitmap.isRecycled) bitmap.recycle()
         }
@@ -193,25 +151,6 @@ class AndroidGridDeepLearningExecutorDeviceTest {
         )
     }
 
-    private fun analyteSnapshot(bundle: AnalysisModelBundle): TemplateProjectAnalyteSnapshot {
-        return TemplateProjectAnalyteSnapshot(
-            analyte = Analyte(id = ANALYTE_ID, name = "CEA"),
-            templateConfig = TemplateAnalyteConfig(
-                id = "shared-device-config",
-                templateId = "shared-device-template",
-                analyteId = ANALYTE_ID,
-                analysisModelId = bundle.model.id,
-                concentrationUnit = UNIT,
-                reliableRangeMin = 0.0,
-                reliableRangeMax = 100.0,
-                displayConfigJson = ScientificDetectionConfigCodec.encodeFluorescenceDisplay(
-                    FluorescenceChannel.GREEN
-                )
-            ),
-            analysisModel = bundle
-        )
-    }
-
     /** 执行器只依赖位点索引，但测试仍提供完整可持久化测量契约。 */
     private fun measurement(siteIndex: Int): SiteMeasurement = SiteMeasurement(
         runId = "shared-device-run",
@@ -228,11 +167,6 @@ class AndroidGridDeepLearningExecutorDeviceTest {
         processorName = FLUORESCENCE_PROCESSOR_NAME,
         processorVersion = FLUORESCENCE_PROCESSOR_VERSION
     )
-
-    /** 本测试只调用批次映射纯函数，不需要写入运行数据库。 */
-    private object NoOpGridRunRepository : GridDetectionRunRepository {
-        override suspend fun save(bundle: GridDetectionPersistenceBundle) = Unit
-    }
 
     private companion object {
         val gson = Gson()

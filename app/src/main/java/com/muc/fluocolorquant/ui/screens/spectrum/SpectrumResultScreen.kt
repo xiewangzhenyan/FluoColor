@@ -82,6 +82,7 @@ import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationIssue
 import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationQualityLevel
+import com.muc.fluocolorquant.domain.spectrum.SpectrumProcessingConfigOrigin
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.components.charts.ChartData
@@ -214,6 +215,15 @@ fun SpectrumResultScreen(
                         .padding(paddingValues)
                         .background(pageBackgroundColor)
                 ) {
+                    if (state.processingConfigOrigin != SpectrumProcessingConfigOrigin.FROZEN) {
+                        LegacyProcessingConfigBanner(
+                            origin = state.processingConfigOrigin,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+
                     if (showQuickSettings) {
                         QuickAdjustCard(
                             pendingSmoothing = pendingSmoothing,
@@ -349,6 +359,61 @@ fun SpectrumResultScreen(
                 editingChannel = null
             }
         )
+    }
+}
+
+/**
+ * 对没有可信参数快照的旧结果给出持续、低干扰提示。
+ * 这里不能只弹一次 Toast，因为用户导出或解读历史结果时需要一直知道其兼容边界。
+ */
+@Composable
+private fun LegacyProcessingConfigBanner(
+    origin: SpectrumProcessingConfigOrigin,
+    modifier: Modifier = Modifier
+) {
+    val message = when (origin) {
+        SpectrumProcessingConfigOrigin.LEGACY_DEFAULT -> {
+            stringResource(R.string.spectrum_processing_legacy_message)
+        }
+        SpectrumProcessingConfigOrigin.INVALID_SNAPSHOT -> {
+            stringResource(R.string.spectrum_processing_invalid_message)
+        }
+        SpectrumProcessingConfigOrigin.INCONSISTENT_SNAPSHOTS -> {
+            stringResource(R.string.spectrum_processing_inconsistent_message)
+        }
+        SpectrumProcessingConfigOrigin.FROZEN -> return
+    }
+
+    OutlinedCard(
+        modifier = modifier,
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = stringResource(R.string.spectrum_processing_compatibility_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 
