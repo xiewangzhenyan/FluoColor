@@ -9,6 +9,7 @@ import com.muc.fluocolorquant.data.model.DualModalAdjudicationRecord
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.domain.result.ArrayResultErrorCode
 import com.muc.fluocolorquant.domain.result.ArrayResultLoadResult
+import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.dualmodal.DualModalAdjudication
 import com.muc.fluocolorquant.domain.result.dualmodal.DualModalAdjudicationEngine
 import com.muc.fluocolorquant.domain.result.dualmodal.DualModalAdjudicationSnapshot
@@ -21,6 +22,28 @@ import java.security.MessageDigest
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** 比色与荧光互为另一模态；其他模态不参与双模态判定。 */
+internal fun dualModalOppositeMode(mode: String): String? = when (mode.uppercase()) {
+    DualModalAdjudicationEngine.COLORIMETRIC -> DualModalAdjudicationEngine.FLUORESCENCE
+    DualModalAdjudicationEngine.FLUORESCENCE -> DualModalAdjudicationEngine.COLORIMETRIC
+    else -> null
+}
+
+/**
+ * 项目层面的配对候选条件：同一用户、模式相反、网格相同。
+ *
+ * 不要求模板相同。模板固定检测模态，同一块芯片的比色与荧光项目必然来自两个模板；直接新建的项目
+ * 也各有独立的隐式模板（direct-template-项目ID）。要求模板相同会使候选永远为空。两次运行能否配对
+ * 由 [DualModalAdjudicationEngine.check] 逐位点核对载体、版面、分析物与浓度单位。
+ */
+internal fun isDualModalCounterpartProject(current: Project, other: Project): Boolean {
+    val opposite = dualModalOppositeMode(current.detectionMode) ?: return false
+    return other.id != current.id &&
+        other.userId == current.userId &&
+        other.detectionMode.equals(opposite, ignoreCase = true) &&
+        other.rows == current.rows && other.columns == current.columns
+}
 
 /** 可与当前运行配对的另一模态运行。 */
 data class DualModalPairingCandidate(
@@ -53,7 +76,10 @@ interface DualModalAdjudicationRepository {
     /** 当前运行最新且未撤销的判定；没有配对时为空。 */
     suspend fun getCurrent(runId: String): DualModalCurrentPairing?
 
-    /** 同一用户、模式相反、网格与模板相同、已完成且有逐位点结果的运行，按时间倒序。 */
+    /**
+     * 同一用户、模式相反、网格相同、已完成且有逐位点结果，并且通过配对检查
+     * （载体、逐位点版面、分析物与浓度单位）的运行，按时间倒序。
+     */
     suspend fun findCandidates(runId: String): List<DualModalPairingCandidate>
 
     /** 加载两次运行的快照，检查能否配对，计算并保存一条新的判定修订。 */
@@ -88,23 +114,28 @@ class DualModalAdjudicationRepositoryImpl @Inject constructor(
         if (runId.isBlank()) return emptyList()
         val run = database.detectionRunDao().getDetectionRunById(runId) ?: return emptyList()
         val project = database.projectDao().getProjectById(run.projectId) ?: return emptyList()
-        val opposite = oppositeMode(project.detectionMode) ?: return emptyList()
+        if (dualModalOppositeMode(project.detectionMode) == null) return emptyList()
+        val current = (arrayResults.loadSnapshot(runId) as? ArrayResultLoadResult.Success)?.snapshot
+            ?: return emptyList()
         return database.projectDao().getProjectsByUserId(project.userId)
-            .filter { other ->
-                other.id != project.id &&
-                    other.detectionMode.equals(opposite, ignoreCase = true) &&
-                    other.rows == project.rows && other.columns == project.columns &&
-                    sameTemplate(project, other)
-            }
+            .filter { other -> isDualModalCounterpartProject(project, other) }
             .flatMap { other ->
                 database.detectionRunDao().getDetectionRunsByProjectId(other.id)
                     .filter { candidate ->
                         candidate.status.equals(STATUS_COMPLETED, ignoreCase = true) &&
-                            database.detectionRunDao().hasSiteMeasurements(candidate.runId)
+                            database.detectionRunDao().hasSiteMeasurements(candidate.runId) &&
+                            isPairable(current, candidate.runId)
                     }
                     .map { candidate -> candidate.toCandidate(other) }
             }
             .sortedByDescending(DualModalPairingCandidate::timestampEpochMillis)
+    }
+
+    /** 与 pair() 使用同一判据，候选列表里只出现真正能配对的运行。 */
+    private suspend fun isPairable(current: ArrayResultSnapshot, candidateRunId: String): Boolean {
+        val other = (arrayResults.loadSnapshot(candidateRunId) as? ArrayResultLoadResult.Success)?.snapshot
+            ?: return false
+        return DualModalAdjudicationEngine.check(current, other) is DualModalPairCheck.Compatible
     }
 
     override suspend fun pair(runId: String, counterpartRunId: String): DualModalPairOutcome {
@@ -197,19 +228,6 @@ class DualModalAdjudicationRepositoryImpl @Inject constructor(
             )
         )
     }.getOrNull()
-
-    private fun sameTemplate(a: Project, b: Project): Boolean {
-        if (a.templateId != b.templateId) return false
-        val va = a.templateVersion
-        val vb = b.templateVersion
-        return va == null || vb == null || va == vb
-    }
-
-    private fun oppositeMode(mode: String): String? = when (mode.uppercase()) {
-        DualModalAdjudicationEngine.COLORIMETRIC -> DualModalAdjudicationEngine.FLUORESCENCE
-        DualModalAdjudicationEngine.FLUORESCENCE -> DualModalAdjudicationEngine.COLORIMETRIC
-        else -> null
-    }
 
     private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(StandardCharsets.UTF_8))
