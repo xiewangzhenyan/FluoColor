@@ -21,7 +21,7 @@ import org.pytorch.torchvision.TensorImageUtils
 import kotlin.math.min
 
 /**
- * 从旧96孔板ViewModel抽出的YOLOv8 Lite候选检测器。
+ * 从旧96孔板ViewModel抽出的YOLOv5s Lite候选检测器（输出 1×100800×6；训练工程见 README 第 11 节）。
  *
  * 该类只负责模型加载、letterbox、输出解码、NMS和原图坐标反投影；方向、圆形精定位、
  * 晶格补位和UI状态全部由后续领域服务处理，避免算法继续绑死在页面生命周期中。
