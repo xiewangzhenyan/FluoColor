@@ -219,7 +219,8 @@ object DualModalAdjudicationEngine {
         measurements.firstOrNull { it.analyteId == analyteId }
             ?: measurements.singleOrNull()?.takeIf { it.analyteId == null }
 
-    private fun sampleKeyOf(site: ArrayPhysicalSiteResult): String =
+    /** 样本键：样本槽，其次重复组，最后是位点自身；双模态网络判读按同一口径分组。 */
+    internal fun sampleKeyOf(site: ArrayPhysicalSiteResult): String =
         site.sampleSlot?.takeIf(String::isNotBlank)
             ?: site.repeatGroup?.takeIf(String::isNotBlank)
             ?: site.siteKey

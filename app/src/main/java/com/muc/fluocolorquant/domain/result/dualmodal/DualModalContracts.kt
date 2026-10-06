@@ -1,5 +1,7 @@
 package com.muc.fluocolorquant.domain.result.dualmodal
 
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetAssessment
+
 /**
  * 比色—荧光双模态判定的领域契约。
  *
@@ -108,7 +110,9 @@ data class DualModalAdjudication(
     val thresholds: DualModalThresholds,
     val colorimetricRunId: String,
     val fluorescenceRunId: String,
-    val readings: List<DualModalReading>
+    val readings: List<DualModalReading>,
+    /** 与规则并列的 DualNet 网络判读；旧修订或网络未运行时为空。 */
+    val network: DualNetAssessment? = null
 )
 
 /** 两次运行不能配对的稳定原因。 */

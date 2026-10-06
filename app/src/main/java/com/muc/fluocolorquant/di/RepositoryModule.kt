@@ -44,6 +44,8 @@ import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepository
 import com.muc.fluocolorquant.data.repository.LegacyPlateResultRepositoryImpl
 import com.muc.fluocolorquant.data.repository.DualModalAdjudicationRepository
 import com.muc.fluocolorquant.data.repository.DualModalAdjudicationRepositoryImpl
+import com.muc.fluocolorquant.data.repository.DualNetAssessmentService
+import com.muc.fluocolorquant.data.repository.DualNetAssessmentServiceImpl
 import com.muc.fluocolorquant.data.repository.ResultValidationRepository
 import com.muc.fluocolorquant.data.repository.ResultValidationRepositoryImpl
 import com.muc.fluocolorquant.utils.camera.CameraEngine
@@ -214,6 +216,13 @@ abstract class RepositoryModule {
     abstract fun provideDualModalAdjudicationRepository(
         repository: DualModalAdjudicationRepositoryImpl
     ): DualModalAdjudicationRepository
+
+    /** DualNet 网络判读：追溯标定板并在配对时冻结网络读数，规则判定不依赖它。 */
+    @Binds
+    @Singleton
+    abstract fun provideDualNetAssessmentService(
+        service: DualNetAssessmentServiceImpl
+    ): DualNetAssessmentService
 
     /** 微流控主定位器；学习型定位器仅在离线 A/B 证明收益后替换此绑定。 */
     @Binds

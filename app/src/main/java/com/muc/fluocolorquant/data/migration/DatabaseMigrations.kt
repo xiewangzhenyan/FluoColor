@@ -279,6 +279,18 @@ object DatabaseMigrations {
     }
 
     /**
+     * 版本 19 → 20：判定修订表新增可空列 `networkJson`，冻结 DualNet 网络判读。
+     *
+     * 只追加列，不改写任何已有修订；旧修订该列为空，页面显示"本修订没有网络判读"，
+     * 重新判定才会生成新的、带网络判读的修订。
+     */
+    val MIGRATION_19_20: Migration = object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `dual_modal_adjudication_records` ADD COLUMN `networkJson` TEXT")
+        }
+    }
+
+    /**
      * 重建模板主表并保持所有外部引用仍指向 `experiment_templates`。
      *
      * `legacy_alter_table` 防止 SQLite 在旧表改名时把子表外键同步改到临时表名；新表

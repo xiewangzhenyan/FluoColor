@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CompareArrows
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,6 +55,17 @@ import com.muc.fluocolorquant.domain.result.dualmodal.DualModalReading
 import com.muc.fluocolorquant.domain.result.dualmodal.DualModalSideReading
 import com.muc.fluocolorquant.domain.result.dualmodal.DualModalSideStatus
 import com.muc.fluocolorquant.domain.result.dualmodal.DualModalThresholds
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetAnalyteAssessment
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetAssessment
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetDecision
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetDecisionReason
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetHead
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetHeadReading
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetReading
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetSpec
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetStatus
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetThresholds
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetUnavailableReason
 import com.muc.fluocolorquant.ui.theme.FluoRadius
 import com.muc.fluocolorquant.ui.viewmodels.DualModalNotice
 import com.muc.fluocolorquant.ui.viewmodels.DualModalUiState
@@ -67,6 +79,7 @@ const val ARRAY_DUAL_MODAL_PAIR_BUTTON_TAG: String = "array_dual_modal_pair_butt
 const val ARRAY_DUAL_MODAL_SHEET_TAG: String = "array_dual_modal_sheet"
 const val ARRAY_DUAL_MODAL_CANDIDATE_TAG_PREFIX: String = "array_dual_modal_candidate_"
 const val ARRAY_DUAL_MODAL_READING_TAG_PREFIX: String = "array_dual_modal_reading_"
+const val ARRAY_DUAL_MODAL_NETWORK_TAG_PREFIX: String = "array_dual_modal_network_"
 
 /** 卡片回调集合；默认空实现便于预览与快照测试直接注入状态。 */
 data class DualModalCardActions(
@@ -82,7 +95,8 @@ data class DualModalCardActions(
  * 比色—荧光双模态判定卡片。
  *
  * 卡片按"事实＋建议"组织：先列两侧读数与相对离散度，证据可展开查看，最后一行才是按规则
- * 得到的建议，并注明规则版本与阈值来源。建议不改写任何一侧的浓度，结论由检测人员确认。
+ * 得到的建议，并注明规则版本与阈值来源。规则建议下方并列 DualNet 网络的读数与建议，二者互不
+ * 覆盖。建议不改写任何一侧的浓度，结论由检测人员确认。
  */
 @Composable
 internal fun ArrayDualModalCard(
@@ -196,6 +210,9 @@ private fun PairedContent(
     )
     val adjudication = pairing.snapshot.adjudication
     val readings = adjudication.readings.filter { it.analyteId == analyte.analyteId }
+    val network = adjudication.network
+    val networkAnalyte = network?.analytes?.firstOrNull { it.analyteId == analyte.analyteId }
+    val networkReadings = networkAnalyte?.readings.orEmpty().associateBy(DualNetReading::sampleKey)
     if (readings.isEmpty()) {
         Text(
             text = stringResource(R.string.array_dual_modal_no_reading),
@@ -204,9 +221,15 @@ private fun PairedContent(
     } else {
         readings.forEachIndexed { index, reading ->
             if (index > 0) HorizontalDivider()
-            ReadingBlock(reading = reading, thresholds = adjudication.thresholds)
+            ReadingBlock(
+                reading = reading,
+                thresholds = adjudication.thresholds,
+                network = networkReadings[reading.sampleKey],
+                networkThresholds = network?.thresholds
+            )
         }
     }
+    NetworkNote(network = network, analyteAssessment = networkAnalyte)
     Text(
         text = stringResource(
             R.string.array_dual_modal_rule_note,
@@ -228,7 +251,12 @@ private fun PairedContent(
 }
 
 @Composable
-private fun ReadingBlock(reading: DualModalReading, thresholds: DualModalThresholds) {
+private fun ReadingBlock(
+    reading: DualModalReading,
+    thresholds: DualModalThresholds,
+    network: DualNetReading?,
+    networkThresholds: DualNetThresholds?
+) {
     var expanded by rememberSaveable(reading.analyteId, reading.sampleKey) { mutableStateOf(false) }
     Column(
         modifier = Modifier
@@ -281,6 +309,144 @@ private fun ReadingBlock(reading: DualModalReading, thresholds: DualModalThresho
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        if (network != null && networkThresholds != null) {
+            NetworkReadingBlock(
+                network = network,
+                thresholds = networkThresholds,
+                expanded = expanded,
+                unit = reading.concentrationUnit
+            )
+        }
+    }
+}
+
+/** 网络读数紧跟在规则建议之后，用模型图标与"网络"标签区分，展开时列出三个输出头与 δ。 */
+@Composable
+private fun NetworkReadingBlock(
+    network: DualNetReading,
+    thresholds: DualNetThresholds,
+    expanded: Boolean,
+    /** 与规则读数使用同一分析物单位文字；网络只在单位为 ng/mL 时运行，数值无需换算。 */
+    unit: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .testTag("$ARRAY_DUAL_MODAL_NETWORK_TAG_PREFIX${network.analyteId}_${network.sampleKey}"),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(
+                imageVector = Icons.Outlined.Psychology,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = stringResource(R.string.array_dual_modal_net_title),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            Text(
+                text = networkDecisionText(network, unit),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = networkDecisionColor(network.decision)
+            )
+        }
+        Text(
+            text = networkReasonText(network.reason),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (network.withinEvaluatedRange == false) {
+            Text(
+                text = stringResource(
+                    R.string.array_dual_modal_net_out_of_range,
+                    formatBound(DualNetSpec.EVALUATED_RANGE_MIN),
+                    formatBound(DualNetSpec.EVALUATED_RANGE_MAX),
+                    unit
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+        }
+        if (expanded) {
+            NetworkHeadLine(network.colorimetric, thresholds.colorimetricUncertainty, unit)
+            NetworkHeadLine(network.fluorescence, thresholds.fluorescenceUncertainty, unit)
+            NetworkHeadLine(network.fused, thresholds.fusedUncertainty, unit)
+            network.deltaPercent?.let { delta ->
+                Text(
+                    text = stringResource(
+                        R.string.array_dual_modal_net_delta_line,
+                        formatValue(delta),
+                        formatValue(thresholds.deltaPercent)
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (delta > thresholds.deltaPercent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NetworkHeadLine(head: DualNetHeadReading, threshold: Double, unit: String) {
+    val label = stringResource(
+        when (head.head) {
+            DualNetHead.COLORIMETRIC -> R.string.array_dual_modal_net_head_colorimetric
+            DualNetHead.FLUORESCENCE -> R.string.array_dual_modal_net_head_fluorescence
+            DualNetHead.FUSED -> R.string.array_dual_modal_net_head_fused
+        }
+    )
+    Text(
+        text = if (head.available) {
+            stringResource(
+                R.string.array_dual_modal_net_head_line,
+                label,
+                formatValue(head.concentration),
+                unit,
+                formatUncertainty(head.uncertainty),
+                formatUncertainty(threshold)
+            )
+        } else {
+            stringResource(R.string.array_dual_modal_net_head_unavailable, label)
+        },
+        style = MaterialTheme.typography.labelSmall,
+        color = if (head.available && !head.withinThreshold) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+/** 卡片底部的网络说明：模型版本、阈值与仿真来源；不可用时只给原因。 */
+@Composable
+private fun NetworkNote(network: DualNetAssessment?, analyteAssessment: DualNetAnalyteAssessment?) {
+    val text = when {
+        network == null -> stringResource(R.string.array_dual_modal_net_missing)
+        analyteAssessment == null -> stringResource(
+            R.string.array_dual_modal_net_unavailable,
+            stringResource(R.string.array_dual_modal_net_unavailable_layout)
+        )
+        analyteAssessment.status == DualNetStatus.UNAVAILABLE -> stringResource(
+            R.string.array_dual_modal_net_unavailable,
+            networkUnavailableText(analyteAssessment.unavailableReason)
+        )
+        else -> stringResource(
+            R.string.array_dual_modal_net_note,
+            DualNetSpec.MODEL_DISPLAY_NAME,
+            network.modelVersion,
+            formatUncertainty(network.thresholds.fusedUncertainty),
+            formatValue(network.thresholds.deltaPercent)
+        )
+    }
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(
+            imageVector = Icons.Outlined.Psychology,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp)
+        )
+        Text(text = text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -440,6 +606,60 @@ private fun decisionText(reading: DualModalReading): String {
         DualModalDecision.RETEST -> stringResource(R.string.array_dual_modal_decision_retest)
     }
 }
+
+@Composable
+private fun networkDecisionText(reading: DualNetReading, unit: String): String {
+    val value = formatValue(reading.suggestedConcentration)
+    return when (reading.decision) {
+        DualNetDecision.ADOPT_FUSED -> stringResource(R.string.array_dual_modal_net_decision_fused, value, unit)
+        DualNetDecision.ADOPT_COLORIMETRIC -> stringResource(R.string.array_dual_modal_net_decision_col, value, unit)
+        DualNetDecision.ADOPT_FLUORESCENCE -> stringResource(R.string.array_dual_modal_net_decision_flu, value, unit)
+        DualNetDecision.RETEST -> stringResource(R.string.array_dual_modal_net_decision_retest)
+    }
+}
+
+@Composable
+private fun networkDecisionColor(decision: DualNetDecision): Color = when (decision) {
+    DualNetDecision.ADOPT_FUSED -> MaterialTheme.colorScheme.primary
+    DualNetDecision.ADOPT_COLORIMETRIC, DualNetDecision.ADOPT_FLUORESCENCE -> MaterialTheme.colorScheme.tertiary
+    DualNetDecision.RETEST -> MaterialTheme.colorScheme.error
+}
+
+@Composable
+private fun networkReasonText(reason: DualNetDecisionReason): String = stringResource(
+    when (reason) {
+        DualNetDecisionReason.CONSISTENT -> R.string.array_dual_modal_net_reason_consistent
+        DualNetDecisionReason.FUSED_UNCERTAIN -> R.string.array_dual_modal_net_reason_fused_uncertain
+        DualNetDecisionReason.HEADS_DISAGREE -> R.string.array_dual_modal_net_reason_heads_disagree
+        DualNetDecisionReason.COLORIMETRIC_FALLBACK -> R.string.array_dual_modal_net_reason_col_fallback
+        DualNetDecisionReason.FLUORESCENCE_FALLBACK -> R.string.array_dual_modal_net_reason_flu_fallback
+        DualNetDecisionReason.FALLBACK_UNCERTAIN -> R.string.array_dual_modal_net_reason_fallback_uncertain
+        DualNetDecisionReason.NO_USABLE_HEAD -> R.string.array_dual_modal_net_reason_no_head
+    }
+)
+
+@Composable
+private fun networkUnavailableText(reason: DualNetUnavailableReason?): String = stringResource(
+    when (reason) {
+        DualNetUnavailableReason.UNIT_NOT_SUPPORTED -> R.string.array_dual_modal_net_unavailable_unit
+        DualNetUnavailableReason.CALIBRATION_RUNS_NOT_FOUND -> R.string.array_dual_modal_net_unavailable_calibration_missing
+        DualNetUnavailableReason.CALIBRATION_RUNS_NOT_PAIRABLE -> R.string.array_dual_modal_net_unavailable_calibration_unpaired
+        DualNetUnavailableReason.CALIBRATION_LEVELS_INSUFFICIENT -> R.string.array_dual_modal_net_unavailable_levels
+        DualNetUnavailableReason.RECALIBRATION_FAILED -> R.string.array_dual_modal_net_unavailable_recalibration
+        DualNetUnavailableReason.EVIDENCE_UNAVAILABLE -> R.string.array_dual_modal_net_unavailable_evidence
+        DualNetUnavailableReason.MODEL_UNAVAILABLE -> R.string.array_dual_modal_net_unavailable_model
+        DualNetUnavailableReason.INFERENCE_FAILED -> R.string.array_dual_modal_net_unavailable_inference
+        DualNetUnavailableReason.LAYOUT_NOT_SUPPORTED, null -> R.string.array_dual_modal_net_unavailable_layout
+    }
+)
+
+/** 范围端点取整数时不带小数（5–61.6），其余与浓度同样按有效位数显示。 */
+private fun formatBound(value: Double): String =
+    if (value == kotlin.math.floor(value)) String.format(Locale.getDefault(), "%.0f", value) else formatValue(value)
+
+/** 不确定度 u 为 log10 单位，统一保留三位小数便于与阈值对照。 */
+private fun formatUncertainty(value: Double?): String =
+    if (value == null || !value.isFinite()) "—" else String.format(Locale.getDefault(), "%.3f", value)
 
 @Composable
 private fun decisionColor(decision: DualModalDecision): Color = when (decision) {

@@ -76,7 +76,7 @@ import com.muc.fluocolorquant.data.model.WellResult
         ResultValidationRecord::class,
         DualModalAdjudicationRecord::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

@@ -17,11 +17,13 @@ import com.muc.fluocolorquant.domain.result.dualmodal.DualModalIncompatibility
 import com.muc.fluocolorquant.domain.result.dualmodal.DualModalPairCheck
 import com.muc.fluocolorquant.domain.result.dualmodal.DualModalReading
 import com.muc.fluocolorquant.domain.result.dualmodal.DualModalThresholds
+import com.muc.fluocolorquant.domain.result.dualmodal.network.DualNetAssessment
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 
 /** 比色与荧光互为另一模态；其他模态不参与双模态判定。 */
 internal fun dualModalOppositeMode(mode: String): String? = when (mode.uppercase()) {
@@ -93,7 +95,8 @@ interface DualModalAdjudicationRepository {
 @Singleton
 class DualModalAdjudicationRepositoryImpl @Inject constructor(
     private val database: AppDatabase,
-    private val arrayResults: ArrayResultRepository
+    private val arrayResults: ArrayResultRepository,
+    private val dualNet: DualNetAssessmentService
 ) : DualModalAdjudicationRepository {
     private val gson = Gson()
 
@@ -152,6 +155,7 @@ class DualModalAdjudicationRepositoryImpl @Inject constructor(
             is DualModalPairCheck.Compatible -> check.colorimetric to check.fluorescence
         }
         val adjudication = DualModalAdjudicationEngine.adjudicate(colorimetric, fluorescence, DualModalThresholds())
+            .copy(network = assessNetwork(colorimetric, fluorescence))
         val record = insertRevision(adjudication, revoked = false)
         val snapshot = record.toSnapshotOrNull() ?: error("DUAL_MODAL_RECORD_SERIALIZATION_FAILED")
         return DualModalPairOutcome.Paired(
@@ -168,16 +172,32 @@ class DualModalAdjudicationRepositoryImpl @Inject constructor(
         return true
     }
 
+    /**
+     * 网络判读是规则判定之外的附加建议：任何运行期异常都只让本修订没有网络判读，不能让配对失败。
+     * 正常的"不可用"（版面不支持、找不到标定板等）由服务以稳定原因返回，不走这里。
+     */
+    private suspend fun assessNetwork(colorimetric: ArrayResultSnapshot, fluorescence: ArrayResultSnapshot): DualNetAssessment? =
+        try {
+            dualNet.assess(colorimetric, fluorescence)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: RuntimeException) {
+            null
+        }
+
     private suspend fun insertRevision(adjudication: DualModalAdjudication, revoked: Boolean): DualModalAdjudicationRecord {
         val readingsJson = gson.toJson(adjudication.readings)
         val thresholdsJson = gson.toJson(adjudication.thresholds)
+        val networkJson = adjudication.network?.let(gson::toJson)
         val fingerprint = sha256(
-            listOf(
+            listOfNotNull(
                 adjudication.ruleVersion,
                 adjudication.colorimetricRunId,
                 adjudication.fluorescenceRunId,
                 thresholdsJson,
-                readingsJson
+                readingsJson,
+                // 第 19 版的指纹不含网络判读；只在有网络判读时追加，旧修订的指纹口径不变。
+                networkJson
             ).joinToString("|")
         )
         return database.withTransaction {
@@ -193,7 +213,8 @@ class DualModalAdjudicationRepositoryImpl @Inject constructor(
                 thresholdsJson = thresholdsJson,
                 readingsJson = readingsJson,
                 inputFingerprint = fingerprint,
-                createdAt = System.currentTimeMillis()
+                createdAt = System.currentTimeMillis(),
+                networkJson = networkJson
             ).also { record -> dao.insert(record) }
         }
     }
@@ -224,7 +245,9 @@ class DualModalAdjudicationRepositoryImpl @Inject constructor(
                 thresholds = gson.fromJson(thresholdsJson, DualModalThresholds::class.java),
                 colorimetricRunId = colorimetricRunId,
                 fluorescenceRunId = fluorescenceRunId,
-                readings = gson.fromJson(readingsJson, readingType)
+                readings = gson.fromJson(readingsJson, readingType),
+                // 网络判读单独解析：即使它损坏，也不能连带丢失规则判定。
+                network = networkJson?.let { json -> runCatching { gson.fromJson(json, DualNetAssessment::class.java) }.getOrNull() }
             )
         )
     }.getOrNull()

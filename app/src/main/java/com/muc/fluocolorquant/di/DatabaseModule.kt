@@ -73,7 +73,8 @@ object DatabaseModule {
             DatabaseMigrations.MIGRATION_15_16,
             DatabaseMigrations.MIGRATION_16_17,
             DatabaseMigrations.MIGRATION_17_18,
-            DatabaseMigrations.MIGRATION_18_19
+            DatabaseMigrations.MIGRATION_18_19,
+            DatabaseMigrations.MIGRATION_19_20
         )
         .addCallback(prepopulateCallback)  // 首次建库时预填充分析物与试剂
         .addCallback(DefaultUserDatabaseCallback) // 每次打开时幂等确保默认登录账户存在
