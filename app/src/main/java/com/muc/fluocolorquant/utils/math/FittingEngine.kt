@@ -513,6 +513,23 @@ object FittingEngine {
     }
 
     /**
+     * 留一水平验证专用：从全量标准点得到的参数出发，按同一权重方案重拟合一个成熟函数。
+     *
+     * 只支持 [automaticCalibrationFunctions]；返回稳定解的参数，失败返回 null。
+     */
+    fun refitCalibrationCandidate(
+        dataPoints: List<Pair<Double, Double>>,
+        function: FittingFunction,
+        weightingCode: Int,
+        warmStart: Map<String, Double>
+    ): Map<String, Double>? = CalibrationModelSelector.refit(
+        dataPoints = dataPoints,
+        function = function,
+        weightingCode = weightingCode,
+        warmStart = warmStart
+    )
+
+    /**
      * 为统一阵列标定和标准曲线库生成用户明确允许的全部函数候选。
      *
      * 线性、4PL、5PL继续使用成熟的加权标定选择器；二次、指数、对数、幂函数以及

@@ -102,6 +102,50 @@ class CalibrationModelSelectorTest {
     }
 
     @Test
+    fun `留一水平验证从全量解热启动时与多起点重拟合得到同一曲线`() {
+        val concentrations = listOf(0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0)
+        val offsets = listOf(-0.6, 0.0, 0.6)
+        val points = concentrations.flatMapIndexed { index, concentration ->
+            val expected = fiveParameterSignal(concentration, a = 125.0, b = 1.25, c = 9.0, d = 4.0, g = 2.4)
+            offsets.map { offset -> concentration to expected + offset * (if (index % 2 == 0) 1.0 else -0.5) }
+        }
+        val training = points.filterNot { it.first == 8.0 }
+        val signalRange = points.maxOf { it.second } - points.minOf { it.second }
+
+        listOf(FittingFunction.RODBARD, FittingFunction.LOGISTIC).forEach { function ->
+            fun byWeighting(results: List<FittingResult>) = results.associateBy {
+                it.allMetrics.getValue("Weighting Scheme").toInt()
+            }
+            val full = byWeighting(FittingEngine.fitCalibrationCandidates(points, setOf(function)))
+            val multiStart = byWeighting(FittingEngine.fitCalibrationCandidates(training, setOf(function)))
+            assertTrue("$function 应至少有一个可比较的权重方案", full.keys.intersect(multiStart.keys).isNotEmpty())
+
+            full.keys.intersect(multiStart.keys).forEach { weightingCode ->
+                val warm = FittingEngine.refitCalibrationCandidate(
+                    dataPoints = training,
+                    function = function,
+                    weightingCode = weightingCode,
+                    warmStart = full.getValue(weightingCode).params
+                )
+                assertTrue("$function/$weightingCode 热启动重拟合不应失败", warm != null)
+                concentrations.forEach { concentration ->
+                    val expected = FittingEngine.calculate(
+                        function,
+                        multiStart.getValue(weightingCode).params,
+                        concentration
+                    )
+                    assertEquals(
+                        "$function/$weightingCode 在 $concentration 处的预测",
+                        expected,
+                        FittingEngine.calculate(function, warm!!, concentration),
+                        signalRange * 1e-6
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
     fun `存在重复标准孔时自动生成逆方差加权候选`() {
         val points = buildList {
             listOf(1.0, 2.0, 4.0, 8.0, 16.0, 32.0).forEach { concentration ->

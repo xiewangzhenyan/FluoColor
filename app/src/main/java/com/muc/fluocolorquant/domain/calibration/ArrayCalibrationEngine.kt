@@ -124,7 +124,9 @@ class ArrayCalibrationEngine @Inject constructor() {
                     points = points,
                     function = function,
                     policy = draft.policy,
-                    weightingCodes = baseCandidates.map(CalibrationCandidate::weightingCode).toSet()
+                    fullFitByWeighting = baseCandidates.associate { candidate ->
+                        candidate.weightingCode to candidate.parameters
+                    }
                 )
                 baseCandidates.map { candidate ->
                     candidate.copy(
@@ -256,13 +258,17 @@ class ArrayCalibrationEngine @Inject constructor() {
      * 同一浓度的重复孔必须一起移出训练集，否则重复孔之间会泄漏信息并人为抬高验证表现。
      * 这里只验证正浓度水平；零浓度/空白继续留在训练中约束基线，但相对浓度误差在零点
      * 没有定义，不能为了得到一个好看的百分比而添加任意分母。
+     *
+     * 线性、Hill、4PL、5PL 每折从同一权重方案的全量解热启动（[fullFitByWeighting]），
+     * 估计器与全量拟合相同，只省去多起点搜索；其余函数仍按原入口重拟合。
      */
     private fun calculateLeaveOneLevelValidation(
         points: List<Pair<Double, Double>>,
         function: FittingFunction,
         policy: CalibrationPolicy,
-        weightingCodes: Set<Int>
+        fullFitByWeighting: Map<Int, Map<String, Double>>
     ): Map<Int, CalibrationCrossValidationMetrics> {
+        val weightingCodes = fullFitByWeighting.keys
         if (weightingCodes.isEmpty()) return emptyMap()
         val validationLevels = points.map(Pair<Double, Double>::first)
             .filter { it > 0.0 }
@@ -285,17 +291,35 @@ class ArrayCalibrationEngine @Inject constructor() {
             ) {
                 return@levelLoop
             }
-            val refittedByWeighting = FittingEngine.fitRequestedCalibrationFunctions(
-                dataPoints = trainingPoints,
-                allowedFunctions = setOf(function)
-            ).asSequence()
-                .filter(FittingResult::isSuccess)
-                .filter { it.params.isNotEmpty() && it.params.values.all(Double::isFinite) }
-                .filter { result ->
-                    val weightingCode = result.metrics["Weighting Scheme"]?.toInt() ?: 0
-                    weightingCode in weightingCodes && weightingCode in policy.enabledWeightingCodes
+            val refittedByWeighting: Map<Int, Map<String, Double>> =
+                if (function in FittingEngine.automaticCalibrationFunctions()) {
+                    fullFitByWeighting
+                        .filterKeys { it in policy.enabledWeightingCodes }
+                        .mapNotNull { (weightingCode, fullFit) ->
+                            FittingEngine.refitCalibrationCandidate(
+                                dataPoints = trainingPoints,
+                                function = function,
+                                weightingCode = weightingCode,
+                                warmStart = fullFit
+                            )?.takeIf { it.isNotEmpty() && it.values.all(Double::isFinite) }
+                                ?.let { weightingCode to it }
+                        }
+                        .toMap()
+                } else {
+                    FittingEngine.fitRequestedCalibrationFunctions(
+                        dataPoints = trainingPoints,
+                        allowedFunctions = setOf(function)
+                    ).asSequence()
+                        .filter(FittingResult::isSuccess)
+                        .filter { it.params.isNotEmpty() && it.params.values.all(Double::isFinite) }
+                        .filter { result ->
+                            val weightingCode = result.metrics["Weighting Scheme"]?.toInt() ?: 0
+                            weightingCode in weightingCodes && weightingCode in policy.enabledWeightingCodes
+                        }
+                        .associate { result ->
+                            (result.metrics["Weighting Scheme"]?.toInt() ?: 0) to result.params
+                        }
                 }
-                .associateBy { result -> result.metrics["Weighting Scheme"]?.toInt() ?: 0 }
 
             weightingCodes.forEach weightingLoop@{ weightingCode ->
                 val refitted = refittedByWeighting[weightingCode] ?: return@weightingLoop
@@ -306,7 +330,7 @@ class ArrayCalibrationEngine @Inject constructor() {
                     val searchRange = inverseValidationRange(function, fullMinimum, fullMaximum)
                     FittingEngine.invertCalibrationSignal(
                         function = function,
-                        params = refitted.params,
+                        params = refitted,
                         signal = signal,
                         concentrationMinimum = searchRange.first,
                         concentrationMaximum = searchRange.second
@@ -320,7 +344,7 @@ class ArrayCalibrationEngine @Inject constructor() {
 
                 val levelRmse = sqrt(errors.sumOf { it.pow(2) } / errors.size.toDouble())
                 val predictionGrid = fullLevels.map { concentration ->
-                    FittingEngine.calculate(function, refitted.params, concentration)
+                    FittingEngine.calculate(function, refitted, concentration)
                 }
                 if (predictionGrid.any { !it.isFinite() }) return@weightingLoop
                 accumulators.getValue(weightingCode).recordSuccess(

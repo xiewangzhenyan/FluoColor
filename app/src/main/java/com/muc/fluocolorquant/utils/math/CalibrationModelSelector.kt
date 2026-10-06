@@ -106,6 +106,53 @@ internal object CalibrationModelSelector {
     }
 
     /**
+     * 从已有解出发，按同一鲁棒估计器重新拟合单个函数与权重方案。
+     *
+     * 留一水平验证每折只移出一个浓度水平，最优解就在全量解附近；从全量解热启动可省去
+     * 多起点搜索，热启动失败时仍回到多起点。只返回与 [rank] 相同门槛下稳定的解，失败
+     * 返回 null，由调用方按该水平验证失败处理。
+     */
+    fun refit(
+        dataPoints: List<Pair<Double, Double>>,
+        function: FittingFunction,
+        weightingCode: Int,
+        warmStart: Map<String, Double>
+    ): Map<String, Double>? {
+        val points = dataPoints
+            .filter { (concentration, signal) ->
+                concentration.isFinite() && concentration >= 0.0 && signal.isFinite()
+            }
+            .sortedBy { it.first }
+        val uniqueLevels = points.map { it.first }.distinct().size
+        if (points.size < 2 || uniqueLevels < 2) return null
+        val weighting = CalibrationWeighting.entries
+            .firstOrNull { it.metricCode.toInt() == weightingCode }
+            ?: return null
+        val weights = buildWeightSets(points)[weighting] ?: return null
+        val parameters = when (function) {
+            FittingFunction.LINEAR -> fitRobustLinear(points, weights)
+            FittingFunction.HILL -> if (uniqueLevels >= MINIMUM_HILL_LEVELS && hillModelIsSupported(points)) {
+                fitRobustHillModel(points, weights, warmStart)
+            } else {
+                null
+            }
+            FittingFunction.RODBARD -> if (uniqueLevels >= 5) {
+                fitRobustLogisticModel(points, weights, fiveParameter = false, warmStart = warmStart)
+            } else {
+                null
+            }
+            FittingFunction.LOGISTIC -> if (uniqueLevels >= 6) {
+                fitRobustLogisticModel(points, weights, fiveParameter = true, warmStart = warmStart)
+            } else {
+                null
+            }
+            else -> null
+        } ?: return null
+        val candidate = buildCandidate(points, function, parameters, weighting, weights) ?: return null
+        return parameters.takeIf { candidate.diagnostics.stable }
+    }
+
+    /**
      * 选择最终推荐模型。
      *
      * 已满足 ICH 风格标准点验收的线性模型拥有最高优先级。进入非线性分支后，5PL 必须
@@ -250,7 +297,8 @@ internal object CalibrationModelSelector {
      */
     private fun fitHillModel(
         points: List<Pair<Double, Double>>,
-        weights: List<Double>
+        weights: List<Double>,
+        warmStart: Map<String, Double>? = null
     ): Map<String, Double>? {
         val function = object : ParametricUnivariateFunction {
             override fun value(x: Double, parameters: DoubleArray): Double {
@@ -283,7 +331,7 @@ internal object CalibrationModelSelector {
         val maximumPositive = positiveLevels.maxOrNull() ?: return null
         val geometricMiddle = sqrt(minimumPositive * maximumPositive)
         val observedMaximum = max(points.maxOf(Pair<Double, Double>::second), MINIMUM_SIGNAL_RANGE)
-        val starts = buildList {
+        val starts = warmStart?.let { listOf(encodeHillParameters(it)) } ?: buildList {
             listOf(1.05, 1.25, 1.75).forEach { upperRatio ->
                 listOf(0.6, 1.2, 2.4).forEach { slope ->
                     listOf(geometricMiddle, minimumPositive, maximumPositive).distinct()
@@ -325,12 +373,13 @@ internal object CalibrationModelSelector {
         return best
     }
 
-    /** 使用 Student-t IRLS 细化 Hill 3PL。 */
+    /** 使用 Student-t IRLS 细化 Hill 3PL；重加权从上一轮解热启动。 */
     private fun fitRobustHillModel(
         points: List<Pair<Double, Double>>,
-        baseWeights: List<Double>
+        baseWeights: List<Double>,
+        warmStart: Map<String, Double>? = null
     ): Map<String, Double>? {
-        var parameters = fitHillModel(points, baseWeights) ?: return null
+        var parameters = fitHillModelFrom(points, baseWeights, warmStart) ?: return null
         var workingWeights = baseWeights
         repeat(STUDENT_T_IRLS_ITERATIONS) {
             val refined = studentTWeights(
@@ -340,16 +389,30 @@ internal object CalibrationModelSelector {
                 parameters = parameters
             ) ?: return@repeat
             if (weightsHaveConverged(workingWeights, refined)) return parameters
-            parameters = fitHillModel(points, refined) ?: return parameters
+            parameters = fitHillModelFrom(points, refined, parameters) ?: return parameters
             workingWeights = refined
         }
         return parameters
     }
 
+    /** 给定解时先单起点热启动，失败或未给定时回到多起点。 */
+    private fun fitHillModelFrom(
+        points: List<Pair<Double, Double>>,
+        weights: List<Double>,
+        warmStart: Map<String, Double>?
+    ): Map<String, Double>? =
+        warmStart?.let { fitHillModel(points, weights, it) } ?: fitHillModel(points, weights)
+
     private fun decodeHillParameters(raw: DoubleArray): Map<String, Double> = mapOf(
         "a" to exp(raw[0]),
         "b" to exp(raw[1]),
         "c" to exp(raw[2])
+    )
+
+    private fun encodeHillParameters(parameters: Map<String, Double>): DoubleArray = doubleArrayOf(
+        ln(parameters.getValue("a")),
+        ln(parameters.getValue("b")),
+        ln(parameters.getValue("c"))
     )
 
     /** Hill 3PL 只接受基线已归零、方向递增且不存在大幅局部折返的数据。 */
@@ -399,13 +462,15 @@ internal object CalibrationModelSelector {
     private fun fitLogisticModel(
         points: List<Pair<Double, Double>>,
         weights: List<Double>,
-        fiveParameter: Boolean
+        fiveParameter: Boolean,
+        warmStart: Map<String, Double>? = null
     ): Map<String, Double>? {
         val model = logisticParametricFunction(fiveParameter)
         val observations = points.indices.map { index ->
             WeightedObservedPoint(weights[index], points[index].first, points[index].second)
         }
-        val starts = logisticStartPoints(points, fiveParameter)
+        val starts = warmStart?.let { listOf(encodeLogisticParameters(it, fiveParameter)) }
+            ?: logisticStartPoints(points, fiveParameter)
         var bestParameters: Map<String, Double>? = null
         var bestWeightedSse = Double.POSITIVE_INFINITY
 
@@ -434,7 +499,7 @@ internal object CalibrationModelSelector {
         }
         val fitted = bestParameters ?: return null
         return if (fiveParameter) {
-            regularizeFiveParameter(points, weights, fitted)
+            regularizeFiveParameter(points, weights, fitted, continueFromFree = warmStart != null)
         } else {
             fitted
         }
@@ -445,12 +510,14 @@ internal object CalibrationModelSelector {
      *
      * 首先取得自由 5PL 解，再在自由解与1之间生成确定性 g 网格；每个 g 固定后重新拟合
      * a/b/c/d，最终最小化“加权残差 + λ·ln(g)²”。这是真正进入拟合裁决的正则项，
-     * 不是仅在结果排序阶段给复杂模型加一个标签。
+     * 不是仅在结果排序阶段给复杂模型加一个标签。热启动时（[continueFromFree]）固定 g 的
+     * 子拟合从自由解的 a/b/c/d 出发，失败时再回到多起点。
      */
     private fun regularizeFiveParameter(
         points: List<Pair<Double, Double>>,
         weights: List<Double>,
-        freeParameters: Map<String, Double>
+        freeParameters: Map<String, Double>,
+        continueFromFree: Boolean = false
     ): Map<String, Double> {
         val freeAsymmetry = freeParameters["g"]
             ?.takeIf { it.isFinite() && it > 0.0 }
@@ -463,7 +530,12 @@ internal object CalibrationModelSelector {
         val candidates = buildList {
             add(freeParameters)
             asymmetryGrid.forEach { asymmetry ->
-                fitLogisticWithFixedAsymmetry(points, weights, asymmetry)?.let(::add)
+                val continued = if (continueFromFree) {
+                    fitLogisticWithFixedAsymmetry(points, weights, asymmetry, continueFrom = freeParameters)
+                } else {
+                    null
+                }
+                (continued ?: fitLogisticWithFixedAsymmetry(points, weights, asymmetry))?.let(::add)
             }
         }
         val residualDegreesOfFreedom = max(
@@ -499,7 +571,8 @@ internal object CalibrationModelSelector {
     private fun fitLogisticWithFixedAsymmetry(
         points: List<Pair<Double, Double>>,
         weights: List<Double>,
-        asymmetry: Double
+        asymmetry: Double,
+        continueFrom: Map<String, Double>? = null
     ): Map<String, Double>? {
         if (!asymmetry.isFinite() || asymmetry !in MINIMUM_ASYMMETRY..MAXIMUM_ASYMMETRY) {
             return null
@@ -513,7 +586,9 @@ internal object CalibrationModelSelector {
         }
         var best: Map<String, Double>? = null
         var bestSse = Double.POSITIVE_INFINITY
-        logisticStartPoints(points, fiveParameter = false).forEach { start ->
+        val starts = continueFrom?.let { listOf(encodeLogisticParameters(it, fiveParameter = false)) }
+            ?: logisticStartPoints(points, fiveParameter = false)
+        starts.forEach { start ->
             try {
                 val raw = SimpleCurveFitter.create(model, start)
                     .withMaxIterations(MAXIMUM_FIT_ITERATIONS)
@@ -543,14 +618,21 @@ internal object CalibrationModelSelector {
         return best
     }
 
-    /** 使用固定自由度 Student-t IRLS 细化 4PL/5PL，异常点只被柔性降权而不会被删除。 */
+    /**
+     * 使用固定自由度 Student-t IRLS 细化 4PL/5PL，异常点只被柔性降权而不会被删除。
+     *
+     * 只有首轮在多起点中搜索；重加权只轻微改变目标函数，后续各轮从上一轮解热启动，
+     * 热启动失败时才回到多起点。否则每轮重复全部初值，宽量程、多重复孔的标准系列在
+     * 留一水平验证中会把拟合时间放大十余倍。
+     */
     private fun fitRobustLogisticModel(
         points: List<Pair<Double, Double>>,
         baseWeights: List<Double>,
-        fiveParameter: Boolean
+        fiveParameter: Boolean,
+        warmStart: Map<String, Double>? = null
     ): Map<String, Double>? {
         val function = if (fiveParameter) FittingFunction.LOGISTIC else FittingFunction.RODBARD
-        var parameters = fitLogisticModel(points, baseWeights, fiveParameter) ?: return null
+        var parameters = fitLogisticModelFrom(points, baseWeights, fiveParameter, warmStart) ?: return null
         var workingWeights = baseWeights
         repeat(STUDENT_T_IRLS_ITERATIONS) {
             val refined = studentTWeights(
@@ -560,10 +642,35 @@ internal object CalibrationModelSelector {
                 parameters = parameters
             ) ?: return@repeat
             if (weightsHaveConverged(workingWeights, refined)) return parameters
-            parameters = fitLogisticModel(points, refined, fiveParameter) ?: return parameters
+            parameters = fitLogisticModelFrom(points, refined, fiveParameter, parameters) ?: return parameters
             workingWeights = refined
         }
         return parameters
+    }
+
+    /** 给定解时先单起点热启动，失败或未给定时回到多起点。 */
+    private fun fitLogisticModelFrom(
+        points: List<Pair<Double, Double>>,
+        weights: List<Double>,
+        fiveParameter: Boolean,
+        warmStart: Map<String, Double>?
+    ): Map<String, Double>? =
+        warmStart?.let { fitLogisticModel(points, weights, fiveParameter, warmStart = it) }
+            ?: fitLogisticModel(points, weights, fiveParameter)
+
+    /** [decodeLogisticParameters] 的逆变换；4PL 忽略 g。 */
+    private fun encodeLogisticParameters(
+        parameters: Map<String, Double>,
+        fiveParameter: Boolean
+    ): DoubleArray {
+        val common = mutableListOf(
+            parameters.getValue("a"),
+            ln(parameters.getValue("b")),
+            ln(parameters.getValue("c")),
+            parameters.getValue("d")
+        )
+        if (fiveParameter) common += ln(parameters["g"] ?: 1.0)
+        return common.toDoubleArray()
     }
 
     /** 生成覆盖不同斜率、半效浓度和不对称程度的有限多起点集合。 */
