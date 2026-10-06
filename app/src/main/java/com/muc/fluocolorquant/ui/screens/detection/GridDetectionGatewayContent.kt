@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -56,6 +57,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -431,6 +433,7 @@ internal fun ArrayLayoutEditor(
     }
     var clearMode by rememberSaveable(preview.runId) { mutableStateOf(false) }
     var sampleId by rememberSaveable(preview.runId) { mutableStateOf("") }
+    var positiveControlNominal by rememberSaveable(preview.runId) { mutableStateOf("") }
     var selectedSiteIndex by rememberSaveable(preview.runId) { mutableStateOf<Int?>(null) }
     val toastManager = LocalToastManager.current
     // stringResource 必须在 Composable 上下文提前读取，点击回调中只使用已经解析的字符串。
@@ -534,6 +537,19 @@ internal fun ArrayLayoutEditor(
             )
         }
 
+        // 阳控的名义浓度随角色一并写入，双模态判定据此比较阳控实测信号与曲线预测信号。
+        if (!clearMode && selectedRole == TemplateSiteRole.POSITIVE_CONTROL) {
+            val unit = preview.analytes.firstOrNull { it.id == selectedAnalyteId }?.concentrationUnit.orEmpty()
+            OutlinedTextField(
+                value = positiveControlNominal,
+                onValueChange = { positiveControlNominal = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.grid_layout_positive_control_nominal_optional, unit)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+        }
+
         LayoutSectionTitle(
             stringResource(
                 R.string.grid_layout_virtual_grid,
@@ -556,8 +572,10 @@ internal fun ArrayLayoutEditor(
                     paintedSiteIndices = indices,
                     analyteId = analyteId,
                     role = selectedRole,
-                    // 标准孔只在布局阶段标记角色；真实浓度统一在现场拟合工作台逐孔录入。
-                    standardConcentration = null,
+                    // 标准孔只在布局阶段标记角色，真实浓度统一在现场拟合工作台逐孔录入；
+                    // 阳控的名义浓度在这里随角色写入，空白或非法输入保持为空。
+                    standardConcentration = positiveControlNominal.trim().toDoubleOrNull()
+                        ?.takeIf { selectedRole == TemplateSiteRole.POSITIVE_CONTROL && it.isFinite() && it >= 0.0 },
                     sampleId = sampleId,
                     clearMode = clearMode
                 )

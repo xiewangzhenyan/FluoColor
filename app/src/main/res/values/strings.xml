@@ -1936,6 +1936,7 @@
     <string name="grid_layout_standard_concentration">Standard concentration</string>
     <string name="grid_layout_standard_invalid">Enter a valid non-negative standard concentration before assigning wells.</string>
     <string name="grid_layout_sample_id_optional">Sample ID (optional)</string>
+    <string name="grid_layout_positive_control_nominal_optional">Nominal concentration (%1$s, optional)</string>
     <string name="grid_layout_virtual_grid">Virtual grid · %1$d/%2$d configured</string>
     <string name="grid_layout_clear_all">Clear all</string>
     <string name="grid_layout_fill_unassigned">Fill unassigned</string>

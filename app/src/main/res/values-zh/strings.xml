@@ -1938,6 +1938,7 @@
     <string name="grid_layout_standard_concentration">标准品浓度</string>
     <string name="grid_layout_standard_invalid">请先输入有效的非负标准品浓度，再分配孔位。</string>
     <string name="grid_layout_sample_id_optional">样本编号（可选）</string>
+    <string name="grid_layout_positive_control_nominal_optional">阳控名义浓度（%1$s，可选）</string>
     <string name="grid_layout_virtual_grid">虚拟布局板 · 已配置 %1$d/%2$d</string>
     <string name="grid_layout_clear_all">全部清除</string>
     <string name="grid_layout_fill_unassigned">填充未配置孔位</string>

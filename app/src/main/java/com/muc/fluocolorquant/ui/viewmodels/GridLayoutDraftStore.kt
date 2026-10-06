@@ -94,7 +94,10 @@ internal fun mergePaintedAssignments(
             columnIndex = index % columns,
             analyteId = analyteId.takeUnless { role == TemplateSiteRole.DISABLED },
             role = role,
-            standardConcentration = standardConcentration.takeIf { role == TemplateSiteRole.STANDARD },
+            // 标准品与阳控都携带浓度：前者是标定浓度，后者是名义浓度（双模态判定的阳控证据）。
+            standardConcentration = standardConcentration.takeIf {
+                role == TemplateSiteRole.STANDARD || role == TemplateSiteRole.POSITIVE_CONTROL
+            },
             sampleId = sampleId
                 ?.trim()
                 ?.takeIf(String::isNotEmpty)
