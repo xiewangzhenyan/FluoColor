@@ -81,6 +81,27 @@ class CalibrationModelSelectorTest {
     }
 
     @Test
+    fun `平台区重复孔越过渐近线时4PL仍是数学稳定的候选`() {
+        // 递减 4PL，两端平台各有若干重复孔落到渐近线之外，无法逐孔反算；曲线本身单调且可逆。
+        val a = 142.0
+        val b = 1.03
+        val c = 10.7
+        val d = 89.5
+        val levels = (0 until 12).map { k -> 0.05 * 10000.0.pow(k / 11.0) }
+        val offsets = listOf(-1.8, -0.9, 0.0, 0.9, 1.8)
+        val points = levels.flatMap { concentration ->
+            val expected = d + (a - d) / (1.0 + (concentration / c).pow(b))
+            offsets.map { offset -> concentration to (expected + offset) }
+        }
+        assertTrue(points.any { it.second > a } && points.any { it.second < d })
+
+        val candidates = FittingEngine.fitCalibrationCandidates(points, setOf(FittingFunction.RODBARD))
+
+        assertTrue("越过渐近线的重复孔不应使整条 4PL 被淘汰", candidates.isNotEmpty())
+        assertTrue(candidates.first().rSquared > 0.99)
+    }
+
+    @Test
     fun `存在重复标准孔时自动生成逆方差加权候选`() {
         val points = buildList {
             listOf(1.0, 2.0, 4.0, 8.0, 16.0, 32.0).forEach { concentration ->

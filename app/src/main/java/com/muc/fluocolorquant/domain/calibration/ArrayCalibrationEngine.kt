@@ -49,6 +49,9 @@ class ArrayCalibrationEngine @Inject constructor() {
                 )
             }
 
+            // 拟合已经收敛、但被后续数学安全门控拒绝时，记录真实原因；不能一律落到
+            // 兜底的“拟合未收敛”，否则用户无从判断是数据问题还是函数不适用。
+            val rejectedAfterFit = linkedSetOf<CalibrationFailureReason>()
             val candidates = draft.requestedFeatures.flatMap { feature ->
                 val observed = draft.observations.mapNotNull { observation ->
                     val signal = observation.signals[feature]?.takeIf(Double::isFinite)
@@ -87,11 +90,14 @@ class ArrayCalibrationEngine @Inject constructor() {
                     dataPoints = points,
                     allowedFunctions = setOf(function)
                 )
-                val baseCandidates = fittingResults
-                    .filter(FittingResult::isSuccess)
-                    .filter { result ->
-                        result.params.isNotEmpty() && result.params.values.all(Double::isFinite)
-                    }
+                val converged = fittingResults.filter(FittingResult::isSuccess)
+                val finite = converged.filter { result ->
+                    result.params.isNotEmpty() && result.params.values.all(Double::isFinite)
+                }
+                if (converged.isNotEmpty() && finite.isEmpty()) {
+                    rejectedAfterFit += CalibrationFailureReason.PARAMETERS_NOT_FINITE
+                }
+                val fitted = finite
                     .filter { result ->
                         val weighting = result.metrics["Weighting Scheme"]?.toInt() ?: 0
                         weighting in draft.policy.enabledWeightingCodes
@@ -103,7 +109,11 @@ class ArrayCalibrationEngine @Inject constructor() {
                             policy = draft.policy
                         )
                     }
-                    .filter { candidate -> candidateIsExecutableOverProjectRange(candidate, draft) }
+                val executable = fitted.filter { candidate -> candidateIsExecutableOverProjectRange(candidate, draft) }
+                if (fitted.isNotEmpty() && executable.isEmpty()) {
+                    rejectedAfterFit += CalibrationFailureReason.CURVE_NOT_MONOTONIC
+                }
+                val baseCandidates = executable
                     // 通用有界反算为专家函数补齐真实标准浓度复算指标；反算失败只隐藏
                     // 对应高级指标，不会伪造数值，也不会覆盖前面的数学单调性安全门控。
                     .map { candidate -> candidate.withUnifiedBackCalculation(policy = draft.policy) }
@@ -133,11 +143,13 @@ class ArrayCalibrationEngine @Inject constructor() {
             if (best == null) {
                 CalibrationFunctionResult(
                     function = function,
-                    failureReasons = inferFailureReasons(
-                        function = function,
-                        draft = draft,
-                        minimumLevels = minimumLevels
-                    )
+                    failureReasons = rejectedAfterFit.ifEmpty {
+                        inferFailureReasons(
+                            function = function,
+                            draft = draft,
+                            minimumLevels = minimumLevels
+                        )
+                    }
                 )
             } else {
                 CalibrationFunctionResult(function = function, candidate = best)

@@ -216,6 +216,42 @@ class ArrayCalibrationEngineTest {
         )
 
         assertTrue(result.candidates.isEmpty())
+        // 拟合本身收敛，是项目量程内回折被拒绝；原因必须如实显示，不能落到“拟合未收敛”。
+        assertEquals(
+            setOf(CalibrationFailureReason.CURVE_NOT_MONOTONIC),
+            result.functionResults.single().failureReasons
+        )
+    }
+
+    @Test
+    fun `跨四个数量级且平台区重复孔越过渐近线时仍推荐逻辑斯谛曲线`() {
+        // 12 个等比水平（0.05～500）各 15 个重复孔，按 4PL 加噪声生成；两端平台区有一部分
+        // 重复孔的信号会越过拟合渐近线，无法逐孔反算。旧门控因此把 4PL 整条淘汰，只剩指数函数。
+        val random = java.util.Random(20261005L)
+        val levels = (0 until 12).map { k -> 0.05 * Math.pow(10000.0, k / 11.0) }
+        val a = 176.0
+        val b = 1.12
+        val c = 7.1
+        val d = 29.4
+        val observations = levels.flatMapIndexed { level, concentration ->
+            (0 until 15).map { replicate ->
+                val expected = d + (a - d) / (1.0 + Math.pow(concentration / c, b))
+                CalibrationStandardObservation(
+                    siteIndex = level * 15 + replicate,
+                    concentration = concentration,
+                    signals = mapOf(AnalysisPrimaryFeature.FLUORESCENCE_SNR to expected + random.nextGaussian() * 2.0)
+                )
+            }
+        }
+        val signals = observations.map { it.signals.getValue(AnalysisPrimaryFeature.FLUORESCENCE_SNR)!! }
+        assertTrue("测试数据必须包含越过渐近线的重复孔", signals.any { it > a } && signals.any { it < d })
+
+        val result = engine.fit(draft(observations).copy(projectRangeMin = 0.0, projectRangeMax = 500.0))
+
+        val fourParameter = result.functionResults.single { it.function == FittingFunction.RODBARD }.candidate
+        assertTrue("4PL 应作为候选给出", fourParameter != null && fourParameter.rSquared > 0.99)
+        val recommended = result.candidates.single { it.id == result.recommendedCandidateId }
+        assertTrue(recommended.function in setOf(FittingFunction.RODBARD, FittingFunction.LOGISTIC))
     }
 
     @Test

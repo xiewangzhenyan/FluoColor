@@ -776,9 +776,15 @@ internal object CalibrationModelSelector {
         }
         val parameterCount = parameterCount(function)
         val aicc = calculateAicc(weightedSse, points.size, parameterCount)
-        val stable = monotonic && inverseResults.all {
-            it.estimatedConcentration.isFinite() && it.estimatedConcentration >= 0.0
+        // 数学安全只看曲线本身：在标准浓度范围内单调，且每个标准水平在曲线上可逆。
+        // 重复孔信号因噪声越过渐近线时无法反算，只算作该孔复算未通过，降低接受率并影响
+        // 验收与可信量程，不能据此丢弃整条曲线；否则跨多个数量级、平台区有重复孔的标准
+        // 系列上，4PL/5PL 会被整条淘汰，界面只能显示兜底的“拟合未收敛”。
+        val curveInvertible = positiveLevels.all { level ->
+            val roundTrip = invertSignal(function, parameters, calculateSignal(function, parameters, level))
+            roundTrip.isFinite() && roundTrip >= 0.0
         }
+        val stable = monotonic && curveInvertible
         val ichAccepted = stable &&
             positiveLevels.size >= MINIMUM_ICH_LEVELS &&
             endpointPassCount == 2 &&
