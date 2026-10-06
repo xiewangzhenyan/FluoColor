@@ -3,6 +3,7 @@ package com.muc.fluocolorquant.domain.result.dualmodal
 import com.muc.fluocolorquant.domain.detection.grid.GridGeometryDiagnostics
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
+import com.muc.fluocolorquant.domain.project.DIRECT_CARRIER_ID_PREFIX
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
 import com.muc.fluocolorquant.domain.result.ArrayCarrierResult
 import com.muc.fluocolorquant.domain.result.ArrayFrameResult
@@ -132,6 +133,27 @@ class DualModalAdjudicationEngineTest {
         val spectrum = DualModalAdjudicationEngine.check(col, flu.copy(detectionMode = "SPECTRUM"))
         assertTrue(DualModalIncompatibility.UNSUPPORTED_DETECTION_MODE in (spectrum as DualModalPairCheck.Incompatible).reasons)
         assertFalse(DualModalIncompatibility.SAME_DETECTION_MODE in spectrum.reasons)
+    }
+
+    @Test
+    fun `直接新建项目的隐式载体按物理身份配对`() {
+        // 同一块芯片的比色、荧光两个直接项目各有一份隐式载体，ID 必然不同。
+        val col = run("col", "COLORIMETRIC", sample = listOf(10.0))
+            .let { it.copy(carrier = it.carrier.copy(id = "${DIRECT_CARRIER_ID_PREFIX}p1")) }
+        val flu = run("flu", "FLUORESCENCE", sample = listOf(10.0))
+            .let { it.copy(carrier = it.carrier.copy(id = "${DIRECT_CARRIER_ID_PREFIX}p2")) }
+
+        assertTrue(DualModalAdjudicationEngine.check(col, flu) is DualModalPairCheck.Compatible)
+
+        val otherShape = DualModalAdjudicationEngine.check(col, flu.copy(carrier = flu.carrier.copy(siteShape = "CIRCLE")))
+        assertTrue(DualModalIncompatibility.CARRIER_MISMATCH in (otherShape as DualModalPairCheck.Incompatible).reasons)
+
+        // 模板库中的载体仍按 ID 比较：两个不同的库载体即使类型相同也不能配对。
+        val library = DualModalAdjudicationEngine.check(
+            col.copy(carrier = col.carrier.copy(id = "chip-a")),
+            flu.copy(carrier = flu.carrier.copy(id = "chip-b"))
+        )
+        assertTrue(DualModalIncompatibility.CARRIER_MISMATCH in (library as DualModalPairCheck.Incompatible).reasons)
     }
 
     // ---------------------------------------------------------------- 夹具

@@ -80,6 +80,9 @@ sealed interface DirectProjectCreationOutcome {
     data object InvalidRequest : DirectProjectCreationOutcome
 }
 
+/** 无模板项目的隐式载体 ID 前缀；每个项目一份，ID 为该前缀加项目 ID。 */
+const val DIRECT_CARRIER_ID_PREFIX: String = "direct-carrier-"
+
 /**
  * 无模板项目创建协调器。
  *
@@ -135,7 +138,7 @@ class DirectProjectCreationCoordinator @Inject constructor(
         val now = Date()
         val projectId = UUID.randomUUID().toString()
         val templateId = "direct-template-$projectId"
-        val carrierId = "direct-carrier-$projectId"
+        val carrierId = "$DIRECT_CARRIER_ID_PREFIX$projectId"
         val acquisitionId = "direct-acquisition-$projectId"
         val legacyPrimaryAnalyte = normalizedAnalytes.first()
 

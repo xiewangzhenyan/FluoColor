@@ -3,7 +3,9 @@ package com.muc.fluocolorquant.domain.result.dualmodal
 import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.domain.detection.quantification.QuantificationState
+import com.muc.fluocolorquant.domain.project.DIRECT_CARRIER_ID_PREFIX
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
+import com.muc.fluocolorquant.domain.result.ArrayCarrierResult
 import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
@@ -47,7 +49,7 @@ object DualModalAdjudicationEngine {
         if (first.rows != second.rows || first.columns != second.columns) {
             reasons += DualModalIncompatibility.GRID_SIZE_MISMATCH
         }
-        if (first.carrier.id != second.carrier.id || first.carrier.version != second.carrier.version) {
+        if (!sameCarrier(first.carrier, second.carrier)) {
             reasons += DualModalIncompatibility.CARRIER_MISMATCH
         }
         if (layoutOf(first) != layoutOf(second)) {
@@ -223,6 +225,22 @@ object DualModalAdjudicationEngine {
             ?: site.siteKey
 
     /** 两次运行必须对每个物理位点给出相同的角色、分析物、样本槽与阳控名义浓度。 */
+    /**
+     * 两次运行是否使用同一种物理载体。
+     *
+     * 模板库中的载体按 ID 与版本比较。直接新建的项目各有一份隐式载体（[DIRECT_CARRIER_ID_PREFIX]
+     * 加项目 ID），同一块芯片的比色与荧光项目 ID 必然不同，此时按物理身份（载体类型与位点形状）
+     * 比较；网格尺寸与逐位点版面另行核对。
+     */
+    private fun sameCarrier(first: ArrayCarrierResult, second: ArrayCarrierResult): Boolean {
+        if (first.id == second.id) return first.version == second.version
+        val implicit = first.id.startsWith(DIRECT_CARRIER_ID_PREFIX) ||
+            second.id.startsWith(DIRECT_CARRIER_ID_PREFIX)
+        return implicit &&
+            first.carrierType == second.carrierType &&
+            first.siteShape == second.siteShape
+    }
+
     private fun layoutOf(snapshot: ArrayResultSnapshot): List<String> =
         snapshot.sites.sortedBy(ArrayPhysicalSiteResult::siteIndex).map { site ->
             listOf(

@@ -3191,7 +3191,7 @@
     <string name="array_dual_modal_expand">查看证据</string>
     <string name="array_dual_modal_collapse">收起证据</string>
     <string name="array_dual_modal_sheet_title">选择另一模态的检测</string>
-    <string name="array_dual_modal_sheet_hint">只列出同一模板、同一网格、另一模态且已完成的检测。</string>
+    <string name="array_dual_modal_sheet_hint">只列出另一模态、已完成，且载体、网格、位点布局、分析物与浓度单位都一致的检测。</string>
     <string name="array_dual_modal_sheet_empty">没有可配对的检测。</string>
     <string name="array_dual_modal_notice_load_failed">加载检测结果失败。</string>
     <string name="array_dual_modal_notice_save_failed">保存双模态判定失败。</string>

@@ -3189,7 +3189,7 @@
     <string name="array_dual_modal_expand">Show evidence</string>
     <string name="array_dual_modal_collapse">Hide evidence</string>
     <string name="array_dual_modal_sheet_title">Pair with a run of the other modality</string>
-    <string name="array_dual_modal_sheet_hint">Only completed runs of the other modality with the same template and grid are listed.</string>
+    <string name="array_dual_modal_sheet_hint">Only completed runs of the other modality with the same carrier, grid, site layout, analyte and concentration unit are listed.</string>
     <string name="array_dual_modal_sheet_empty">No run can be paired.</string>
     <string name="array_dual_modal_notice_load_failed">Could not load the runs.</string>
     <string name="array_dual_modal_notice_save_failed">Could not save the dual-modal check.</string>
