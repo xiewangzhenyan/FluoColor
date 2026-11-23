@@ -88,6 +88,7 @@ class GridOnsiteCalibrationService @Inject constructor(
                 name = "onsite-auto-fit",
                 modelType = AnalysisModelType.STANDARD_CURVE.code,
                 primaryFeature = calibration.primaryFeature,
+                processorVersion = resultSet.processorVersion,
                 reliableRangeMin = calibration.reliableRangeMin,
                 reliableRangeMax = calibration.reliableRangeMax,
                 // 内存应用和保存到曲线库必须复用同一元数据构造器；否则保存动作会改变
@@ -148,6 +149,10 @@ class GridOnsiteCalibrationService @Inject constructor(
     ): CalibrationResultSet {
         val modality = DetectionModality.fromCode(snapshot.template.detectionMode)
             ?: return unavailableResult(analyteId, policy)
+        // 单像素是对焦/热点诊断，不允许建立一条看似可用于正式定量的现场曲线。
+        if (quant.config.readoutMode == com.muc.fluocolorquant.domain.detection.photometry.WellReadoutMode.CENTER_PIXEL) {
+            return unavailableResult(analyteId, policy)
+        }
         val analyteSnapshot = snapshot.analytes.firstOrNull { it.analyte.id == analyteId }
             ?: return unavailableResult(analyteId, policy)
         val standards = validStandards(snapshot, analyteId)
@@ -210,9 +215,14 @@ class GridOnsiteCalibrationService @Inject constructor(
             )
         }
         val processorVersion = when (modality) {
-            DetectionModality.COLORIMETRIC -> COLORIMETRIC_PROCESSOR_VERSION
-            DetectionModality.FLUORESCENCE -> FLUORESCENCE_PROCESSOR_VERSION
-            DetectionModality.SPECTRUM -> PG_QUANT_PROCESSOR_VERSION
+            DetectionModality.COLORIMETRIC -> quant.config.versionFor(COLORIMETRIC_PROCESSOR_VERSION)
+            DetectionModality.FLUORESCENCE -> {
+                val channel = ScientificDetectionConfigCodec.decodeFluorescenceChannel(
+                    analyteSnapshot.templateConfig.displayConfigJson
+                ) ?: com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel.GREEN
+                FluorescencePhotometryProcessor.processorVersionFor(quant.config, channel)
+            }
+            DetectionModality.SPECTRUM -> quant.config.versionFor(PG_QUANT_PROCESSOR_VERSION)
         }
         val fingerprint = CalibrationInputFingerprint.create(
             analyteId = analyteId,

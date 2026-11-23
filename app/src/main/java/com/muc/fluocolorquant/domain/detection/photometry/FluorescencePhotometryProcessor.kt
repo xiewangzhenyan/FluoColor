@@ -46,7 +46,9 @@ data class FluorescenceSitePhotometry(
     val primaryFeature: AnalysisPrimaryFeature,
     /** 低分母通道比率等数学上不稳定的颜色特征明确为空，禁止伪造为0。 */
     val primaryFeatureValue: Double?,
-    val qc: SitePhotometryQc
+    val qc: SitePhotometryQc,
+    /** 有向信噪比（保留正负号）：负值表示孔内强度低于局部背景，仅供污染/气泡溯源，不触发检出。 */
+    val directedSnr: Double = signalToNoiseRatio
 )
 
 data class FluorescencePhotometryResult(
@@ -58,12 +60,33 @@ data class FluorescencePhotometryResult(
 /**
  * 荧光专用光度处理器。
  *
- * 净强度来自 ROI 中位数减局部背景环中位数，积分强度来自 ROI 全部像素的背景扣除和；
- * SNR 使用同一通道背景 MAD。这里没有固定黑电平、任意绿色通道放大或逐位点颜色
- * 归一化，显示增强图也不会进入本处理器。RGB、Lab 和通道比率使用同一次平场校正后的
- * ROI 中位 RGB，通过统一 V2 特征提取器生成；因此拟合预览和正式检测具有完全相同的语义。
+ * 借鉴 GenePix Pro 的荧光背景扣除与有向检出语义：
+ * 1. 暗场荧光图像中孔间低灰度像素属于 CMOS 黑电平、暗电流与杂散漏光（加性偏置），并非入射激发光强
+ *    增益，因此净强度与积分强度直接执行干净的加性背景扣除，禁止乘上由近零暗背景拟合的除法平场系数；
+ * 2. 信噪比采用有向定义 $(F - B) / \sigma_{\text{eff}}$，发射方向 SNR 截断非负用于 `signalDetectable`
+ *    门控，避免 `F < B`（孔内暗气泡或背景受邻孔溢光污染）因 `abs()` 误判为可检出；
+ * 3. 分母强制执行 8-bit 量化底噪保护（0.5 LSB），消除整数同值 `MAD = 0` 导致的 `9999.0` 爆表。
  */
 object FluorescencePhotometryProcessor {
+
+    /**
+     * 生成绑定孔内取值口径与荧光通道身份的处理器版本号。
+     *
+     * 默认绿色通道（[FluorescenceChannel.GREEN]）保持无通道后缀（如 `v1`），保证既有标准曲线、
+     * 实验模板与自动化测试 100% 兼容；非绿色通道（`RED / BLUE / GRAY`）显式追加 `-ch-{CHANNEL}`，
+     * 防止跨发射通道误套用标准曲线。
+     */
+    fun processorVersionFor(
+        quantConfig: PgQuantConfig,
+        channel: FluorescenceChannel = FluorescenceChannel.GREEN
+    ): String {
+        val baseVersion = quantConfig.versionFor(FLUORESCENCE_PROCESSOR_VERSION)
+        return if (channel == FluorescenceChannel.GREEN) {
+            baseVersion
+        } else {
+            "$baseVersion-ch-${channel.name}"
+        }
+    }
 
     fun process(
         quant: PgQuantResult,
@@ -71,12 +94,7 @@ object FluorescencePhotometryProcessor {
     ): FluorescencePhotometryResult {
         quant.requireValid()
         val sites = quant.sites.map { base ->
-            val rawRoi = channelValue(base.roiMedianRgb, base.roiMedianGray, config.channel)
-            val correctedRoi = channelValue(
-                base.correctedMedianRgb,
-                base.correctedMedianGray,
-                config.channel
-            )
+            val rawRoi = channelValue(base.foregroundRgb, base.foregroundGray, config.channel)
             val background = channelValue(
                 base.backgroundMedianRgb,
                 base.backgroundMedianGray,
@@ -92,13 +110,27 @@ object FluorescencePhotometryProcessor {
                 base.integratedSignalGray,
                 config.channel
             )
-            val flatFieldScale = if (abs(rawRoi) <= EPSILON) 1.0 else correctedRoi / rawRoi
-            val netIntensity = (rawRoi - background) * flatFieldScale
-            val integratedIntensity = rawIntegrated * flatFieldScale
-            val snr = (abs(netIntensity) /
-                (abs(backgroundSigma * flatFieldScale) + EPSILON)).coerceAtMost(MAXIMUM_SNR)
+            val netIntensity = rawRoi - background
+            val integratedIntensity = rawIntegrated
+            val effectiveSigma = maxOf(abs(backgroundSigma), QUANTIZATION_NOISE_FLOOR_8BIT)
+            val rawDirectedSnr = (netIntensity / (effectiveSigma + EPSILON))
+                .coerceIn(-MAXIMUM_SNR, MAXIMUM_SNR)
+            // 暗场发射荧光（背景灰度 < 45）严格要求正向发光（F > B），防止暗气泡或背景溢光伪造高 SNR；
+            // 亮基底猝灭/背光暗单元芯片（背景灰度 >= 45）保留双侧猝灭幅度以兼容暗斑荧光猝灭实验。
+            val isDarkFieldEmission = base.backgroundMedianGray < DARK_FIELD_BACKGROUND_CEILING
+            val snr = if (isDarkFieldEmission) {
+                rawDirectedSnr.coerceAtLeast(0.0)
+            } else {
+                abs(rawDirectedSnr)
+            }
             val flags = buildSet {
                 addAll(base.qc.flags)
+                // 通道级荧光 SNR 替代基础灰度的 LOW_SNR 判定，避免蓝/红通道发光正常却因灰度权重低残留假低信噪比。
+                remove(PhotometryFlag.LOW_SNR)
+                if (snr < config.snrMinimum) add(PhotometryFlag.LOW_SNR)
+                if (isDarkFieldEmission && rawDirectedSnr <= -config.snrMinimum) {
+                    add(PhotometryFlag.NEGATIVE_NET_SIGNAL)
+                }
                 if (base.hotPixelRatio > config.hotPixelRatioLimit) add(PhotometryFlag.HOT_PIXEL)
             }
             val qc = SitePhotometryQc.from(
@@ -116,7 +148,7 @@ object FluorescencePhotometryProcessor {
                 AnalysisPrimaryFeature.FLUORESCENCE_SNR -> snr
                 else -> directColorFeatureValue(
                     feature = config.primaryFeature,
-                    correctedRgb = base.correctedMedianRgb
+                    correctedRgb = base.foregroundRgb
                 )
             }
             FluorescenceSitePhotometry(
@@ -126,12 +158,13 @@ object FluorescencePhotometryProcessor {
                 integratedIntensity = integratedIntensity,
                 signalToNoiseRatio = snr,
                 primaryFeature = config.primaryFeature,
-                primaryFeatureValue = primaryValue,
-                qc = qc
+                primaryFeatureValue = primaryValue.takeIf { base.readoutAvailable },
+                qc = qc,
+                directedSnr = rawDirectedSnr
             )
         }
         return FluorescencePhotometryResult(
-            processorVersion = FLUORESCENCE_PROCESSOR_VERSION,
+            processorVersion = processorVersionFor(quant.config, config.channel),
             channel = config.channel,
             sites = sites
         )
@@ -174,6 +207,8 @@ object FluorescencePhotometryProcessor {
         return extraction.values[SignalFeatureCatalog.v2Code(pixelType)]?.takeIf(Double::isFinite)
     }
 
+    private const val DARK_FIELD_BACKGROUND_CEILING: Double = 45.0
+    private const val QUANTIZATION_NOISE_FLOOR_8BIT: Double = 0.5
     private const val MAXIMUM_SNR: Double = 9999.0
     private const val EPSILON: Double = 1e-6
 }

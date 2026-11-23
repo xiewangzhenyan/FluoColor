@@ -86,6 +86,7 @@ object ArrayResultPdfExporter {
             sortedAnalytes.forEach { analyte ->
                 drawAnalytePage(
                     document = document,
+                    context = context,
                     snapshot = snapshot,
                     analyte = analyte,
                     labels = labels,
@@ -328,6 +329,7 @@ object ArrayResultPdfExporter {
 
     private fun drawAnalytePage(
         document: PdfDocument,
+        context: Context,
         snapshot: ArrayResultSnapshot,
         analyte: ArrayAnalyteResult,
         labels: ArrayResultPdfLabels,
@@ -376,6 +378,16 @@ object ArrayResultPdfExporter {
             labelPaint,
             bodyPaint
         )
+        analyte.reagentSummary?.takeIf(String::isNotBlank)?.let { summary ->
+            y = drawKeyValue(
+                canvas,
+                context.getString(R.string.reagents),
+                summary,
+                y,
+                labelPaint,
+                bodyPaint
+            )
+        }
 
         // PDF 与单独 PNG 必须使用同一个范围解析器和同一套专业色带。此前这里自建
         // 蓝-橙-红插值，而 PNG 使用蓝-青-绿-黄-红，导致相同冻结浓度看起来像两份结果。

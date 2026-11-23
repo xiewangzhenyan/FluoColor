@@ -135,7 +135,11 @@ data class ArrayAnalyteResult(
     /** 标准曲线真实参与拟合的最高浓度；不得覆盖项目量程。 */
     val calibrationRangeMax: Double? = null,
     /** 多数样品越界后的冻结动态复核；旧运行或未执行复核时为空。 */
-    val rangeRecovery: ArrayRangeRecoveryResult? = null
+    val rangeRecovery: ArrayRangeRecoveryResult? = null,
+    /** 项目创建时冻结的阳性参考截断值（Cut-off，单位同 [concentrationUnit]）；未配置时为空。 */
+    val referenceCutoff: Double? = null,
+    /** 项目创建时冻结的关联试剂批次溯源摘要；未关联试剂时为空。 */
+    val reagentSummary: String? = null
 )
 
 /** 结果页使用的最小动态量程复核快照，不暴露协调器内部 JSON 结构。 */

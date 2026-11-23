@@ -12,19 +12,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Biotech
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -53,10 +49,10 @@ private data class SettingsEntry(
 )
 
 /**
- * 重构后的系统设置主页。
+ * 系统设置主页。
  *
- * 页面不再把所有入口平铺为同一优先级，而是按应用数据、实验资源、设备载体和光谱
- * 资源分组。检测设置保留为旧流程兼容入口，新的科学参数进入版本化资源库。
+ * 「检测默认值」集中管理新建项目默认方式、自定义阵列规格、浓度单位以及全局统一的孔内取值与多孔统计；
+ * 定位算法切换收敛至现场定位确认页按图操作，不再重复提供独立的「阵列分析」菜单入口。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,11 +68,10 @@ fun SettingsScreen(navController: NavController) {
             Screen.AppSettings.route
         ),
         SettingsEntry(
-            R.string.settings_detection_preferences_title,
-            R.string.settings_detection_preferences_desc,
+            R.string.settings_detection_title,
+            R.string.settings_detection_defaults_desc,
             Icons.Default.Tune,
-            Screen.DetectionSettings.route,
-            R.string.settings_compatibility_badge
+            Screen.DetectionSettings.route
         )
     )
     val experimentEntries = listOf(
@@ -93,18 +88,11 @@ fun SettingsScreen(navController: NavController) {
             Screen.ReagentLibrary.route
         ),
         SettingsEntry(
-            // 普通用户入口统一使用“标准曲线库”。旧资源仍保留给历史页面或兼容代码，
-            // 但不再把标准曲线误称为需要用户理解内部实现的“曲线模型”。
+            // 标准曲线库同时集成右上角「拟合规则」入口，不再在设置首页重复拆分两个相邻菜单。
             R.string.standard_curve_library_title,
             R.string.library_curve_model_desc,
             Icons.Default.Analytics,
             Screen.CurveModelLibrary.route
-        ),
-        SettingsEntry(
-            R.string.calibration_settings_title,
-            R.string.calibration_settings_desc,
-            Icons.Default.Functions,
-            Screen.CalibrationSettings.route
         ),
         SettingsEntry(
             R.string.library_template_title,

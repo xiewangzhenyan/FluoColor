@@ -5,11 +5,15 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import com.google.gson.Gson
 import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.domain.detection.array.ArraySiteLocalizationSource
+import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
+import com.muc.fluocolorquant.domain.detection.grid.GridPoint
+import com.muc.fluocolorquant.domain.detection.grid.ManualGridGeometry
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
 import com.muc.fluocolorquant.domain.detection.plate96.Plate96CircleSource
 import com.muc.fluocolorquant.domain.detection.plate96.Plate96Locator
@@ -74,7 +78,8 @@ class AndroidPlate96ProcessingEvidenceWriter @Inject constructor(
         val directory = File(context.filesDir, "processing_evidence/$runId")
         check(directory.exists() || directory.mkdirs()) { "无法创建96孔板处理证据目录" }
 
-        return listOf(
+        val usesYolo = session.locatorMode.usesYolo
+        return listOfNotNull(
             writeEvidence(
                 directory = directory,
                 role = CaptureRole.PROCESS_ORIENTATION_NORMALIZED,
@@ -83,7 +88,7 @@ class AndroidPlate96ProcessingEvidenceWriter @Inject constructor(
                 stage = "orientation_normalized",
                 order = 1
             ),
-            writeEvidence(
+            if (usesYolo) writeEvidence(
                 directory = directory,
                 role = CaptureRole.PROCESS_YOLO_OVERLAY,
                 fileName = "02_yolo_overlay.png",
@@ -91,8 +96,8 @@ class AndroidPlate96ProcessingEvidenceWriter @Inject constructor(
                 stage = "object_detection",
                 order = 2,
                 extra = mapOf("candidateCount" to session.circles.size)
-            ),
-            writeEvidence(
+            ) else null,
+            if (session.locatorMode != ArrayLocatorMode.MANUAL_CORNERS) writeEvidence(
                 directory = directory,
                 role = CaptureRole.PROCESS_HOUGH_CIRCLE_OVERLAY,
                 fileName = "03_circle_overlay.png",
@@ -104,7 +109,7 @@ class AndroidPlate96ProcessingEvidenceWriter @Inject constructor(
                     "contourCount" to session.circles.count { it.source == Plate96CircleSource.CONTOUR },
                     "fallbackCount" to session.circles.count { it.source == Plate96CircleSource.BOX_FALLBACK }
                 )
-            ),
+            ) else null,
             writeEvidence(
                 directory = directory,
                 role = CaptureRole.PROCESS_GRID_OVERLAY,
@@ -233,19 +238,29 @@ class AndroidPlate96ProcessingEvidenceWriter @Inject constructor(
                 site.radiusPx ?: min(site.normalizedBounds.width, site.normalizedBounds.height) / 2.0
             }
             val color = when (site.source) {
-                ArraySiteLocalizationSource.GRID_IMPUTED -> Color.rgb(245, 166, 35)
-                ArraySiteLocalizationSource.USER_ADJUSTED -> Color.rgb(90, 86, 200)
+                ArraySiteLocalizationSource.GRID_IMPUTED, ArraySiteLocalizationSource.MANUAL_INTERPOLATED -> Color.rgb(245, 166, 35)
+                ArraySiteLocalizationSource.USER_ADJUSTED, ArraySiteLocalizationSource.MANUAL_ANCHOR -> Color.rgb(90, 86, 200)
                 else -> Color.rgb(0, 150, 110)
             }
-            canvas.drawCircle(
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = color
+                style = Paint.Style.STROKE
+                strokeWidth = scaledStroke(bitmap)
+            }
+            if (useSourceCoordinates && session.locatorMode == ArrayLocatorMode.MANUAL_CORNERS) {
+                val rim = ManualGridGeometry.circleOutline(GridPoint(site.normalizedCenter.x, site.normalizedCenter.y),
+                    requireNotNull(site.radiusPx), session.result.imageTransform.normalizedToSource.toDoubleArray())
+                val path = Path().apply {
+                    moveTo(rim.first().x.toFloat(), rim.first().y.toFloat())
+                    rim.drop(1).forEach { lineTo(it.x.toFloat(), it.y.toFloat()) }
+                    close()
+                }
+                canvas.drawPath(path, paint)
+            } else canvas.drawCircle(
                 center.x.toFloat(),
                 center.y.toFloat(),
                 radius.toFloat(),
-                Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    this.color = color
-                    style = Paint.Style.STROKE
-                    strokeWidth = scaledStroke(bitmap)
-                }
+                paint
             )
         }
         return bitmap

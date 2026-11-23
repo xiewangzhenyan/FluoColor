@@ -291,6 +291,30 @@ object DatabaseMigrations {
     }
 
     /**
+     * 版本 20 → 21：分析物表追加可空预设列（默认单位、默认最大浓度、默认荧光通道、阳性参考阈值）。
+     *
+     * 纯追加可空列，完全保留既有分析物、项目、模板、标准曲线与历史运行快照；旧记录保持 NULL，
+     * 不会回改任何已冻结项目的单位、量程或通道配置。
+     */
+    val MIGRATION_20_21: Migration = object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `analytes` ADD COLUMN `defaultUnit` TEXT")
+            db.execSQL("ALTER TABLE `analytes` ADD COLUMN `defaultMaxConcentration` REAL")
+            db.execSQL("ALTER TABLE `analytes` ADD COLUMN `defaultFluorescenceChannel` TEXT")
+            db.execSQL("ALTER TABLE `analytes` ADD COLUMN `referenceCutoff` REAL")
+        }
+    }
+
+    /**
+     * 版本 21 → 22：为 `reagents` 表补充可空批号/货号列 `lotNumber`，支撑实验批次与报告溯源。
+     */
+    val MIGRATION_21_22: Migration = object : Migration(21, 22) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `reagents` ADD COLUMN `lotNumber` TEXT")
+        }
+    }
+
+    /**
      * 重建模板主表并保持所有外部引用仍指向 `experiment_templates`。
      *
      * `legacy_alter_table` 防止 SQLite 在旧表改名时把子表外键同步改到临时表名；新表

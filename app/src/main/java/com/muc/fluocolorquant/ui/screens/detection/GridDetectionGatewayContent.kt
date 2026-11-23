@@ -1,39 +1,61 @@
 package com.muc.fluocolorquant.ui.screens.detection
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import com.muc.fluocolorquant.domain.detection.grid.GridPoint
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Analytics
+import androidx.compose.material.icons.outlined.CenterFocusStrong
+import androidx.compose.material.icons.outlined.CropFree
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.ReportProblem
+import androidx.compose.material.icons.outlined.ZoomIn
+import androidx.compose.material.icons.outlined.ZoomOut
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -43,32 +65,57 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.components.FluoMetricTile
 import com.muc.fluocolorquant.ui.components.FluoSectionCard
 import com.muc.fluocolorquant.ui.components.FluoSectionHeader
 import com.muc.fluocolorquant.ui.components.FluoStatePlaceholder
+import com.muc.fluocolorquant.ui.components.FluoStatusChip
 import com.muc.fluocolorquant.ui.components.FluoStepIndicator
 import com.muc.fluocolorquant.ui.theme.FluoIconSize
+import com.muc.fluocolorquant.ui.theme.FluoMotion
 import com.muc.fluocolorquant.ui.theme.FluoRadius
 import com.muc.fluocolorquant.ui.theme.FluoSpacing
 import com.muc.fluocolorquant.ui.theme.FluoTheme
@@ -80,8 +127,21 @@ import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationMode
 import com.muc.fluocolorquant.domain.detection.GridDetectionBlockReason
 import com.muc.fluocolorquant.domain.detection.GridDetectionStage
 import com.muc.fluocolorquant.domain.detection.GridLocalizationPresentation
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitFallbackReason
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitRegionSource
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.components.ArrayLocatorPicker
+import com.muc.fluocolorquant.ui.components.label
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisScope
+import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
+import com.muc.fluocolorquant.domain.detection.photometry.WellReadoutMode
+import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
+import com.muc.fluocolorquant.domain.detection.grid.RegularGridGeometry
+import com.muc.fluocolorquant.ui.screens.result.array.calculateArrayImageFitTransform
+import com.muc.fluocolorquant.ui.viewmodels.ArrayLocatorAttempt
+import com.muc.fluocolorquant.ui.viewmodels.ArrayLocatorAttemptStatus
 import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiError
 import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiState
 import com.muc.fluocolorquant.ui.viewmodels.ArrayLayoutReadiness
@@ -89,9 +149,16 @@ import com.muc.fluocolorquant.ui.viewmodels.ArrayLayoutReadinessIssue
 import com.muc.fluocolorquant.ui.viewmodels.GridLayoutAssignmentDraft
 import com.muc.fluocolorquant.ui.viewmodels.GridLayoutPaintIntent
 import com.muc.fluocolorquant.ui.viewmodels.GridLocalizationPreview
+import com.muc.fluocolorquant.ui.viewmodels.GridLocalizationSitePreview
 import com.muc.fluocolorquant.ui.viewmodels.GridPaintMergeResult
 import com.muc.fluocolorquant.ui.viewmodels.evaluateArrayLayoutReadiness
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * 微流控统一工作流页面。
@@ -123,8 +190,27 @@ fun GridDetectionGatewayContent(
     onSetOnsiteSaveToLibrary: (String, Boolean) -> Unit = { _, _ -> },
     onEditOnsiteCalibration: (String) -> Unit = {},
     onConfirmQuantitationAnalyte: (String, Boolean) -> Unit = { _, _ -> },
-    onSaveTemplate: (String) -> Unit = {}
+    onSaveTemplate: (String) -> Unit = {},
+    onManualCorners: () -> Unit = {},
+    onMarkCorner: (GridPoint) -> Unit = {},
+    onUndoCorner: () -> Unit = {},
+    onClearCorners: () -> Unit = {},
+    onApplyCorners: () -> Unit = {},
+    onCancelCorners: () -> Unit = {},
+    onSetManualDiameter: (Double) -> Unit = {},
+    onConfirmManualDiameter: () -> Unit = {},
+    onChooseLocator: (ArrayLocatorMode) -> Unit = {},
+    onRestoreLocalization: () -> Unit = {},
+    onToggleManualBadSite: (Int) -> Unit = {},
+    onNudgeRegularSite: (Int, Int, Int) -> Unit = { _, _, _ -> },
+    onScaleRegularSite: (Int, Double) -> Unit = { _, _ -> },
+    onRestoreRegularSite: (Int) -> Unit = {},
+    onDirectFinalizeTemplate: () -> Unit = {}
 ) {
+    BackHandler(enabled = state is GridDetectionUiState.ManualCorners, onBack = onCancelCorners)
+    val attempt = (state as? GridDetectionUiState.LocatingArray)?.attempt
+    val review = (state as? GridDetectionUiState.LocalizationReady)?.takeUnless { it.editingLayout }
+    val reviewScope = attempt?.scope ?: review?.preview?.analysisScope
     val presentation = when (state) {
         is GridDetectionUiState.Processing -> state.presentation
         is GridDetectionUiState.LocalizationReady -> state.preview.presentation
@@ -134,13 +220,20 @@ fun GridDetectionGatewayContent(
         topBar = {
             FluoTopBar(
                 title = stringResource(
-                    if (presentation == GridLocalizationPresentation.PLATE96) {
-                        R.string.plate96_layout_screen_title
-                    } else {
-                        R.string.microfluidic_detection_title
+                    when {
+                        reviewScope == ArrayAnalysisScope.ROUND_ARRAY -> R.string.array_localization_round_title
+                        reviewScope != null -> R.string.array_localization_chip_title
+                        presentation == GridLocalizationPresentation.PLATE96 -> R.string.plate96_layout_screen_title
+                        else -> R.string.microfluidic_detection_title
                     }
                 ),
-                onBack = onBack
+                onBack = when (state) {
+                    is GridDetectionUiState.ManualCorners -> onCancelCorners
+                    else -> onBack
+                },
+                actions = {
+                    if (review != null || attempt != null) ArrayLocalizationHelpAction(isPlate = false)
+                }
             )
         }
     ) { padding ->
@@ -149,7 +242,23 @@ fun GridDetectionGatewayContent(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            when (state) {
+            if (review != null || attempt != null) {
+                GridLocalizationConfirmation(
+                    preview = review?.preview,
+                    attempt = attempt,
+                    onChooseLocator = onChooseLocator,
+                    onManualCorners = onManualCorners,
+                    onRetry = onRetry,
+                    onRestore = onRestoreLocalization,
+                    onContinue = onOpenLayout,
+                    onDirectFinalize = onDirectFinalizeTemplate,
+                    readoutStage = review?.readoutStage,
+                    onToggleManualBadSite = onToggleManualBadSite,
+                    onNudgeRegularSite = onNudgeRegularSite,
+                    onScaleRegularSite = onScaleRegularSite,
+                    onRestoreRegularSite = onRestoreRegularSite
+                )
+            } else when (state) {
                 GridDetectionUiState.ResolvingProject -> CenteredProcessing(
                     title = stringResource(R.string.grid_stage_preparing)
                 )
@@ -162,10 +271,10 @@ fun GridDetectionGatewayContent(
                     title = stageText(state.stage)
                 )
 
-                is GridDetectionUiState.LocalizationReady -> LocalizationWorkflow(
+                is GridDetectionUiState.LocatingArray -> Unit
+
+                is GridDetectionUiState.LocalizationReady -> GridLayoutWorkflow(
                     state = state,
-                    onRetry = onRetry,
-                    onOpenLayout = onOpenLayout,
                     onReviewLocalization = onReviewLocalization,
                     onAssignmentsChange = onAssignmentsChange,
                     onPaintAssignments = onPaintAssignments,
@@ -185,6 +294,8 @@ fun GridDetectionGatewayContent(
                     onSaveTemplate = onSaveTemplate
                 )
 
+                is GridDetectionUiState.ManualCorners -> ManualCornerEditor(state, onMarkCorner, onUndoCorner, onClearCorners, onApplyCorners,
+                    onSetManualDiameter, onConfirmManualDiameter)
                 is GridDetectionUiState.Completed -> CenteredProcessing(
                     title = stringResource(R.string.grid_detection_opening_results)
                 )
@@ -215,12 +326,10 @@ fun GridDetectionGatewayContent(
     }
 }
 
-/** 定位确认和布局编辑共用同一定位会话，页面切换不会重新运行算法。 */
+/** 布局复用已确认定位会话，不在切换步骤时重跑算法。 */
 @Composable
-private fun LocalizationWorkflow(
+private fun GridLayoutWorkflow(
     state: GridDetectionUiState.LocalizationReady,
-    onRetry: () -> Unit,
-    onOpenLayout: () -> Unit,
     onReviewLocalization: () -> Unit,
     onAssignmentsChange: (List<GridLayoutAssignmentDraft>) -> Unit,
     onPaintAssignments: (GridLayoutPaintIntent) -> GridPaintMergeResult,
@@ -244,151 +353,1123 @@ private fun LocalizationWorkflow(
         preview.initialAssignments.toIndexedAssignmentMap(preview.columns)
     }
 
-    if (state.editingLayout) {
-        val isPlate96 = preview.presentation == GridLocalizationPresentation.PLATE96
-        ArrayLayoutEditor(
-            preview = preview,
-            assignments = assignments,
-            onAssignmentsChange = { changed ->
-                onAssignmentsChange(changed.values.toList())
-            },
-            onPaintAssignments = onPaintAssignments,
-            onBackToLocalization = onReviewLocalization,
-            onFinalize = { onFinalizeLayout(assignments.values.toList()) },
-            onUseManualConfiguration = onUseManualConfiguration,
-            onApplyTemplate = onApplyTemplate,
-            onSelectQuantitationAnalyte = onSelectQuantitationAnalyte,
-            onSetQuantitationMode = onSetQuantitationMode,
-            onSelectAnalysisModel = onSelectAnalysisModel,
-            onUpdateOnsiteAdvanced = onUpdateOnsiteAdvanced,
-            onUpdateStandardConcentrations = onUpdateStandardConcentrations,
-            onPreviewOnsiteFit = onPreviewOnsiteFit,
-            onSelectOnsiteCandidate = onSelectOnsiteCandidate,
-            onSetOnsiteSaveToLibrary = onSetOnsiteSaveToLibrary,
-            onEditOnsiteCalibration = onEditOnsiteCalibration,
-            onConfirmQuantitationAnalyte = onConfirmQuantitationAnalyte,
-            onSaveTemplate = onSaveTemplate,
-            visualStyle = if (isPlate96) Plate96SiteVisualStyle else ArraySiteVisualStyle.SQUARE,
-            compactHeader = isPlate96,
-            includeQuantitationStep = isPlate96,
-            realPreviewTitleRes = if (isPlate96) {
-                R.string.plate96_layout_real_preview
-            } else {
-                R.string.grid_layout_real_preview
-            }
-        )
-    } else {
-        LocalizationConfirmation(
-            preview = preview,
-            onRetry = onRetry,
-            onContinue = onOpenLayout
-        )
+    val isPlate96 = preview.presentation == GridLocalizationPresentation.PLATE96
+    ArrayLayoutEditor(
+        preview = preview,
+        assignments = assignments,
+        onAssignmentsChange = { changed -> onAssignmentsChange(changed.values.toList()) },
+        onPaintAssignments = onPaintAssignments,
+        onBackToLocalization = onReviewLocalization,
+        onFinalize = { onFinalizeLayout(assignments.values.toList()) },
+        onUseManualConfiguration = onUseManualConfiguration,
+        onApplyTemplate = onApplyTemplate,
+        onSelectQuantitationAnalyte = onSelectQuantitationAnalyte,
+        onSetQuantitationMode = onSetQuantitationMode,
+        onSelectAnalysisModel = onSelectAnalysisModel,
+        onUpdateOnsiteAdvanced = onUpdateOnsiteAdvanced,
+        onUpdateStandardConcentrations = onUpdateStandardConcentrations,
+        onPreviewOnsiteFit = onPreviewOnsiteFit,
+        onSelectOnsiteCandidate = onSelectOnsiteCandidate,
+        onSetOnsiteSaveToLibrary = onSetOnsiteSaveToLibrary,
+        onEditOnsiteCalibration = onEditOnsiteCalibration,
+        onConfirmQuantitationAnalyte = onConfirmQuantitationAnalyte,
+        onSaveTemplate = onSaveTemplate,
+        visualStyle = if (isPlate96 || preview.analysisScope == ArrayAnalysisScope.ROUND_ARRAY) Plate96SiteVisualStyle else ArraySiteVisualStyle.SQUARE,
+        compactHeader = isPlate96,
+        includeQuantitationStep = isPlate96,
+        realPreviewTitleRes = if (isPlate96) R.string.plate96_layout_real_preview else R.string.grid_layout_real_preview
+    )
+}
+
+/** 用户可切换查看算法真实生成的处理证据，并点击单孔检视采样质量、微调孔位或标记异常孔。 */
+@Composable
+private fun GridLocalizationConfirmation(
+    preview: GridLocalizationPreview?,
+    attempt: ArrayLocatorAttempt?,
+    onChooseLocator: (ArrayLocatorMode) -> Unit,
+    onManualCorners: () -> Unit,
+    onRetry: () -> Unit,
+    onRestore: () -> Unit,
+    onContinue: () -> Unit,
+    onDirectFinalize: () -> Unit,
+    readoutStage: GridDetectionStage?,
+    onToggleManualBadSite: (Int) -> Unit,
+    onNudgeRegularSite: (Int, Int, Int) -> Unit,
+    onScaleRegularSite: (Int, Double) -> Unit,
+    onRestoreRegularSite: (Int) -> Unit
+) {
+    val canUseGridOptions = preview == null || (preview.rows >= 2 && preview.columns >= 2)
+    val mode = attempt?.mode ?: preview?.let {
+        if (it.manualGeometry) ArrayLocatorMode.MANUAL_CORNERS else it.analysisPreferences.locator
+    }
+    val canDirectFinalizeFromTemplate = remember(preview) {
+        preview != null &&
+            preview.configurationSource == com.muc.fluocolorquant.domain.detection.GridLayoutConfigurationSource.EXPERIMENT_TEMPLATE &&
+            evaluateArrayLayoutReadiness(
+                assignments = preview.initialAssignments,
+                quantitationDrafts = preview.quantitationDrafts,
+                totalSiteCount = preview.siteCount
+            ).canStart
+    }
+    ArrayLocalizationReview(
+        scope = attempt?.scope ?: requireNotNull(preview).analysisScope,
+        selected = mode.takeIf { canUseGridOptions },
+        attempt = attempt,
+        onChooseLocator = onChooseLocator,
+        onManualCorners = onManualCorners.takeIf { canUseGridOptions },
+        onRetry = onRetry,
+        onRestore = onRestore,
+        onContinue = onContinue,
+        canContinue = preview != null,
+        updatingReadout = readoutStage != null,
+        onDirectFinalize = onDirectFinalize.takeIf { canDirectFinalizeFromTemplate }
+    ) {
+        if (preview != null) {
+            GridLocalizationEvidenceContent(
+                preview = preview,
+                readoutStage = readoutStage,
+                onToggleManualBadSite = onToggleManualBadSite,
+                onNudgeRegularSite = onNudgeRegularSite,
+                onScaleRegularSite = onScaleRegularSite,
+                onRestoreRegularSite = onRestoreRegularSite
+            )
+        }
     }
 }
 
-/** 用户可切换查看算法真实生成的处理证据，并确认定位质量。 */
 @Composable
-private fun LocalizationConfirmation(
+@OptIn(ExperimentalLayoutApi::class)
+private fun GridLocalizationEvidenceContent(
     preview: GridLocalizationPreview,
-    onRetry: () -> Unit,
-    onContinue: () -> Unit
+    readoutStage: GridDetectionStage?,
+    onToggleManualBadSite: (Int) -> Unit,
+    onNudgeRegularSite: (Int, Int, Int) -> Unit,
+    onScaleRegularSite: (Int, Double) -> Unit,
+    onRestoreRegularSite: (Int) -> Unit
 ) {
+    val context = LocalContext.current
     val evidenceRoles = listOf(
         CaptureRole.PROCESS_ORIGINAL_GEOMETRY,
         CaptureRole.PROCESS_RECTIFIED,
+        CaptureRole.PROCESS_ROI_BACKGROUND,
         CaptureRole.PROCESS_GRID_OVERLAY
     ).filter { role -> preview.evidence.any { it.role == role } }
-    var selectedRole by rememberSaveable(preview.runId) {
+    var selectedRole by rememberSaveable(preview.originalImageUri) {
         mutableStateOf(evidenceRoles.lastOrNull() ?: CaptureRole.PROCESS_ORIGINAL_GEOMETRY)
     }
-    val selectedPath = preview.evidence.firstOrNull { it.role == selectedRole }?.path
-    val imageModel: Any = selectedPath?.let(::File) ?: preview.originalImageUri
+    var displayFilter by rememberSaveable(preview.originalImageUri) {
+        mutableStateOf(ArrayDisplayFilterMode.ORIGINAL)
+    }
+    var inspectedSiteIndex by rememberSaveable(preview.runId) {
+        mutableStateOf<Int?>(null)
+    }
+    val visibleRole = selectedRole.takeIf { it in evidenceRoles } ?: evidenceRoles.lastOrNull()
+    val selectedPath = preview.evidence.firstOrNull { it.role == visibleRole }?.path
+    val imageModel: Any = remember(context, selectedPath, preview.originalImageUri, preview.evidenceRevision) {
+        if (selectedPath != null) {
+            ImageRequest.Builder(context)
+                .data(File(selectedPath))
+                .memoryCacheKey("$selectedPath#rev=${preview.evidenceRevision}")
+                .build()
+        } else {
+            preview.originalImageUri
+        }
+    }
+    val filteredBitmap by rememberFilteredFileImage(selectedPath, displayFilter, preview.evidenceRevision)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        WorkflowStepHeader(currentStep = 1)
-        Text(
-            text = stringResource(R.string.grid_localization_title),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold
+    val useOriginalCoords = visibleRole == CaptureRole.PROCESS_ORIGINAL_GEOMETRY
+    val coordWidth = if (useOriginalCoords) preview.originalWidth else preview.rectifiedWidth
+    val coordHeight = if (useOriginalCoords) preview.originalHeight else preview.rectifiedHeight
+    val canTapInspect = preview.sites.isNotEmpty() && coordWidth > 0 && coordHeight > 0
+    val estimatedPitch = remember(preview.sites, preview.rows, preview.columns, useOriginalCoords) {
+        if (!canTapInspect) 0.0 else {
+            val pts = preview.sites.map { site ->
+                if (useOriginalCoords) GridPoint(site.originalX, site.originalY)
+                else GridPoint(site.rectifiedX, site.rectifiedY)
+            }
+            RegularGridGeometry.estimatePitch(pts, preview.rows, preview.columns).representativePx
+        }
+    }
+    val invertColorFilter = remember {
+        ColorFilter.colorMatrix(
+            ColorMatrix(
+                floatArrayOf(
+                    -1f, 0f, 0f, 0f, 255f,
+                    0f, -1f, 0f, 0f, 255f,
+                    0f, 0f, -1f, 0f, 255f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
         )
-        Text(
-            text = stringResource(R.string.grid_localization_description),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    }
 
-        if (evidenceRoles.isNotEmpty()) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(evidenceRoles, key = CaptureRole::code) { role ->
-                    FilterChip(
-                        selected = selectedRole == role,
-                        onClick = { selectedRole = role },
-                        label = { Text(evidenceRoleLabel(role)) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ArrayLocalizationPreviewFrame { imageModifier ->
+            Box(imageModifier) {
+                val bitmapToDraw = filteredBitmap
+                if (bitmapToDraw != null) {
+                    Canvas(Modifier.matchParentSize().clipToBounds()) {
+                        val fit = calculateArrayImageFitTransform(
+                            size.width,
+                            size.height,
+                            bitmapToDraw.width.toFloat(),
+                            bitmapToDraw.height.toFloat()
+                        ) ?: return@Canvas
+                        drawImage(
+                            image = bitmapToDraw,
+                            dstOffset = IntOffset(fit.left.roundToInt(), fit.top.roundToInt()),
+                            dstSize = IntSize(
+                                (bitmapToDraw.width * fit.scale).roundToInt().coerceAtLeast(1),
+                                (bitmapToDraw.height * fit.scale).roundToInt().coerceAtLeast(1)
+                            )
+                        )
+                    }
+                } else {
+                    AsyncImage(
+                        model = imageModel,
+                        contentDescription = stringResource(R.string.grid_localization_preview),
+                        modifier = Modifier.matchParentSize(),
+                        contentScale = ContentScale.Fit,
+                        colorFilter = if (displayFilter == ArrayDisplayFilterMode.INVERT) invertColorFilter else null
                     )
+                }
+
+                // 交互式孔位点选与异常孔叠加层（借鉴 GenePix Feature Viewer & Flag Bad）
+                if (canTapInspect) {
+                    Canvas(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clipToBounds()
+                            .pointerInput(preview.sites, useOriginalCoords, coordWidth, coordHeight, estimatedPitch) {
+                                detectTapGestures { tap ->
+                                    val fit = calculateArrayImageFitTransform(
+                                        size.width.toFloat(),
+                                        size.height.toFloat(),
+                                        coordWidth.toFloat(),
+                                        coordHeight.toFloat()
+                                    ) ?: return@detectTapGestures
+                                    val imgX = (tap.x - fit.left) / fit.scale
+                                    val imgY = (tap.y - fit.top) / fit.scale
+                                    if (imgX !in 0f..coordWidth.toFloat() || imgY !in 0f..coordHeight.toFloat()) {
+                                        inspectedSiteIndex = null
+                                        return@detectTapGestures
+                                    }
+                                    val nearest = preview.sites.minByOrNull { site ->
+                                        val cx = if (useOriginalCoords) site.originalX else site.rectifiedX
+                                        val cy = if (useOriginalCoords) site.originalY else site.rectifiedY
+                                        hypot(cx - imgX, cy - imgY)
+                                    }
+                                    val hitRadius = max(12.0, estimatedPitch * 0.58)
+                                    if (nearest != null) {
+                                        val cx = if (useOriginalCoords) nearest.originalX else nearest.rectifiedX
+                                        val cy = if (useOriginalCoords) nearest.originalY else nearest.rectifiedY
+                                        inspectedSiteIndex = if (hypot(cx - imgX, cy - imgY) <= hitRadius) {
+                                            if (inspectedSiteIndex == nearest.siteIndex) null else nearest.siteIndex
+                                        } else {
+                                            null
+                                        }
+                                    }
+                                }
+                            }
+                    ) {
+                        val fit = calculateArrayImageFitTransform(
+                            size.width,
+                            size.height,
+                            coordWidth.toFloat(),
+                            coordHeight.toFloat()
+                        ) ?: return@Canvas
+                        val markerRadius = ((estimatedPitch.toFloat() * 0.30f) * fit.scale).coerceIn(4.dp.toPx(), 13.dp.toPx())
+                        fun screenPoint(site: GridLocalizationSitePreview): Offset {
+                            val cx = if (useOriginalCoords) site.originalX else site.rectifiedX
+                            val cy = if (useOriginalCoords) site.originalY else site.rectifiedY
+                            return Offset(
+                                fit.left + (cx.toFloat() + 0.5f) * fit.scale,
+                                fit.top + (cy.toFloat() + 0.5f) * fit.scale
+                            )
+                        }
+                        // 对人工微调过的孔位实时绘制更新后的四邻域网格连线与边框，保证连续点按时零延迟反馈
+                        preview.sites.forEach { site ->
+                            if (site.isUserAdjusted) {
+                                val center = screenPoint(site)
+                                val r = site.rowIndex
+                                val c = site.columnIndex
+                                val linkColor = Color(0xCC29B6F6)
+                                listOf(r - 1 to c, r + 1 to c, r to c - 1, r to c + 1).forEach { (nr, nc) ->
+                                    if (nr in 0 until preview.rows && nc in 0 until preview.columns) {
+                                        val neighbor = preview.sites.getOrNull(nr * preview.columns + nc)
+                                        if (neighbor != null) {
+                                            drawLine(linkColor, center, screenPoint(neighbor), 1.2.dp.toPx())
+                                        }
+                                    }
+                                }
+                                if (!useOriginalCoords && site.cropRegion != null) {
+                                    val b = site.cropRegion.bounds
+                                    val topLeft = Offset(fit.left + b.left * fit.scale, fit.top + b.top * fit.scale)
+                                    val boxSize = Size(b.width * fit.scale, b.height * fit.scale)
+                                    if (site.cropRegion.shape == ArrayUnitShape.SQUARE) {
+                                        drawRect(Color(0xFF00E5FF), topLeft, boxSize, style = Stroke(1.6.dp.toPx()))
+                                    } else {
+                                        drawOval(Color(0xFF00E5FF), topLeft, boxSize, style = Stroke(1.6.dp.toPx()))
+                                    }
+                                } else {
+                                    drawCircle(Color(0xFF00E5FF), markerRadius * 0.68f, center, style = Stroke(1.8.dp.toPx()))
+                                }
+                            }
+                        }
+                        preview.sites.forEach { site ->
+                            val center = screenPoint(site)
+                            if (site.manuallyFlaggedBad) {
+                                val badColor = Color(0xFFFF6B6B)
+                                val r = markerRadius * 0.72f
+                                drawCircle(Color(0x88141C24), r + 2.dp.toPx(), center)
+                                drawLine(badColor, center - Offset(r, r), center + Offset(r, r), 2.dp.toPx())
+                                drawLine(badColor, center + Offset(-r, r), center + Offset(r, -r), 2.dp.toPx())
+                            }
+                            if (site.siteIndex == inspectedSiteIndex) {
+                                drawCircle(
+                                    color = Color(0xFFFFD54F),
+                                    radius = markerRadius + 2.dp.toPx(),
+                                    center = center,
+                                    style = Stroke(width = 2.2.dp.toPx())
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(FluoRadius.card),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-        ) {
-            AsyncImage(
-                model = imageModel,
-                contentDescription = stringResource(R.string.grid_localization_preview),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f),
-                contentScale = ContentScale.Fit
+
+        // 视图选择与纯显示增强控制区
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (evidenceRoles.isNotEmpty()) {
+                // 默认选中的网格不能藏在屏幕右缘；普通字号一行，大字体换行而不截断选项。
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    evidenceRoles.forEach { role ->
+                        FilterChip(
+                            selected = visibleRole == role,
+                            onClick = { selectedRole = role },
+                            label = { Text(evidenceRoleLabel(role)) }
+                        )
+                    }
+                }
+            }
+            ArrayDisplayFilterBar(
+                selected = displayFilter,
+                onSelect = { displayFilter = it }
             )
+            if (displayFilter != ArrayDisplayFilterMode.ORIGINAL) {
+                Text(
+                    text = stringResource(R.string.array_display_filter_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
 
+        // 单孔放大检视与异常孔排除卡（点击任意孔位展开）
+        val inspectedSite = inspectedSiteIndex?.let { index ->
+            preview.sites.firstOrNull { it.siteIndex == index }
+        }
+        AnimatedVisibility(
+            visible = inspectedSite != null,
+            enter = FluoMotion.expandEnter,
+            exit = FluoMotion.expandExit
+        ) {
+            if (inspectedSite != null) {
+                WellSpotInspectorCard(
+                    preview = preview,
+                    site = inspectedSite,
+                    displayFilter = displayFilter,
+                    enabled = readoutStage == null,
+                    onToggleBad = { onToggleManualBadSite(inspectedSite.siteIndex) },
+                    onNudge = { dx, dy -> onNudgeRegularSite(inspectedSite.siteIndex, dx, dy) },
+                    onScaleChange = { scale -> onScaleRegularSite(inspectedSite.siteIndex, scale) },
+                    onRestoreAuto = { onRestoreRegularSite(inspectedSite.siteIndex) },
+                    onClose = { inspectedSiteIndex = null }
+                )
+            }
+        }
+
+        // 定位与采样质量摘要卡
+        val excludedCount = preview.sites.count { it.manuallyFlaggedBad }
+        val summaryAccent = when {
+            excludedCount > 0 -> FluoTheme.semantic.warning
+            preview.manualGeometry -> MaterialTheme.colorScheme.primary
+            preview.trustedGeometry -> FluoTheme.semantic.success
+            else -> FluoTheme.semantic.warning
+        }
+        FluoSectionCard(
+            contentPadding = FluoSpacing.md,
+            verticalSpacing = FluoSpacing.sm,
+            accentColor = summaryAccent
+        ) {
+            FluoSectionHeader(
+                title = stringResource(R.string.grid_localization_summary_title),
+                icon = Icons.Outlined.Analytics,
+                accentColor = summaryAccent,
+                trailingContent = {
+                    when {
+                        excludedCount > 0 -> FluoStatusChip(
+                            text = stringResource(R.string.grid_localization_excluded_count, excludedCount),
+                            icon = Icons.Outlined.ReportProblem,
+                            contentColor = FluoTheme.semantic.onWarningContainer,
+                            containerColor = FluoTheme.semantic.warningContainer
+                        )
+                        preview.manualGeometry -> FluoStatusChip(
+                            text = stringResource(R.string.grid_localization_status_manual),
+                            icon = Icons.Outlined.CropFree,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                        preview.trustedGeometry -> FluoStatusChip(
+                            text = stringResource(R.string.grid_localization_status_trusted),
+                            icon = Icons.Default.CheckCircle,
+                            contentColor = FluoTheme.semantic.onSuccessContainer,
+                            containerColor = FluoTheme.semantic.successContainer
+                        )
+                        else -> FluoStatusChip(
+                            text = stringResource(R.string.grid_localization_status_review),
+                            icon = Icons.Outlined.ReportProblem,
+                            contentColor = FluoTheme.semantic.onWarningContainer,
+                            containerColor = FluoTheme.semantic.warningContainer
+                        )
+                    }
+                }
+            )
+            if (preview.manualGeometry) {
+                Text(
+                    text = stringResource(R.string.grid_manual_summary, preview.siteCount - 4),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    LocalizationMetric(
+                        modifier = Modifier.weight(1f),
+                        value = "${preview.rows}×${preview.columns}",
+                        label = stringResource(R.string.grid_localization_grid_size)
+                    )
+                    LocalizationMetric(
+                        modifier = Modifier.weight(1f),
+                        value = stringResource(
+                            R.string.grid_localization_percent,
+                            preview.observedRatio * 100
+                        ),
+                        label = stringResource(R.string.grid_localization_observed_ratio)
+                    )
+                    LocalizationMetric(
+                        modifier = Modifier.weight(1f),
+                        value = stringResource(
+                            R.string.grid_localization_percent,
+                            preview.meanConfidence * 100
+                        ),
+                        label = stringResource(R.string.grid_localization_confidence)
+                    )
+                }
+            }
+            if (canTapInspect && inspectedSite == null) {
+                Text(
+                    text = stringResource(R.string.grid_localization_tap_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 借鉴 GenePix Pro `Feature Viewer` + `Nudge/Resize` + `Flag Bad` 的单孔内联检视与微调卡。
+ *
+ * 左侧高倍展示该孔真实前景边界与外围背景环（以自动晶格为视野参考中心，使微调移动和缩放直观可见），
+ * 右侧给出通俗状态解读、前景中位/均值、背景中位、信噪比与有效发光面积，并支持内联微调孔位与标记异常孔。
+ */
+@Composable
+private fun WellSpotInspectorCard(
+    preview: GridLocalizationPreview,
+    site: GridLocalizationSitePreview,
+    displayFilter: ArrayDisplayFilterMode,
+    enabled: Boolean,
+    onToggleBad: () -> Unit,
+    onNudge: (Int, Int) -> Unit,
+    onScaleChange: (Double) -> Unit,
+    onRestoreAuto: () -> Unit,
+    onClose: () -> Unit
+) {
+    val label = siteCoordinateLabel(site.rowIndex, site.columnIndex)
+    val region = site.cropRegion
+    var showAdjustPanel by rememberSaveable(site.siteIndex) { mutableStateOf(false) }
+    var nudgeStepPx by rememberSaveable { mutableIntStateOf(1) }
+    var showMetricsHelp by rememberSaveable { mutableStateOf(false) }
+    var draftScalePercent by remember(site.siteIndex, site.boxScale) {
+        mutableFloatStateOf((site.boxScale * 100.0).toFloat().coerceIn(60f, 140f))
+    }
+
+    val segAnomaly = !site.isUserAdjusted && region?.fallbackReason in setOf(
+        ArrayUnitFallbackReason.WINDOW_BOUNDARY_TOUCH,
+        ArrayUnitFallbackReason.ABNORMAL_SIZE,
+        ArrayUnitFallbackReason.EXCESSIVE_CENTER_SHIFT,
+        ArrayUnitFallbackReason.IRREGULAR_SHAPE
+    )
+    val segBadgeText = when {
+        site.manuallyFlaggedBad -> stringResource(R.string.grid_spot_flagged_badge)
+        site.isUserAdjusted -> stringResource(R.string.grid_spot_inspector_seg_adjusted)
+        segAnomaly -> stringResource(R.string.grid_spot_inspector_seg_anomaly)
+        region?.source == ArrayUnitRegionSource.FALLBACK_MEDIAN_GEOMETRY ->
+            stringResource(R.string.grid_spot_inspector_seg_dark)
+        else -> stringResource(R.string.grid_spot_inspector_seg_ok)
+    }
+
+    // 高倍视口固定锚定在自动基线中心（autoRectifiedX/Y），这样点击方向键时绿框在视口内真实移动对准斑点。
+    data class CropViewport(val bitmap: ImageBitmap, val left: Int, val top: Int, val width: Int, val height: Int)
+    val cropViewport by produceState<CropViewport?>(
+        initialValue = null,
+        preview.rectifiedImagePath,
+        site.siteIndex,
+        displayFilter
+    ) {
+        val path = preview.rectifiedImagePath ?: return@produceState
+        value = withContext(Dispatchers.IO) {
+            val file = File(path)
+            if (!file.exists()) return@withContext null
+            val full = BitmapFactory.decodeFile(file.absolutePath) ?: return@withContext null
+            try {
+                val baseUnitSpan = region?.bounds?.let { max(it.width, it.height) }
+                    ?: (preview.cropHalfSizePx * 2).roundToInt()
+                val halfSpan = max(20, (baseUnitSpan * 1.35).roundToInt())
+                val cx = site.autoRectifiedX.roundToInt()
+                val cy = site.autoRectifiedY.roundToInt()
+                val left = (cx - halfSpan).coerceIn(0, (full.width - 1).coerceAtLeast(0))
+                val top = (cy - halfSpan).coerceIn(0, (full.height - 1).coerceAtLeast(0))
+                val right = (cx + halfSpan).coerceIn(left + 1, full.width)
+                val bottom = (cy + halfSpan).coerceIn(top + 1, full.height)
+                val patch = Bitmap.createBitmap(full, left, top, right - left, bottom - top)
+                val filtered = applyDisplayFilter(patch, displayFilter)
+                if (patch !== filtered) patch.recycle()
+                CropViewport(filtered.asImageBitmap(), left, top, right - left, bottom - top)
+            } finally {
+                full.recycle()
+            }
+        }
+    }
+
+    val activeAreaPercent = (site.pctAboveBgPlus2Sd * 100.0).roundToInt()
+    val diagnosticSummary = when {
+        site.manuallyFlaggedBad -> stringResource(R.string.grid_spot_status_excluded)
+        site.signalToNoiseRatio < 3.0 -> stringResource(R.string.grid_spot_status_no_signal)
+        site.pctAboveBgPlus2Sd >= 0.45 && kotlin.math.abs(site.foregroundMeanGray - site.foregroundMedianGray) <= 10.0 ->
+            stringResource(R.string.grid_spot_status_uniform_signal, activeAreaPercent)
+        site.pctAboveBgPlus2Sd < 0.25 -> stringResource(R.string.grid_spot_status_speck_warning)
+        else -> stringResource(R.string.grid_spot_status_skew_hint)
+    }
+
+    FluoSectionCard(
+        contentPadding = FluoSpacing.md,
+        verticalSpacing = FluoSpacing.sm,
+        accentColor = when {
+            site.manuallyFlaggedBad || !site.qualityReliable -> MaterialTheme.colorScheme.error
+            site.isUserAdjusted -> Color(0xFF0288D1)
+            else -> MaterialTheme.colorScheme.primary
+        }
+    ) {
+        FluoSectionHeader(
+            title = stringResource(R.string.grid_spot_inspector_title, label),
+            icon = Icons.Outlined.CenterFocusStrong,
+            accentColor = if (site.manuallyFlaggedBad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            trailingContent = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(FluoRadius.badge),
+                        color = when {
+                            site.manuallyFlaggedBad || segAnomaly -> MaterialTheme.colorScheme.errorContainer
+                            else -> MaterialTheme.colorScheme.primaryContainer
+                        }
+                    ) {
+                        Text(
+                            text = segBadgeText,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = when {
+                                site.manuallyFlaggedBad || segAnomaly -> MaterialTheme.colorScheme.onErrorContainer
+                                else -> MaterialTheme.colorScheme.onPrimaryContainer
+                            }
+                        )
+                    }
+                    IconButton(onClick = { showMetricsHelp = true }, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
+                            contentDescription = stringResource(R.string.grid_spot_metrics_help_title),
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    IconButton(onClick = onClose, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close), modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            val previewBoxDp = if (showAdjustPanel) 86.dp else 76.dp
+            Surface(
+                modifier = Modifier.size(previewBoxDp),
+                shape = RoundedCornerShape(FluoRadius.control),
+                color = Color(0xFF141C24),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Canvas(Modifier.fillMaxSize().clipToBounds()) {
+                    val vp = cropViewport
+                    if (vp != null && vp.width > 0 && vp.height > 0) {
+                        drawImage(
+                            image = vp.bitmap,
+                            dstOffset = IntOffset.Zero,
+                            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt())
+                        )
+                        val scaleX = size.width / vp.width.toFloat()
+                        val scaleY = size.height / vp.height.toFloat()
+                        val centerInCanvas = Offset(
+                            ((site.rectifiedX - vp.left + 0.5) * scaleX).toFloat(),
+                            ((site.rectifiedY - vp.top + 0.5) * scaleY).toFloat()
+                        )
+                        if (region != null) {
+                            val b = region.bounds
+                            val topLeft = Offset((b.left - vp.left) * scaleX, (b.top - vp.top) * scaleY)
+                            val boxSize = Size(b.width * scaleX, b.height * scaleY)
+                            val fgColor = if (site.isUserAdjusted) Color(0xFF00E5FF) else Color(0xFF00E676)
+                            if (region.shape == ArrayUnitShape.SQUARE) {
+                                drawRect(fgColor, topLeft, boxSize, style = Stroke(1.8.dp.toPx()))
+                            } else {
+                                drawOval(fgColor, topLeft, boxSize, style = Stroke(1.8.dp.toPx()))
+                            }
+                            val bgRadius = max(boxSize.width, boxSize.height) * 0.78f
+                            drawCircle(Color(0xAAFFAB00), bgRadius, centerInCanvas, style = Stroke(1.1.dp.toPx()))
+                        } else {
+                            val fgRadius = size.minDimension * 0.22f
+                            drawCircle(Color(0xFF00E676), fgRadius, centerInCanvas, style = Stroke(1.8.dp.toPx()))
+                            drawCircle(Color(0xAAFFAB00), fgRadius * 1.7f, centerInCanvas, style = Stroke(1.1.dp.toPx()))
+                        }
+                    } else {
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val fgRadius = size.minDimension * 0.24f
+                        drawRect(
+                            color = Color(0xFF00E676),
+                            topLeft = center - Offset(fgRadius, fgRadius),
+                            size = Size(fgRadius * 2f, fgRadius * 2f),
+                            style = Stroke(1.6.dp.toPx())
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = diagnosticSummary,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = when {
+                        site.manuallyFlaggedBad -> MaterialTheme.colorScheme.error
+                        site.signalToNoiseRatio >= 3.0 -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+                Text(
+                    text = stringResource(
+                        R.string.grid_spot_inspector_fg_bg,
+                        site.foregroundMedianGray,
+                        site.foregroundMeanGray,
+                        site.backgroundMedianGray
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (preview.analysisPreferences.readout != WellReadoutMode.FULL_MEDIAN) {
+                    Text(
+                        text = stringResource(
+                            R.string.grid_spot_inspector_active_readout,
+                            stringResource(preview.analysisPreferences.readout.label()),
+                            site.selectedReadoutGray
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Text(
+                    text = stringResource(
+                        R.string.grid_spot_inspector_snr_b2sd,
+                        site.signalToNoiseRatio,
+                        activeAreaPercent
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // 内联微调面板（十字方向移动 + 采样框比例滑块 + 单孔恢复自动）
+        AnimatedVisibility(
+            visible = showAdjustPanel,
+            enter = FluoMotion.expandEnter,
+            exit = FluoMotion.expandExit
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(FluoRadius.control),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(1 to R.string.grid_spot_adjust_step_1px, 3 to R.string.grid_spot_adjust_step_3px).forEach { (step, labelRes) ->
+                                FilterChip(
+                                    selected = nudgeStepPx == step,
+                                    onClick = { nudgeStepPx = step },
+                                    label = { Text(stringResource(labelRes), style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+                        TextButton(
+                            onClick = {
+                                draftScalePercent = 100f
+                                onRestoreAuto()
+                            },
+                            enabled = enabled && site.isUserAdjusted,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(stringResource(R.string.grid_spot_adjust_restore), style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // 左侧十字微调盘
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            FilledTonalIconButton(
+                                onClick = { onNudge(0, -nudgeStepPx) },
+                                enabled = enabled,
+                                modifier = Modifier.size(38.dp).testTag("grid_spot_nudge_up")
+                            ) {
+                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.plate96_adjustment_move_up))
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                FilledTonalIconButton(
+                                    onClick = { onNudge(-nudgeStepPx, 0) },
+                                    enabled = enabled,
+                                    modifier = Modifier.size(38.dp).testTag("grid_spot_nudge_left")
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = stringResource(R.string.plate96_adjustment_move_left))
+                                }
+                                Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Tune,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                                FilledTonalIconButton(
+                                    onClick = { onNudge(nudgeStepPx, 0) },
+                                    enabled = enabled,
+                                    modifier = Modifier.size(38.dp).testTag("grid_spot_nudge_right")
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.plate96_adjustment_move_right))
+                                }
+                            }
+                            FilledTonalIconButton(
+                                onClick = { onNudge(0, nudgeStepPx) },
+                                enabled = enabled,
+                                modifier = Modifier.size(38.dp).testTag("grid_spot_nudge_down")
+                            ) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.plate96_adjustment_move_down))
+                            }
+                        }
+
+                        // 右侧采样框尺寸缩放滑块
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.grid_spot_adjust_size_label, draftScalePercent.roundToInt()),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Slider(
+                                value = draftScalePercent,
+                                onValueChange = { draftScalePercent = it },
+                                onValueChangeFinished = {
+                                    onScaleChange(draftScalePercent.roundToInt() / 100.0)
+                                },
+                                valueRange = 60f..140f,
+                                enabled = enabled,
+                                modifier = Modifier.fillMaxWidth().testTag("grid_spot_scale_slider")
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 底部并排双主操作：微调孔位 ｜ 标为异常孔
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            LocalizationMetric(
-                modifier = Modifier.weight(1f),
-                value = "${preview.rows}×${preview.columns}",
-                label = stringResource(R.string.grid_localization_grid_size)
-            )
-            LocalizationMetric(
-                modifier = Modifier.weight(1f),
-                value = stringResource(
-                    R.string.grid_localization_percent,
-                    preview.observedRatio * 100
-                ),
-                label = stringResource(R.string.grid_localization_observed_ratio)
-            )
-            LocalizationMetric(
-                modifier = Modifier.weight(1f),
-                value = stringResource(
-                    R.string.grid_localization_percent,
-                    preview.meanConfidence * 100
-                ),
-                label = stringResource(R.string.grid_localization_confidence)
-            )
-        }
+            if (showAdjustPanel) {
+                Button(
+                    onClick = { showAdjustPanel = false },
+                    enabled = enabled,
+                    shape = RoundedCornerShape(FluoRadius.control),
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp).testTag("grid_spot_adjust_toggle")
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.grid_spot_adjust_collapse), maxLines = 1)
+                }
+            } else {
+                OutlinedButton(
+                    onClick = { showAdjustPanel = true },
+                    enabled = enabled,
+                    shape = RoundedCornerShape(FluoRadius.control),
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp).testTag("grid_spot_adjust_toggle")
+                ) {
+                    Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.grid_spot_adjust_action), maxLines = 1)
+                }
+            }
 
-        OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.Refresh, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.grid_localization_retry))
+            if (site.manuallyFlaggedBad) {
+                OutlinedButton(
+                    onClick = onToggleBad,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(FluoRadius.control),
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                ) {
+                    Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.grid_spot_unflag_bad), maxLines = 1)
+                }
+            } else {
+                OutlinedButton(
+                    onClick = onToggleBad,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(FluoRadius.control),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.6f)),
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.ReportProblem,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.grid_spot_flag_bad),
+                        color = MaterialTheme.colorScheme.error,
+                        maxLines = 1
+                    )
+                }
+            }
         }
-        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.CheckCircle, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.grid_localization_confirm))
-        }
-        Spacer(Modifier.height(12.dp))
     }
+
+    if (showMetricsHelp) {
+        AlertDialog(
+            onDismissRequest = { showMetricsHelp = false },
+            shape = RoundedCornerShape(FluoRadius.card),
+            title = {
+                Text(
+                    text = stringResource(R.string.grid_spot_metrics_help_title),
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.grid_spot_metrics_help_body),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showMetricsHelp = false }) {
+                    Text(stringResource(R.string.close))
+                }
+            }
+        )
+    }
+}
+
+/**
+ * 芯片、圆阵与标准孔板共用定位页骨架。算法运行、失败和纯对照只替换预览槽；不创建页面，
+ * 不把其他算法的叠加冒充本次结果。底栏固定留出手动入口与主要操作，大字体可自然扩高。
+ */
+@Composable
+internal fun ArrayLocalizationReview(
+    scope: ArrayAnalysisScope,
+    selected: ArrayLocatorMode?,
+    attempt: ArrayLocatorAttempt?,
+    onChooseLocator: (ArrayLocatorMode) -> Unit,
+    onManualCorners: (() -> Unit)?,
+    onRetry: () -> Unit,
+    onRestore: () -> Unit,
+    onContinue: () -> Unit,
+    canContinue: Boolean,
+    modifier: Modifier = Modifier,
+    updatingReadout: Boolean = false,
+    onDirectFinalize: (() -> Unit)? = null,
+    content: @Composable () -> Unit = {}
+) {
+    val running = attempt?.status == ArrayLocatorAttemptStatus.Running || updatingReadout
+    val canRestore = attempt?.previousMode != null
+    val controls: @Composable () -> Unit = {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            WorkflowStepHeader(currentStep = 1, includeQuantitationStep = scope == ArrayAnalysisScope.STANDARD_PLATE)
+            if (selected != null) {
+                ArrayLocatorPicker(scope, selected, onChooseLocator, includeComparisons = true, enabled = !running)
+            }
+        }
+    }
+    val preview: @Composable () -> Unit = {
+        if (attempt != null) ArrayLocatorAttemptContent(attempt, onRetry) else content()
+    }
+    Column(modifier.fillMaxSize().testTag("array_localization_review")) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            // 横屏高度不足时并排放置选择和预览；不让标题、选择器与固定底栏把图像一起挤出首屏。
+            if (maxWidth >= 600.dp && maxWidth > maxHeight * 1.45f) {
+                Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Column(Modifier.weight(.85f).verticalScroll(rememberScrollState()).padding(vertical = 12.dp)) {
+                        controls()
+                    }
+                    Column(Modifier.weight(1.15f).verticalScroll(rememberScrollState()).padding(vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        preview()
+                    }
+                }
+            } else {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    controls()
+                    preview()
+                }
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        if (onDirectFinalize != null && !canRestore) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f))
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = stringResource(R.string.array_localization_template_ready_hint),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(
+                    onClick = onContinue,
+                    enabled = !running,
+                    modifier = Modifier.testTag("array_localization_edit_layout")
+                ) {
+                    Text(stringResource(R.string.array_localization_review_layout_action))
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (onManualCorners != null) ManualCornerEntry(onManualCorners, Modifier.weight(1f), enabled = !running)
+            Button(
+                onClick = when {
+                    canRestore -> onRestore
+                    onDirectFinalize != null -> onDirectFinalize
+                    else -> onContinue
+                },
+                enabled = !running && (canRestore || canContinue),
+                shape = RoundedCornerShape(FluoRadius.control),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.weight(1.15f).heightIn(min = 48.dp)
+                    .testTag(if (canRestore) "array_locator_restore" else "array_localization_continue")
+            ) {
+                Text(
+                    stringResource(
+                        when {
+                            canRestore -> R.string.array_locator_comparison_back
+                            onDirectFinalize != null -> R.string.array_localization_direct_finalize_action
+                            else -> R.string.array_localization_continue
+                        }
+                    ),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+/** 同一槽位统一给原图和正式证据留空间；横屏限制画布高度，不用屏宽把整页撑出视口。 */
+@Composable
+internal fun ArrayLocalizationPreviewFrame(content: @Composable (Modifier) -> Unit) {
+    val maximumHeight = LocalConfiguration.current.screenHeightDp.dp * .52f
+    Surface(
+        shape = RoundedCornerShape(FluoRadius.card),
+        color = Color(0xFF141C24),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(minOf(maxWidth, maximumHeight))
+                    .clip(RoundedCornerShape(FluoRadius.card))
+                    .testTag("array_localization_preview")
+            ) {
+                content(Modifier.matchParentSize())
+            }
+        }
+    }
+}
+
+/** 对照只画候选和推算中心，不伪造内径、物理 A1 或裁切；无结果直接显示同一原图。 */
+@Composable
+private fun ArrayLocatorAttemptContent(attempt: ArrayLocatorAttempt, onRetry: () -> Unit) {
+    val grid = (attempt.status as? ArrayLocatorAttemptStatus.Preview)?.grid
+    var displayFilter by rememberSaveable(attempt.mode) { mutableStateOf(ArrayDisplayFilterMode.ORIGINAL) }
+    val image by rememberArrayDisplayImage(attempt.bitmap, displayFilter)
+    var zoomToGrid by rememberSaveable(attempt.mode) { mutableStateOf(false) }
+    val width = attempt.bitmap.width.toFloat()
+    val height = attempt.bitmap.height.toFloat()
+    val centers = remember(grid) { grid?.sites?.map { it.original }.orEmpty() }
+    val pitch = remember(grid) { grid?.let { RegularGridGeometry.estimatePitch(centers, it.rows, it.columns).representativePx.toFloat() } ?: 0f }
+    val overview = stringResource(R.string.array_localization_image)
+    ArrayLocalizationPreviewFrame { imageModifier ->
+        Box(imageModifier) {
+            Canvas(Modifier.fillMaxSize().clipToBounds()
+                .then(if (grid != null) Modifier.testTag("array_locator_comparison_overlay") else Modifier)
+                .semantics { contentDescription = overview }) {
+                val bitmap = image ?: return@Canvas
+                val fit = calculateArrayImageFitTransform(size.width, size.height, width, height) ?: return@Canvas
+                var scale = fit.scale
+                var origin = Offset(fit.left, fit.top)
+                if (zoomToGrid && centers.isNotEmpty()) {
+                    val left = centers.minOf { it.x }.toFloat()
+                    val right = centers.maxOf { it.x }.toFloat()
+                    val top = centers.minOf { it.y }.toFloat()
+                    val bottom = centers.maxOf { it.y }.toFloat()
+                    scale = minOf(size.width / (right - left + 2 * pitch), size.height / (bottom - top + 2 * pitch))
+                        .coerceIn(fit.scale, fit.scale * 6f)
+                    origin = Offset((size.width - (left + right + 1f) * scale) / 2f, (size.height - (top + bottom + 1f) * scale) / 2f)
+                }
+                drawImage(bitmap, dstOffset = IntOffset(origin.x.roundToInt(), origin.y.roundToInt()),
+                    dstSize = IntSize((width * scale).roundToInt().coerceAtLeast(1), (height * scale).roundToInt().coerceAtLeast(1)))
+                val radius = (.19f * pitch * scale).coerceIn(1f, 5.dp.toPx())
+                val stroke = minOf(radius * .52f, 1.dp.toPx())
+                grid?.sites?.forEach { site ->
+                    val point = origin + Offset((site.original.x + .5).toFloat(), (site.original.y + .5).toFloat()) * scale
+                    if (site.source == GridPointSource.MODEL_IMPUTED) {
+                        val warm = Color(0xFFFFCB78)
+                        drawLine(warm, point - Offset(radius, radius), point + Offset(radius, radius), stroke)
+                        drawLine(warm, point + Offset(-radius, radius), point + Offset(radius, -radius), stroke)
+                    } else {
+                        drawCircle(Color(0xFF78DCE7), radius, point, style = Stroke(stroke))
+                    }
+                }
+            }
+            if (attempt.status == ArrayLocatorAttemptStatus.Running) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
+            }
+        }
+    }
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (val status = attempt.status) {
+            ArrayLocatorAttemptStatus.Running -> Text(stringResource(R.string.array_localization_running),
+                modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            ArrayLocatorAttemptStatus.NoGrid, ArrayLocatorAttemptStatus.Failed -> {
+                Icon(Icons.Default.ErrorOutline, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                Text(stringResource(if (status == ArrayLocatorAttemptStatus.NoGrid) R.string.array_localization_no_grid
+                    else R.string.array_localization_failed), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                IconButton(onClick = onRetry) { Icon(Icons.Default.Refresh, stringResource(R.string.retry)) }
+            }
+            is ArrayLocatorAttemptStatus.Preview -> {
+                Text(stringResource(R.string.array_localization_preview_count, status.grid.geometry.inlierCount, status.grid.sites.size),
+                    Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                IconButton(onClick = { zoomToGrid = !zoomToGrid }) {
+                    Icon(if (zoomToGrid) Icons.Outlined.ZoomOut else Icons.Outlined.ZoomIn,
+                        stringResource(if (zoomToGrid) R.string.grid_manual_full_image else R.string.array_locator_comparison_focus))
+                }
+            }
+        }
+    }
+    ArrayDisplayFilterBar(
+        selected = displayFilter,
+        onSelect = { displayFilter = it }
+    )
+}
+
+/** 长说明放在用户主动打开的帮助里，失败、进行中和仅预览的短状态仍常驻。 */
+@Composable
+internal fun ArrayLocalizationHelpAction(isPlate: Boolean) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val title = stringResource(R.string.array_localization_help)
+    IconButton(onClick = { open = true }, modifier = Modifier.testTag("array_localization_help")) {
+        Icon(Icons.Default.ErrorOutline, title, tint = MaterialTheme.colorScheme.primary)
+    }
+    if (open) AlertDialog(
+        onDismissRequest = { open = false },
+        title = { Text(title) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(if (isPlate) R.string.array_localization_plate_help else R.string.grid_localization_description))
+                Text(stringResource(R.string.array_localization_recovery_help))
+                Text(stringResource(R.string.array_localization_comparison_help))
+                Text(stringResource(R.string.array_locator_comparison_legend))
+            }
+        },
+        confirmButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.close)) } }
+    )
 }
 
 /**
@@ -557,6 +1638,33 @@ internal fun ArrayLayoutEditor(
                 preview.siteCount
             )
         )
+        val excludedInLayoutCount = preview.sites.count { it.manuallyFlaggedBad }
+        if (excludedInLayoutCount > 0) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(FluoRadius.control),
+                color = FluoTheme.semantic.warningContainer.copy(alpha = 0.65f),
+                border = BorderStroke(1.dp, FluoTheme.semantic.warning.copy(alpha = 0.45f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.ReportProblem,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = FluoTheme.semantic.onWarningContainer
+                    )
+                    Text(
+                        text = stringResource(R.string.grid_layout_excluded_wells_hint, excludedInLayoutCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = FluoTheme.semantic.onWarningContainer
+                    )
+                }
+            }
+        }
         /*
          * 点击单孔和拖动画笔统一经过这一条批量意图路径。一次手势只提交一次位点集合，
          * ViewModel 在最新完整草稿上原子合并，避免连续重组和旧 UI Map 覆盖前一笔。
@@ -867,6 +1975,7 @@ private fun MessageCard(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(FluoSpacing.xl),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -914,6 +2023,17 @@ private fun MessageCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ManualCornerEntry(onClick: () -> Unit, modifier: Modifier, enabled: Boolean) {
+    OutlinedButton(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(FluoRadius.control),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+        modifier = modifier.heightIn(min = 48.dp).testTag("grid_manual_entry")) {
+        Icon(Icons.Outlined.CropFree, contentDescription = null, Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(stringResource(R.string.array_locator_manual), textAlign = TextAlign.Center)
     }
 }
 
@@ -983,6 +2103,7 @@ private fun BlockedCard(
 private fun evidenceRoleLabel(role: CaptureRole): String = when (role) {
     CaptureRole.PROCESS_ORIGINAL_GEOMETRY -> stringResource(R.string.grid_evidence_original)
     CaptureRole.PROCESS_RECTIFIED -> stringResource(R.string.grid_evidence_rectified)
+    CaptureRole.PROCESS_ROI_BACKGROUND -> stringResource(R.string.array_readout_region_preview)
     CaptureRole.PROCESS_GRID_OVERLAY -> stringResource(R.string.grid_evidence_overlay)
     else -> stringResource(R.string.grid_evidence_process)
 }
@@ -1005,6 +2126,7 @@ private fun blockReasonText(reason: GridDetectionBlockReason): String = when (re
     GridDetectionBlockReason.INVALID_TEMPLATE_PROTOCOL -> stringResource(R.string.grid_block_invalid_protocol)
     GridDetectionBlockReason.MISSING_LOCATOR_CONFIG -> stringResource(R.string.grid_block_missing_locator)
     GridDetectionBlockReason.INVALID_LOCATOR_CONFIG -> stringResource(R.string.grid_block_invalid_locator)
+    GridDetectionBlockReason.PREVIEW_ONLY_LOCALIZATION -> stringResource(R.string.array_locator_comparison_warning)
     GridDetectionBlockReason.MISSING_ANALYTE_ASSIGNMENT -> stringResource(R.string.grid_block_missing_assignment)
     GridDetectionBlockReason.MISSING_COLORIMETRIC_REFERENCE -> stringResource(R.string.grid_block_missing_reference)
     GridDetectionBlockReason.MISSING_FLUORESCENCE_CHANNEL -> stringResource(R.string.grid_block_missing_fluorescence_channel)

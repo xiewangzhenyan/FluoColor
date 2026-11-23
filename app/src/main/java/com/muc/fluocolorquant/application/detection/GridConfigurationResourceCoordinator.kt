@@ -137,7 +137,8 @@ class GridConfigurationResourceCoordinator @Inject constructor(
                 reliableRangeMin = model.reliableRangeMin,
                 reliableRangeMax = model.reliableRangeMax,
                 builtInShared = builtInShared,
-                requiresExplicitScopeConfirmation = builtInShared && !builtInSharedValidated
+                requiresExplicitScopeConfirmation = builtInShared && !builtInSharedValidated,
+                processorVersion = model.processorVersion
             )
         }
         val persistedBuiltInKeys = storedModels

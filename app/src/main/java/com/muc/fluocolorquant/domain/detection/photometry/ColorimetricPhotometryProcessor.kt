@@ -69,7 +69,8 @@ data class ColorimetricPhotometryResult(
     /** 直接RGB/Lab等特征可以没有模板参考位，因此参考上下文必须允许为空。 */
     val referenceRgb: RgbPhotometry?,
     val referenceLab: LabPhotometry?,
-    val sites: List<ColorimetricSitePhotometry>
+    val sites: List<ColorimetricSitePhotometry>,
+    val usedReferenceIndices: Set<Int> = emptySet()
 )
 
 /**
@@ -90,11 +91,9 @@ object ColorimetricPhotometryProcessor {
             "比色参考位索引超出阵列范围"
         }
 
-        val rawReference = config.referenceSiteIndices.takeIf(Set<Int>::isNotEmpty)
-            ?.sorted()
-            ?.map(quant.sites::get)
-            ?.map(BaseSitePhotometry::correctedMedianRgb)
-            ?.let(::medianRgb)
+        val references = config.referenceSiteIndices.sorted().map(quant.sites::get)
+            .filter { it.readoutAvailable && (quant.config.readoutMode == WellReadoutMode.FULL_MEDIAN || it.qc.qualityReliable) }
+        val rawReference = references.takeIf { it.isNotEmpty() }?.map(BaseSitePhotometry::correctedForegroundRgb)?.let(::medianRgb)
         val gains = rawReference?.let { reference ->
             val referenceMean = (reference.red + reference.green + reference.blue) / 3.0
             RgbPhotometry(
@@ -108,7 +107,7 @@ object ColorimetricPhotometryProcessor {
         val referenceLuminance = balancedReference?.let(::luminance)
 
         val sites = quant.sites.map { base ->
-            val balanced = applyGains(base.correctedMedianRgb, gains)
+            val balanced = applyGains(base.correctedForegroundRgb, gains)
             val lab = rgbToLab(balanced)
             val deltaE = referenceLab?.let { deltaE2000(lab, it) }
             val opticalDensity = referenceLuminance?.let { referenceValue ->
@@ -145,17 +144,18 @@ object ColorimetricPhotometryProcessor {
                 deltaE2000 = deltaE,
                 opticalDensity = opticalDensity,
                 primaryFeature = config.primaryFeature,
-                primaryFeatureValue = primaryValue,
+                primaryFeatureValue = primaryValue.takeIf { base.readoutAvailable },
                 qc = qc
             )
         }
 
         return ColorimetricPhotometryResult(
-            processorVersion = COLORIMETRIC_PROCESSOR_VERSION,
+            processorVersion = quant.config.versionFor(COLORIMETRIC_PROCESSOR_VERSION),
             whiteBalanceGains = gains,
             referenceRgb = balancedReference,
             referenceLab = referenceLab,
-            sites = sites
+            sites = sites,
+            usedReferenceIndices = references.mapTo(linkedSetOf(), BaseSitePhotometry::siteIndex)
         )
     }
 

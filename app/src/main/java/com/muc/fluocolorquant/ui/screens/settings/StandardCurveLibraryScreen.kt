@@ -1,34 +1,44 @@
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package com.muc.fluocolorquant.ui.screens.settings
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.Biotech
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,9 +52,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,24 +65,29 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.muc.fluocolorquant.R
-import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel
+import com.muc.fluocolorquant.ui.components.FluoIconBadge
+import com.muc.fluocolorquant.ui.components.FluoSectionCard
+import com.muc.fluocolorquant.ui.components.FluoStatePlaceholder
+import com.muc.fluocolorquant.ui.components.FluoTopBar
+import com.muc.fluocolorquant.ui.components.LatexView
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
 import com.muc.fluocolorquant.ui.components.analysisFeatureLabel
 import com.muc.fluocolorquant.ui.navigation.Screen
+import com.muc.fluocolorquant.ui.theme.FluoMotion
+import com.muc.fluocolorquant.ui.theme.FluoRadius
+import com.muc.fluocolorquant.ui.theme.FluoSpacing
 import com.muc.fluocolorquant.ui.viewmodels.StandardCurveLibraryEvent
 import com.muc.fluocolorquant.ui.viewmodels.StandardCurveLibraryItem
 import com.muc.fluocolorquant.ui.viewmodels.StandardCurveLibraryViewModel
+import com.muc.fluocolorquant.utils.math.FittingEngine
 import java.util.Locale
-import com.muc.fluocolorquant.ui.theme.FluoRadius
 
 /**
- * 面向普通用户的标准曲线库。
- *
- * 页面采用紧凑的科研工作台风格：首屏直接展示可用曲线、分析物、模式、信号和范围，操作
- * 只有“新建、编辑、删除”。版本、归档和后台模型参数不会再次进入普通用户流程。
+ * 标准曲线库（集成右上角「拟合规则」快捷入口，统一承载全站标准曲线管理与预览）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,6 +98,7 @@ fun StandardCurveLibraryScreen(
     val state by viewModel.uiState.collectAsState()
     val toastManager = LocalToastManager.current
     var pendingDelete by remember { mutableStateOf<StandardCurveLibraryItem?>(null) }
+    var selectedAnalyteFilter by rememberSaveable { mutableStateOf<String?>(null) }
     val deletedMessage = stringResource(R.string.standard_curve_deleted)
     val deleteFailedMessage = stringResource(R.string.standard_curve_delete_failed)
 
@@ -94,22 +113,43 @@ fun StandardCurveLibraryScreen(
         }
     }
 
+    val distinctAnalytes = remember(state.items) {
+        state.items.mapNotNull { it.analyteName.takeIf(String::isNotBlank) }.distinct()
+    }
+    val filteredItems = remember(state.items, selectedAnalyteFilter) {
+        if (selectedAnalyteFilter == null) {
+            state.items
+        } else {
+            state.items.filter { it.analyteName == selectedAnalyteFilter }
+        }
+    }
+
     Scaffold(
         topBar = {
             FluoTopBar(
                 title = stringResource(R.string.standard_curve_library_title),
-                onBack = { navController.navigateUp() }
+                onBack = { navController.navigateUp() },
+                actions = {
+                    TextButton(onClick = { navController.navigate(Screen.CalibrationSettings.route) }) {
+                        Icon(
+                            imageVector = Icons.Outlined.Tune,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.standard_curve_rules_action))
+                    }
+                }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { navController.navigate(Screen.ManualDataInput.createRoute()) }
-            ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = stringResource(R.string.standard_curve_unified_title)
-                )
-            }
+            ExtendedFloatingActionButton(
+                onClick = { navController.navigate(Screen.ManualDataInput.createRoute()) },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text(stringResource(R.string.standard_curve_unified_title)) }
+            )
         }
     ) { innerPadding ->
         when {
@@ -122,13 +162,20 @@ fun StandardCurveLibraryScreen(
                 CircularProgressIndicator()
             }
 
-            state.items.isEmpty() -> StandardCurveLibraryEmptyState(
+            state.items.isEmpty() -> Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
-                onCreate = { navController.navigate(Screen.ManualDataInput.createRoute()) },
-                onLegacy = { navController.navigate(Screen.LegacyCurveModelLibrary.route) }
-            )
+                contentAlignment = Alignment.Center
+            ) {
+                FluoStatePlaceholder(
+                    icon = Icons.Default.Analytics,
+                    text = stringResource(R.string.standard_curve_library_empty_title),
+                    supportingText = stringResource(R.string.standard_curve_library_empty_desc),
+                    actionText = stringResource(R.string.standard_curve_unified_title),
+                    onAction = { navController.navigate(Screen.ManualDataInput.createRoute()) }
+                )
+            }
 
             else -> LazyColumn(
                 modifier = Modifier
@@ -137,20 +184,46 @@ fun StandardCurveLibraryScreen(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item {
-                    StandardCurveLibraryHeader(
-                        count = state.items.size,
-                        onLegacy = { navController.navigate(Screen.LegacyCurveModelLibrary.route) }
+                item(key = "curve_summary") {
+                    Text(
+                        text = stringResource(R.string.standard_curve_library_summary, state.items.size),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                items(state.items, key = { it.model.id }) { item ->
+
+                if (distinctAnalytes.size >= 2) {
+                    item(key = "analyte_filters") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedAnalyteFilter == null,
+                                onClick = { selectedAnalyteFilter = null },
+                                label = { Text(stringResource(R.string.resource_filter_all)) }
+                            )
+                            distinctAnalytes.forEach { name ->
+                                FilterChip(
+                                    selected = selectedAnalyteFilter == name,
+                                    onClick = {
+                                        selectedAnalyteFilter = if (selectedAnalyteFilter == name) null else name
+                                    },
+                                    label = { Text(name) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                items(filteredItems, key = { it.model.id }) { item ->
                     StandardCurveLibraryCard(
                         item = item,
                         deleting = state.deletingModelId == item.model.id,
                         onEdit = {
-                            navController.navigate(
-                                Screen.ManualDataInput.createRoute(item.model.id)
-                            )
+                            navController.navigate(Screen.ManualDataInput.createRoute(item.model.id))
                         },
                         onDelete = { pendingDelete = item }
                     )
@@ -176,7 +249,10 @@ fun StandardCurveLibraryScreen(
                         viewModel.delete(item.model.id)
                     }
                 ) {
-                    Text(stringResource(R.string.delete))
+                    Text(
+                        text = stringResource(R.string.delete),
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             },
             dismissButton = {
@@ -188,28 +264,6 @@ fun StandardCurveLibraryScreen(
     }
 }
 
-/** 有数据时的轻量摘要，不使用大面积宣传卡抢占首屏。 */
-@Composable
-private fun StandardCurveLibraryHeader(count: Int, onLegacy: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.standard_curve_library_summary, count),
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        TextButton(onClick = onLegacy) {
-            Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.size(5.dp))
-            Text(stringResource(R.string.standard_curve_library_legacy))
-        }
-    }
-}
-
 @Composable
 private fun StandardCurveLibraryCard(
     item: StandardCurveLibraryItem,
@@ -217,43 +271,49 @@ private fun StandardCurveLibraryCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(FluoRadius.card),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    var expanded by rememberSaveable(item.model.id) { mutableStateOf(false) }
+    val channelAccent = item.fluorescenceChannel?.let { ch ->
+        when (ch) {
+            FluorescenceChannel.RED -> Color(0xFFE53935)
+            FluorescenceChannel.GREEN -> Color(0xFF2E7D32)
+            FluorescenceChannel.BLUE -> Color(0xFF1E88E5)
+            FluorescenceChannel.GRAY -> Color(0xFF607D8B)
+        }
+    } ?: MaterialTheme.colorScheme.primary
+
+    val latexFormula = remember(item.fittingFunction, item.parameters) {
+        val fn = item.fittingFunction ?: return@remember null
+        if (item.parameters.isNotEmpty()) {
+            runCatching { FittingEngine.formatParametersToLatex(fn, item.parameters) }.getOrNull()
+        } else {
+            fn.latexFormula
+        }
+    }
+
+    FluoSectionCard(
+        modifier = Modifier.clickable { expanded = !expanded },
+        contentPadding = FluoSpacing.md,
+        verticalSpacing = 9.dp,
+        accentColor = channelAccent
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(11.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    modifier = Modifier.size(42.dp),
-                    shape = RoundedCornerShape(FluoRadius.badge),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Analytics,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 11.dp)
-                ) {
-                    Text(
-                        text = item.model.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+            FluoIconBadge(
+                icon = Icons.Default.Analytics,
+                accentColor = channelAccent
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.model.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (item.analyteName.isNotBlank()) {
                     Text(
                         text = item.analyteName,
                         style = MaterialTheme.typography.bodySmall,
@@ -263,53 +323,154 @@ private fun StandardCurveLibraryCard(
                     )
                 }
             }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StandardCurveTag(
-                    icon = Icons.Default.Science,
-                    text = detectionModeLabel(item.modality)
-                )
-                StandardCurveTag(
-                    icon = Icons.Default.Biotech,
-                    text = analysisFeatureLabel(item.feature)
+            IconButton(onClick = { expanded = !expanded }, modifier = Modifier.size(34.dp)) {
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand)
                 )
             }
+        }
 
-            Text(
-                text = stringResource(
-                    R.string.standard_curve_library_range,
-                    item.model.reliableRangeMin.compactNumber(),
-                    item.model.reliableRangeMax.compactNumber(),
-                    item.model.concentrationUnit
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            CurveMetaBadge(
+                text = detectionModeLabel(item.modality),
+                container = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                content = MaterialTheme.colorScheme.onPrimaryContainer
             )
-            Text(
-                text = stringResource(
-                    R.string.standard_curve_library_carriers,
-                    carrierSummary(item.carrierTypes)
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = onEdit, enabled = !deleting) {
-                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(5.dp))
-                    Text(stringResource(R.string.edit))
+            item.fluorescenceChannel?.let { ch ->
+                val chLabel = stringResource(
+                    when (ch) {
+                        FluorescenceChannel.RED -> R.string.analyte_channel_red_short
+                        FluorescenceChannel.GREEN -> R.string.analyte_channel_green_short
+                        FluorescenceChannel.BLUE -> R.string.analyte_channel_blue_short
+                        FluorescenceChannel.GRAY -> R.string.analyte_channel_gray_short
+                    }
+                )
+                Surface(
+                    shape = RoundedCornerShape(FluoRadius.badge),
+                    color = channelAccent.copy(alpha = 0.14f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(channelAccent, CircleShape)
+                        )
+                        Text(
+                            text = chLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = channelAccent,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
-                TextButton(onClick = onDelete, enabled = !deleting) {
+            }
+            item.fittingFunction?.let { fn ->
+                CurveMetaBadge(
+                    text = functionLabel(fn),
+                    container = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                    content = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            item.rSquared?.let { r2 ->
+                CurveMetaBadge(
+                    text = String.format(Locale.US, "R² = %.4f", r2),
+                    container = Color(0xFF0D9488).copy(alpha = 0.14f),
+                    content = Color(0xFF0F766E)
+                )
+            }
+            CurveMetaBadge(
+                text = analysisFeatureLabel(item.feature),
+                container = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                content = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = stringResource(
+                        R.string.standard_curve_library_range,
+                        item.model.reliableRangeMin.compactNumber(),
+                        item.model.reliableRangeMax.compactNumber(),
+                        item.model.concentrationUnit
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium
+                )
+                if (item.carrierTypes.isNotEmpty()) {
+                    Text(
+                        text = stringResource(
+                            R.string.standard_curve_library_carriers,
+                            carrierSummary(item.carrierTypes)
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onEdit, enabled = !deleting, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = stringResource(R.string.edit),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+                IconButton(onClick = onDelete, enabled = !deleting, modifier = Modifier.size(40.dp)) {
                     if (deleting) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     } else {
-                        Text(
-                            stringResource(R.string.delete),
-                            color = MaterialTheme.colorScheme.error
+                        Icon(
+                            imageVector = Icons.Outlined.DeleteOutline,
+                            contentDescription = stringResource(R.string.delete),
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = expanded && (latexFormula != null || item.standardPointCount > 0),
+            enter = FluoMotion.expandEnter,
+            exit = FluoMotion.expandExit
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                if (item.standardPointCount > 0) {
+                    Text(
+                        text = stringResource(R.string.standard_curve_points_summary, item.standardPointCount),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                latexFormula?.let { formula ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                            .clip(RoundedCornerShape(FluoRadius.badge))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        LatexView(
+                            latex = formula,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
@@ -318,78 +479,25 @@ private fun StandardCurveLibraryCard(
     }
 }
 
-/** 静态信息标签不使用 Chip 的点击语义，避免用户误以为模式或信号可以在列表中切换。 */
 @Composable
-private fun StandardCurveTag(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String
+private fun CurveMetaBadge(
+    text: String,
+    container: Color,
+    content: Color
 ) {
     Surface(
         shape = RoundedCornerShape(FluoRadius.badge),
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.48f)
+        color = container
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Text(text = text, style = MaterialTheme.typography.labelLarge)
-        }
-    }
-}
-
-@Composable
-private fun StandardCurveLibraryEmptyState(
-    modifier: Modifier,
-    onCreate: () -> Unit,
-    onLegacy: () -> Unit
-) {
-    Column(
-        modifier = modifier.padding(28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Surface(
-            modifier = Modifier.size(72.dp),
-            shape = RoundedCornerShape(FluoRadius.sheet),
-            color = MaterialTheme.colorScheme.primaryContainer
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Default.Analytics,
-                    contentDescription = null,
-                    modifier = Modifier.size(34.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-        Spacer(Modifier.size(18.dp))
         Text(
-            stringResource(R.string.standard_curve_library_empty_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold
+            text = text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = content,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
-        Spacer(Modifier.size(7.dp))
-        Text(
-            stringResource(R.string.standard_curve_library_empty_desc),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.size(18.dp))
-        TextButton(onClick = onCreate) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(Modifier.size(6.dp))
-            Text(stringResource(R.string.standard_curve_unified_title))
-        }
-        TextButton(onClick = onLegacy) {
-            Text(stringResource(R.string.standard_curve_library_legacy))
-        }
     }
 }
 
@@ -402,7 +510,6 @@ private fun detectionModeLabel(modality: DetectionModality): String = when (moda
 
 @Composable
 private fun carrierSummary(carriers: Set<CarrierType>): String {
-    // stringResource 只能在 Composable 上下文直接调用，因此先解析三类文案，再做普通集合拼接。
     val plateLabel = stringResource(R.string.analysis_model_carrier_plate)
     val chipLabel = stringResource(R.string.analysis_model_carrier_chip)
     val customLabel = stringResource(R.string.analysis_model_carrier_custom)

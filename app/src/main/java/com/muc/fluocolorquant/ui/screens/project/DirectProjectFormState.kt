@@ -4,14 +4,23 @@ import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.SiteShape
 import com.muc.fluocolorquant.data.enums.SpectrumLightSource
+import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel
 import com.muc.fluocolorquant.domain.project.DirectCarrierPreset
 import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
+
+/** 新建项目工作流模式：自由配置参数，或直接套用已有实验模板（仅填项目名 + 实验图）。 */
+enum class DirectProjectCreationMode {
+    CUSTOM,
+    FROM_TEMPLATE
+}
 
 /** 单个已选分析物在新建项目阶段需要保留的最小配置。 */
 data class DirectAnalyteSelection(
     val analyteId: String,
     val concentrationUnit: String,
-    val maxConcentrationInput: String = "100"
+    val maxConcentrationInput: String = "100",
+    val fluorescenceChannel: FluorescenceChannel = FluorescenceChannel.GREEN,
+    val selectedReagentIds: Set<String> = emptySet()
 ) {
     /** 最大浓度用于结果色带、旧96孔板百分比显示和项目科研元数据。 */
     val maxConcentration: Double?
@@ -20,13 +29,11 @@ data class DirectAnalyteSelection(
 }
 
 /**
- * 普通用户直接新建项目的表单状态。
- *
- * 新建阶段只确定项目、检测对象、载体、分析物及其单位和原始图片。孔位角色、样本编号、
- * 空白/质控/参考位以及每个分析物采用的定量方案，统一放到后续可视化孔位布局页面配置，
- * 避免用户尚未看到真实阵列时就被迫填写专业参数。
+ * 普通用户新建项目的统一表单状态（同时承载自由新建与一键从模板复用）。
  */
 data class DirectProjectFormState(
+    val creationMode: DirectProjectCreationMode = DirectProjectCreationMode.CUSTOM,
+    val selectedTemplateId: String? = null,
     val projectName: String = "",
     val detectionModality: DetectionModality = DetectionModality.FLUORESCENCE,
     val carrierPreset: DirectCarrierPreset = DirectCarrierPreset.MICROFLUIDIC_10_X_10,
@@ -79,19 +86,24 @@ data class DirectProjectFormState(
      * 同一个分析物只允许出现一次；单位必须逐分析物填写，防止后续结果误用全局单位。
      */
     val canSubmit: Boolean
-        get() = projectName.isNotBlank() &&
-            selectedAnalytes.isNotEmpty() &&
-            selectedAnalytes.all {
-                it.analyteId.isNotBlank() &&
-                    it.concentrationUnit.isNotBlank() &&
-                    it.maxConcentration != null
-            } &&
-            selectedAnalytes.map(DirectAnalyteSelection::analyteId).distinct().size ==
-            selectedAnalytes.size &&
-            !imageUri.isNullOrBlank() &&
-            // 光谱项目不使用规则阵列载体；用户从自定义阵列切换到光谱后，已经隐藏的
-            // 行列草稿即使未填完整，也不能继续阻断光谱项目创建。
-            (detectionModality == DetectionModality.SPECTRUM ||
-                (rows != null && columns != null)) &&
-            !isSubmitting
+        get() = if (creationMode == DirectProjectCreationMode.FROM_TEMPLATE) {
+            projectName.isNotBlank() &&
+                !selectedTemplateId.isNullOrBlank() &&
+                !imageUri.isNullOrBlank() &&
+                !isSubmitting
+        } else {
+            projectName.isNotBlank() &&
+                selectedAnalytes.isNotEmpty() &&
+                selectedAnalytes.all {
+                    it.analyteId.isNotBlank() &&
+                        it.concentrationUnit.isNotBlank() &&
+                        it.maxConcentration != null
+                } &&
+                selectedAnalytes.map(DirectAnalyteSelection::analyteId).distinct().size ==
+                selectedAnalytes.size &&
+                !imageUri.isNullOrBlank() &&
+                (detectionModality == DetectionModality.SPECTRUM ||
+                    (rows != null && columns != null)) &&
+                !isSubmitting
+        }
 }

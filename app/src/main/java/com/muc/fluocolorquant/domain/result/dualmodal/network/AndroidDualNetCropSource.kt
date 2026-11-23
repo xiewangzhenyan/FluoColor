@@ -131,7 +131,15 @@ class AndroidDualNetCropSource @Inject constructor() : DualNetCropSource {
     private fun decodeGrid(run: ArrayResultSnapshot): PgGridResult = try {
         val root = JsonParser.parseString(run.frame.frameQcJson).asJsonObject
         val pgGrid = root.get("pgGrid") ?: evidenceFailure("运行快照中没有 PG-Grid 几何")
-        PgGridJsonCodec.decode(pgGrid.toString())
+        PgGridJsonCodec.decode(pgGrid.toString()).also { grid ->
+            // 网络训练使用 PG 自动几何，手动均分虽可用于端点光度，不应偷偷冒充已验证的模型输入。
+            val alternative = com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode.entries.any {
+                it != com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode.AUTO && it.name == grid.locatorName
+            }
+            if (grid.manualAnchorCenters != null || alternative) {
+                evidenceFailure("替代定位几何未验证为 DualNet 输入")
+            }
+        }
     } catch (error: DualNetUnavailableException) {
         throw error
     } catch (error: RuntimeException) {

@@ -511,7 +511,8 @@ class ExperimentTemplateWizardViewModelTest {
             reagentType: String,
             manufacturer: String?,
             molecularWeight: Double?,
-            unit: String?
+            unit: String?,
+            lotNumber: String?
         ) = false
         override suspend fun updateReagent(
             id: String,
@@ -520,7 +521,8 @@ class ExperimentTemplateWizardViewModelTest {
             reagentType: String,
             manufacturer: String?,
             molecularWeight: Double?,
-            unit: String?
+            unit: String?,
+            lotNumber: String?
         ) = false
         override suspend fun deleteReagent(reagent: Reagent) = Unit
     }

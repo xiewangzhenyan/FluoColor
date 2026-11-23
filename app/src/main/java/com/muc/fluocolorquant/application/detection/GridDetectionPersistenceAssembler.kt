@@ -9,6 +9,8 @@ import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.SiteMeasurement
 import com.muc.fluocolorquant.data.repository.GridDetectionPersistenceBundle
 import com.muc.fluocolorquant.domain.detection.GridGeometryPersistence
+import com.muc.fluocolorquant.domain.detection.array.ArrayMultiHoleStatistics
+import com.muc.fluocolorquant.domain.detection.array.MultiHoleSnapshot
 import com.muc.fluocolorquant.domain.detection.evidence.GridPersistedSourceInput
 import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceRecord
 import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_REFERENCE_EVIDENCE_FEATURE
@@ -41,7 +43,8 @@ data class GridDetectionPersistenceInput(
     val detectionModelUsed: String,
     val processingVersions: Map<String, String>,
     val confidenceThreshold: Float? = null,
-    val iouThreshold: Float? = null
+    val iouThreshold: Float? = null,
+    val multiHoleStatistics: MultiHoleSnapshot? = null
 )
 
 /**
@@ -71,7 +74,7 @@ class GridDetectionPersistenceAssembler @Inject constructor() {
             acquisitionMetadataJson = input.acquisitionMetadataJson,
             processingVersionJson = gson.toJson(input.processingVersions),
             frameQcJson = input.frameQcJson,
-            siteQcSummaryJson = summarizeSiteQc(input.measurements),
+            siteQcSummaryJson = summarizeSiteQc(input.measurements, input.multiHoleStatistics),
             // 项目覆盖只在运行开始时冻结；结果页不能回读用户之后修改的 Project.overrideJson。
             configurationDeviationJson = input.project.overrideJson
         )
@@ -128,7 +131,7 @@ class GridDetectionPersistenceAssembler @Inject constructor() {
         ).requireValid()
     }
 
-    private fun summarizeSiteQc(measurements: List<SiteMeasurement>): String {
+    private fun summarizeSiteQc(measurements: List<SiteMeasurement>, multiHoleStatistics: MultiHoleSnapshot?): String {
         return gson.toJson(
             mapOf(
                 "total" to measurements.size,
@@ -143,7 +146,8 @@ class GridDetectionPersistenceAssembler @Inject constructor() {
                 },
                 "referenceEvidence" to measurements.count {
                     it.primaryFeatureName == COLORIMETRIC_REFERENCE_EVIDENCE_FEATURE
-                }
+                },
+                ArrayMultiHoleStatistics.SNAPSHOT_KEY to multiHoleStatistics
             )
         )
     }

@@ -21,12 +21,19 @@ import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
 import com.muc.fluocolorquant.domain.calibration.CalibrationResultSet
 import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisScope
+import com.muc.fluocolorquant.domain.detection.array.ArrayMultiHoleStatistics
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitSegmentationResult
 import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
 import com.muc.fluocolorquant.domain.detection.grid.PG_GRID_SCHEMA_V2_1
 import com.muc.fluocolorquant.domain.detection.grid.PgGridJsonCodec
 import com.muc.fluocolorquant.domain.detection.grid.PgGridLocator
 import com.muc.fluocolorquant.domain.detection.grid.PgGridLocatorConfig
+import com.muc.fluocolorquant.domain.detection.grid.compareOnImage
+import com.muc.fluocolorquant.domain.detection.grid.GridPoint
+import com.muc.fluocolorquant.domain.detection.grid.ManualGridGeometry
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitRegionSource
 import com.muc.fluocolorquant.domain.detection.grid.PgGridResult
 import com.muc.fluocolorquant.domain.detection.evidence.GRID_PROCESSING_EVIDENCE_SCHEMA
 import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceRecord
@@ -76,6 +83,7 @@ import com.muc.fluocolorquant.domain.detection.photometry.PG_QUANT_PROCESSOR_VER
 import com.muc.fluocolorquant.domain.detection.photometry.PG_QUANT_PROCESSOR_NAME
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantSampler
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
+import com.muc.fluocolorquant.domain.detection.photometry.WellReadoutMode
 import com.muc.fluocolorquant.domain.detection.plate96.PLATE96_RUN_GEOMETRY_SCHEMA_V1
 import com.muc.fluocolorquant.domain.detection.plate96.Plate96Locator
 import com.muc.fluocolorquant.domain.detection.plate96.Plate96RunGeometryCodec
@@ -131,11 +139,21 @@ class GridDetectionCoordinator @Inject constructor(
         }
     }
 
+    /** 对照返回几何而非采样会话，不产生原图归档、过程附件或任何逐孔读数。 */
+    internal suspend fun compareLocator(request: GridDetectionRequest, mode: ArrayLocatorMode): PgGridResult? {
+        val profile = request.snapshot.carrierProfile
+        return locator.compareOnImage(request.endpointBitmap, profile.rows, profile.columns, mode)
+    }
+
     /**
      * 第一阶段只做定位、基础光度与可视化证据，不要求项目已经配置孔位角色。
      * 这使普通用户可以先看到算法实际定位效果，再决定每个物理位点属于哪个分析物。
      */
-    suspend fun localize(request: GridDetectionRequest): GridLocalizationOutcome {
+    suspend fun localize(request: GridDetectionRequest, manualCorners: List<GridPoint>? = null): GridLocalizationOutcome {
+        // 直接调用生产入口传入对照算法时须明确拦截，不能被设置标准化悄悄换成默认定位。
+        if (request.analysisPreferences.locator.isComparisonOnly) {
+            return GridLocalizationOutcome.Blocked(setOf(GridDetectionBlockReason.PREVIEW_ONLY_LOCALIZATION))
+        }
         request.onStageChanged(GridDetectionStage.PREPARING)
         val carrierType = CarrierType.fromCode(request.snapshot.carrierProfile.carrierType)
             ?: return GridLocalizationOutcome.Blocked(
@@ -156,18 +174,232 @@ class GridDetectionCoordinator @Inject constructor(
             return GridLocalizationOutcome.Blocked(preflight.reasons)
         }
         val polarity = requireNotNull(preflight.targetPolarity)
+        val settings = request.analysisPreferences.normalized(ArrayAnalysisScope.from(request.snapshot.carrierProfile))
 
         request.onStageChanged(GridDetectionStage.LOCATING)
         val grid = withContext(Dispatchers.Default) {
-            locator.locate(
-                bitmap = request.endpointBitmap,
-                config = PgGridLocatorConfig(
-                    rows = request.snapshot.carrierProfile.rows,
-                    columns = request.snapshot.carrierProfile.columns,
-                    targetPolarity = polarity
-                )
-            )
+            val config = PgGridLocatorConfig(request.snapshot.carrierProfile.rows, request.snapshot.carrierProfile.columns, polarity,
+                marginRatio = settings.gridMargin, candidateSupportDistancePitchRatio = settings.matchingDistance, mode = settings.locator)
+            // 手动模式绕过自动定位，不绕过快照预检、原图单元分割、光度、QC 或持久化。
+            if (manualCorners == null) locator.locate(request.endpointBitmap, config)
+            else {
+                val bitmap = request.endpointBitmap
+                val manual = ManualGridGeometry.build(bitmap.width, bitmap.height, config, manualCorners)
+                manual.copy(targetPolarity = ManualGridGeometry.samplingPolarity(manual) { pixelX, pixelY ->
+                    if (pixelX !in 0 until bitmap.width || pixelY !in 0 until bitmap.height) null
+                    else bitmap.getPixel(pixelX, pixelY).let { color ->
+                        0.299 * android.graphics.Color.red(color) + 0.587 * android.graphics.Color.green(color) + 0.114 * android.graphics.Color.blue(color)
+                    }
+                })
+            }
         }
+        return prepareRegularSampling(request, grid)
+    }
+
+    /** 只换取值口径时直接复用本次确认的孔号、变换与有效掩膜，不重新识别或修改角点。 */
+    suspend fun resampleRegular(session: GridLocalizationSession, request: GridDetectionRequest): GridLocalizationOutcome.Ready {
+        require(session.presentation == GridLocalizationPresentation.MICROFLUIDIC)
+        require(session.request.endpointBitmap === request.endpointBitmap)
+        val resampled = prepareRegularSampling(request, session.grid, session.quant.unitSegmentation)
+        return GridLocalizationOutcome.Ready(
+            resampled.session.copy(
+                automaticGrid = session.automaticGrid,
+                automaticSegmentation = session.automaticSegmentation,
+                siteBoxScales = session.siteBoxScales
+            )
+        )
+    }
+
+    /**
+     * 对单个微流控/圆阵孔位执行受限中心微调或采样框缩放（借鉴 GenePix `Feature Mode: Nudge & Resize`）。
+     *
+     * 偏移严格限制在自动基线中心的 `0.45 × pitch` 内，绝不允许跨孔窜号；此方法仅在内存中高速重采
+     * 原图像素并更新冻结几何 JSON，过程证据 PNG 可由 [refreshRegularEvidence] 防抖异步刷新。
+     */
+    suspend fun adjustRegularSite(
+        session: GridLocalizationSession,
+        siteIndex: Int,
+        requestedRectifiedCenter: GridPoint,
+        requestedBoxScale: Double,
+        manualBadSites: Set<Int>
+    ): GridLocalizationSession = withContext(Dispatchers.Default) {
+        require(session.presentation == GridLocalizationPresentation.MICROFLUIDIC)
+        require(siteIndex in session.grid.sites.indices)
+        val autoSite = session.automaticGrid.sites[siteIndex]
+        val pitch = com.muc.fluocolorquant.domain.detection.grid.RegularGridGeometry.estimatePitch(
+            points = session.automaticGrid.sites.map { it.rectified },
+            rows = session.grid.rows,
+            columns = session.grid.columns
+        ).representativePx.coerceAtLeast(6.0)
+        val maxShift = pitch * 0.45
+        val rawDx = requestedRectifiedCenter.x - autoSite.rectified.x
+        val rawDy = requestedRectifiedCenter.y - autoSite.rectified.y
+        val rawDist = kotlin.math.hypot(rawDx, rawDy)
+        val clampedDx = if (rawDist > maxShift && rawDist > 1e-6) rawDx * (maxShift / rawDist) else rawDx
+        val clampedDy = if (rawDist > maxShift && rawDist > 1e-6) rawDy * (maxShift / rawDist) else rawDy
+        val clampedCenter = GridPoint(
+            x = (autoSite.rectified.x + clampedDx).coerceIn(2.0, (session.grid.rectifiedWidth - 3).coerceAtLeast(2).toDouble()),
+            y = (autoSite.rectified.y + clampedDy).coerceIn(2.0, (session.grid.rectifiedHeight - 3).coerceAtLeast(2).toDouble())
+        )
+        val clampedScale = (kotlin.math.round(requestedBoxScale.coerceIn(0.60, 1.40) * 100.0) / 100.0)
+
+        val inverse = session.grid.homography.inverse.toDoubleArray()
+        val updatedOriginal = com.muc.fluocolorquant.domain.detection.grid.RegularGridGeometry.project(inverse, clampedCenter)
+        val updatedSite = session.grid.sites[siteIndex].copy(
+            rectified = clampedCenter,
+            original = updatedOriginal,
+            confidence = 1.0,
+            source = GridPointSource.USER_ADJUSTED,
+            flags = emptySet()
+        )
+        val updatedGrid = session.grid.copy(
+            sites = session.grid.sites.mapIndexed { idx, existing -> if (idx == siteIndex) updatedSite else existing }
+        ).requireValid()
+
+        val baseSeg = session.quant.unitSegmentation
+        val autoSeg = session.automaticSegmentation ?: baseSeg
+        val updatedSeg = if (baseSeg != null && autoSeg != null) {
+            val autoRegion = autoSeg.regions[siteIndex]
+            val targetW = (autoRegion.bounds.width * clampedScale).toInt()
+                .coerceIn(4, (baseSeg.imageWidth - 2).coerceAtLeast(4))
+            val targetH = (autoRegion.bounds.height * clampedScale).toInt()
+                .coerceIn(4, (baseSeg.imageHeight - 2).coerceAtLeast(4))
+            val left = (clampedCenter.x - targetW / 2.0).toInt().coerceIn(0, (baseSeg.imageWidth - targetW).coerceAtLeast(0))
+            val top = (clampedCenter.y - targetH / 2.0).toInt().coerceIn(0, (baseSeg.imageHeight - targetH).coerceAtLeast(0))
+            val bounds = com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBounds(
+                left = left,
+                top = top,
+                right = (left + targetW).coerceAtMost(baseSeg.imageWidth),
+                bottom = (top + targetH).coerceAtMost(baseSeg.imageHeight)
+            )
+            val newRegion = com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitRegion(
+                siteIndex = siteIndex,
+                rowIndex = autoRegion.rowIndex,
+                columnIndex = autoRegion.columnIndex,
+                shape = autoRegion.shape,
+                bounds = bounds,
+                source = ArrayUnitRegionSource.MANUAL_GEOMETRY,
+                foregroundMask = com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBitmapCropper.geometryMask(
+                    bounds.width,
+                    bounds.height,
+                    autoRegion.shape
+                ),
+                fallbackReason = null
+            ).requireValid(baseSeg.imageWidth, baseSeg.imageHeight)
+            baseSeg.copy(
+                regions = baseSeg.regions.mapIndexed { idx, existing -> if (idx == siteIndex) newRegion else existing }
+            ).requireValid()
+        } else {
+            null
+        }
+
+        val settings = session.request.analysisPreferences.normalized(
+            ArrayAnalysisScope.from(session.request.snapshot.carrierProfile)
+        )
+        val sampled = PgQuantSampler.sample(
+            bitmap = session.request.endpointBitmap,
+            grid = updatedGrid,
+            config = settings.photometry(),
+            unitSegmentation = updatedSeg
+        )
+        val gatedQuant = applyManualInterpolationFallbackGate(updatedGrid, updatedSeg, sampled)
+            .withManualBadSites(manualBadSites)
+
+        session.copy(
+            grid = updatedGrid,
+            quant = gatedQuant,
+            geometryPersistence = GridGeometryPersistence(
+                jsonKey = "pgGrid",
+                schemaVersion = PG_GRID_SCHEMA_V2_1,
+                json = PgGridJsonCodec.encode(updatedGrid)
+            ),
+            siteBoxScales = session.siteBoxScales + (siteIndex to clampedScale)
+        )
+    }
+
+    /** 仅将指定孔位恢复为本次自动定位与分割结果，保留其他孔的人工微调与异常标记。 */
+    suspend fun restoreRegularSite(
+        session: GridLocalizationSession,
+        siteIndex: Int,
+        manualBadSites: Set<Int>
+    ): GridLocalizationSession = withContext(Dispatchers.Default) {
+        require(session.presentation == GridLocalizationPresentation.MICROFLUIDIC)
+        require(siteIndex in session.grid.sites.indices)
+        val restoredSite = session.automaticGrid.sites[siteIndex]
+        val updatedGrid = session.grid.copy(
+            sites = session.grid.sites.mapIndexed { idx, existing -> if (idx == siteIndex) restoredSite else existing }
+        ).requireValid()
+
+        val baseSeg = session.quant.unitSegmentation
+        val autoSeg = session.automaticSegmentation
+        val updatedSeg = if (baseSeg != null && autoSeg != null) {
+            val restoredRegion = autoSeg.regions[siteIndex]
+            baseSeg.copy(
+                regions = baseSeg.regions.mapIndexed { idx, existing -> if (idx == siteIndex) restoredRegion else existing }
+            ).requireValid()
+        } else {
+            baseSeg
+        }
+
+        val settings = session.request.analysisPreferences.normalized(
+            ArrayAnalysisScope.from(session.request.snapshot.carrierProfile)
+        )
+        val sampled = PgQuantSampler.sample(
+            bitmap = session.request.endpointBitmap,
+            grid = updatedGrid,
+            config = settings.photometry(),
+            unitSegmentation = updatedSeg
+        )
+        val gatedQuant = applyManualInterpolationFallbackGate(updatedGrid, updatedSeg, sampled)
+            .withManualBadSites(manualBadSites)
+
+        session.copy(
+            grid = updatedGrid,
+            quant = gatedQuant,
+            geometryPersistence = GridGeometryPersistence(
+                jsonKey = "pgGrid",
+                schemaVersion = PG_GRID_SCHEMA_V2_1,
+                json = PgGridJsonCodec.encode(updatedGrid)
+            ),
+            siteBoxScales = session.siteBoxScales - siteIndex
+        )
+    }
+
+    /** 在单孔连续微调停顿后刷新落盘的过程证据图，使原图叠加、取值区和网格图与微调后一致。 */
+    suspend fun refreshRegularEvidence(session: GridLocalizationSession): GridLocalizationSession {
+        if (session.presentation != GridLocalizationPresentation.MICROFLUIDIC) return session
+        val updatedEvidence = writeProcessingEvidence(session.request, session.grid, session.quant)
+        return session.copy(processingEvidence = updatedEvidence)
+    }
+
+    private fun applyManualInterpolationFallbackGate(
+        grid: PgGridResult,
+        unitSegmentation: ArrayUnitSegmentationResult?,
+        sampled: PgQuantResult
+    ): PgQuantResult {
+        if (grid.manualAnchorCenters == null || unitSegmentation == null) return sampled
+        return sampled.copy(
+            sites = sampled.sites.map { site ->
+                if (grid.sites[site.siteIndex].source == GridPointSource.MANUAL_INTERPOLATED &&
+                    unitSegmentation.regions[site.siteIndex].source == ArrayUnitRegionSource.FALLBACK_MEDIAN_GEOMETRY
+                ) {
+                    site.copy(qc = site.qc.copy(qualityReliable = false), autoQualityReliable = false)
+                } else {
+                    site
+                }
+            }
+        )
+    }
+
+    private suspend fun prepareRegularSampling(
+        request: GridDetectionRequest,
+        grid: PgGridResult,
+        existingSegmentation: ArrayUnitSegmentationResult? = null
+    ): GridLocalizationOutcome.Ready {
+        require(!request.analysisPreferences.locator.isComparisonOnly && !isComparisonGrid(grid)) {
+            "对照网格不能进入原图采样"
+        }
+        val settings = request.analysisPreferences.normalized(ArrayAnalysisScope.from(request.snapshot.carrierProfile))
         val frameQcJson = gson.toJson(
             mapOf(
                 "geometry" to grid.geometry,
@@ -181,19 +413,30 @@ class GridDetectionCoordinator @Inject constructor(
         request.onStageChanged(GridDetectionStage.PHOTOMETRY)
         val siteShape = SiteShape.fromCode(request.snapshot.carrierProfile.siteShape)
             ?: SiteShape.CUSTOM
-        val unitSegmentation = withContext(Dispatchers.Default) {
-            unitSegmenter.segment(
+        val unitSegmentation = existingSegmentation ?: withContext(Dispatchers.Default) {
+            if (siteShape == SiteShape.CIRCLE && grid.manualAnchorCenters != null && request.manualCircularDiameterRatio != null) {
+                com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBitmapCropper.manualCircularRegions(grid, request.manualCircularDiameterRatio)
+            } else unitSegmenter.segment(
                 sourceBitmap = request.endpointBitmap,
                 grid = grid,
                 shape = ArrayUnitShape.fromSiteShape(siteShape)
             )
         }
         val quant = withContext(Dispatchers.Default) {
-            PgQuantSampler.sample(
+            val sampled = PgQuantSampler.sample(
                 bitmap = request.endpointBitmap,
                 grid = grid,
+                config = settings.photometry(),
                 unitSegmentation = unitSegmentation
             )
+            // 对四角推算孔，若连本孔局部分割也只有几何兜底，则保留数值作复核，不能作为
+            // 可靠标准孔参与拟合或输出可靠浓度。直接在人/机共用的光度输入处门控，避免预览与保存两套口径。
+            if (grid.manualAnchorCenters == null) sampled else sampled.copy(sites = sampled.sites.map { site ->
+                if (grid.sites[site.siteIndex].source == GridPointSource.MANUAL_INTERPOLATED &&
+                    unitSegmentation.regions[site.siteIndex].source == ArrayUnitRegionSource.FALLBACK_MEDIAN_GEOMETRY) {
+                    site.copy(qc = site.qc.copy(qualityReliable = false))
+                } else site
+            })
         }
         request.onStageChanged(GridDetectionStage.RENDERING_EVIDENCE)
         val persistedSourceInput = writeSourceInput(request)
@@ -217,9 +460,16 @@ class GridDetectionCoordinator @Inject constructor(
                 detectionModelUsed = "${grid.locatorName} ${grid.locatorVersion}",
                 processingVersions = linkedMapOf(
                     "geometry" to PG_GRID_SCHEMA_V2_1,
-                    "basePhotometry" to PG_QUANT_PROCESSOR_VERSION,
-                    "colorimetric" to COLORIMETRIC_PROCESSOR_VERSION,
-                    "fluorescence" to FLUORESCENCE_PROCESSOR_VERSION,
+                    "locatorMode" to (if (grid.manualAnchorCenters == null) settings.locator else ArrayLocatorMode.MANUAL_CORNERS).name,
+                    "locatorVersion" to grid.locatorVersion,
+                    "locatorParameters" to gson.toJson(mapOf("gridMargin" to settings.gridMargin, "matchingDistance" to settings.matchingDistance,
+                        "manualCircularDiameterRatio" to request.manualCircularDiameterRatio)),
+                    "basePhotometry" to quant.processorVersion,
+                    "wellReadout" to settings.readout.name,
+                    "wellReadoutParameters" to gson.toJson(quant.config),
+                    "multiHoleStatistic" to settings.multiHoleStatistic.name,
+                    "colorimetric" to quant.config.versionFor(COLORIMETRIC_PROCESSOR_VERSION),
+                    "fluorescence" to quant.config.versionFor(FLUORESCENCE_PROCESSOR_VERSION),
                     "endpointQuantifier" to ENDPOINT_QUANTIFIER_VERSION,
                     "formulaEngine" to FORMULA_ENGINE_VERSION,
                     "processingEvidence" to GRID_PROCESSING_EVIDENCE_SCHEMA
@@ -242,6 +492,9 @@ class GridDetectionCoordinator @Inject constructor(
         exifRotationDegrees: Int = 0,
         exifFlipped: Boolean = false
     ): GridLocalizationOutcome {
+        if (locatorSession.locatorMode.isComparisonOnly || request.analysisPreferences.locator.isComparisonOnly) {
+            return GridLocalizationOutcome.Blocked(setOf(GridDetectionBlockReason.PREVIEW_ONLY_LOCALIZATION))
+        }
         request.onStageChanged(GridDetectionStage.PREPARING)
         val carrierType = CarrierType.fromCode(request.snapshot.carrierProfile.carrierType)
         if (
@@ -264,11 +517,13 @@ class GridDetectionCoordinator @Inject constructor(
         val localization = locatorSession.result.requireValid()
         val geometry = Plate96RunGeometrySnapshot.from(localization)
         val sampling = Plate96ScientificSamplingAdapter.create(localization)
+        val settings = request.analysisPreferences.normalized(ArrayAnalysisScope.STANDARD_PLATE)
         request.onStageChanged(GridDetectionStage.PHOTOMETRY)
         val quant = withContext(Dispatchers.Default) {
             PgQuantSampler.sample(
                 bitmap = request.endpointBitmap,
                 grid = sampling.grid,
+                config = settings.photometry(),
                 unitSegmentation = sampling.segmentation
             )
         }
@@ -306,6 +561,7 @@ class GridDetectionCoordinator @Inject constructor(
             ArrayLocatorMode.AUTO -> "AUTO_YOLO_HOUGH_CONTOUR_GRID"
             ArrayLocatorMode.OBJECT_DETECTION -> "YOLO_ONLY"
             ArrayLocatorMode.GEOMETRIC_SHAPE -> "YOLO_HOUGH_CONTOUR"
+            else -> locatorSession.locatorMode.name
         }
         return GridLocalizationOutcome.Ready(
             GridLocalizationSession(
@@ -327,15 +583,23 @@ class GridDetectionCoordinator @Inject constructor(
                     "locatorMode" to locatorSession.locatorMode.name,
                     "orientation" to localization.orientation.schemaVersion,
                     "imageTransform" to localization.imageTransform.processorVersion,
-                    "basePhotometry" to PG_QUANT_PROCESSOR_VERSION,
-                    "colorimetric" to COLORIMETRIC_PROCESSOR_VERSION,
-                    "fluorescence" to FLUORESCENCE_PROCESSOR_VERSION,
+                    "locatorVersion" to localization.locatorVersion,
+                    "basePhotometry" to quant.processorVersion,
+                    "wellReadout" to settings.readout.name,
+                    "wellReadoutParameters" to gson.toJson(quant.config),
+                    "multiHoleStatistic" to settings.multiHoleStatistic.name,
+                    "colorimetric" to quant.config.versionFor(COLORIMETRIC_PROCESSOR_VERSION),
+                    "fluorescence" to quant.config.versionFor(FLUORESCENCE_PROCESSOR_VERSION),
                     "endpointQuantifier" to ENDPOINT_QUANTIFIER_VERSION,
                     "formulaEngine" to FORMULA_ENGINE_VERSION,
                     "processingEvidence" to PLATE96_PROCESSING_EVIDENCE_SCHEMA
                 ),
-                confidenceThreshold = Plate96Locator.DEFAULT_CONFIG.confidenceThreshold,
-                iouThreshold = Plate96Locator.DEFAULT_CONFIG.iouThreshold,
+                confidenceThreshold = Plate96Locator.DEFAULT_CONFIG.confidenceThreshold.takeIf {
+                    locatorSession.locatorMode in listOf(ArrayLocatorMode.AUTO, ArrayLocatorMode.OBJECT_DETECTION, ArrayLocatorMode.GEOMETRIC_SHAPE)
+                },
+                iouThreshold = Plate96Locator.DEFAULT_CONFIG.iouThreshold.takeIf {
+                    locatorSession.locatorMode in listOf(ArrayLocatorMode.AUTO, ArrayLocatorMode.OBJECT_DETECTION, ArrayLocatorMode.GEOMETRIC_SHAPE)
+                },
                 frameQcIssueCount = 0
             )
         )
@@ -349,6 +613,9 @@ class GridDetectionCoordinator @Inject constructor(
         session: GridLocalizationSession,
         finalizedSnapshot: TemplateProjectSnapshot
     ): GridDetectionOutcome {
+        if (session.request.analysisPreferences.locator.isComparisonOnly || isComparisonGrid(session.grid)) {
+            return GridDetectionOutcome.Blocked(setOf(GridDetectionBlockReason.PREVIEW_ONLY_LOCALIZATION))
+        }
         // 现场曲线已经在用户点击“应用此曲线”时冻结。这里直接执行最终快照，禁止因为
         // 线程时序、算法升级或数值初值变化再次拟合出与用户所见不同的曲线。
         val request = session.request.copy(snapshot = finalizedSnapshot)
@@ -395,7 +662,9 @@ class GridDetectionCoordinator @Inject constructor(
                 detectionModelUsed = session.detectionModelUsed,
                 processingVersions = session.processingVersions,
                 confidenceThreshold = session.confidenceThreshold,
-                iouThreshold = session.iouThreshold
+                iouThreshold = session.iouThreshold,
+                multiHoleStatistics = ArrayMultiHoleStatistics.freeze(request.analysisPreferences.multiHoleStatistic,
+                    request.snapshot, request.project.overrideJson, processed.measurements)
             )
         )
         request.onStageChanged(GridDetectionStage.PERSISTING)
@@ -449,6 +718,9 @@ class GridDetectionCoordinator @Inject constructor(
         analyteId = analyteId,
         policy = policy
     )
+
+    private fun isComparisonGrid(grid: PgGridResult): Boolean =
+        ArrayLocatorMode.entries.any { it.isComparisonOnly && it.name == grid.locatorName }
 
     private fun preflight(
         request: GridDetectionRequest,
@@ -535,7 +807,7 @@ class GridDetectionCoordinator @Inject constructor(
                 quant,
                 ColorimetricProcessorConfig(calibrationReferenceIndices, feature)
             )
-            val compatibility = modelCompatibility(request, analyteSnapshot, feature)
+            val compatibility = modelCompatibility(request, analyteSnapshot, feature, quant)
             val baseMeasurements = assignmentsForAnalyte(request.snapshot, analyteSnapshot).map { assignment ->
                 val index = assignment.rowIndex * grid.columns + assignment.columnIndex
                 val site = result.sites[index]
@@ -548,18 +820,18 @@ class GridDetectionCoordinator @Inject constructor(
                     correctedSignalJson = colorimetricCorrectedSignalJson(
                         site = site,
                         result = result,
-                        referenceIndices = calibrationReferenceIndices
+                        referenceIndices = result.usedReferenceIndices
                     ),
                     primaryFeatureName = site.primaryFeature.code,
                     primaryFeatureValue = site.primaryFeatureValue,
                     backgroundValue = site.base.backgroundMedianGray,
                     signalToNoiseRatio = site.base.signalToNoiseRatio,
-                    confidence = grid.sites[index].confidence,
+                    confidence = grid.sites[index].confidence.takeUnless { grid.sites[index].source.isManual },
                     signalDetectable = site.qc.signalDetectable,
                     qualityReliable = mergedReliability(site.qc.qualityReliable, grid, index),
                     qcJson = siteQcJson(grid, index, site.qc.flags),
                     processorName = COLORIMETRIC_PROCESSOR_NAME,
-                    processorVersion = COLORIMETRIC_PROCESSOR_VERSION
+                    processorVersion = result.processorVersion
                 )
             }
             val quantified = applyConfiguredQuantification(
@@ -625,7 +897,7 @@ class GridDetectionCoordinator @Inject constructor(
                     primaryFeatureValue = null,
                     backgroundValue = site.backgroundMedianGray,
                     signalToNoiseRatio = site.signalToNoiseRatio,
-                    confidence = grid.sites[index].confidence,
+                    confidence = grid.sites[index].confidence.takeUnless { grid.sites[index].source.isManual },
                     signalDetectable = site.qc.signalDetectable,
                     qualityReliable = mergedReliability(site.qc.qualityReliable, grid, index),
                     qcJson = siteQcJson(grid, index, site.qc.flags),
@@ -681,7 +953,7 @@ class GridDetectionCoordinator @Inject constructor(
                 quant,
                 FluorescenceProcessorConfig(channel = channel, primaryFeature = feature)
             )
-            val compatibility = modelCompatibility(request, analyteSnapshot, feature)
+            val compatibility = modelCompatibility(request, analyteSnapshot, feature, quant)
             val baseMeasurements = assignmentsForAnalyte(request.snapshot, analyteSnapshot).map { assignment ->
                 val index = assignment.rowIndex * grid.columns + assignment.columnIndex
                 val site = result.sites[index]
@@ -701,12 +973,12 @@ class GridDetectionCoordinator @Inject constructor(
                     primaryFeatureValue = site.primaryFeatureValue,
                     backgroundValue = background,
                     signalToNoiseRatio = site.signalToNoiseRatio,
-                    confidence = grid.sites[index].confidence,
+                    confidence = grid.sites[index].confidence.takeUnless { grid.sites[index].source.isManual },
                     signalDetectable = site.qc.signalDetectable,
                     qualityReliable = mergedReliability(site.qc.qualityReliable, grid, index),
                     qcJson = siteQcJson(grid, index, site.qc.flags),
                     processorName = FLUORESCENCE_PROCESSOR_NAME,
-                    processorVersion = FLUORESCENCE_PROCESSOR_VERSION
+                    processorVersion = result.processorVersion
                 )
             }
             val quantified = applyConfiguredQuantification(
@@ -1272,15 +1544,19 @@ class GridDetectionCoordinator @Inject constructor(
     private fun modelCompatibility(
         request: GridDetectionRequest,
         analyteSnapshot: TemplateProjectAnalyteSnapshot,
-        feature: AnalysisPrimaryFeature
+        feature: AnalysisPrimaryFeature,
+        quant: PgQuantResult
     ): ModelCompatibilityResult {
+        if (quant.config.readoutMode == WellReadoutMode.CENTER_PIXEL) {
+            return ModelCompatibilityResult.Incompatible(setOf(ModelCompatibilityReason.PROCESSOR_VERSION_MISMATCH))
+        }
         val modality = requireNotNull(DetectionModality.fromCode(request.snapshot.template.detectionMode))
         val processorName = if (modality == DetectionModality.COLORIMETRIC) {
             COLORIMETRIC_PROCESSOR_NAME
         } else {
             FLUORESCENCE_PROCESSOR_NAME
         }
-        val processorVersion = if (modality == DetectionModality.COLORIMETRIC) {
+        val baseVersion = if (modality == DetectionModality.COLORIMETRIC) {
             COLORIMETRIC_PROCESSOR_VERSION
         } else {
             FLUORESCENCE_PROCESSOR_VERSION
@@ -1297,7 +1573,17 @@ class GridDetectionCoordinator @Inject constructor(
                 ),
                 acquisitionProfileId = request.snapshot.acquisitionProfile.id,
                 processorName = processorName,
-                processorVersion = processorVersion
+                // PTL 输入是完整形状裁切而非统计值。传统曲线则必须匹配实际孔内口径及荧光通道。
+                processorVersion = when {
+                    analyteSnapshot.analysisModel.model.modelType == AnalysisModelType.DEEP_LEARNING.code -> baseVersion
+                    modality == DetectionModality.FLUORESCENCE -> {
+                        val channel = ScientificDetectionConfigCodec.decodeFluorescenceChannel(
+                            analyteSnapshot.templateConfig.displayConfigJson
+                        ) ?: FluorescenceChannel.GREEN
+                        FluorescencePhotometryProcessor.processorVersionFor(quant.config, channel)
+                    }
+                    else -> quant.config.versionFor(baseVersion)
+                }
             )
         )
     }

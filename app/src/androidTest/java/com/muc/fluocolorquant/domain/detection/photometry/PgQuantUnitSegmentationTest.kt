@@ -53,6 +53,72 @@ class PgQuantUnitSegmentationTest {
         bitmap.recycle()
     }
 
+    @Test
+    fun `纯蓝弱荧光与等亮度黄斑均可由复合对比度分割且中心区中位数抗中心高光`() {
+        val width = 160
+        val height = 160
+        // 基底灰度 210；左上放纯黄等亮度显色斑点（235, 225, 35，灰度约 206.4，与基底差 < 4）
+        val pixels = IntArray(width * height) { Color.rgb(210, 210, 210) }
+        centers.forEachIndexed { idx, center ->
+            val cx = center.x.toInt()
+            val cy = center.y.toInt()
+            // 紧贴孔壁外侧 1~2px 放置高光圈（模拟弯月面反光），验证隔离谷区不会将其采入背景环
+            for (y in cy - 9..cy + 9) {
+                for (x in cx - 9..cx + 9) {
+                    pixels[y * width + x] = Color.rgb(252, 252, 252)
+                }
+            }
+            for (y in cy - 7 until cy + 7) {
+                for (x in cx - 7 until cx + 7) {
+                    pixels[y * width + x] = if (idx == 0) {
+                        Color.rgb(235, 225, 35)
+                    } else {
+                        Color.rgb(40, 40, 40)
+                    }
+                }
+            }
+            // 正中心放入 3×3 饱和灯珠反光点，验证 CENTER_MEDIAN 不受拉偏而 CENTER_MEAN 被明显抬高
+            for (y in cy - 1..cy + 1) {
+                for (x in cx - 1..cx + 1) {
+                    pixels[y * width + x] = Color.rgb(255, 255, 255)
+                }
+            }
+        }
+        val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        try {
+            val grid = identityGrid()
+            val segmentation = OpenCvArrayUnitSegmenter().segmentRectified(
+                rectifiedBitmap = bitmap,
+                points = grid.sites.map { it.rectified },
+                rows = 2,
+                columns = 2,
+                polarity = GridTargetPolarity.DARK,
+                shape = ArrayUnitShape.SQUARE
+            )
+            assertEquals(4, segmentation.segmentedCount)
+
+            val centerMean = PgQuantSampler.sample(
+                bitmap = bitmap,
+                grid = grid,
+                config = PgQuantConfig(readoutMode = WellReadoutMode.CENTER_MEAN, centerScale = 0.80),
+                unitSegmentation = segmentation
+            )
+            val centerMedian = PgQuantSampler.sample(
+                bitmap = bitmap,
+                grid = grid,
+                config = PgQuantConfig(readoutMode = WellReadoutMode.CENTER_MEDIAN, centerScale = 0.80),
+                unitSegmentation = segmentation
+            )
+            // 隔离谷区排除了紧贴孔外的 252 反光圈，背景中位数精确保持基底 210
+            assertEquals(210.0, centerMedian.sites[1].backgroundMedianGray, 1.0)
+            // 中心区中位数不受 2×2 高光拉偏（真实孔灰度 40），而中心区均值会被显著拉高
+            assertEquals(40.0, centerMedian.sites[1].foregroundGray, 1.0)
+            assertTrue(centerMean.sites[1].foregroundGray > 48.0)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     private fun fixtureBitmap(): Bitmap {
         val width = 160
         val height = 160

@@ -3,12 +3,13 @@ package com.muc.fluocolorquant.domain.detection.photometry
 import com.google.gson.annotations.SerializedName
 import com.muc.fluocolorquant.domain.detection.grid.GridPoint
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitSegmentationResult
+import kotlin.math.roundToInt
 
 /** 旧圆形固定 ROI 采样器版本，仅用于未提供单元分割结果的兼容调用。 */
 const val PG_QUANT_LEGACY_PROCESSOR_VERSION: String = "pg-quant-android-v1"
 
-/** 紧致单元前景掩膜采样器版本；生产微流控主链从本版本开始保存。 */
-const val PG_QUANT_PROCESSOR_VERSION: String = "pg-quant-android-v2-unit-mask"
+/** 紧致单元前景掩膜与 GenePix 隔离背景环/交叉质控采样器版本；生产主链从本版本开始保存。 */
+const val PG_QUANT_PROCESSOR_VERSION: String = "pg-quant-android-v3-genepix-qc"
 
 /** 全局参考原始证据使用的基础光度处理器稳定名称。 */
 const val PG_QUANT_PROCESSOR_NAME: String = "pg-quant"
@@ -44,6 +45,9 @@ enum class PhotometryFlag {
     @SerializedName("roi_out_of_bounds")
     ROI_OUT_OF_BOUNDS,
 
+    @SerializedName("readout_unavailable")
+    READOUT_UNAVAILABLE,
+
     @SerializedName("non_uniform")
     NON_UNIFORM,
 
@@ -54,8 +58,41 @@ enum class PhotometryFlag {
     HOT_PIXEL,
 
     @SerializedName("specular_highlight")
-    SPECULAR_HIGHLIGHT
+    SPECULAR_HIGHLIGHT,
+
+    @SerializedName("segmentation_anomaly")
+    SEGMENTATION_ANOMALY,
+
+    @SerializedName("negative_net_signal")
+    NEGATIVE_NET_SIGNAL,
+
+    @SerializedName("background_insufficient")
+    BACKGROUND_INSUFFICIENT,
+
+    @SerializedName("manual_bad")
+    MANUAL_BAD
 }
+
+/** 取值只改变科学采样区域和统计，不改变定位掩膜或深度模型的图像裁切。 */
+enum class WellReadoutMode {
+    FULL_MEDIAN,
+    FULL_MEAN,
+    CENTER_MEDIAN,
+    CENTER_MEAN,
+    FIVE_REGION_MEAN,
+    CENTER_PIXEL
+}
+
+/** 固定五区依次为中心、上、下、左、右。保留原始窗口值，不只保留平均后的一个数。 */
+data class WellRegionReadout(val pixelCount: Int, val rgb: RgbPhotometry, val gray: Double)
+
+data class WellReadoutEvidence(
+    val mode: WellReadoutMode,
+    val raw: WellRegionReadout,
+    val correctedRgb: RgbPhotometry,
+    val correctedGray: Double,
+    val subregions: List<WellRegionReadout> = emptyList()
+)
 
 /**
  * PG-Quant 的可追溯参数快照。
@@ -77,9 +114,26 @@ data class PgQuantConfig(
     /** 轻度边界裁切保留结果，ROI 或背景环丢失达到该比例才判为硬失败。 */
     val severeBorderClipRatioLimit: Double = 0.20,
     val contaminationRatioLimit: Double = 0.35,
-    val backgroundAnomalyRobustZ: Double = 3.5
+    val backgroundAnomalyRobustZ: Double = 3.5,
+    val readoutMode: WellReadoutMode = WellReadoutMode.FULL_MEDIAN,
+    val centerScale: Double = 0.80,
+    /** 真实单元外边界与局部背景环之间的半影隔离谷区比例（相对 pitch），防止采入弯月面和腔壁晕圈。 */
+    val valleyPitchRatio: Double = 0.06
 ) {
+    /** 中心区滑块只允许整百分比；版本来自实际参数，旧全孔中位数原样保留。 */
+    fun versionFor(base: String): String = when (readoutMode) {
+        WellReadoutMode.FULL_MEDIAN -> base
+        WellReadoutMode.CENTER_MEDIAN,
+        WellReadoutMode.CENTER_MEAN -> "$base-readout1-${readoutMode.name}-${(centerScale * 100).roundToInt()}"
+        else -> "$base-readout1-${readoutMode.name}"
+    }
+
     init {
+        require(centerScale in 0.50..0.90) { "中心区线性比例必须位于 50% 到 90%" }
+        require(kotlin.math.abs(centerScale * 100 - (centerScale * 100).roundToInt()) < 1e-8) {
+            "中心区范围必须是整百分比"
+        }
+        require(valleyPitchRatio in 0.0..0.20) { "背景隔离谷区比例必须位于 0 到 20%" }
         require(roiRadiusPitchRatio > 0.0) { "信号 ROI 半径比例必须大于 0" }
         require(annulusInnerPitchRatio > roiRadiusPitchRatio) { "背景环内径必须大于信号 ROI 半径" }
         require(annulusOuterPitchRatio > annulusInnerPitchRatio) { "背景环外径必须大于内径" }
@@ -173,8 +227,39 @@ data class BaseSitePhotometry(
     val hotPixelRatio: Double,
     val roiClipRatio: Double,
     val annulusClipRatio: Double,
-    val qc: SitePhotometryQc
-)
+    val qc: SitePhotometryQc,
+    /** 空值既可表示旧全孔中位数，也可表示本次 ROI 缺失；后者由质量标记明确区分。 */
+    val readout: WellReadoutEvidence? = null,
+    /** 前景灰度均值（借鉴 GenePix F Mean，与中位数对照识别气泡、灰尘高光和咖啡环）。 */
+    val roiMeanGray: Double = roiMedianGray,
+    /** 前景灰度稳健标准差。 */
+    val roiSigmaGray: Double = 0.0,
+    /** 局部背景灰度均值（借鉴 GenePix B Mean，与中位数对照识别背景划痕或邻孔溢光）。 */
+    val backgroundMeanGray: Double = backgroundMedianGray,
+    /** 前景像素偏离背景中位数超过 2 倍有效背景噪声的比例（对应 GenePix `% > B + 2SD`）。 */
+    val pctAboveBgPlus2Sd: Double = 0.0,
+    /** 背景均值相对中位数的归一化偏度 $|B_{\text{mean}} - B_{\text{median}}| / \sigma_B$。 */
+    val backgroundMeanMedianSkew: Double = 0.0,
+    /** 前景均值相对中位数的归一化偏度 $|F_{\text{mean}} - F_{\text{median}}| / \sigma_F$。 */
+    val foregroundMeanMedianSkew: Double = 0.0,
+    /** 实际采样的前景有效像素数（对应 GenePix `F Pixels`）。 */
+    val roiPixelCount: Int = 0,
+    /** 实际采样的局部背景有效像素数（对应 GenePix `B Pixels`）。 */
+    val annulusPixelCount: Int = 0,
+    /** 单元区域来源（如 `SEGMENTED`、`FALLBACK_MEDIAN_GEOMETRY`），供过程检视和导出追溯。 */
+    val segmentationSource: String? = null,
+    /** 当区域为兜底几何时记录具体原因（如 `LOW_CONTRAST`、`WINDOW_BOUNDARY_TOUCH`）。 */
+    val segmentationFallbackReason: String? = null,
+    /** 保存未经人工标记覆盖的算法原始可靠性，使界面切换人工 `Bad` 标记时可精确恢复。 */
+    val autoQualityReliable: Boolean = qc.qualityReliable
+) {
+    val foregroundRgb get() = readout?.raw?.rgb ?: roiMedianRgb
+    val foregroundGray get() = readout?.raw?.gray ?: roiMedianGray
+    val correctedForegroundRgb get() = readout?.correctedRgb ?: correctedMedianRgb
+    val correctedForegroundGray get() = readout?.correctedGray ?: correctedMedianGray
+    val readoutAvailable get() = PhotometryFlag.READOUT_UNAVAILABLE !in qc.flags
+    val manuallyFlaggedBad get() = PhotometryFlag.MANUAL_BAD in qc.flags
+}
 
 /** 一次全阵列 PG-Quant 结果及平场诊断。 */
 data class PgQuantResult(
@@ -216,5 +301,31 @@ data class PgQuantResult(
                 "PG-Quant 位点行列与索引不一致"
             }
         }
+    }
+
+    /**
+     * 应用或取消用户在定位复核页标记的人工异常孔（借鉴 GenePix `Flag Bad`）。
+     *
+     * 被标为 `MANUAL_BAD` 的位点保留全部原始信号证据，但 `qualityReliable` 置为 `false`，
+     * 从而自动退出比色参考白平衡、现场标准曲线拟合与样本复孔均值/中位数聚合；取消标记时
+     * 严格恢复该孔原本的自动质控结论 [BaseSitePhotometry.autoQualityReliable]。
+     */
+    fun withManualBadSites(badSiteIndices: Set<Int>): PgQuantResult {
+        val updatedSites = sites.map { site ->
+            val markBad = site.siteIndex in badSiteIndices
+            val updatedFlags = if (markBad) {
+                site.qc.flags + PhotometryFlag.MANUAL_BAD
+            } else {
+                site.qc.flags - PhotometryFlag.MANUAL_BAD
+            }
+            val updatedReliable = if (markBad) false else site.autoQualityReliable
+            site.copy(
+                qc = site.qc.copy(
+                    flags = updatedFlags,
+                    qualityReliable = updatedReliable
+                )
+            )
+        }
+        return copy(sites = updatedSites).requireValid()
     }
 }

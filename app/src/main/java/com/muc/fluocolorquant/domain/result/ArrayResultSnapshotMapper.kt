@@ -635,7 +635,14 @@ object ArrayResultSnapshotMapper {
             projectRangeMax = templateConfig.reliableRangeMax,
             calibrationRangeMin = calibrationRangeMin,
             calibrationRangeMax = calibrationRangeMax,
-            rangeRecovery = rangeRecovery
+            rangeRecovery = rangeRecovery,
+            referenceCutoff = com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec.decodeReferenceCutoff(
+                json = templateConfig.displayConfigJson,
+                expectedUnit = templateConfig.concentrationUnit
+            ),
+            reagentSummary = com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec.decodeReagentSummary(
+                json = templateConfig.displayConfigJson
+            )
         )
     }
 

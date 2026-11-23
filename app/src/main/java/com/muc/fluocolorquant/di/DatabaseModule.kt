@@ -74,7 +74,9 @@ object DatabaseModule {
             DatabaseMigrations.MIGRATION_16_17,
             DatabaseMigrations.MIGRATION_17_18,
             DatabaseMigrations.MIGRATION_18_19,
-            DatabaseMigrations.MIGRATION_19_20
+            DatabaseMigrations.MIGRATION_19_20,
+            DatabaseMigrations.MIGRATION_20_21,
+            DatabaseMigrations.MIGRATION_21_22
         )
         .addCallback(prepopulateCallback)  // 首次建库时预填充分析物与试剂
         .addCallback(DefaultUserDatabaseCallback) // 每次打开时幂等确保默认登录账户存在
@@ -573,8 +575,13 @@ object DatabaseModule {
                 val analyteId = UUID.randomUUID().toString()
                 val placeholder = "uuid_analyte_${String.format("%02d", index + 1)}"
                 analyteIds[placeholder] = analyteId
-                
-                val sql = "INSERT INTO analytes (id, name) VALUES ('$analyteId', '$name')"
+                val preset = com.muc.fluocolorquant.data.model.TumorBiomarkerPresets.findByName(name)
+                val unitSql = preset?.unit?.let { "'$it'" } ?: "NULL"
+                val maxSql = preset?.maxConcentration?.toString() ?: "NULL"
+                val channelSql = preset?.fluorescenceChannel?.let { "'$it'" } ?: "'GREEN'"
+                val cutoffSql = preset?.referenceCutoff?.toString() ?: "NULL"
+                val sql = "INSERT INTO analytes (id, name, defaultUnit, defaultMaxConcentration, defaultFluorescenceChannel, referenceCutoff) " +
+                    "VALUES ('$analyteId', '$name', $unitSql, $maxSql, $channelSql, $cutoffSql)"
                 db.execSQL(sql)
             }
             

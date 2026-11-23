@@ -182,6 +182,115 @@ class DirectProjectCreationCoordinatorTest {
         assertTrue(outcome is DirectProjectCreationOutcome.InvalidRequest)
     }
 
+    @Test
+    fun `多分析物荧光项目分别冻结各自发射通道与同单位参考截断值并隔离曲线版本`() = runTest {
+        val ceaWithPreset = Analyte(
+            id = "cea",
+            name = "CEA",
+            defaultUnit = "ng/mL",
+            defaultMaxConcentration = 100.0,
+            defaultFluorescenceChannel = "RED",
+            referenceCutoff = 5.0
+        )
+        val afpWithPreset = Analyte(
+            id = "afp",
+            name = "AFP",
+            defaultUnit = "ng/mL",
+            defaultMaxConcentration = 400.0,
+            defaultFluorescenceChannel = "BLUE",
+            referenceCutoff = 20.0
+        )
+
+        val outcome = coordinator.create(
+            request(
+                modality = DetectionModality.FLUORESCENCE,
+                analytes = listOf(
+                    DirectProjectAnalyteRequest(
+                        analyte = ceaWithPreset,
+                        concentrationUnit = "ng/mL",
+                        maxConcentration = 100.0,
+                        fluorescenceChannel = com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel.RED
+                    ),
+                    // 故意把 AFP 单位改为 pg/mL，验证单位不一致时不误冻结 ng/mL 的参考阈值
+                    DirectProjectAnalyteRequest(
+                        analyte = afpWithPreset,
+                        concentrationUnit = "pg/mL",
+                        maxConcentration = 2000.0,
+                        fluorescenceChannel = com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel.BLUE
+                    )
+                )
+            )
+        ) as DirectProjectCreationOutcome.Created
+
+        val snapshot = TemplateProjectSnapshotCodec.decode(
+            requireNotNull(outcome.project.templateSnapshotJson)
+        )
+        val ceaSnapshot = snapshot.analytes[0]
+        val afpSnapshot = snapshot.analytes[1]
+        assertEquals(
+            com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel.RED,
+            com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec.decodeFluorescenceChannel(
+                ceaSnapshot.templateConfig.displayConfigJson
+            )
+        )
+        assertEquals(
+            com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel.BLUE,
+            com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec.decodeFluorescenceChannel(
+                afpSnapshot.templateConfig.displayConfigJson
+            )
+        )
+        assertEquals("v1-ch-RED", ceaSnapshot.analysisModel.model.processorVersion)
+        assertEquals("v1-ch-BLUE", afpSnapshot.analysisModel.model.processorVersion)
+        assertEquals(
+            5.0,
+            requireNotNull(
+                com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec.decodeReferenceCutoff(
+                    ceaSnapshot.templateConfig.displayConfigJson,
+                    "ng/mL"
+                )
+            ),
+            1e-9
+        )
+        assertEquals(
+            null,
+            com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec.decodeReferenceCutoff(
+                afpSnapshot.templateConfig.displayConfigJson,
+                "pg/mL"
+            )
+        )
+    }
+
+    @Test
+    fun `关联试剂批次信息在比色与荧光新建时均写入外键并冻结溯源摘要`() = runTest {
+        val cea = Analyte(id = "cea", name = "CEA", defaultUnit = "ng/mL")
+        val outcome = coordinator.create(
+            request(
+                modality = DetectionModality.COLORIMETRIC,
+                analytes = listOf(
+                    DirectProjectAnalyteRequest(
+                        analyte = cea,
+                        concentrationUnit = "ng/mL",
+                        maxConcentration = 100.0,
+                        reagentAntibodyId = "reagent_cea_ab_1",
+                        reagentSummary = "Anti-CEA mAb (Abcam · Lot:2026A)"
+                    )
+                )
+            )
+        ) as DirectProjectCreationOutcome.Created
+
+        val snapshot = TemplateProjectSnapshotCodec.decode(
+            requireNotNull(outcome.project.templateSnapshotJson)
+        )
+        val config = snapshot.analytes.single().templateConfig
+        assertEquals("reagent_cea_ab_1", config.reagentAntibodyId)
+        assertEquals(
+            "Anti-CEA mAb (Abcam · Lot:2026A)",
+            com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec.decodeReagentSummary(
+                config.displayConfigJson
+            )
+        )
+    }
+
     private fun request(
         modality: DetectionModality = DetectionModality.FLUORESCENCE,
         carrierPreset: DirectCarrierPreset = DirectCarrierPreset.MICROFLUIDIC_10_X_10,

@@ -22,6 +22,7 @@ import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.GridSiteFlag
 import com.muc.fluocolorquant.domain.detection.grid.GridSiteKey
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
+import com.muc.fluocolorquant.domain.detection.grid.ManualGridGeometry
 import com.muc.fluocolorquant.domain.detection.grid.PgGridResult
 import com.muc.fluocolorquant.domain.detection.grid.RegularGridGeometry
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBounds
@@ -243,6 +244,7 @@ object Plate96ScientificSamplingAdapter {
             )
         }
         val transform = localization.imageTransform
+        val manual = transform.processorVersion == PLATE_MANUAL_TRANSFORM_VERSION
         val grid = PgGridResult(
             rows = Plate96LayoutContract.ROWS,
             columns = Plate96LayoutContract.COLUMNS,
@@ -250,7 +252,7 @@ object Plate96ScientificSamplingAdapter {
             rectifiedHeight = transform.normalizedHeight,
             // 极性只属于PG候选检测；通用采样器并不读取该字段。固定值仅满足内存兼容契约。
             targetPolarity = GridTargetPolarity.DARK,
-            chipRegionMethod = "plate96_circular_grid",
+            chipRegionMethod = if (manual) ManualGridGeometry.METHOD else "plate96_circular_grid",
             chipCorners = listOf(
                 GridPoint(0.0, 0.0),
                 GridPoint((transform.sourceWidth - 1).toDouble(), 0.0),
@@ -267,9 +269,9 @@ object Plate96ScientificSamplingAdapter {
             sites = sites,
             geometry = GridGeometryDiagnostics(
                 model = "plate96_orientation_and_circular_grid",
-                candidateSupportRatio = localization.diagnostics.observedSiteCount.toDouble() /
+                candidateSupportRatio = if (manual) null else localization.diagnostics.observedSiteCount.toDouble() /
                     Plate96LayoutContract.SITE_COUNT,
-                trusted = true,
+                trusted = !manual,
                 observedRatio = localization.diagnostics.observedSiteCount.toDouble() /
                     Plate96LayoutContract.SITE_COUNT,
                 geometryRmsePx = null,
@@ -279,7 +281,8 @@ object Plate96ScientificSamplingAdapter {
             ),
             frameQc = emptyList(),
             locatorName = localization.locatorName,
-            locatorVersion = localization.locatorVersion
+            locatorVersion = localization.locatorVersion,
+            manualAnchorCenters = if (manual) listOf(0, 11, 95, 84).map { sites[it].original } else null
         ).requireValid()
         return Plate96ScientificSampling(grid = grid, segmentation = segmentation)
     }
@@ -354,6 +357,8 @@ fun Plate96RunGeometrySnapshot.toResultGrid(): PgGridResult {
 }
 
 private fun ArraySiteLocalizationSource.toScientificPointSource(): GridPointSource = when (this) {
+    ArraySiteLocalizationSource.MANUAL_ANCHOR -> GridPointSource.MANUAL_ANCHOR
+    ArraySiteLocalizationSource.MANUAL_INTERPOLATED -> GridPointSource.MANUAL_INTERPOLATED
     ArraySiteLocalizationSource.GRID_IMPUTED -> GridPointSource.MODEL_IMPUTED
     ArraySiteLocalizationSource.OBJECT_DETECTION -> GridPointSource.UNADJUSTED
     ArraySiteLocalizationSource.SHAPE_REFINED,

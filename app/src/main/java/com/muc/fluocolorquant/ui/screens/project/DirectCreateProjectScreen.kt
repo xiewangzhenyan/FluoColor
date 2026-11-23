@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -55,7 +56,7 @@ import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ViewModule
-import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -70,6 +71,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -103,6 +107,7 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.SiteShape
 import com.muc.fluocolorquant.data.enums.SpectrumLightSource
+import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel
 import com.muc.fluocolorquant.domain.project.DirectCarrierPreset
 import com.muc.fluocolorquant.domain.project.ProjectDetectionDestination
 import com.muc.fluocolorquant.ui.components.FluoAnimatedSection
@@ -115,6 +120,7 @@ import com.muc.fluocolorquant.ui.components.ScientificPickerSheet
 import com.muc.fluocolorquant.ui.components.ScientificSelectionField
 import com.muc.fluocolorquant.ui.components.ScientificSelectionFieldDensity
 import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.components.detectionModeIcon
 import com.muc.fluocolorquant.ui.theme.FluoIconSize
 import com.muc.fluocolorquant.ui.theme.FluoMotion
 import com.muc.fluocolorquant.ui.theme.FluoRadius
@@ -123,6 +129,7 @@ import com.muc.fluocolorquant.ui.navigation.Screen
 import com.muc.fluocolorquant.ui.viewmodels.DirectProjectEvent
 import com.muc.fluocolorquant.ui.viewmodels.DirectProjectUiState
 import com.muc.fluocolorquant.ui.viewmodels.DirectProjectViewModel
+import com.muc.fluocolorquant.ui.viewmodels.DirectTemplateQuickOption
 import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
 import java.io.File
 import java.text.SimpleDateFormat
@@ -139,6 +146,7 @@ import java.util.Locale
 @Composable
 fun DirectCreateProjectScreen(
     navController: NavController,
+    initialTemplateId: String? = null,
     viewModel: DirectProjectViewModel = hiltViewModel(),
     userViewModel: UserViewModel = hiltViewModel()
 ) {
@@ -148,6 +156,10 @@ fun DirectCreateProjectScreen(
     val currentUser by userViewModel.currentUser.collectAsState()
     var showImageSourceDialog by rememberSaveable { mutableStateOf(false) }
     var showExistingImageDialog by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(initialTemplateId) {
+        viewModel.preselectTemplate(initialTemplateId)
+    }
 
     // 事件回调中不能调用 stringResource，因此在 Composable 上下文提前读取全部文案。
     val creationSuccess = stringResource(R.string.project_creation_success)
@@ -230,12 +242,21 @@ fun DirectCreateProjectScreen(
         if (outputFile == null) {
             toastManager.showToast(cameraFileFailed, ToastType.ERROR)
         } else {
+            val activeModality = if (state.form.creationMode == DirectProjectCreationMode.FROM_TEMPLATE) {
+                state.selectedTemplateOption?.modality ?: state.form.detectionModality
+            } else {
+                state.form.detectionModality
+            }
+            val expectedTracks = if (state.form.creationMode == DirectProjectCreationMode.FROM_TEMPLATE) {
+                state.selectedTemplateOption?.analyteLabels?.size?.coerceAtLeast(1) ?: 1
+            } else {
+                state.form.selectedAnalytes.size.coerceAtLeast(1)
+            }
             navController.navigate(
                 Screen.ImageCapture.createRoute(
                     outputPath = Uri.encode(outputFile.absolutePath),
-                    captureMode = state.form.detectionModality.code,
-                    // 光谱通道与所选分析物一一对应，拍摄页据此提示需要对齐的轨道数。
-                    expectedSpectrumTracks = state.form.selectedAnalytes.size.coerceAtLeast(1)
+                    captureMode = activeModality.code,
+                    expectedSpectrumTracks = expectedTracks
                 )
             )
         }
@@ -251,6 +272,8 @@ fun DirectCreateProjectScreen(
     DirectCreateProjectContent(
         state = state,
         onBack = navController::navigateUp,
+        onCreationModeChange = viewModel::setCreationMode,
+        onSelectTemplate = viewModel::selectTemplate,
         onProjectNameChange = viewModel::updateProjectName,
         onDetectionModeChange = viewModel::updateDetectionModality,
         onCarrierPresetChange = viewModel::updateCarrierPreset,
@@ -263,6 +286,8 @@ fun DirectCreateProjectScreen(
         },
         onAnalyteUnitChange = viewModel::updateAnalyteConcentrationUnit,
         onAnalyteMaxConcentrationChange = viewModel::updateAnalyteMaxConcentration,
+        onAnalyteFluorescenceChannelChange = viewModel::updateAnalyteFluorescenceChannel,
+        onToggleAnalyteReagent = viewModel::toggleAnalyteReagent,
         onRemoveAnalyte = viewModel::removeAnalyte,
         onChooseImage = { showImageSourceDialog = true },
         onRemoveImage = { viewModel.updateImageUri(null) },
@@ -326,6 +351,8 @@ fun DirectCreateProjectScreen(
 private fun DirectCreateProjectContent(
     state: DirectProjectUiState,
     onBack: () -> Unit,
+    onCreationModeChange: (DirectProjectCreationMode) -> Unit,
+    onSelectTemplate: (String) -> Unit,
     onProjectNameChange: (String) -> Unit,
     onDetectionModeChange: (DetectionModality) -> Unit,
     onCarrierPresetChange: (DirectCarrierPreset) -> Unit,
@@ -336,6 +363,8 @@ private fun DirectCreateProjectContent(
     onAnalytesChange: (List<com.muc.fluocolorquant.data.model.Analyte>) -> Unit,
     onAnalyteUnitChange: (String, String) -> Unit,
     onAnalyteMaxConcentrationChange: (String, String) -> Unit,
+    onAnalyteFluorescenceChannelChange: (String, FluorescenceChannel) -> Unit,
+    onToggleAnalyteReagent: (String, String) -> Unit,
     onRemoveAnalyte: (String) -> Unit,
     onChooseImage: () -> Unit,
     onRemoveImage: () -> Unit,
@@ -344,11 +373,14 @@ private fun DirectCreateProjectContent(
     var showAnalytePicker by rememberSaveable { mutableStateOf(false) }
     var unitPickerAnalyteId by rememberSaveable { mutableStateOf<String?>(null) }
     var showLightSourcePicker by rememberSaveable { mutableStateOf(false) }
+    var showTemplatePicker by rememberSaveable { mutableStateOf(false) }
     val selectedAnalytes = state.form.selectedAnalytes.mapNotNull { selection ->
         state.analytes.firstOrNull { it.id == selection.analyteId }?.let { analyte ->
             analyte to selection
         }
     }
+    val hasTemplates = state.reusableTemplates.isNotEmpty() ||
+        state.form.creationMode == DirectProjectCreationMode.FROM_TEMPLATE
 
     FluoScreenScaffold(
         title = stringResource(R.string.direct_create_title),
@@ -362,8 +394,35 @@ private fun DirectCreateProjectContent(
         }
     ) { padding ->
         FluoScrollableContent(padding = padding) {
-            // 三个区块按 0/60/120ms 错峰入场，建立"名称 → 配置 → 图片"的阅读顺序。
-            // 总延迟控制在 120ms 内，用户不会感到页面响应变慢（AGENTS.md 9.2）。
+            if (hasTemplates) {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    val modes = listOf(
+                        DirectProjectCreationMode.CUSTOM to stringResource(R.string.direct_create_mode_custom),
+                        DirectProjectCreationMode.FROM_TEMPLATE to stringResource(
+                            R.string.direct_create_mode_template,
+                            state.reusableTemplates.size
+                        )
+                    )
+                    modes.forEachIndexed { index, (mode, label) ->
+                        SegmentedButton(
+                            selected = state.form.creationMode == mode,
+                            onClick = { onCreationModeChange(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                            modifier = Modifier.heightIn(min = 44.dp),
+                            icon = {}
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
             FluoAnimatedSection {
                 OutlinedTextField(
                     value = state.form.projectName,
@@ -388,6 +447,13 @@ private fun DirectCreateProjectContent(
                 )
             }
 
+            if (state.form.creationMode == DirectProjectCreationMode.FROM_TEMPLATE) {
+                TemplateQuickReuseSection(
+                    templates = state.reusableTemplates,
+                    selected = state.selectedTemplateOption,
+                    onOpenTemplatePicker = { showTemplatePicker = true }
+                )
+            } else {
             FluoAnimatedSection(delayMillis = 60) {
             DirectConfigurationCard {
                 DirectFormSectionHeader(
@@ -448,6 +514,18 @@ private fun DirectCreateProjectContent(
                                 selected = state.form.customSiteShape,
                                 onSelect = onCustomSiteShapeChange
                             )
+                            if (state.form.customSiteShape == SiteShape.CIRCLE) {
+                                // 快捷规格只填写自定义行列，不能把相同数量或圆形误路由为标准 96 孔板。
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf(4 to 6, 6 to 8).forEach { (rows, columns) ->
+                                        FilterChip(
+                                            selected = state.form.customRowsInput == rows.toString() && state.form.customColumnsInput == columns.toString(),
+                                            onClick = { onCustomRowsChange(rows.toString()); onCustomColumnsChange(columns.toString()) },
+                                            label = { Text(stringResource(R.string.array_plate_preset, rows * columns, rows, columns)) }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 } else {
@@ -484,12 +562,20 @@ private fun DirectCreateProjectContent(
                 )
                 DirectAnalyteSelectionArea(
                     selectedAnalytes = selectedAnalytes,
+                    detectionModality = state.form.detectionModality,
                     isLoading = state.isLoading,
+                    curveCountFor = { selection ->
+                        state.compatibleCurveCount(selection, state.form.detectionModality)
+                    },
+                    reagentsForAnalyte = { analyteId -> state.reagentsByAnalyteId[analyteId].orEmpty() },
                     onOpenPicker = { showAnalytePicker = true },
                     onOpenUnitPicker = { analyteId -> unitPickerAnalyteId = analyteId },
                     onMaxConcentrationChange = onAnalyteMaxConcentrationChange,
+                    onFluorescenceChannelChange = onAnalyteFluorescenceChannelChange,
+                    onToggleReagent = onToggleAnalyteReagent,
                     onRemoveAnalyte = onRemoveAnalyte
                 )
+            }
             }
             }
 
@@ -508,6 +594,30 @@ private fun DirectCreateProjectContent(
                 }
             }
         }
+    }
+
+    if (showTemplatePicker) {
+        ScientificPickerSheet(
+            title = stringResource(R.string.direct_create_select_template_title),
+            options = state.reusableTemplates.map { tpl ->
+                val spec = if (tpl.isPlate96) {
+                    stringResource(R.string.array_analysis_plate96)
+                } else {
+                    "${tpl.rows}×${tpl.columns}"
+                }
+                com.muc.fluocolorquant.ui.components.ScientificPickerOption(
+                    id = tpl.id,
+                    title = tpl.name,
+                    subtitle = "$spec · ${tpl.analyteLabels.joinToString(", ")}"
+                )
+            },
+            selectedId = state.form.selectedTemplateId,
+            onSelect = { id ->
+                onSelectTemplate(id)
+                showTemplatePicker = false
+            },
+            onDismiss = { showTemplatePicker = false }
+        )
     }
 
     if (showAnalytePicker) {
@@ -931,13 +1041,103 @@ private fun DirectSpectrumChannelBinding(
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun TemplateQuickReuseSection(
+    templates: List<DirectTemplateQuickOption>,
+    selected: DirectTemplateQuickOption?,
+    onOpenTemplatePicker: () -> Unit
+) {
+    DirectConfigurationCard {
+        DirectFormSectionHeader(
+            icon = Icons.Outlined.AutoAwesome,
+            title = stringResource(R.string.direct_create_template_reuse_title),
+            subtitle = stringResource(R.string.direct_create_template_reuse_subtitle)
+        )
+        ScientificSelectionField(
+            label = stringResource(R.string.library_template_title),
+            value = selected?.name,
+            placeholder = stringResource(R.string.direct_create_select_template_title),
+            icon = Icons.Outlined.AutoAwesome,
+            onClick = onOpenTemplatePicker,
+            enabled = templates.isNotEmpty()
+        )
+        if (selected != null) {
+            Surface(
+                shape = RoundedCornerShape(FluoRadius.control),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val modeLabel = when (selected.modality) {
+                            DetectionModality.COLORIMETRIC -> stringResource(R.string.analysis_model_mode_colorimetric)
+                            DetectionModality.FLUORESCENCE -> stringResource(R.string.analysis_model_mode_fluorescence)
+                            DetectionModality.SPECTRUM -> stringResource(R.string.analysis_model_mode_spectrum)
+                        }
+                        val carrierLabel = if (selected.isPlate96) {
+                            stringResource(R.string.array_analysis_plate96)
+                        } else {
+                            "${selected.rows}×${selected.columns}"
+                        }
+                        TemplateReuseTag(modeLabel)
+                        TemplateReuseTag(carrierLabel)
+                        selected.analyteLabels.forEach { analyteText ->
+                            TemplateReuseTag(analyteText)
+                        }
+                    }
+                    Text(
+                        text = stringResource(
+                            R.string.direct_create_template_layout_summary,
+                            selected.standardSiteCount,
+                            selected.sampleSiteCount,
+                            selected.referenceSiteCount
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TemplateReuseTag(text: String) {
+    Surface(
+        shape = RoundedCornerShape(FluoRadius.badge),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun DirectAnalyteSelectionArea(
     selectedAnalytes: List<Pair<com.muc.fluocolorquant.data.model.Analyte, DirectAnalyteSelection>>,
+    detectionModality: DetectionModality,
     isLoading: Boolean,
+    curveCountFor: (DirectAnalyteSelection) -> Int,
+    reagentsForAnalyte: (String) -> List<com.muc.fluocolorquant.data.model.Reagent>,
     onOpenPicker: () -> Unit,
     onOpenUnitPicker: (String) -> Unit,
     onMaxConcentrationChange: (String, String) -> Unit,
+    onFluorescenceChannelChange: (String, FluorescenceChannel) -> Unit,
+    onToggleReagent: (String, String) -> Unit,
     onRemoveAnalyte: (String) -> Unit
 ) {
     ScientificSelectionField(
@@ -959,6 +1159,7 @@ private fun DirectAnalyteSelectionArea(
     )
 
     selectedAnalytes.forEach { (analyte, selection) ->
+        val compatibleCurves = curveCountFor(selection)
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(FluoRadius.control),
@@ -967,19 +1168,48 @@ private fun DirectAnalyteSelectionArea(
         ) {
             Column(
                 modifier = Modifier.padding(start = 13.dp, top = 10.dp, end = 8.dp, bottom = 13.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = analyte.name,
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    IconButton(onClick = { onRemoveAnalyte(analyte.id) }) {
+                    if (detectionModality != DetectionModality.SPECTRUM) {
+                        Surface(
+                            shape = RoundedCornerShape(FluoRadius.badge),
+                            color = if (compatibleCurves > 0) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            }
+                        ) {
+                            Text(
+                                text = if (compatibleCurves > 0) {
+                                    stringResource(R.string.direct_create_curve_available_badge, compatibleCurves)
+                                } else {
+                                    stringResource(R.string.direct_create_curve_onsite_badge)
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = if (compatibleCurves > 0) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                    }
+                    IconButton(onClick = { onRemoveAnalyte(analyte.id) }, modifier = Modifier.size(36.dp)) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = stringResource(
@@ -991,7 +1221,9 @@ private fun DirectAnalyteSelectionArea(
                     }
                 }
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 5.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.Top
                 ) {
@@ -1041,6 +1273,144 @@ private fun DirectAnalyteSelectionArea(
                         density = ScientificSelectionFieldDensity.COMPACT
                     )
                 }
+
+                // 荧光模式下开放逐分析物发射通道选择，支持红/绿/蓝光纳米探针与多通道同板联检。
+                AnimatedVisibility(
+                    visible = detectionModality == DetectionModality.FLUORESCENCE,
+                    enter = FluoMotion.expandEnter,
+                    exit = FluoMotion.expandExit
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(end = 5.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.direct_create_fluo_channel_label),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
+                        androidx.compose.foundation.layout.FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            FluorescenceChannel.entries.forEach { channel ->
+                                val selected = selection.fluorescenceChannel == channel
+                                val dotColor = when (channel) {
+                                    FluorescenceChannel.RED -> Color(0xFFE53935)
+                                    FluorescenceChannel.GREEN -> Color(0xFF2E7D32)
+                                    FluorescenceChannel.BLUE -> Color(0xFF1E88E5)
+                                    FluorescenceChannel.GRAY -> Color(0xFF607D8B)
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(FluoRadius.badge),
+                                    color = if (selected) {
+                                        dotColor.copy(alpha = 0.14f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surface
+                                    },
+                                    border = BorderStroke(
+                                        width = if (selected) 1.5.dp else 1.dp,
+                                        color = if (selected) dotColor else MaterialTheme.colorScheme.outlineVariant
+                                    ),
+                                    modifier = Modifier
+                                        .heightIn(min = 34.dp)
+                                        .clickable { onFluorescenceChannelChange(analyte.id, channel) }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .background(dotColor, CircleShape)
+                                        )
+                                        Text(
+                                            text = stringResource(
+                                                when (channel) {
+                                                    FluorescenceChannel.RED -> R.string.analyte_channel_red_short
+                                                    FluorescenceChannel.GREEN -> R.string.analyte_channel_green_short
+                                                    FluorescenceChannel.BLUE -> R.string.analyte_channel_blue_short
+                                                    FluorescenceChannel.GRAY -> R.string.analyte_channel_gray_short
+                                                }
+                                            ),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                            color = if (selected) dotColor else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val candidateReagents = reagentsForAnalyte(analyte.id)
+                if (candidateReagents.isNotEmpty() && detectionModality != DetectionModality.SPECTRUM) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(end = 5.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.direct_create_reagent_optional_label),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
+                        androidx.compose.foundation.layout.FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            candidateReagents.forEach { reagent ->
+                                val chosen = reagent.id in selection.selectedReagentIds
+                                val tagLabel = buildString {
+                                    append(reagent.reagentName)
+                                    reagent.lotNumber?.takeIf(String::isNotBlank)?.let {
+                                        append(" · ")
+                                        append(it)
+                                    }
+                                }
+                                FilterChip(
+                                    selected = chosen,
+                                    onClick = { onToggleReagent(analyte.id, reagent.id) },
+                                    label = {
+                                        Text(
+                                            text = tagLabel,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val activeCutoff = analyte.referenceCutoff?.takeIf { cutoff ->
+                    cutoff.isFinite() && cutoff > 0.0 &&
+                        (analyte.defaultUnit.isNullOrBlank() ||
+                            analyte.defaultUnit.equals(selection.concentrationUnit, ignoreCase = true))
+                }
+                if (activeCutoff != null && detectionModality != DetectionModality.SPECTRUM) {
+                    Text(
+                        text = stringResource(
+                            R.string.direct_create_cutoff_hint,
+                            formatCleanNumber(activeCutoff),
+                            selection.concentrationUnit
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
                 if (selection.maxConcentration == null) {
                     Text(
                         text = stringResource(R.string.direct_create_max_concentration_invalid),
@@ -1051,6 +1421,11 @@ private fun DirectAnalyteSelectionArea(
             }
         }
     }
+}
+
+private fun formatCleanNumber(value: Double): String {
+    val asLong = value.toLong()
+    return if (value == asLong.toDouble()) asLong.toString() else value.toString()
 }
 
 /**
@@ -1407,12 +1782,6 @@ private fun detectionModeLabel(modality: DetectionModality): String = when (moda
     DetectionModality.COLORIMETRIC -> stringResource(R.string.colorimetric_mode_short)
     DetectionModality.FLUORESCENCE -> stringResource(R.string.fluorescence_mode_short)
     DetectionModality.SPECTRUM -> stringResource(R.string.spectrum_detection)
-}
-
-private fun detectionModeIcon(modality: DetectionModality): ImageVector = when (modality) {
-    DetectionModality.COLORIMETRIC -> Icons.Default.WaterDrop
-    DetectionModality.FLUORESCENCE -> Icons.Default.Science
-    DetectionModality.SPECTRUM -> Icons.Default.Sensors
 }
 
 @Composable

@@ -1,0 +1,45 @@
+﻿case,group,size,method,output,consistency_p95,passed,failure
+black,negative,10,dbscan,0,,1,未检测到芯片区域，仅有中央兜底框
+black,negative,10,log,0,,1,LoG 候选没有形成覆盖四边的可编号晶格
+black,negative,10,m3g,0,,1,未检测到芯片区域，仅有中央兜底框
+black,negative,10,kmeans,0,,1,未检测到芯片区域，仅有中央兜底框
+white,negative,10,dbscan,0,,1,未检测到芯片区域，仅有中央兜底框
+white,negative,10,log,0,,1,LoG 候选没有形成覆盖四边的可编号晶格
+white,negative,10,m3g,0,,1,未检测到芯片区域，仅有中央兜底框
+white,negative,10,kmeans,0,,1,未检测到芯片区域，仅有中央兜底框
+noise_37,negative,10,dbscan,0,,1,密度簇不足、孔距不规则或首行列不唯一
+noise_37,negative,10,log,0,,1,LoG 候选没有形成覆盖四边的可编号晶格
+noise_37,negative,10,m3g,0,,1,分隔线数 61×75 不符 9×9
+noise_37,negative,10,kmeans,1,,0,
+noise_23,negative,10,dbscan,0,,1,候选不足
+noise_23,negative,10,log,0,,1,LoG 候选没有形成覆盖四边的可编号晶格
+noise_23,negative,10,m3g,0,,1,分隔线数 62×74 不符 9×9
+noise_23,negative,10,kmeans,0,,1,候选不足或行列无法组网
+noise_59,negative,10,dbscan,0,,1,候选不足
+noise_59,negative,10,log,0,,1,LoG 候选没有形成覆盖四边的可编号晶格
+noise_59,negative,10,m3g,0,,1,分隔线数 61×53 不符 9×9
+noise_59,negative,10,kmeans,0,,1,候选不足或行列无法组网
+real_10x10_01_warp,real_warp,10,dbscan,0,,0,密度簇不足、孔距不规则或首行列不唯一
+real_10x10_01_warp,real_warp,10,log,1,3.0091516652669856,0,
+real_10x10_01_warp,real_warp,10,m3g,0,,0,分隔线数 74×74 不符 9×9
+real_10x10_01_warp,real_warp,10,kmeans,1,0.7154722809791565,0,
+real_10x10_02_warp,real_warp,10,dbscan,0,,0,密度簇不足、孔距不规则或首行列不唯一
+real_10x10_02_warp,real_warp,10,log,0,,0,LoG 网格越界或局部与四边支撑不足
+real_10x10_02_warp,real_warp,10,m3g,0,,0,分隔线数 75×75 不符 9×9
+real_10x10_02_warp,real_warp,10,kmeans,1,0.41416135430336,0,
+real_15x15_01_warp,real_warp,15,dbscan,1,0.3890557587146759,0,
+real_15x15_01_warp,real_warp,15,log,1,0.07510529838369719,1,
+real_15x15_01_warp,real_warp,15,m3g,0,,0,分隔线数 74×74 不符 14×14
+real_15x15_01_warp,real_warp,15,kmeans,1,1.7749567031860352,0,
+real_15x15_02_warp,real_warp,15,dbscan,1,0.5091581344604492,0,
+real_15x15_02_warp,real_warp,15,log,1,0.03740889216920995,1,
+real_15x15_02_warp,real_warp,15,m3g,0,,0,分隔线数 74×75 不符 14×14
+real_15x15_02_warp,real_warp,15,kmeans,1,0.4241401255130768,0,
+real_15x15_03_warp,real_warp,15,dbscan,1,0.4035334289073944,0,
+real_15x15_03_warp,real_warp,15,log,1,0.03944666512147821,1,
+real_15x15_03_warp,real_warp,15,m3g,0,,0,分隔线数 74×74 不符 14×14
+real_15x15_03_warp,real_warp,15,kmeans,1,0.452545702457428,0,
+real_15x15_04_warp,real_warp,15,dbscan,1,0.34900927543640137,0,
+real_15x15_04_warp,real_warp,15,log,1,0.05853645519151382,1,
+real_15x15_04_warp,real_warp,15,m3g,0,,0,分隔线数 75×75 不符 14×14
+real_15x15_04_warp,real_warp,15,kmeans,1,3.929337501525879,0,

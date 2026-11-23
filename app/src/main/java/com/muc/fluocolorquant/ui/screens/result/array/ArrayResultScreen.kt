@@ -112,6 +112,7 @@ import com.muc.fluocolorquant.utils.math.FittingEngine
 import kotlin.math.abs
 import kotlin.math.sqrt
 import com.muc.fluocolorquant.ui.theme.FluoRadius
+import com.muc.fluocolorquant.ui.theme.FluoTheme
 
 const val ARRAY_RESULT_SCREEN_TAG: String = "array_result_screen"
 const val ARRAY_RESULT_ANALYTE_TAB_TAG: String = "array_result_tab_analytes"
@@ -854,6 +855,7 @@ private fun ArrayAnalytesTab(
                 }
             }
             if (selectedAnalyte != null) {
+                item { ArrayFrozenReadoutSummary(snapshot, selectedAnalyte.analyteId) }
                 item {
                     AnalyteSnapshotCard(
                         analyte = selectedAnalyte,
@@ -1164,11 +1166,35 @@ private fun ArraySampleConcentrationTable(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = stringResource(R.string.array_statistics_sample_table_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.array_statistics_sample_table_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                analyte.referenceCutoff?.takeIf { it.isFinite() && it > 0.0 }?.let { cutoff ->
+                    Surface(
+                        shape = RoundedCornerShape(FluoRadius.badge),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.array_result_cutoff_header,
+                                formatArrayHeatmapValue(cutoff),
+                                analyte.concentrationUnit
+                            ),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
             if (records.isEmpty()) {
                 Text(
                     text = stringResource(R.string.array_statistics_sample_table_empty),
@@ -1222,6 +1248,9 @@ private fun ArraySampleConcentrationTable(
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium
                                 )
+                                val aboveCutoff = analyte.referenceCutoff?.let { cutoff ->
+                                    concentration != null && concentration.isFinite() && concentration > cutoff
+                                } == true
                                 Text(
                                     text = when {
                                         hasBoundary && rangeStatus == "BELOW_RANGE" -> stringResource(
@@ -1239,6 +1268,11 @@ private fun ArraySampleConcentrationTable(
                                         ) -> stringResource(
                                             R.string.array_statistics_outside_project_range
                                         )
+                                        aboveCutoff -> stringResource(
+                                            R.string.array_result_above_cutoff,
+                                            formatArrayHeatmapValue(requireNotNull(analyte.referenceCutoff)),
+                                            analyte.concentrationUnit
+                                        )
                                         else -> stringResource(R.string.array_statistics_sample_result)
                                     },
                                     /*
@@ -1246,7 +1280,11 @@ private fun ArraySampleConcentrationTable(
                                      * 外的单侧界限，不能继续套用标准曲线“已外推”的说明。
                                      */
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (aboveCutoff) {
+                                        FluoTheme.semantic.warning
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
                                 )
                             }
                             Text(
@@ -1420,6 +1458,13 @@ private fun AnalyteSnapshotCard(
                         formatArrayHeatmapValue(calibrationMax),
                         analyte.concentrationUnit
                     ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            analyte.reagentSummary?.takeIf(String::isNotBlank)?.let { summary ->
+                Text(
+                    text = stringResource(R.string.array_result_reagent_summary, summary),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

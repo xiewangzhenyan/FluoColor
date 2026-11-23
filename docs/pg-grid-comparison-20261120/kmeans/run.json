@@ -1,0 +1,20 @@
+{
+  "opencv": "4.13.0",
+  "numpy": "2.2.6",
+  "python": "3.12.7 | packaged by Anaconda, Inc. | (main, Oct  4 2024, 13:17:27) [MSC v.1929 64 bit (AMD64)]",
+  "seeds": [
+    7321,
+    14891
+  ],
+  "reference_commit": "bc9b9efd0a7f5175eff31a6bd96c5d62891dfb94",
+  "p95_pitch_limit": 0.2,
+  "code_sha256": {
+    "compare_locators.py": "cf9e6f09f38c483edb494304e891ecfb45efc99aabbd16335dc88b85099a3711"
+  },
+  "suite": "kmeans",
+  "axis_seed": 37,
+  "init": "k-means++",
+  "attempts": 10,
+  "max_iterations": 100,
+  "epsilon_px": 0.01
+}

@@ -6,7 +6,13 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import com.muc.fluocolorquant.domain.detection.array.ArrayCoordinateTransformer
 import com.muc.fluocolorquant.domain.detection.array.ArrayOrientationSnapshot
+import com.muc.fluocolorquant.domain.detection.array.ArrayImageTransformSnapshot
 import com.muc.fluocolorquant.domain.detection.array.ArrayQuarterTurn
+import org.opencv.android.Utils
+import org.opencv.core.CvType
+import org.opencv.core.Mat
+import org.opencv.core.Size
+import org.opencv.imgproc.Imgproc
 
 /**
  * 使用整数旋转/镜像矩阵生成标准方向工作图。
@@ -15,6 +21,23 @@ import com.muc.fluocolorquant.domain.detection.array.ArrayQuarterTurn
  * 被修改或重新编码为JPEG。该工作图用于定位确认和圆孔裁切预览，原图仍作为科研原件保存。
  */
 object Plate96BitmapNormalizer {
+    /** 手动四角有真实的透视矩阵，而非仅 90 度旋转。工作图只预览，不用于科学取值。 */
+    fun normalizePerspective(source: Bitmap, transform: ArrayImageTransformSnapshot): Bitmap {
+        val input = Mat()
+        val output = Mat()
+        val forward = Mat(3, 3, CvType.CV_64F)
+        try {
+            Utils.bitmapToMat(source, input)
+            forward.put(0, 0, *transform.sourceToNormalized.toDoubleArray())
+            Imgproc.warpPerspective(input, output, forward,
+                Size(transform.normalizedWidth.toDouble(), transform.normalizedHeight.toDouble()), Imgproc.INTER_LINEAR)
+            return Bitmap.createBitmap(transform.normalizedWidth, transform.normalizedHeight, Bitmap.Config.ARGB_8888)
+                .also { Utils.matToBitmap(output, it) }
+        } finally {
+            listOf(input, output, forward).forEach(Mat::release)
+        }
+    }
+
     fun normalize(source: Bitmap, orientation: ArrayOrientationSnapshot): Bitmap {
         orientation.requireValid()
         val transform = ArrayCoordinateTransformer.createImageTransform(

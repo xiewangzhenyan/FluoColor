@@ -114,6 +114,69 @@ class DirectProjectModelMatchingTest {
             assertEquals(SpectrumLightSource.MERCURY, viewModel.uiState.value.form.spectrumLightSource)
         }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `选择分析物后自动带出各自档案单位量程与荧光通道并隔离红绿曲线计数`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val cea = Analyte(
+                id = "cea",
+                name = "CEA",
+                defaultUnit = "ng/mL",
+                defaultMaxConcentration = 100.0,
+                defaultFluorescenceChannel = "RED",
+                referenceCutoff = 5.0
+            )
+            val ca125 = Analyte(
+                id = "ca125",
+                name = "CA125",
+                defaultUnit = "U/mL",
+                defaultMaxConcentration = 500.0,
+                defaultFluorescenceChannel = "GREEN",
+                referenceCutoff = 35.0
+            )
+            val preferences = FakeProjectCreationPreferences(
+                detectionMode = DetectionModality.FLUORESCENCE.code,
+                customRows = 10,
+                customColumns = 10,
+                lightSource = SpectrumLightSource.LED_WHITE,
+                defaultUnit = "ng/mL",
+                units = setOf("ng/mL", "pg/mL")
+            )
+            val viewModel = DirectProjectViewModel(
+                analyteRepository = object : AnalyteRepository {
+                    private val list = listOf(cea, ca125)
+                    override fun getAllAnalytes(): Flow<List<Analyte>> = flowOf(list)
+                    override suspend fun getAnalyteById(id: String): Analyte? = list.find { it.id == id }
+                    override suspend fun getAnalyteByName(name: String): Analyte? = list.find { it.name == name }
+                    override suspend fun addAnalyte(name: String): Boolean = false
+                    override suspend fun updateAnalyte(id: String, name: String): Boolean = false
+                    override suspend fun deleteAnalyte(analyte: Analyte) = Unit
+                    override suspend fun deleteAnalyte(id: String) = Unit
+                },
+                projectCreationPreferences = preferences,
+                coordinator = DirectProjectCreationCoordinator(FakeProjectRepository())
+            )
+            advanceUntilIdle()
+
+            viewModel.updateSelectedAnalytes(listOf("cea", "ca125"))
+            advanceUntilIdle()
+
+            val selections = viewModel.uiState.value.form.selectedAnalytes
+            assertTrue("U/mL" in viewModel.uiState.value.concentrationUnits)
+            assertEquals("ng/mL", selections[0].concentrationUnit)
+            assertEquals("100", selections[0].maxConcentrationInput)
+            assertEquals(
+                com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel.RED,
+                selections[0].fluorescenceChannel
+            )
+            assertEquals("U/mL", selections[1].concentrationUnit)
+            assertEquals("500", selections[1].maxConcentrationInput)
+            assertEquals(
+                com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel.GREEN,
+                selections[1].fluorescenceChannel
+            )
+        }
+
     @Test
     fun `所有可见设置都有生产消费者且空设置不再公开`() {
         val contracts = VisibleSettingProductionContracts.all
@@ -125,13 +188,69 @@ class DirectProjectModelMatchingTest {
             "pixel_extraction_method",
             "image_preprocessing_enabled",
             "spectrum_default_track_count",
-            "spectrum_max_track_count"
+            "spectrum_max_track_count",
+            "array_analysis_defaults_v1"
         ).forEach { removedSetting ->
             assertFalse(removedSetting in visibleIds)
         }
         assertTrue("default_rows" in visibleIds)
         assertTrue("default_columns" in visibleIds)
         assertTrue("spectrum_default_light_source" in visibleIds)
+        assertTrue("global_array_readout_defaults_v1" in visibleIds)
+    }
+
+    @Test
+    fun `全局孔内取值默认配置支持旧版档案无损迁移并强制定位算法回AUTO`() {
+        val migrated = SettingsRepository.decodeGlobalArrayReadoutDefaults(
+            serialized = null,
+            legacyEntries = listOf(
+                "AUTO|FULL_MEDIAN|INDIVIDUAL|0.085|0.42|0.8",
+                "KMEANS|CENTER_MEDIAN|MEAN|0.12|0.35|0.75"
+            )
+        )
+        assertEquals(
+            com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode.AUTO,
+            migrated.locator
+        )
+        assertEquals(
+            com.muc.fluocolorquant.domain.detection.photometry.WellReadoutMode.CENTER_MEDIAN,
+            migrated.readout
+        )
+        assertEquals(
+            com.muc.fluocolorquant.domain.detection.array.MultiHoleStatistic.MEAN,
+            migrated.multiHoleStatistic
+        )
+        assertEquals(0.75, migrated.centerScale, 1e-6)
+        assertEquals(0.085, migrated.gridMargin, 1e-6)
+        assertEquals(0.42, migrated.matchingDistance, 1e-6)
+
+        val direct = SettingsRepository.decodeGlobalArrayReadoutDefaults(
+            serialized = "CENTER_MEAN|MEDIAN|0.65",
+            legacyEntries = listOf("KMEANS|FULL_MEAN|INDIVIDUAL|0.12|0.35|0.8")
+        )
+        assertEquals(
+            com.muc.fluocolorquant.domain.detection.photometry.WellReadoutMode.CENTER_MEAN,
+            direct.readout
+        )
+        assertEquals(
+            com.muc.fluocolorquant.domain.detection.array.MultiHoleStatistic.MEDIAN,
+            direct.multiHoleStatistic
+        )
+        assertEquals(0.65, direct.centerScale, 1e-6)
+    }
+
+    @Test
+    fun `从模板复用模式仅需项目名称与实验图即可提交无需重填分析物`() {
+        val incomplete = com.muc.fluocolorquant.ui.screens.project.DirectProjectFormState(
+            creationMode = com.muc.fluocolorquant.ui.screens.project.DirectProjectCreationMode.FROM_TEMPLATE,
+            selectedTemplateId = "tpl-1",
+            projectName = "复测样本批次01",
+            imageUri = null
+        )
+        assertFalse(incomplete.canSubmit)
+
+        val ready = incomplete.copy(imageUri = "content://chip/sample01.png")
+        assertTrue(ready.canSubmit)
     }
 
     @Test

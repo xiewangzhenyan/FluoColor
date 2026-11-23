@@ -280,7 +280,7 @@ fun ArrayImageOverlay(
                     }
                 }
             }
-            ArrayImageOverlayLegend()
+            ArrayImageOverlayLegend(manual = sites.firstOrNull()?.geometry?.source?.isManual == true)
             Text(
                 text = stringResource(R.string.array_image_enhancement_disclaimer),
                 style = MaterialTheme.typography.bodySmall,
@@ -304,6 +304,9 @@ private fun overlayStyle(site: ArrayPhysicalSiteResult): ArrayOverlayStyle {
     }
     return when (site.geometry.source) {
         GridPointSource.CANDIDATE_REFINED -> ArrayOverlayStyle(Color(0xFF2E7D32))
+        GridPointSource.MANUAL_ANCHOR -> ArrayOverlayStyle(Color(0xFF1976D2))
+        GridPointSource.MANUAL_INTERPOLATED -> ArrayOverlayStyle(Color(0xFF8A67A6))
+        GridPointSource.USER_ADJUSTED -> ArrayOverlayStyle(Color(0xFF0288D1))
         GridPointSource.MODEL_IMPUTED -> ArrayOverlayStyle(Color(0xFFF9A825))
         GridPointSource.UNADJUSTED -> ArrayOverlayStyle(Color(0xFF546E7A))
     }
@@ -332,23 +335,28 @@ private fun Modifier.pointerInputForArrayOverlay(
 }
 
 @Composable
-private fun ArrayImageOverlayLegend() {
+private fun ArrayImageOverlayLegend(manual: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        OverlayLegendItem(
-            color = Color(0xFF2E7D32),
-            label = stringResource(R.string.array_image_legend_candidate),
-            tag = ARRAY_IMAGE_LEGEND_CANDIDATE_TAG
-        )
-        OverlayLegendItem(
-            color = Color(0xFFF9A825),
-            label = stringResource(R.string.array_image_legend_imputed),
-            tag = ARRAY_IMAGE_LEGEND_IMPUTED_TAG
-        )
-        OverlayLegendItem(
-            color = Color(0xFF546E7A),
-            label = stringResource(R.string.array_image_legend_unadjusted),
-            tag = ARRAY_IMAGE_LEGEND_UNADJUSTED_TAG
-        )
+        if (manual) {
+            OverlayLegendItem(Color(0xFF1976D2), stringResource(R.string.grid_manual_anchor), "array_image_manual_anchor")
+            OverlayLegendItem(Color(0xFF8A67A6), stringResource(R.string.grid_manual_inferred), "array_image_manual_inferred")
+        } else {
+            OverlayLegendItem(
+                color = Color(0xFF2E7D32),
+                label = stringResource(R.string.array_image_legend_candidate),
+                tag = ARRAY_IMAGE_LEGEND_CANDIDATE_TAG
+            )
+            OverlayLegendItem(
+                color = Color(0xFFF9A825),
+                label = stringResource(R.string.array_image_legend_imputed),
+                tag = ARRAY_IMAGE_LEGEND_IMPUTED_TAG
+            )
+            OverlayLegendItem(
+                color = Color(0xFF546E7A),
+                label = stringResource(R.string.array_image_legend_unadjusted),
+                tag = ARRAY_IMAGE_LEGEND_UNADJUSTED_TAG
+            )
+        }
         OverlayLegendItem(
             color = Color(0xFFD32F2F),
             label = stringResource(R.string.array_image_legend_failure),

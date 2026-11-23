@@ -13,7 +13,12 @@ import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
 import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
 import com.muc.fluocolorquant.domain.detection.grid.PgGridImageRectifier
 import com.muc.fluocolorquant.domain.detection.grid.PgGridResult
+import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
+import com.muc.fluocolorquant.domain.detection.photometry.WellReadoutGeometry
+import com.muc.fluocolorquant.domain.detection.photometry.WellReadoutMode
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitRegion
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitRegionSource
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -23,6 +28,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.hypot
 import kotlin.math.ln1p
 import kotlin.math.max
 import kotlin.math.min
@@ -160,7 +166,8 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
                 stage = "original_geometry",
                 order = 1
             )
-            records += writeEvidence(
+            // 这张形态学响应对应 PG-Grid，不伪装成霍夫、MSER 或行列投影的候选证据。
+            if (grid.manualAnchorCenters == null && ArrayLocatorMode.entries.none { it != ArrayLocatorMode.AUTO && it.name == grid.locatorName }) records += writeEvidence(
                 outputDirectory,
                 CaptureRole.PROCESS_CANDIDATE_RESPONSE,
                 "02_candidate_response.png",
@@ -197,6 +204,8 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
                         "roiRadiusPx" to quant.roiRadiusPx,
                         "annulusInnerPx" to quant.annulusInnerPx,
                         "annulusOuterPx" to quant.annulusOuterPx,
+                        "readoutMode" to quant.config.readoutMode.name,
+                        "centerScale" to quant.config.centerScale,
                         "segmentedUnitCount" to quant.unitSegmentation?.segmentedCount,
                         "fallbackUnitCount" to quant.unitSegmentation?.fallbackCount
                     )
@@ -390,14 +399,88 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
             style = Paint.Style.STROKE
             strokeWidth = roiPaint.strokeWidth
         }
+        val annulusFillPaint = Paint().apply {
+            color = Color.argb(92, 255, 179, 0)
+            style = Paint.Style.FILL
+        }
+        val selectedPaint = Paint().apply { color = Color.argb(134, 91, 212, 238); style = Paint.Style.FILL }
+        val segmentation = quant.unitSegmentation
+        val valleyPx = max(2, (quant.pitchPx * quant.config.valleyPitchRatio).roundToInt())
+
         grid.sites.forEach { site ->
             val x = site.rectified.x.toFloat()
             val y = site.rectified.y.toFloat()
-            val region = quant.unitSegmentation?.regions?.getOrNull(site.siteIndex)
+            val region = segmentation?.regions?.getOrNull(site.siteIndex)
             if (region == null) {
-                // 旧量化结果继续按 v1 圆形 ROI 绘制，确保历史处理证据可解释。
+                // 旧量化结果继续按 v1 圆形 ROI 与固定双圆环绘制，确保历史处理证据可解释。
                 canvas.drawCircle(x, y, quant.roiRadiusPx.toFloat(), roiPaint)
+                canvas.drawCircle(x, y, quant.annulusInnerPx.toFloat(), annulusPaint)
+                canvas.drawCircle(x, y, quant.annulusOuterPx.toFloat(), annulusPaint)
             } else {
+                // 与 PgQuantSampler 生产路径严格同源：绘制排除本孔隔离谷区和八邻域掩膜后的真实背景采样带。
+                val samplingCenter = if (region.source == ArrayUnitRegionSource.SEGMENTED) {
+                    val segCenter = com.muc.fluocolorquant.domain.detection.grid.GridPoint(
+                        region.bounds.centerX,
+                        region.bounds.centerY
+                    )
+                    if (hypot(segCenter.x - site.rectified.x, segCenter.y - site.rectified.y) <= quant.pitchPx * 0.18) {
+                        segCenter
+                    } else {
+                        site.rectified
+                    }
+                } else {
+                    site.rectified
+                }
+                val neighbors = ArrayList<ArrayUnitRegion>(8)
+                for (r in (site.key.rowIndex - 1)..(site.key.rowIndex + 1)) {
+                    if (r !in 0 until segmentation.rows) continue
+                    for (c in (site.key.columnIndex - 1)..(site.key.columnIndex + 1)) {
+                        if (c !in 0 until segmentation.columns) continue
+                        if (r == site.key.rowIndex && c == site.key.columnIndex) continue
+                        neighbors += segmentation.regions[r * segmentation.columns + c]
+                    }
+                }
+                val unitHalfSpan = max(region.bounds.width, region.bounds.height) / 2.0
+                val effectiveAnnulusOuter = max(
+                    quant.annulusOuterPx,
+                    min(
+                        0.56 * quant.pitchPx,
+                        unitHalfSpan + valleyPx + max(3.0, 0.12 * quant.pitchPx)
+                    )
+                )
+                val reach = ceil(effectiveAnnulusOuter).toInt() + 1
+                val minY = (samplingCenter.y.toInt() - reach).coerceAtLeast(0)
+                val maxY = (samplingCenter.y.toInt() + reach).coerceAtMost(bitmap.height - 1)
+                val minX = (samplingCenter.x.toInt() - reach).coerceAtLeast(0)
+                val maxX = (samplingCenter.x.toInt() + reach).coerceAtMost(bitmap.width - 1)
+                for (py in minY..maxY) {
+                    var spanStart = -1
+                    for (px in minX..(maxX + 1)) {
+                        val inValidBg = if (px <= maxX) {
+                            val dist = hypot(px - samplingCenter.x, py - samplingCenter.y)
+                            !region.contains(px, py) &&
+                                dist > quant.annulusInnerPx &&
+                                dist <= effectiveAnnulusOuter &&
+                                !region.isWithinExclusionZone(px, py, valleyPx) &&
+                                neighbors.none { nb -> nb.isWithinExclusionZone(px, py, valleyPx) }
+                        } else {
+                            false
+                        }
+                        if (inValidBg && spanStart < 0) {
+                            spanStart = px
+                        } else if (!inValidBg && spanStart >= 0) {
+                            canvas.drawRect(
+                                spanStart.toFloat(),
+                                py.toFloat(),
+                                px.toFloat(),
+                                py + 1f,
+                                annulusFillPaint
+                            )
+                            spanStart = -1
+                        }
+                    }
+                }
+
                 val bounds = region.bounds
                 val rect = RectF(
                     bounds.left.toFloat(),
@@ -410,9 +493,28 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
                 } else {
                     canvas.drawRect(rect, roiPaint)
                 }
+                if (quant.config.readoutMode in setOf(
+                        WellReadoutMode.CENTER_MEDIAN,
+                        WellReadoutMode.CENTER_MEAN,
+                        WellReadoutMode.FIVE_REGION_MEAN,
+                        WellReadoutMode.CENTER_PIXEL
+                    )
+                ) {
+                    val geometry = WellReadoutGeometry(quant.config, samplingCenter, region, quant.roiRadiusPx)
+                    for (pixelY in bounds.top until bounds.bottom) {
+                        var start = -1
+                        // 绘制真实掩膜与选区的交集，而不是拿“理想五点”替代被裁切或不规则的前景。
+                        for (pixelX in bounds.left..bounds.right) {
+                            val inside = region.contains(pixelX, pixelY) && geometry.region(pixelX, pixelY) >= 0
+                            if (inside && start < 0) start = pixelX
+                            else if (!inside && start >= 0) {
+                                canvas.drawRect(start.toFloat(), pixelY.toFloat(), pixelX.toFloat(), pixelY + 1f, selectedPaint)
+                                start = -1
+                            }
+                        }
+                    }
+                }
             }
-            canvas.drawCircle(x, y, quant.annulusInnerPx.toFloat(), annulusPaint)
-            canvas.drawCircle(x, y, quant.annulusOuterPx.toFloat(), annulusPaint)
         }
         return bitmap
     }
@@ -477,7 +579,7 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
             val top = padding + site.rowIndex * cellHeight
             val right = left + cellWidth
             val bottom = top + cellHeight
-            val rgb = site.correctedMedianRgb
+            val rgb = site.correctedForegroundRgb
             val color = Color.rgb(
                 rgb.red.roundToInt().coerceIn(0, 255),
                 rgb.green.roundToInt().coerceIn(0, 255),
@@ -536,6 +638,9 @@ class AndroidGridProcessingEvidenceWriter @Inject constructor(
 
     private fun sourceColor(source: GridPointSource): Int = when (source) {
         GridPointSource.CANDIDATE_REFINED -> Color.rgb(0, 174, 112)
+        GridPointSource.MANUAL_ANCHOR -> Color.rgb(25, 118, 210)
+        GridPointSource.MANUAL_INTERPOLATED -> Color.rgb(138, 103, 166)
+        GridPointSource.USER_ADJUSTED -> Color.rgb(2, 136, 209)
         GridPointSource.MODEL_IMPUTED -> Color.rgb(255, 171, 0)
         GridPointSource.UNADJUSTED -> Color.rgb(84, 110, 122)
     }

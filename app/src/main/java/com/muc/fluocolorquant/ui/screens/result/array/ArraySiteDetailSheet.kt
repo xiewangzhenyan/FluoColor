@@ -191,6 +191,12 @@ private fun CommonSiteInformation(
             label = stringResource(R.string.array_site_result_value),
             value = measurementResultText(measurement, analyte)
         )
+        analyte?.referenceCutoff?.takeIf { it.isFinite() && it > 0.0 }?.let { cutoff ->
+            DetailRow(
+                label = stringResource(R.string.array_site_reference_cutoff),
+                value = "≤ ${formatArrayHeatmapValue(cutoff)} ${analyte.concentrationUnit}"
+            )
+        }
         DetailRow(
             label = stringResource(R.string.array_site_reliable_range_status),
             value = reliableRangeLabel(measurement)
@@ -229,7 +235,7 @@ private fun CommonSiteInformation(
             label = stringResource(R.string.array_site_geometry_source),
             value = geometrySourceLabel(site.geometry.source)
         )
-        DetailRow(
+        if (!site.geometry.source.isManual) DetailRow(
             label = stringResource(R.string.array_site_geometry_confidence),
             value = stringResource(
                 R.string.array_site_percent_value,
@@ -358,12 +364,12 @@ private fun FluorescenceDetailSection(detail: ArrayMeasurementDetail.Fluorescenc
         )
         DetailRow(
             stringResource(R.string.array_site_raw_intensity),
-            formatArrayHeatmapValue(channelValue(base.roiMedianRgb, base.roiMedianGray, site.channel))
+            formatArrayHeatmapValue(channelValue(base.foregroundRgb, base.foregroundGray, site.channel))
         )
         DetailRow(
             stringResource(R.string.array_site_corrected_intensity),
             formatArrayHeatmapValue(
-                channelValue(base.correctedMedianRgb, base.correctedMedianGray, site.channel)
+                channelValue(base.correctedForegroundRgb, base.correctedForegroundGray, site.channel)
             )
         )
         DetailRow(
@@ -392,6 +398,20 @@ private fun FluorescenceDetailSection(detail: ArrayMeasurementDetail.Fluorescenc
             stringResource(R.string.array_site_hot_pixel_ratio),
             stringResource(R.string.array_site_percent_value, base.hotPixelRatio * 100.0)
         )
+        if (base.roiPixelCount > 0) {
+            DetailRow(
+                stringResource(R.string.array_site_pct_above_b2sd),
+                stringResource(R.string.array_site_percent_value, base.pctAboveBgPlus2Sd * 100.0)
+            )
+            DetailRow(
+                stringResource(R.string.array_site_pixel_counts),
+                stringResource(
+                    R.string.array_site_pixel_counts_value,
+                    base.roiPixelCount,
+                    base.annulusPixelCount
+                )
+            )
+        }
         DetailRow(
             stringResource(R.string.array_site_detectability),
             if (site.qc.signalDetectable) {
@@ -460,6 +480,28 @@ private fun BasePhotometryRows(base: BaseSitePhotometry) {
         stringResource(R.string.array_site_snr),
         formatArrayHeatmapValue(base.signalToNoiseRatio)
     )
+    if (base.roiPixelCount > 0) {
+        DetailRow(
+            stringResource(R.string.array_site_fg_mean_median),
+            stringResource(
+                R.string.array_site_dual_value,
+                formatArrayHeatmapValue(base.roiMeanGray),
+                formatArrayHeatmapValue(base.roiMedianGray)
+            )
+        )
+        DetailRow(
+            stringResource(R.string.array_site_pct_above_b2sd),
+            stringResource(R.string.array_site_percent_value, base.pctAboveBgPlus2Sd * 100.0)
+        )
+        DetailRow(
+            stringResource(R.string.array_site_pixel_counts),
+            stringResource(
+                R.string.array_site_pixel_counts_value,
+                base.roiPixelCount,
+                base.annulusPixelCount
+            )
+        )
+    }
 }
 
 @Composable
@@ -617,6 +659,9 @@ internal fun arraySiteRoleLabel(code: String?): String {
 internal fun geometrySourceLabel(source: GridPointSource): String {
     return when (source) {
         GridPointSource.CANDIDATE_REFINED -> stringResource(R.string.array_geometry_candidate_refined)
+        GridPointSource.MANUAL_ANCHOR -> stringResource(R.string.grid_manual_anchor)
+        GridPointSource.MANUAL_INTERPOLATED -> stringResource(R.string.grid_manual_inferred)
+        GridPointSource.USER_ADJUSTED -> stringResource(R.string.array_geometry_user_adjusted)
         GridPointSource.MODEL_IMPUTED -> stringResource(R.string.array_geometry_model_imputed)
         GridPointSource.UNADJUSTED -> stringResource(R.string.array_geometry_unadjusted)
     }

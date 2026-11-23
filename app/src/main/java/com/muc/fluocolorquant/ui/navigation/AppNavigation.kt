@@ -79,11 +79,22 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             NewProjectScreen(navController = navController)
         }
 
-        // 直接新建只有一个生产路由；旧 quick_create_project 仅作为入站兼容别名。
+        // 统一新建项目入口（支持可选 templateId 直接进入从模板一键复用模式）
         composable(
-            route = Screen.DirectCreateProject.route
-        ) {
-            DirectCreateProjectScreen(navController = navController)
+            route = "${Screen.DirectCreateProject.route}?templateId={templateId}",
+            arguments = listOf(
+                navArgument("templateId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val templateId = backStackEntry.arguments?.getString("templateId")
+            DirectCreateProjectScreen(
+                navController = navController,
+                initialTemplateId = templateId
+            )
         }
         composable(route = Screen.DirectCreateProject.LEGACY_ROUTE) {
             DirectCreateProjectScreen(navController = navController)
@@ -229,8 +240,12 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             AppSettingsScreen(navController = navController)
         }
 
-        // 检测设置页面
+        // 检测设置页面（含旧版 array_analysis_settings 入站路由兼容）
         composable(route = Screen.DetectionSettings.route) {
+            DetectionSettingsScreen(navController = navController)
+        }
+
+        composable(route = Screen.ArrayAnalysisSettings.route) {
             DetectionSettingsScreen(navController = navController)
         }
 
@@ -241,16 +256,30 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             )
         }
 
-        // 分析物管理页面
+        // 分析物管理页面（支持一键联动跳转该标志物的试剂批次库）
         composable(route = Screen.AnalyteManagement.route) {
             AnalyteManagementScreen(
-                navigateBack = { navController.navigateUp() }
+                navigateBack = { navController.navigateUp() },
+                onOpenReagents = { analyteId ->
+                    navController.navigate(Screen.ReagentLibrary.createRoute(analyteId))
+                }
             )
         }
 
         // 试剂库页面
-        composable(route = Screen.ReagentLibrary.route) {
+        composable(
+            route = "${Screen.ReagentLibrary.route}?analyteId={analyteId}",
+            arguments = listOf(
+                navArgument("analyteId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val analyteId = backStackEntry.arguments?.getString("analyteId")
             ReagentLibraryScreen(
+                initialAnalyteId = analyteId,
                 navigateBack = { navController.navigateUp() }
             )
         }

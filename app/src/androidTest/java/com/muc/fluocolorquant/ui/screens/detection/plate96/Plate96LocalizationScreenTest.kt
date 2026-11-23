@@ -6,11 +6,11 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.muc.fluocolorquant.domain.detection.array.ArrayImageBounds
@@ -66,22 +66,18 @@ class Plate96LocalizationScreenTest {
         }
 
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.READY_CONTENT).assertIsDisplayed()
-        composeRule.onNodeWithTag(Plate96LocalizationTestTags.ORIENTATION_CARD).assertIsDisplayed()
+        composeRule.onNodeWithTag(Plate96LocalizationTestTags.ORIENTATION_CARD).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.PREVIEW)
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithTag(Plate96LocalizationTestTags.ALGORITHM_SELECTOR)
+        composeRule.onNodeWithTag("array_locator_picker")
             .performScrollTo()
             .assertIsDisplayed()
-        // LazyColumn只组合当前视口附近的节点。算法选择器前移后，必须先滚到摘要索引，
-        // 不能对尚未组合的底部节点直接调用performScrollTo()。
-        composeRule.onNodeWithTag(Plate96LocalizationTestTags.CONTENT_LIST)
-            .performScrollToIndex(6)
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.SUMMARY)
+            .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithTag(Plate96LocalizationTestTags.CONTENT_LIST)
-            .performScrollToIndex(7)
-        composeRule.onNodeWithTag(Plate96LocalizationTestTags.CONTINUE_BUTTON)
+        // 确认操作固定在底栏，不随方向卡和摘要一起滚走。
+        composeRule.onNodeWithTag("array_localization_continue")
             .assertIsDisplayed()
 
     }
@@ -118,8 +114,10 @@ class Plate96LocalizationScreenTest {
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.MANUAL_ADJUST_BUTTON)
             .performScrollTo()
             .performClick()
-        composeRule.onNodeWithTag(Plate96LocalizationTestTags.ADJUSTMENT_SHEET).assertIsDisplayed()
-        composeRule.onNodeWithTag(Plate96LocalizationTestTags.CROP_PREVIEW).assertIsDisplayed()
+        // 面板使用独立窗口，节点已组合不代表窗口的入场动画已完成；等待真实孔图而非判断外层容器。
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onNodeWithTag(Plate96LocalizationTestTags.CROP_PREVIEW).isDisplayed()
+        }
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.NUDGE_RIGHT).performClick()
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.NUDGE_UP).performClick()
         composeRule.onNodeWithTag(Plate96LocalizationTestTags.RESTORE_AUTOMATIC).performClick()

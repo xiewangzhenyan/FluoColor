@@ -155,7 +155,7 @@ object ArrayResultExporter {
                     measurement.qualityReliable.toString(),
                     measurement.resolveQualityLevel(site).name,
                     site.geometry.source.name,
-                    site.geometry.confidence.csvNumber(),
+                    site.geometry.confidence.takeUnless { site.geometry.source.isManual }.csvNumber(),
                     site.geometry.flags.map(Enum<*>::name).sorted().joinToString("|"),
                     measurement.qc.photometryFlags.sorted().joinToString("|"),
                     measurement.qc.quantificationStatus.orEmpty(),

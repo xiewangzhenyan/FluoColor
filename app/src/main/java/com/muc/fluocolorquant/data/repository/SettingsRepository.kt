@@ -11,6 +11,12 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.muc.fluocolorquant.data.enums.SpectrumLightSource
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisKey
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisPreferences
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisScope
+import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
+import com.muc.fluocolorquant.domain.detection.array.MultiHoleStatistic
+import com.muc.fluocolorquant.domain.detection.photometry.WellReadoutMode
 import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -161,7 +167,8 @@ enum class SettingProductionConsumer {
     DIRECT_PROJECT_CREATION,
     TEMPLATE_AND_CURVE_CREATION,
     SPECTRUM_RESULT_SNAPSHOT,
-    SPECTRUM_CAPTURE_QUALITY_GATE
+    SPECTRUM_CAPTURE_QUALITY_GATE,
+    ARRAY_DETECTION_SESSION
 }
 
 data class VisibleSettingProductionContract(
@@ -179,6 +186,7 @@ object VisibleSettingProductionContracts {
     val all: List<VisibleSettingProductionContract> = listOf(
         VisibleSettingProductionContract("language", setOf(SettingProductionConsumer.APP_LOCALE)),
         VisibleSettingProductionContract("theme_mode", setOf(SettingProductionConsumer.APP_THEME)),
+        VisibleSettingProductionContract("global_array_readout_defaults_v1", setOf(SettingProductionConsumer.ARRAY_DETECTION_SESSION)),
         VisibleSettingProductionContract(
             "default_detection_mode",
             setOf(SettingProductionConsumer.DIRECT_PROJECT_CREATION)
@@ -262,11 +270,44 @@ class SettingsRepository @Inject constructor(
         stringPreferencesKey("spectrum_default_light_source")
     private val SPECTRUM_LAST_REFERENCE_WAVELENGTHS_KEY = stringPreferencesKey("spectrum_last_reference_wavelengths")
     private val SPECTRUM_QUALITY_CHECK_ENABLED_KEY = booleanPreferencesKey("spectrum_quality_check_enabled")
+    private val GLOBAL_ARRAY_READOUT_DEFAULTS_KEY = stringPreferencesKey("global_array_readout_defaults_v1")
 
     // 获取当前语言设置，默认为系统语言
     val languageFlow: Flow<String> = languageDataStore.data.map { preferences ->
         preferences[LANGUAGE_KEY] ?: getSystemLanguage()
     }
+
+    /**
+     * 全局统一的孔内取值与多孔统计默认配置。
+     *
+     * 定位算法统一默认从 AUTO 起步（现场看图时再按需切换算法、手动四角或单孔微调），
+     * 不再按 3 种载体 × 2 种模态维护 6 套重复预设；若旧版本曾保存过自定义孔内取值或多孔统计，
+     * 首次读取时自动无损继承该口径并重置定位算法为 AUTO。
+     */
+    val globalArrayReadoutDefaults: Flow<ArrayAnalysisPreferences> = appSettingsDataStore.data.map { values ->
+        decodeGlobalArrayReadoutDefaults(
+            serialized = values[GLOBAL_ARRAY_READOUT_DEFAULTS_KEY],
+            legacyEntries = ArrayAnalysisKey.entries.map { values[arrayAnalysisPreferenceKey(it)] }
+        )
+    }
+
+    suspend fun saveGlobalArrayReadoutDefaults(value: ArrayAnalysisPreferences) {
+        val normalized = value.copy(
+            locator = ArrayLocatorMode.AUTO,
+            gridMargin = 0.085,
+            matchingDistance = 0.42
+        ).normalized(ArrayAnalysisScope.CHIP)
+        appSettingsDataStore.edit { values ->
+            values[GLOBAL_ARRAY_READOUT_DEFAULTS_KEY] = listOf(
+                normalized.readout.name,
+                normalized.multiHoleStatistic.name,
+                normalized.centerScale
+            ).joinToString("|")
+        }
+    }
+
+    private fun arrayAnalysisPreferenceKey(key: ArrayAnalysisKey) =
+        stringPreferencesKey("array_analysis_defaults_v1_${key.scope.name}_${key.modality.code}")
 
     // 设置语言。必须经 AppLanguageStore 写入，它会同步刷新 attachBaseContext 使用的
     // 进程内缓存；直接写 DataStore 会让缓存滞留旧值，重建后的 Activity 仍用旧语言。
@@ -523,5 +564,43 @@ class SettingsRepository @Inject constructor(
         const val DEFAULT_SPECTRUM_SENSITIVITY = "Medium"
         val DEFAULT_SPECTRUM_LIGHT_SOURCE = SpectrumLightSource.LED_WHITE
         const val DEFAULT_SPECTRUM_QUALITY_CHECK_ENABLED = true
+
+        /**
+         * 解析全局阵列取值默认配置；若新版统一键尚未写入，则从旧版 6 档案中提取曾自定义过的
+         * 孔内取值、多孔统计与中心比例，但强制将定位算法重置为 [ArrayLocatorMode.AUTO]。
+         */
+        internal fun decodeGlobalArrayReadoutDefaults(
+            serialized: String?,
+            legacyEntries: Iterable<String?> = emptyList()
+        ): ArrayAnalysisPreferences {
+            if (!serialized.isNullOrBlank()) {
+                val parts = serialized.split('|')
+                return ArrayAnalysisPreferences(
+                    locator = ArrayLocatorMode.AUTO,
+                    readout = WellReadoutMode.entries.firstOrNull { it.name == parts.getOrNull(0) }
+                        ?: WellReadoutMode.FULL_MEDIAN,
+                    multiHoleStatistic = MultiHoleStatistic.entries.firstOrNull { it.name == parts.getOrNull(1) }
+                        ?: MultiHoleStatistic.INDIVIDUAL,
+                    gridMargin = 0.085,
+                    matchingDistance = 0.42,
+                    centerScale = parts.getOrNull(2)?.toDoubleOrNull() ?: 0.80
+                ).normalized(ArrayAnalysisScope.CHIP)
+            }
+            val legacyDecoded = legacyEntries.mapNotNull { raw ->
+                val parts = raw?.takeIf { it.isNotBlank() }?.split('|') ?: return@mapNotNull null
+                ArrayAnalysisPreferences(
+                    locator = ArrayLocatorMode.AUTO,
+                    readout = WellReadoutMode.entries.firstOrNull { it.name == parts.getOrNull(1) }
+                        ?: WellReadoutMode.FULL_MEDIAN,
+                    multiHoleStatistic = MultiHoleStatistic.entries.firstOrNull { it.name == parts.getOrNull(2) }
+                        ?: MultiHoleStatistic.INDIVIDUAL,
+                    gridMargin = 0.085,
+                    matchingDistance = 0.42,
+                    centerScale = parts.getOrNull(5)?.toDoubleOrNull() ?: 0.80
+                ).normalized(ArrayAnalysisScope.CHIP)
+            }
+            val defaultPrefs = ArrayAnalysisPreferences()
+            return legacyDecoded.firstOrNull { it != defaultPrefs } ?: defaultPrefs
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.muc.fluocolorquant.domain.detection.grid
 
 import android.graphics.Bitmap
 import android.util.Log
+import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -53,6 +54,8 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
                 1 -> Imgproc.cvtColor(rgba, originalBgr, Imgproc.COLOR_GRAY2BGR)
                 else -> error("不支持的图片通道数：${rgba.channels()}")
             }
+
+            if (config.mode != ArrayLocatorMode.AUTO) return locateTraditional(originalBgr, config)
 
             val rectifiedWidth = config.resolvedRectifiedWidth()
             val rectifiedHeight = config.resolvedRectifiedHeight()
@@ -219,6 +222,254 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
             rgba.release()
             originalBgr.release()
         }
+    }
+
+    /** 可切换的传统定位只复用工作平面和校验工具。没有图像证据时明确失败，不能换成 PG 或均分。 */
+    private fun locateTraditional(original: Mat, config: PgGridLocatorConfig): PgGridResult {
+        val baseline = tryTraditional(original, config, recoverWeakContrast = false)
+        if (baseline != null) return baseline
+        // 弱对比重试仍使用用户所选的投影、聚类或斑点检测器。OpenCV 圆点基线要求检测出全部孔，
+        // 不用其他算法和推算点替它补齐；标准圆孔轮廓路线也不做这种斑点预处理。
+        val recovered = when (config.mode) {
+            ArrayLocatorMode.PROJECTION, ArrayLocatorMode.KMEANS, ArrayLocatorMode.DBSCAN,
+            ArrayLocatorMode.SPOT_TOPOLOGY, ArrayLocatorMode.LOG_SPOTS -> tryTraditional(original, config, recoverWeakContrast = true)
+            else -> null
+        }
+        return recovered ?: throw TraditionalGridNotFound(config.mode)
+    }
+
+    private fun tryTraditional(original: Mat, config: PgGridLocatorConfig, recoverWeakContrast: Boolean): PgGridResult? {
+        val rows = config.rows
+        val columns = config.columns
+        require(rows >= 2 && columns >= 2) { "此定位算法需要至少两行两列" }
+        val mode = config.mode
+        val rectangularSearch = mode in listOf(ArrayLocatorMode.HOUGH_GRID, ArrayLocatorMode.ELLIPSE_GRID,
+            ArrayLocatorMode.CIRCLES_GRID, ArrayLocatorMode.SPOT_TOPOLOGY, ArrayLocatorMode.LOG_SPOTS)
+        val fullFrame = ChipRegionCandidate(listOf(GridPoint(0.0, 0.0), GridPoint(original.cols()-1.0, 0.0),
+            GridPoint(original.cols()-1.0, original.rows()-1.0), GridPoint(0.0, original.rows()-1.0)), "whole_image")
+        val regions = PgGridRegionDetector.iterateHypotheses(original)
+        val hypotheses = if (rectangularSearch) sequenceOf(fullFrame) + regions else regions + sequenceOf(fullFrame)
+        val trace = Log.isLoggable("TraditionalGrid", Log.DEBUG)
+        var best: PgGridResult? = null
+        var bestScore = Double.NEGATIVE_INFINITY
+        for (region in hypotheses.take(4)) {
+            // 原图假设保持长宽比，不能把圆直接拉成椭圆再跑霍夫；真实板框才映射到规则工作平面。
+            val scale = minOf(1.0, 1100.0 / maxOf(original.cols(), original.rows()))
+            val workWidth = if (region === fullFrame) (original.cols() * scale).roundToInt() else config.resolvedRectifiedWidth()
+            val workHeight = if (region === fullFrame) (original.rows() * scale).roundToInt() else config.resolvedRectifiedHeight()
+            // LoG 同时计算多个浮点响应平面，限制所有区域假设的长边，并保持工作平面长宽比。
+            val logScale = if (mode == ArrayLocatorMode.LOG_SPOTS) minOf(1.0, 800.0 / maxOf(workWidth, workHeight)) else 1.0
+            val width = (workWidth * logScale).roundToInt()
+            val height = (workHeight * logScale).roundToInt()
+            if (minOf(width, height) < 20) continue
+            val rectification = rectifyChip(original, region, width, height)
+            val gray = Mat()
+            try {
+                val image = rectification.image
+                Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY)
+                val hint = polarityHintWithStrength(image).polarity
+                val modes = if (hint == GridTargetPolarity.BRIGHT) listOf(hint, GridTargetPolarity.DARK) else listOf(hint, GridTargetPolarity.BRIGHT)
+                val pitchHint = minOf(width.toDouble() / columns, height.toDouble() / rows)
+                val rims = if (config.mode in listOf(ArrayLocatorMode.HOUGH_GRID, ArrayLocatorMode.ELLIPSE_GRID)) {
+                    PgGridCandidateDetector.roundRims(gray, pitchHint, config.mode == ArrayLocatorMode.ELLIPSE_GRID, rows * columns)
+                        .map { GridCandidate(it.point, 1.0 + it.strength) }
+                } else null
+                val stableSpots = if (mode == ArrayLocatorMode.SPOT_TOPOLOGY) {
+                    PgGridCandidateDetector.stableSpots(image, gray, pitchHint, rows * columns, recoverWeakContrast)
+                } else null
+                val logSpots = if (mode == ArrayLocatorMode.LOG_SPOTS) {
+                    PgGridCandidateDetector.logSpots(image, gray, pitchHint, rows * columns, recoverWeakContrast)
+                } else null
+                for (polarity in modes) {
+                    val spots = stableSpots ?: logSpots?.let { it[polarity].orEmpty() }
+                    val candidates = when {
+                        rims != null -> rims
+                        spots != null -> spots
+                        config.mode == ArrayLocatorMode.CIRCLES_GRID -> emptyList()
+                        else -> PgGridCandidateDetector.componentCenters(gray, polarity, pitchHint, recoverWeakContrast)
+                    }.take((rows * columns * 3).coerceAtMost(1400))
+                    // 可选诊断只记录计数，不记录原图、孔号或取值。门槛不为提高出图率而放宽。
+                    fun report(stage: String, details: String = "") {
+                        if (trace) Log.d("TraditionalGrid", "$mode ${region.method} $polarity weakPass=$recoverWeakContrast candidates=${candidates.size} $stage $details")
+                    }
+                    val density = if (mode == ArrayLocatorMode.DBSCAN) {
+                        densityGrid(candidates, rows, columns, width, height)
+                    } else null
+                    if (mode == ArrayLocatorMode.DBSCAN && density == null) {
+                        report("no_density_axes")
+                        continue
+                    }
+                    val lattice = if (spots != null || rims != null) {
+                        fitLattice(image, candidates, polarity, rows, columns, width, height, config.marginRatio,
+                            config.maximumResidualPitchRatio, config.candidateSupportDistancePitchRatio,
+                            useProjectionFallback = false).takeIf { it.candidateLatticeApplied }
+                    } else null
+                    val seeds = when (mode) {
+                        ArrayLocatorMode.PROJECTION -> fitProjectionGrid(image, polarity, rows, columns, config.marginRatio)
+                        ArrayLocatorMode.KMEANS -> coordinateKMeans(candidates, rows, columns, width, height)
+                        ArrayLocatorMode.DBSCAN -> requireNotNull(density).seeds
+                        ArrayLocatorMode.CIRCLES_GRID -> PgGridCandidateDetector.orderedCircleCenters(gray, polarity == GridTargetPolarity.BRIGHT, rows, columns)
+                        ArrayLocatorMode.SPOT_TOPOLOGY, ArrayLocatorMode.LOG_SPOTS -> lattice?.modelPoints
+                        ArrayLocatorMode.HOUGH_GRID, ArrayLocatorMode.ELLIPSE_GRID -> lattice?.points?.map { it.point }
+                        else -> error("当前算法不属于通用阵列定位器")
+                    }
+                    if (seeds == null) {
+                        report("no_seeds")
+                        continue
+                    }
+                    val pitch = minimumPositivePitch(RegularGridGeometry.estimatePitch(seeds, rows, columns), width, height, rows, columns)
+                    // 斑点布网用单应模型中心复核实际观测。旧版拿已精修中心再匹配，既会把原有残差
+                    // 变成 0，也会把拟合已经舍弃的远处候选重新计入。这里仍用同一残差上限逐点核对。
+                    val direct = when {
+                        mode == ArrayLocatorMode.CIRCLES_GRID -> seeds.mapIndexed(::Observation)
+                        spots != null -> matchCandidates(seeds, candidates,
+                            minOf(config.candidateSupportDistancePitchRatio, config.maximumResidualPitchRatio) * pitch)
+                        else -> matchCandidates(seeds, density?.observations ?: candidates, config.candidateSupportDistancePitchRatio * pitch)
+                    }
+                    val hits = direct.associateBy(Observation::siteIndex)
+                    // 只看总命中数会漏掉整格错位；四条边均须有本地图像证据，缺失的内部孔只能标为推算。
+                    val topHits = (0 until columns).count { it in hits }
+                    val bottomHits = (0 until columns).count { (rows - 1) * columns + it in hits }
+                    val leftHits = (0 until rows).count { it * columns in hits }
+                    val rightHits = (0 until rows).count { it * columns + columns - 1 in hits }
+                    if (direct.size < rows * columns * .55 || minOf(topHits, bottomHits, leftHits, rightHits) < 2) {
+                        report("insufficient_support", "observed=${direct.size} edges=$topHits,$bottomHits,$leftHits,$rightHits")
+                        continue
+                    }
+                    val residual = sqrt(direct.map { distance(seeds[it.siteIndex], it.point).pow(2) }.average())
+                    if (residual > config.maximumResidualPitchRatio * pitch) {
+                        report("large_residual", "observed=${direct.size} residualPitch=${residual / pitch}")
+                        continue
+                    }
+                    val contrast = measureGridPolarityContrast(gray, seeds, rows, columns) *
+                        if (polarity == GridTargetPolarity.BRIGHT) 1.0 else -1.0
+                    // 独立圆轮廓对极性不敏感；两极性直接比较时仍保留对比证据，避免选到孔间间隙。
+                    if (rims == null && spots == null && contrast <= 0.5) {
+                        report("low_contrast", "contrast=$contrast")
+                        continue
+                    }
+                    if (spots != null && !hasConnectedSpotEvidence(hits.keys, rows, columns)) {
+                        report("disconnected_spots", "observed=${direct.size}")
+                        continue
+                    }
+                    val inverse = matToRowMajor(rectification.inverseMatrix)
+                    val sites = seeds.mapIndexed { index, seed ->
+                        val observed = hits[index]
+                        val point = observed?.point ?: seed
+                        val source = RegularGridGeometry.project(inverse, point)
+                        val key = GridSiteKey(index / columns, index % columns)
+                        if (observed == null) GridLocalizedSite.modelImputed(key, index, point, source)
+                        else GridLocalizedSite(key, index, point, source, 1.0 - distance(seed, point) / pitch,
+                            GridPointSource.CANDIDATE_REFINED, emptySet())
+                    }
+                    if (sites.any { it.original.x !in 0.0..(original.cols()-1.0) || it.original.y !in 0.0..(original.rows()-1.0) }) {
+                        report("out_of_frame")
+                        continue
+                    }
+                    report("accepted", "observed=${direct.size} edges=$topHits,$bottomHits,$leftHits,$rightHits residualPitch=${residual / pitch}")
+                    val observedRatio = direct.size.toDouble() / sites.size
+                    val merit = observedRatio - residual / pitch + contrast.coerceIn(0.0, 35.0) * .001
+                    if (merit > bestScore) {
+                        bestScore = merit
+                        best = PgGridResult(rows = rows, columns = columns, rectifiedWidth = width, rectifiedHeight = height,
+                            targetPolarity = polarity, chipRegionMethod = region.method, chipCorners = region.points,
+                            homography = GridHomography(matToRowMajor(rectification.forwardMatrix).toList(), inverse.toList()),
+                            sites = sites, geometry = GridGeometryDiagnostics(model = config.mode.name, candidateSupportRatio = observedRatio,
+                                // 四边与残差能证明网格有证据，不能证明对照算法在实拍中没有错整行。
+                                trusted = !mode.isComparisonOnly, observedRatio = observedRatio, geometryRmsePx = residual, inlierCount = direct.size,
+                                outlierCount = sites.size-direct.size, meanConfidence = sites.map(GridLocalizedSite::confidence).average()),
+                            frameQc = emptyList(), locatorName = config.mode.name,
+                            locatorVersion = if (recoverWeakContrast || spots != null || mode == ArrayLocatorMode.DBSCAN) "1.1" else "1.0").requireValid()
+                    }
+                    if (observedRatio >= .99 && residual <= .10 * pitch) return requireNotNull(best)
+                }
+            } finally {
+                gray.release()
+                rectification.release()
+            }
+        }
+        return best
+    }
+
+    /** 斑点的相邻行列图必须连到四边。允许跨一个未发光孔，但不能用不连片的噪声投票凑满网格。 */
+    private fun hasConnectedSpotEvidence(indices: Set<Int>, rows: Int, columns: Int): Boolean {
+        val remaining = indices.toMutableSet()
+        while (remaining.isNotEmpty()) {
+            val first = remaining.first()
+            val queue = ArrayDeque<Int>()
+            queue.add(first)
+            remaining.remove(first)
+            var reached = 0
+            var edges = 0
+            while (queue.isNotEmpty()) {
+                val index = queue.removeFirst()
+                val row = index / columns
+                val column = index % columns
+                reached++
+                if (row == 0) edges = edges or 1
+                if (column == 0) edges = edges or 2
+                if (row == rows-1) edges = edges or 4
+                if (column == columns-1) edges = edges or 8
+                for (offset in listOf(-2,-1,1,2)) {
+                    val neighborColumn = column + offset
+                    val neighborRow = row + offset
+                    if (neighborColumn in 0 until columns) {
+                        val next = row*columns+neighborColumn
+                        if (remaining.remove(next)) queue.add(next)
+                    }
+                    if (neighborRow in 0 until rows) {
+                        val next = neighborRow*columns+column
+                        if (remaining.remove(next)) queue.add(next)
+                    }
+                }
+            }
+            if (edges == 15 && reached >= indices.size * .80) return true
+        }
+        return false
+    }
+
+    private fun coordinateKMeans(candidates: List<GridCandidate>, rows: Int, columns: Int, width: Int, height: Int): List<GridPoint>? {
+        if (candidates.size < maxOf(rows, columns) * 3) return null
+        val angle = estimateLatticeRotation(candidates, width, height)
+        val aligned = candidates.map { rotate(it.point, angle, width/2.0, height/2.0) }
+        val xs = kMeansAxis(aligned.map(GridPoint::x), columns) ?: return null
+        val ys = kMeansAxis(aligned.map(GridPoint::y), rows) ?: return null
+        return ys.flatMap { ordinate -> xs.map { abscissa -> rotate(GridPoint(abscissa, ordinate), -angle, width/2.0, height/2.0) } }
+    }
+
+    private data class DensityGrid(val seeds: List<GridPoint>, val observations: List<GridCandidate>)
+
+    /** 与坐标 K-means 使用同一候选和旋转估计；DBSCAN 只保留横纵两轴都有密度支撑的孔。 */
+    private fun densityGrid(candidates: List<GridCandidate>, rows: Int, columns: Int, width: Int, height: Int): DensityGrid? {
+        if (candidates.size < maxOf(4, (rows * columns + 1) / 2)) return null
+        val angle = estimateLatticeRotation(candidates, width, height)
+        val centerX = width / 2.0
+        val centerY = height / 2.0
+        val aligned = candidates.map { rotate(it.point, angle, centerX, centerY) }
+        val horizontal = RegularGridGeometry.densityAxis(aligned.map(GridPoint::x), columns, rows, width.toDouble() / columns) ?: return null
+        val vertical = RegularGridGeometry.densityAxis(aligned.map(GridPoint::y), rows, columns, height.toDouble() / rows) ?: return null
+        val seeds = vertical.centers.flatMap { row ->
+            horizontal.centers.map { column -> rotate(GridPoint(column, row), -angle, centerX, centerY) }
+        }
+        return DensityGrid(seeds, candidates.filterIndexed { index, _ -> index in horizontal.members && index in vertical.members })
+    }
+
+    /** 轴向等权 Lloyd 聚类；分位初值确定，避免修改全局 OpenCV RNG 影响并行定位。 */
+    private fun kMeansAxis(coordinates: List<Double>, count: Int): List<Double>? {
+        val values = coordinates.sorted()
+        var centers = List(count) { index -> values[((index + .5) * values.size / count).toInt()] }
+        for (iteration in 0 until 40) {
+            val groups = values.groupBy { point -> centers.indices.minBy { abs(point - centers[it]) } }
+            if (groups.size != count) return null
+            val next = centers.indices.map { groups.getValue(it).average() }.sorted()
+            val converged = centers.indices.all { abs(centers[it] - next[it]) < .005 }
+            centers = next
+            if (converged) break
+        }
+        val gaps = centers.zipWithNext { first, second -> second - first }
+        val pitch = medianDouble(gaps)
+        // 簇数正确不等于孔号正确，异常间距不能靠硬凑 K 个簇通过。
+        return centers.takeIf { pitch >= 4 && gaps.all { gap -> gap in .60*pitch..1.40*pitch } }
     }
 
     /**
@@ -1033,7 +1284,8 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
             inlierCount = inlierCount,
             outlierCount = outlierCount,
             candidateLatticeApplied = true,
-            phantomEdge = trust.phantomEdge
+            phantomEdge = trust.phantomEdge,
+            modelPoints = predicted
         )
     }
 
@@ -2001,7 +2253,8 @@ class OpenCvPgGridLocator @Inject constructor() : PgGridLocator {
         val outlierCount: Int,
         /** true 表示候选轴和稳健单应均真实成立；false 表示投影或规则均分兜底。 */
         val candidateLatticeApplied: Boolean,
-        val phantomEdge: GridPhantomEdgeDiagnostics
+        val phantomEdge: GridPhantomEdgeDiagnostics,
+        val modelPoints: List<GridPoint>? = null
     )
 
     /** 自动极性裁决后的实际极性和对应晶格。 */

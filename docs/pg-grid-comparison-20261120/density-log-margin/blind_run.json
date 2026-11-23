@@ -1,0 +1,24 @@
+{
+  "opencv": "4.13.0",
+  "numpy": "2.2.6",
+  "reference": "b87f87db0d340cac769ed087cd95d0925e7b7899502b24ef02b253aa3462ee7a",
+  "python": "3.12.7 | packaged by Anaconda, Inc. | (main, Oct  4 2024, 13:17:27) [MSC v.1929 64 bit (AMD64)]",
+  "packages": {
+    "scikit-learn": "1.9.0",
+    "scipy": "1.18.0",
+    "Pillow": "12.2.0"
+  },
+  "frozen_geometry": "a3cb6c7a722a5cde1d0fe3e40366154a711f6ea6828ba544a97393ddbae7dcda",
+  "blind_seeds": [
+    29033,
+    51769
+  ],
+  "input_manifest": "287bc02ac1f5abeb5248385a6219c59398c14b815823f6e586deddea57f77257",
+  "code": {
+    "classical_trial.py": "c773646068cb3fb6b4a0128d9449b713ee937251fbe2ceaec0755d6174f5b8ca",
+    "spot_lattice.py": "bef6c17bec5038e31738cc55a327a6441f3f84267a68c70b0d4368a678a7a574",
+    "compare_locators.py": "1533c04bd4c6ad5a34db610cc2ee788c1f918e29cae5544c5c69948e64b50e0e"
+  },
+  "m3g_serial": "a1e7784836252515724b0ded66040edae2d580dd3ba161ad6adc8e8e6ce4b590",
+  "cutoff_pitch": 0.2
+}

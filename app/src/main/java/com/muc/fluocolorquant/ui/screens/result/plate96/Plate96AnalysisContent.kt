@@ -1,5 +1,7 @@
 package com.muc.fluocolorquant.ui.screens.result.plate96
 
+import com.muc.fluocolorquant.ui.screens.result.array.ArrayFrozenReadoutSummary
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -132,6 +134,7 @@ fun Plate96AnalysisContent(
     ) {
         item { Plate96CurveCard(analyte) }
         item { Plate96FitMetrics(analyte) }
+        item { ArrayFrozenReadoutSummary(snapshot.arraySnapshot, analyte.analyteId) }
         item { Plate96RepeatabilityCard(records, analyte.concentrationUnit) }
         item {
             Plate96DistributionCard(

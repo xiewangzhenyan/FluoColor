@@ -1,6 +1,7 @@
 package com.muc.fluocolorquant.ui.screens.detection.plate96
 
 import android.graphics.Paint
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -9,9 +10,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,7 +21,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Analytics
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
@@ -49,6 +52,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
@@ -64,6 +68,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,15 +95,24 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.domain.detection.array.ArrayLocalizedSite
 import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisScope
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisPreferences
 import com.muc.fluocolorquant.domain.detection.array.ArrayOriginCorner
 import com.muc.fluocolorquant.domain.detection.array.ArraySiteLocalizationSource
 import com.muc.fluocolorquant.domain.detection.plate96.Plate96Locator
 import com.muc.fluocolorquant.ui.components.FluoMetricTile
 import com.muc.fluocolorquant.ui.components.FluoSectionCard
+import com.muc.fluocolorquant.ui.components.FluoSectionHeader
 import com.muc.fluocolorquant.ui.components.FluoStatePlaceholder
 import com.muc.fluocolorquant.ui.components.FluoStatusChip
-import com.muc.fluocolorquant.ui.components.FluoStepIndicator
 import com.muc.fluocolorquant.ui.components.FluoTopBar
+import com.muc.fluocolorquant.ui.screens.detection.ArrayDisplayFilterBar
+import com.muc.fluocolorquant.ui.screens.detection.ArrayDisplayFilterMode
+import com.muc.fluocolorquant.ui.screens.detection.ArrayLocalizationHelpAction
+import com.muc.fluocolorquant.ui.screens.detection.ArrayLocalizationPreviewFrame
+import com.muc.fluocolorquant.ui.screens.detection.ArrayLocalizationReview
+import com.muc.fluocolorquant.ui.screens.detection.ManualCornerEditor
+import com.muc.fluocolorquant.ui.screens.detection.rememberArrayDisplayImage
 import com.muc.fluocolorquant.ui.theme.FluoIconSize
 import com.muc.fluocolorquant.ui.theme.FluoMotion
 import com.muc.fluocolorquant.ui.theme.FluoRadius
@@ -110,6 +124,7 @@ import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationStage
 import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationSelection
 import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationUiState
 import com.muc.fluocolorquant.ui.viewmodels.Plate96LocalizationViewModel
+import com.muc.fluocolorquant.ui.viewmodels.ArrayLocatorAttempt
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -117,14 +132,11 @@ import kotlin.math.roundToInt
 /** 定位页稳定测试标签；设备测试和截图自审使用同一组入口。 */
 object Plate96LocalizationTestTags {
     const val READY_CONTENT: String = "plate96_localization_ready"
-    const val CONTENT_LIST: String = "plate96_localization_content_list"
     const val ORIENTATION_CARD: String = "plate96_orientation_card"
     const val PREVIEW: String = "plate96_localization_preview"
     const val DISPLAY_CONTROLS: String = "plate96_display_controls"
     const val MANUAL_ADJUST_BUTTON: String = "plate96_manual_adjust_button"
-    const val ALGORITHM_SELECTOR: String = "plate96_algorithm_selector"
     const val SUMMARY: String = "plate96_localization_summary"
-    const val CONTINUE_BUTTON: String = "plate96_continue_button"
     const val ADJUSTMENT_SHEET: String = "plate96_adjustment_sheet"
     const val CROP_PREVIEW: String = "plate96_adjustment_crop_preview"
     const val NUDGE_UP: String = "plate96_adjustment_nudge_up"
@@ -141,16 +153,26 @@ fun Plate96LocalizationScreen(
     imageUri: String?,
     onBack: () -> Unit,
     onContinue: (Plate96LocalizationSelection) -> Unit,
-    viewModel: Plate96LocalizationViewModel = hiltViewModel()
+    viewModel: Plate96LocalizationViewModel = hiltViewModel(),
+    initialPreferences: ArrayAnalysisPreferences = ArrayAnalysisPreferences()
 ) {
     val state by viewModel.uiState.collectAsState()
-    LaunchedEffect(imageUri) { viewModel.start(imageUri) }
+    LaunchedEffect(imageUri) { viewModel.start(imageUri, initialPreferences) }
+    BackHandler(enabled = state is Plate96LocalizationUiState.Manual, onBack = viewModel::cancelManual)
 
     Scaffold(
         topBar = {
             FluoTopBar(
                 title = stringResource(R.string.plate96_localization_title),
-                onBack = onBack
+                onBack = when (state) {
+                    is Plate96LocalizationUiState.Manual -> viewModel::cancelManual
+                    else -> onBack
+                },
+                actions = {
+                    if (state is Plate96LocalizationUiState.Ready || state is Plate96LocalizationUiState.LocatingArray) {
+                        ArrayLocalizationHelpAction(isPlate = true)
+                    }
+                }
             )
         }
     ) { padding ->
@@ -168,8 +190,14 @@ fun Plate96LocalizationScreen(
                 onRetry = viewModel::retry,
                 modifier = Modifier.padding(padding)
             )
-            is Plate96LocalizationUiState.Ready -> Plate96ReadyContent(
-                state = current,
+            is Plate96LocalizationUiState.Manual -> Box(Modifier.padding(padding).fillMaxSize()) {
+                ManualCornerEditor(current.draft, viewModel::addManualCorner, viewModel::undoManualCorner,
+                    viewModel::clearManualCorners, viewModel::applyManualCorners,
+                    viewModel::setManualDiameter, viewModel::confirmManualDiameter)
+            }
+            is Plate96LocalizationUiState.Ready, is Plate96LocalizationUiState.LocatingArray -> Plate96ReadyContent(
+                state = current as? Plate96LocalizationUiState.Ready,
+                attempt = (current as? Plate96LocalizationUiState.LocatingArray)?.attempt,
                 onImageViewChange = viewModel::selectImageView,
                 onShowOutlinesChange = viewModel::setShowOutlines,
                 onShowLabelsChange = viewModel::setShowLabels,
@@ -181,6 +209,9 @@ fun Plate96LocalizationScreen(
                 onNudgeSelectedSite = viewModel::nudgeSelectedSite,
                 onSetSelectedSiteRadius = viewModel::setSelectedSiteRadius,
                 onRestoreSelectedSite = viewModel::restoreSelectedSite,
+                onManualCorners = viewModel::openManualCorners,
+                onRetry = viewModel::retry,
+                onRestore = viewModel::restorePreviousLocalization,
                 onContinue = {
                     // 移交当前同一份原图、标准图和人工确认后的定位会话，禁止下游重新定位。
                     viewModel.currentSelection()?.let(onContinue)
@@ -193,7 +224,7 @@ fun Plate96LocalizationScreen(
 
 @Composable
 internal fun Plate96ReadyContent(
-    state: Plate96LocalizationUiState.Ready,
+    state: Plate96LocalizationUiState.Ready?,
     onImageViewChange: (Plate96ImageViewMode) -> Unit,
     onShowOutlinesChange: (Boolean) -> Unit,
     onShowLabelsChange: (Boolean) -> Unit,
@@ -206,91 +237,81 @@ internal fun Plate96ReadyContent(
     onSetSelectedSiteRadius: (Double) -> Unit,
     onRestoreSelectedSite: () -> Unit,
     onContinue: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onManualCorners: (() -> Unit)? = null,
+    attempt: ArrayLocatorAttempt? = null,
+    onRetry: () -> Unit = {},
+    onRestore: () -> Unit = {}
 ) {
-    val result = state.session.result
     var adjustmentSiteIndex by remember { mutableStateOf<Int?>(null) }
-    val selectedSite = state.selectedSiteIndex?.let(result.sites::getOrNull)
-    val adjustmentSite = adjustmentSiteIndex?.let(result.sites::getOrNull)
-    Box(modifier = modifier.fillMaxSize().testTag(Plate96LocalizationTestTags.READY_CONTENT)) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .testTag(Plate96LocalizationTestTags.CONTENT_LIST),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            item { Plate96StepHeader() }
-            // 算法选择放在预览之前。切换后页面会重新定位，用户先明确方法，再复核方向和孔位。
-            item {
-                Plate96AlgorithmSelector(
-                    selected = state.locatorMode,
-                    onSelected = onLocatorModeChange
-                )
-            }
-            item {
-                Plate96OrientationCard(
-                    state = state,
-                    onConfirmCurrent = onConfirmCurrentOrientation,
-                    onCornerChange = onOriginCornerChange,
-                    onRestoreAutomatic = onRestoreAutomaticOrientation
-                )
-            }
-            item {
+    var displayFilter by rememberSaveable { mutableStateOf(ArrayDisplayFilterMode.ORIGINAL) }
+    val result = state?.session?.result
+    val isManual = state?.locatorMode == ArrayLocatorMode.MANUAL_CORNERS
+    val selectedSite = state?.selectedSiteIndex?.let { result?.sites?.getOrNull(it) }
+    val adjustmentSite = adjustmentSiteIndex?.let { result?.sites?.getOrNull(it) }
+    ArrayLocalizationReview(
+        scope = ArrayAnalysisScope.STANDARD_PLATE,
+        selected = attempt?.mode ?: state?.locatorMode,
+        attempt = attempt,
+        onChooseLocator = onLocatorModeChange,
+        onManualCorners = onManualCorners,
+        onRetry = onRetry,
+        onRestore = onRestore,
+        onContinue = onContinue,
+        canContinue = state?.orientationConfirmed == true,
+        modifier = modifier.testTag(Plate96LocalizationTestTags.READY_CONTENT)
+    ) {
+        if (state != null && result != null) {
+            val bitmap = if (state.imageViewMode == Plate96ImageViewMode.NORMALIZED) state.normalizedBitmap else state.sourceBitmap
+            Plate96ImagePreview(
+                bitmap = bitmap,
+                displayFilter = displayFilter,
+                sites = result.sites,
+                normalized = state.imageViewMode == Plate96ImageViewMode.NORMALIZED,
+                showOutlines = state.showOutlines,
+                showLabels = state.showLabels,
+                selectedSiteIndex = state.selectedSiteIndex,
+                onSelectSite = { siteIndex ->
+                    onSelectSite(siteIndex)
+                    if (siteIndex != null && !isManual) adjustmentSiteIndex = siteIndex
+                }
+            )
+            // 与芯片相同，图像在同一位置；方向与单孔微调仅在有正式孔板网格时出现。
+            if (!isManual) Plate96OrientationCard(state, onConfirmCurrentOrientation, onOriginCornerChange, onRestoreAutomaticOrientation)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Plate96ViewSelector(
                     selected = state.imageViewMode,
                     onSelected = onImageViewChange
                 )
-            }
-            item {
-                val bitmap = if (state.imageViewMode == Plate96ImageViewMode.NORMALIZED) {
-                    state.normalizedBitmap
-                } else {
-                    state.sourceBitmap
-                }
-                Plate96ImagePreview(
-                    bitmap = bitmap,
-                    sites = result.sites,
-                    normalized = state.imageViewMode == Plate96ImageViewMode.NORMALIZED,
-                    showOutlines = state.showOutlines,
-                    showLabels = state.showLabels,
-                    selectedSiteIndex = state.selectedSiteIndex,
-                    onSelectSite = { siteIndex ->
-                        onSelectSite(siteIndex)
-                        if (siteIndex != null) adjustmentSiteIndex = siteIndex
-                    }
-                )
-            }
-            item {
                 Plate96DisplayControls(
                     showOutlines = state.showOutlines,
                     showLabels = state.showLabels,
-                    hasSelectedSite = selectedSite != null,
+                    hasSelectedSite = selectedSite != null && !isManual,
                     onShowOutlinesChange = onShowOutlinesChange,
                     onShowLabelsChange = onShowLabelsChange,
                     onOpenAdjustment = { adjustmentSiteIndex = state.selectedSiteIndex }
                 )
-            }
-            item {
-                Plate96LocalizationSummary(state)
-            }
-            item {
-                Button(
-                    onClick = onContinue,
-                    enabled = state.orientationConfirmed,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag(Plate96LocalizationTestTags.CONTINUE_BUTTON)
-                ) {
-                    Text(stringResource(R.string.plate96_confirm_and_continue))
+                ArrayDisplayFilterBar(
+                    selected = displayFilter,
+                    onSelect = { displayFilter = it }
+                )
+                if (displayFilter != ArrayDisplayFilterMode.ORIGINAL) {
+                    Text(
+                        text = stringResource(R.string.array_display_filter_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
-            item { Spacer(Modifier.height(8.dp)) }
+            if (isManual) {
+                Text(stringResource(R.string.grid_manual_summary, result.sites.size - 4), style = MaterialTheme.typography.bodyMedium)
+            } else {
+                Plate96LocalizationSummary(state)
+            }
         }
     }
 
-    if (adjustmentSite != null) {
+    if (state != null && adjustmentSite != null) {
         Plate96AdjustmentSheet(
             state = state,
             site = adjustmentSite,
@@ -300,19 +321,6 @@ internal fun Plate96ReadyContent(
             onRestoreAutomatic = onRestoreSelectedSite
         )
     }
-}
-
-/** 定位是三步链路的第一步；步骤条复用共享实现，与检测网关保持同一视觉。 */
-@Composable
-private fun Plate96StepHeader(currentStep: Int = 0) {
-    FluoStepIndicator(
-        steps = listOf(
-            stringResource(R.string.plate96_step_localization),
-            stringResource(R.string.plate96_step_layout),
-            stringResource(R.string.plate96_step_quantitation)
-        ),
-        currentStep = currentStep
-    )
 }
 
 @Composable
@@ -487,6 +495,7 @@ private fun Plate96ViewSelector(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun Plate96DisplayControls(
     showOutlines: Boolean,
     showLabels: Boolean,
@@ -495,102 +504,67 @@ private fun Plate96DisplayControls(
     onShowLabelsChange: (Boolean) -> Unit,
     onOpenAdjustment: () -> Unit
 ) {
-    FluoSectionCard(
-        modifier = Modifier.testTag(Plate96LocalizationTestTags.DISPLAY_CONTROLS),
-        verticalSpacing = FluoSpacing.sm
+    // 窄屏或长英文标签自动换行，以便微调入口不会挤到横向滚动区外。
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().testTag(Plate96LocalizationTestTags.DISPLAY_CONTROLS),
+        horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
     ) {
-            Text(stringResource(R.string.plate96_display_title), fontWeight = FontWeight.SemiBold)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
-            ) {
-                FilterChip(
-                    selected = showOutlines,
-                    onClick = { onShowOutlinesChange(!showOutlines) },
-                    label = { Text(stringResource(R.string.plate96_show_outlines), maxLines = 1) }
-                )
-                FilterChip(
-                    selected = showLabels,
-                    onClick = { onShowLabelsChange(!showLabels) },
-                    label = { Text(stringResource(R.string.plate96_show_labels), maxLines = 1) }
-                )
-                FilterChip(
-                    selected = false,
-                    enabled = hasSelectedSite,
-                    onClick = onOpenAdjustment,
-                    leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null, Modifier.size(18.dp)) },
-                    label = { Text(stringResource(R.string.plate96_manual_adjust), maxLines = 1) },
-                    modifier = Modifier.testTag(Plate96LocalizationTestTags.MANUAL_ADJUST_BUTTON)
-                )
-            }
-    }
-}
-
-@Composable
-private fun Plate96AlgorithmSelector(
-    selected: ArrayLocatorMode,
-    onSelected: (ArrayLocatorMode) -> Unit
-) {
-    FluoSectionCard(
-        modifier = Modifier.testTag(Plate96LocalizationTestTags.ALGORITHM_SELECTOR),
-        verticalSpacing = FluoSpacing.sm
-    ) {
-            Text(stringResource(R.string.plate96_algorithm_title), fontWeight = FontWeight.SemiBold)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
-            ) {
-                listOf(
-                    ArrayLocatorMode.AUTO to R.string.plate96_algorithm_auto,
-                    ArrayLocatorMode.OBJECT_DETECTION to R.string.plate96_algorithm_object,
-                    ArrayLocatorMode.GEOMETRIC_SHAPE to R.string.plate96_algorithm_circle
-                ).forEach { (mode, label) ->
-                    FilterChip(
-                        selected = selected == mode,
-                        onClick = { onSelected(mode) },
-                        label = { Text(stringResource(label), maxLines = 1) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
+        FilterChip(
+            selected = showOutlines,
+            onClick = { onShowOutlinesChange(!showOutlines) },
+            label = { Text(stringResource(R.string.plate96_show_outlines)) }
+        )
+        FilterChip(
+            selected = showLabels,
+            onClick = { onShowLabelsChange(!showLabels) },
+            label = { Text(stringResource(R.string.plate96_show_labels)) }
+        )
+        FilterChip(
+            selected = false,
+            enabled = hasSelectedSite,
+            onClick = onOpenAdjustment,
+            leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null, Modifier.size(18.dp)) },
+            label = { Text(stringResource(R.string.plate96_manual_adjust)) },
+            modifier = Modifier.testTag(Plate96LocalizationTestTags.MANUAL_ADJUST_BUTTON)
+        )
     }
 }
 
 @Composable
 private fun Plate96LocalizationSummary(state: Plate96LocalizationUiState.Ready) {
     val diagnostics = state.session.result.diagnostics
+    val allObserved = diagnostics.imputedSiteCount == 0
     FluoSectionCard(
         modifier = Modifier.testTag(Plate96LocalizationTestTags.SUMMARY),
-        verticalSpacing = FluoSpacing.md
+        contentPadding = FluoSpacing.md,
+        verticalSpacing = FluoSpacing.sm,
+        accentColor = if (allObserved) FluoTheme.semantic.success else MaterialTheme.colorScheme.primary
     ) {
-            Text(stringResource(R.string.plate96_summary_title), fontWeight = FontWeight.SemiBold)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
-            ) {
-                Plate96Metric(
-                    R.string.plate96_summary_observed,
-                    diagnostics.observedSiteCount,
-                    Modifier.weight(1f)
-                )
-                Plate96Metric(
-                    R.string.plate96_summary_refined,
-                    diagnostics.shapeRefinedSiteCount,
-                    Modifier.weight(1f)
-                )
-                Plate96Metric(
-                    R.string.plate96_summary_imputed,
-                    diagnostics.imputedSiteCount,
-                    Modifier.weight(1f)
-                )
-            }
-            Text(
-                text = state.selectedSiteIndex?.let { index ->
-                    stringResource(R.string.plate96_selected_well, state.session.result.sites[index].displayLabel)
-                } ?: stringResource(R.string.plate96_no_well_selected),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall
+        FluoSectionHeader(
+            title = stringResource(R.string.grid_localization_summary_title),
+            icon = Icons.Outlined.Analytics,
+            accentColor = if (allObserved) FluoTheme.semantic.success else MaterialTheme.colorScheme.primary
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
+        ) {
+            Plate96Metric(
+                R.string.plate96_summary_observed,
+                diagnostics.observedSiteCount,
+                Modifier.weight(1f)
             )
+            Plate96Metric(
+                R.string.plate96_summary_refined,
+                diagnostics.shapeRefinedSiteCount,
+                Modifier.weight(1f)
+            )
+            Plate96Metric(
+                R.string.plate96_summary_imputed,
+                diagnostics.imputedSiteCount,
+                Modifier.weight(1f)
+            )
+        }
     }
 }
 
@@ -642,10 +616,12 @@ private fun Plate96AdjustmentSheet(
     }
     val isAdjusted = ArraySiteLocalizationSource.USER_ADJUSTED == site.source
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // 微调是主动打开的工具，不停在只露出把手的半展开态；横屏和大字体时可滚动到确认按钮。
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 20.dp)
                 .testTag(Plate96LocalizationTestTags.ADJUSTMENT_SHEET),
@@ -816,6 +792,7 @@ private fun Plate96NudgePad(onNudge: (Int, Int) -> Unit) {
 @Composable
 private fun Plate96ImagePreview(
     bitmap: android.graphics.Bitmap,
+    displayFilter: ArrayDisplayFilterMode = ArrayDisplayFilterMode.ORIGINAL,
     sites: List<ArrayLocalizedSite>,
     normalized: Boolean,
     showOutlines: Boolean,
@@ -823,23 +800,17 @@ private fun Plate96ImagePreview(
     selectedSiteIndex: Int?,
     onSelectSite: (Int?) -> Unit
 ) {
-    val image = remember(bitmap) { bitmap.asImageBitmap() }
+    val rawImage = remember(bitmap) { bitmap.asImageBitmap() }
+    val filteredImage by rememberArrayDisplayImage(bitmap, displayFilter)
+    val image = if (displayFilter == ArrayDisplayFilterMode.ORIGINAL) rawImage else (filteredImage ?: rawImage)
     val outlineColor = MaterialTheme.colorScheme.primary
     val selectedColor = MaterialTheme.colorScheme.tertiary
     val labelColor = MaterialTheme.colorScheme.onPrimary
     val labelBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
     val contentDescription = stringResource(R.string.plate96_preview_content_description)
-    FluoSectionCard(contentPadding = 0.dp) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val imageAspectRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
-            val previewHeight = (maxWidth / imageAspectRatio).coerceIn(220.dp, 420.dp)
+    ArrayLocalizationPreviewFrame { imageModifier ->
             Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(previewHeight)
-                    // 图片按比例缩放后的 letterbox 留白底色。原实现用 4% 纯黑，深色模式下
-                    // 几乎不可见，留白与图片边界分不清；改用主题表面色后明暗都有明确边界。
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                modifier = imageModifier
                     .testTag(Plate96LocalizationTestTags.PREVIEW)
                     .semantics { this.contentDescription = contentDescription }
                     .pointerInput(bitmap, normalized, sites) {
@@ -921,7 +892,6 @@ private fun Plate96ImagePreview(
                     }
                 }
             }
-        }
     }
 }
 
@@ -956,7 +926,8 @@ private fun Plate96ErrorContent(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         FluoStatePlaceholder(
             text = stringResource(
                 if (reason == Plate96LocalizationError.IMAGE_LOAD_FAILED) R.string.plate96_error_image

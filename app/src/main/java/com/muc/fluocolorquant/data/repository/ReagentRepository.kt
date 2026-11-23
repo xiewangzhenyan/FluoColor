@@ -48,20 +48,10 @@ interface ReagentRepository {
         reagentType: String,
         manufacturer: String? = null,
         molecularWeight: Double? = null,
-        unit: String? = null
+        unit: String? = null,
+        lotNumber: String? = null
     ): Boolean
-    
-    /**
-     * 更新试剂
-     * @param id 试剂ID
-     * @param analyteId 分析物ID
-     * @param reagentName 试剂名称
-     * @param reagentType 试剂类型 ("antigen" 或 "antibody")
-     * @param manufacturer 制造商（可选）
-     * @param molecularWeight 分子量（可选）
-     * @param unit 浓度单位（可选）
-     * @return 如果更新成功返回true，否则返回false
-     */
+
     suspend fun updateReagent(
         id: String,
         analyteId: String,
@@ -69,7 +59,8 @@ interface ReagentRepository {
         reagentType: String,
         manufacturer: String? = null,
         molecularWeight: Double? = null,
-        unit: String? = null
+        unit: String? = null,
+        lotNumber: String? = null
     ): Boolean
     
     /**
@@ -106,30 +97,27 @@ class ReagentRepositoryImpl @Inject constructor(
         reagentType: String,
         manufacturer: String?,
         molecularWeight: Double?,
-        unit: String?
+        unit: String?,
+        lotNumber: String?
     ): Boolean {
         val trimmedName = reagentName.trim()
-        
-        // 检查必填字段
         if (trimmedName.isEmpty() || analyteId.isEmpty() || reagentType.isEmpty()) {
             return false
         }
-        
-        // 创建新的试剂实体并保存
         val reagent = Reagent(
             id = "reagent_" + UUID.randomUUID().toString(),
             analyteId = analyteId,
             reagentName = trimmedName,
             reagentType = reagentType,
-            manufacturer = manufacturer?.takeIf { it.isNotBlank() },
+            manufacturer = manufacturer?.trim()?.takeIf { it.isNotEmpty() },
             molecularWeight = molecularWeight,
-            unit = unit?.takeIf { it.isNotBlank() }
+            unit = unit?.trim()?.takeIf { it.isNotEmpty() },
+            lotNumber = lotNumber?.trim()?.takeIf { it.isNotEmpty() }
         )
-        
         reagentDao.insertReagent(reagent)
         return true
     }
-    
+
     override suspend fun updateReagent(
         id: String,
         analyteId: String,
@@ -137,28 +125,23 @@ class ReagentRepositoryImpl @Inject constructor(
         reagentType: String,
         manufacturer: String?,
         molecularWeight: Double?,
-        unit: String?
+        unit: String?,
+        lotNumber: String?
     ): Boolean {
         val trimmedName = reagentName.trim()
-        
-        // 检查必填字段
         if (trimmedName.isEmpty() || analyteId.isEmpty() || reagentType.isEmpty() || id.isEmpty()) {
             return false
         }
-        
-        // 获取要更新的试剂
         val existingReagent = getReagentById(id) ?: return false
-        
-        // 创建更新后的试剂实体
         val updatedReagent = existingReagent.copy(
             analyteId = analyteId,
             reagentName = trimmedName,
             reagentType = reagentType,
-            manufacturer = manufacturer?.takeIf { it.isNotBlank() },
-            molecularWeight = molecularWeight,
-            unit = unit?.takeIf { it.isNotBlank() }
+            manufacturer = manufacturer?.trim()?.takeIf { it.isNotEmpty() },
+            molecularWeight = molecularWeight ?: existingReagent.molecularWeight,
+            unit = unit?.trim()?.takeIf { it.isNotEmpty() } ?: existingReagent.unit,
+            lotNumber = lotNumber?.trim()?.takeIf { it.isNotEmpty() }
         )
-        
         reagentDao.updateReagent(updatedReagent)
         return true
     }

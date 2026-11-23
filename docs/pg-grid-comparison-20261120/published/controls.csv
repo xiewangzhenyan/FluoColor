@@ -1,0 +1,17 @@
+﻿control,method,p95_pitch,passed,reason
+circle_10_bg0,circles,0.0,1,
+circle_10_bg0,pyphe,0.02719641466102106,1,
+circle_10_bg255,circles,0.0,1,
+circle_10_bg255,pyphe,0.02719641466102106,1,
+circle_15_bg0,circles,0.0,1,
+circle_15_bg0,pyphe,0.02719641466102106,1,
+circle_15_bg255,circles,0.0,1,
+circle_15_bg255,pyphe,0.02719641466102106,1,
+independent_template_warp,sift,,0,单应内点不足 8
+independent_template_warp,orb,0.008234469152609378,1,
+independent_template_warp,ecc,9.401385329376665e-05,1,
+independent_template_warp,lightglue,0.002217146319443992,1,
+nonperiodic_texture_warp,sift,0.0008027712923820962,1,
+nonperiodic_texture_warp,orb,0.02664106463988954,1,
+nonperiodic_texture_warp,ecc,0.004077757832125228,1,
+nonperiodic_texture_warp,lightglue,0.005106730406060051,1,

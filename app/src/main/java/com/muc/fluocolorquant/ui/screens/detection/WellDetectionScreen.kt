@@ -53,6 +53,7 @@ fun WellDetectionScreen(
     )
     val lowQualityAppliedMessage = stringResource(R.string.grid_quant_low_quality_applied)
     val operationFailedMessage = stringResource(R.string.grid_event_operation_failed)
+    val diagnosticReadoutMessage = stringResource(R.string.array_readout_diagnostic)
     val decodedImageUri = remember(imageUri) {
         runCatching { imageUri?.let { java.net.URLDecoder.decode(it, "UTF-8") } }
             .getOrDefault(imageUri)
@@ -97,6 +98,8 @@ fun WellDetectionScreen(
                     toastManager.showToast(lowQualityAppliedMessage, ToastType.WARNING)
                 GridConfigurationEvent.OperationFailed ->
                     toastManager.showToast(operationFailedMessage, ToastType.ERROR)
+                GridConfigurationEvent.DiagnosticReadout ->
+                    toastManager.showToast(diagnosticReadoutMessage, ToastType.INFO)
             }
         }
     }
@@ -112,6 +115,7 @@ fun WellDetectionScreen(
     if (gridState == GridDetectionUiState.Plate96Localization) {
         Plate96LocalizationScreen(
             imageUri = imageUri,
+            initialPreferences = gridViewModel.plateAnalysisPreferences(),
             onBack = {
                 if (gridViewModel.hasActivePlate96LayoutSession()) {
                     gridViewModel.cancelPlate96LocalizationReview()
@@ -126,7 +130,22 @@ fun WellDetectionScreen(
             state = gridState,
             onBack = { navController.popBackStack() },
             onRetry = gridViewModel::retry,
+            onChooseLocator = gridViewModel::chooseLocator,
+            onRestoreLocalization = gridViewModel::restorePreviousLocalization,
+            onManualCorners = gridViewModel::openManualCorners,
+            onMarkCorner = gridViewModel::addManualCorner,
+            onUndoCorner = gridViewModel::undoManualCorner,
+            onClearCorners = gridViewModel::clearManualCorners,
+            onApplyCorners = gridViewModel::confirmManualCorners,
+            onCancelCorners = gridViewModel::cancelManualCorners,
+            onSetManualDiameter = gridViewModel::setManualCircularDiameter,
+            onConfirmManualDiameter = gridViewModel::confirmManualCircularDiameter,
+            onToggleManualBadSite = gridViewModel::toggleManualBadSite,
+            onNudgeRegularSite = gridViewModel::nudgeRegularSite,
+            onScaleRegularSite = gridViewModel::scaleRegularSite,
+            onRestoreRegularSite = gridViewModel::restoreRegularSite,
             onOpenLayout = gridViewModel::openLayoutEditor,
+            onDirectFinalizeTemplate = gridViewModel::finalizeTemplateDirectly,
             onReviewLocalization = gridViewModel::showLocalizationPreview,
             onAssignmentsChange = gridViewModel::updateLayoutDraft,
             onPaintAssignments = gridViewModel::paintLayoutDraft,

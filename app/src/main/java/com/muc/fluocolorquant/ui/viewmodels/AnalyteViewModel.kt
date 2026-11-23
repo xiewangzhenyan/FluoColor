@@ -50,18 +50,31 @@ class AnalyteViewModel @Inject constructor(
      * 添加分析物
      * @param name 分析物名称
      */
-    fun addAnalyte(name: String) {
+    fun addAnalyteProfile(
+        name: String,
+        defaultUnit: String?,
+        defaultMaxConcentration: Double?,
+        defaultFluorescenceChannel: String?,
+        referenceCutoff: Double?,
+        onSaved: () -> Unit = {}
+    ) {
         if (name.isBlank()) {
             _errorMessage.value = UiText.StringResource(R.string.analyte_name_empty)
             return
         }
-        
         viewModelScope.launch {
             _isLoading.value = true
-            
             try {
-                val result = analyteRepository.addAnalyte(name)
-                if (!result) {
+                val result = analyteRepository.addAnalyteProfile(
+                    name = name,
+                    defaultUnit = defaultUnit,
+                    defaultMaxConcentration = defaultMaxConcentration,
+                    defaultFluorescenceChannel = defaultFluorescenceChannel,
+                    referenceCutoff = referenceCutoff
+                )
+                if (result) {
+                    onSaved()
+                } else {
                     _errorMessage.value = UiText.StringResource(R.string.analyte_already_exists)
                 }
             } catch (error: Exception) {
@@ -72,28 +85,53 @@ class AnalyteViewModel @Inject constructor(
             }
         }
     }
-    
-    /**
-     * 更新分析物
-     * @param id 分析物ID
-     * @param name 新的分析物名称
-     */
-    fun updateAnalyte(id: String, name: String) {
+
+    fun updateAnalyteProfile(
+        id: String,
+        name: String,
+        defaultUnit: String?,
+        defaultMaxConcentration: Double?,
+        defaultFluorescenceChannel: String?,
+        referenceCutoff: Double?,
+        onSaved: () -> Unit = {}
+    ) {
         if (name.isBlank()) {
             _errorMessage.value = UiText.StringResource(R.string.analyte_name_empty)
             return
         }
-        
         viewModelScope.launch {
             _isLoading.value = true
-            
             try {
-                val result = analyteRepository.updateAnalyte(id, name)
-                if (!result) {
+                val result = analyteRepository.updateAnalyteProfile(
+                    id = id,
+                    name = name,
+                    defaultUnit = defaultUnit,
+                    defaultMaxConcentration = defaultMaxConcentration,
+                    defaultFluorescenceChannel = defaultFluorescenceChannel,
+                    referenceCutoff = referenceCutoff
+                )
+                if (result) {
+                    onSaved()
+                } else {
                     _errorMessage.value = UiText.StringResource(R.string.analyte_already_exists)
                 }
             } catch (error: Exception) {
                 Log.e(TAG, "更新分析物失败: $id", error)
+                _errorMessage.value = UiText.StringResource(R.string.analyte_update_error)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun applyStandardPresets(onApplied: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val count = analyteRepository.applyStandardPresetsToUnconfigured()
+                onApplied(count)
+            } catch (error: Exception) {
+                Log.e(TAG, "应用常见肿瘤标志物预设失败", error)
                 _errorMessage.value = UiText.StringResource(R.string.analyte_update_error)
             } finally {
                 _isLoading.value = false

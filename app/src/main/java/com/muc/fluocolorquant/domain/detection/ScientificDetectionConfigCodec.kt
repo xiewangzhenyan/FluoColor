@@ -14,6 +14,7 @@ import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel
 object ScientificDetectionConfigCodec {
     const val CARRIER_SCHEMA: String = "pg-grid-carrier-v1"
     const val FLUORESCENCE_SCHEMA: String = "fluorescence-display-v1"
+    const val ANALYTE_DISPLAY_SCHEMA: String = "analyte-display-v1"
 
     private val gson = Gson()
 
@@ -38,14 +39,49 @@ object ScientificDetectionConfigCodec {
         return GridTargetPolarity.entries.firstOrNull { it.name == value }
     }
 
-    /** 将单个分析物的荧光定量通道写入模板显示/处理配置。 */
-    fun encodeFluorescenceDisplay(channel: FluorescenceChannel): String {
-        return gson.toJson(
-            linkedMapOf(
-                "schemaVersion" to FLUORESCENCE_SCHEMA,
-                "fluorescenceChannel" to channel.name
-            )
+    /** 将单个分析物的荧光定量通道、可选阳性参考阈值及关联试剂信息写入模板显示/处理配置。 */
+    fun encodeFluorescenceDisplay(
+        channel: FluorescenceChannel,
+        referenceCutoff: Double? = null,
+        referenceCutoffUnit: String? = null,
+        reagentSummary: String? = null
+    ): String {
+        val payload = linkedMapOf<String, Any>(
+            "schemaVersion" to FLUORESCENCE_SCHEMA,
+            "fluorescenceChannel" to channel.name
         )
+        val validCutoff = referenceCutoff?.takeIf { it.isFinite() && it > 0.0 }
+        if (validCutoff != null && !referenceCutoffUnit.isNullOrBlank()) {
+            payload["referenceCutoff"] = validCutoff
+            payload["referenceCutoffUnit"] = referenceCutoffUnit.trim()
+        }
+        reagentSummary?.trim()?.takeIf(String::isNotEmpty)?.let {
+            payload["reagentSummary"] = it
+        }
+        return gson.toJson(payload)
+    }
+
+    /** 比色模式下仅在存在有效阳性参考阈值或关联试剂时写入冻结 JSON；均无时保持 null 以兼容旧运行。 */
+    fun encodeColorimetricDisplay(
+        referenceCutoff: Double?,
+        referenceCutoffUnit: String?,
+        reagentSummary: String? = null
+    ): String? {
+        val validCutoff = referenceCutoff?.takeIf { it.isFinite() && it > 0.0 }
+        val unit = referenceCutoffUnit?.trim()?.takeIf(String::isNotEmpty)
+        val validReagent = reagentSummary?.trim()?.takeIf(String::isNotEmpty)
+        if ((validCutoff == null || unit == null) && validReagent == null) return null
+        val payload = linkedMapOf<String, Any>(
+            "schemaVersion" to ANALYTE_DISPLAY_SCHEMA
+        )
+        if (validCutoff != null && unit != null) {
+            payload["referenceCutoff"] = validCutoff
+            payload["referenceCutoffUnit"] = unit
+        }
+        if (validReagent != null) {
+            payload["reagentSummary"] = validReagent
+        }
+        return gson.toJson(payload)
     }
 
     /** 严格解析荧光通道；不把缺失配置解释为绿色通道。 */
@@ -57,6 +93,44 @@ object ScientificDetectionConfigCodec {
             ?.uppercase()
             ?: return null
         return FluorescenceChannel.entries.firstOrNull { it.name == value }
+    }
+
+    /**
+     * 从冻结的 `displayConfigJson` 中读取阳性参考截断值（Cut-off）。
+     *
+     * 当调用方提供 [expectedUnit] 时，要求冻结单位一致（忽略大小写）才返回阈值，防止单位不一致误判。
+     */
+    fun decodeReferenceCutoff(json: String?, expectedUnit: String? = null): Double? {
+        val root = parseVersionedObject(json, FLUORESCENCE_SCHEMA)
+            ?: parseVersionedObject(json, ANALYTE_DISPLAY_SCHEMA)
+            ?: return null
+        val cutoff = root.get("referenceCutoff")
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
+            ?.asDouble
+            ?.takeIf { it.isFinite() && it > 0.0 }
+            ?: return null
+        if (!expectedUnit.isNullOrBlank()) {
+            val savedUnit = root.get("referenceCutoffUnit")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                ?.asString
+                ?.trim()
+            if (!savedUnit.isNullOrEmpty() && !savedUnit.equals(expectedUnit.trim(), ignoreCase = true)) {
+                return null
+            }
+        }
+        return cutoff
+    }
+
+    /** 从冻结的 `displayConfigJson` 中读取项目创建时锁定的试剂批次摘要。 */
+    fun decodeReagentSummary(json: String?): String? {
+        val root = parseVersionedObject(json, FLUORESCENCE_SCHEMA)
+            ?: parseVersionedObject(json, ANALYTE_DISPLAY_SCHEMA)
+            ?: return null
+        return root.get("reagentSummary")
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+            ?.asString
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
     }
 
     /** 统一执行 JSON 类型和 schema 检查，避免两个配置入口出现不一致的宽松解析。 */

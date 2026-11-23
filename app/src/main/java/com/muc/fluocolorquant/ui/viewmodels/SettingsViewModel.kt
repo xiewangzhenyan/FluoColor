@@ -1,12 +1,11 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
 import android.util.Log
-import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import com.muc.fluocolorquant.data.repository.SettingsRepository
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisPreferences
 import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +25,17 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+    val globalArrayReadoutDefaults: StateFlow<ArrayAnalysisPreferences> =
+        settingsRepository.globalArrayReadoutDefaults.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            ArrayAnalysisPreferences()
+        )
+
+    fun saveGlobalArrayReadoutDefaults(preferences: ArrayAnalysisPreferences) {
+        viewModelScope.launch { settingsRepository.saveGlobalArrayReadoutDefaults(preferences) }
+    }
 
     init {
         // 收集光谱设置并更新UI状态
@@ -128,18 +138,6 @@ class SettingsViewModel @Inject constructor(
         }
         return true
     }
-    
-    // 检测模式选项
-    val detectionModeOptions = listOf(
-        DetectionModeOption("FLUORESCENCE", R.string.fluorescence_detection),
-        DetectionModeOption("COLORIMETRIC", R.string.colorimetric_detection)
-    )
-    
-    // 检测模式选项数据类
-    data class DetectionModeOption(
-        val code: String,
-        @StringRes val nameRes: Int
-    )
     
     // 当前默认浓度单位
     val defaultConcentrationUnit: StateFlow<String> = settingsRepository.defaultConcentrationUnitFlow

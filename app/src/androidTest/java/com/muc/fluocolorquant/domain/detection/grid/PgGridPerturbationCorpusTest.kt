@@ -6,17 +6,21 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.gson.Gson
+import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantSampler
 import java.security.MessageDigest
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.hypot
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.opencv.android.OpenCVLoader
+import kotlinx.coroutines.runBlocking
 
 /**
  * PG-Grid 七扰动族 Android/Python 对照测试。
@@ -84,6 +88,46 @@ class PgGridPerturbationCorpusTest {
             "PG-Grid 扰动语料存在 ${failures.size} 个失败 case：\n${failures.joinToString("\n")}",
             failures.isEmpty()
         )
+    }
+
+    @Test
+    fun comparisonReportOnFrozenChipImages() = runBlocking {
+        assumeTrue("只在需要采集对照成绩时运行", InstrumentationRegistry.getArguments().getString("locatorComparisonReport") == "true")
+        val manifest = gson.fromJson(assetText(MANIFEST_ASSET), CorpusManifest::class.java)
+        val methods = listOf(ArrayLocatorMode.DBSCAN, ArrayLocatorMode.LOG_SPOTS)
+        manifest.cases.forEach { case ->
+            assertEquals(case.imageSha256, assetSha256(case.imageAsset))
+            val bitmap = assetBitmap(case.imageAsset)
+            try {
+                for (mode in methods) {
+                    val grid = locator.compareOnImage(bitmap, case.rows, case.columns, mode)
+                    val p95 = grid?.let {
+                        assertFalse(it.geometry.trusted)
+                        assertEquals(mode.name, it.locatorName)
+                        assertEquals(case.truth.size, it.sites.size)
+                        percentile(it.sites.zip(case.truth).map { (site, expected) ->
+                            hypot(site.original.x - expected.x, site.original.y - expected.y) / case.pythonMetrics.truthPitchOriginalPx
+                        }.sorted(), .95)
+                    }
+                    Log.i("ArrayLocatorReport", "synthetic ${case.id} ${mode.name} p95=$p95 observed=${grid?.geometry?.inlierCount}")
+                }
+            } finally { bitmap.recycle() }
+        }
+        // 这批实拍没有逐孔真值，因此即使显示了完整网格，也只计是否有输出，不计准确率。
+        val paths = InstrumentationRegistry.getInstrumentation().context.assets.list("pg_grid/real_v1/images").orEmpty()
+            .filter { it.endsWith(".jpg") && !it.contains("cropped") }.sorted()
+        assertEquals(6, paths.size)
+        for (path in paths) {
+            val size = if (path.contains("10x10")) 10 else 15
+            val bitmap = assetBitmap("pg_grid/real_v1/images/$path")
+            try {
+                for (mode in methods) {
+                    val grid = locator.compareOnImage(bitmap, size, size, mode)
+                    grid?.let { assertFalse(it.geometry.trusted) }
+                    Log.i("ArrayLocatorReport", "photo $path ${mode.name} observed=${grid?.geometry?.inlierCount}")
+                }
+            } finally { bitmap.recycle() }
+        }
     }
 
     /** 对一个冻结 case 执行定位、光度和 Python 基线差值检查。 */

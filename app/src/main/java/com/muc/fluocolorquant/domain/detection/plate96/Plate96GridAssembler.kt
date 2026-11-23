@@ -8,9 +8,18 @@ import com.muc.fluocolorquant.domain.detection.array.ArrayImagePoint
 import com.muc.fluocolorquant.domain.detection.array.ArrayLocalizationDiagnostics
 import com.muc.fluocolorquant.domain.detection.array.ArrayLocalizationResult
 import com.muc.fluocolorquant.domain.detection.array.ArrayLocalizedSite
+import com.muc.fluocolorquant.domain.detection.array.ArrayImageTransformSnapshot
+import com.muc.fluocolorquant.domain.detection.array.ArrayOrientationSource
+import com.muc.fluocolorquant.domain.detection.array.ArrayOriginCorner
 import com.muc.fluocolorquant.domain.detection.array.ArraySiteLocalizationFlag
 import com.muc.fluocolorquant.domain.detection.array.ArraySiteLocalizationSource
 import com.muc.fluocolorquant.domain.detection.array.Plate96LayoutContract
+import com.muc.fluocolorquant.domain.detection.grid.GridPoint
+import com.muc.fluocolorquant.domain.detection.grid.GridPointSource
+import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
+import com.muc.fluocolorquant.domain.detection.grid.ManualGridGeometry
+import com.muc.fluocolorquant.domain.detection.grid.PgGridLocatorConfig
+import com.muc.fluocolorquant.domain.detection.grid.RegularGridGeometry
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBitmapCropper
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitBounds
 import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitRegionSource
@@ -20,6 +29,8 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.hypot
 
+internal const val PLATE_MANUAL_TRANSFORM_VERSION = "plate-manual-homography-v1"
+
 /**
  * 把方向裁决后的真实圆孔观测组装为固定96孔标准晶格。
  *
@@ -27,6 +38,62 @@ import kotlin.math.hypot
  * 最终列表始终按A1～H12排列，同时保留每个孔在原图中的源行列和源像素区域。
  */
 class Plate96GridAssembler @Inject constructor() {
+
+    /** 四个已编号的角孔只确定透视矩阵；内径由用户另行确认，全部掩膜使用同一圆盘投影。 */
+    fun assembleManual(sourceWidth: Int, sourceHeight: Int, corners: List<GridPoint>, diameterRatio: Double): ArrayLocalizationResult {
+        require(diameterRatio in 0.26..0.84) { "手动内径必须小于孔距且覆盖最低采样面积" }
+        val rows = Plate96LayoutContract.ROWS
+        val columns = Plate96LayoutContract.COLUMNS
+        val grid = ManualGridGeometry.build(sourceWidth, sourceHeight,
+            PgGridLocatorConfig(rows, columns, GridTargetPolarity.DARK), corners)
+        val directionX = corners[1].x - corners[0].x
+        val directionY = corners[1].y - corners[0].y
+        val origin = when {
+            kotlin.math.abs(directionX) >= kotlin.math.abs(directionY) && directionX >= 0 -> ArrayOriginCorner.TOP_LEFT
+            kotlin.math.abs(directionX) >= kotlin.math.abs(directionY) -> ArrayOriginCorner.BOTTOM_RIGHT
+            directionY >= 0 -> ArrayOriginCorner.TOP_RIGHT
+            else -> ArrayOriginCorner.BOTTOM_LEFT
+        }
+        val orientation = Plate96LayoutContract.orientation(origin, ArrayOrientationSource.USER_CONFIRMED, null)
+        val transform = ArrayImageTransformSnapshot(sourceWidth, sourceHeight, grid.rectifiedWidth, grid.rectifiedHeight,
+            grid.homography.forward, grid.homography.inverse, PLATE_MANUAL_TRANSFORM_VERSION)
+        val pitch = RegularGridGeometry.estimatePitch(grid.sites.map { it.rectified }, rows, columns)
+        val minimumPitch = minOf(pitch.horizontalPx, pitch.verticalPx)
+        val radius = minimumPitch * diameterRatio / 2
+        val forward = grid.homography.forward.toDoubleArray()
+        val inverse = grid.homography.inverse.toDoubleArray()
+        val sites = grid.sites.map { site ->
+            val normalized = ArrayImagePoint(site.rectified.x, site.rectified.y)
+            val original = ArrayImagePoint(site.original.x, site.original.y)
+            val coordinate = ArrayGridCoordinate(site.key.rowIndex, site.key.columnIndex)
+            val normalizedBounds = circleBounds(normalized, radius, grid.rectifiedWidth, grid.rectifiedHeight)
+            val rim = ManualGridGeometry.circleOutline(site.rectified, radius, inverse)
+            val originalBounds = ArrayImageBounds(rim.minOf(GridPoint::x).coerceAtLeast(0.0), rim.minOf(GridPoint::y).coerceAtLeast(0.0),
+                rim.maxOf(GridPoint::x).coerceAtMost(sourceWidth.toDouble()), rim.maxOf(GridPoint::y).coerceAtMost(sourceHeight.toDouble()))
+            fun region(bounds: ArrayUnitBounds, fromOriginal: Boolean) = ArrayUnitBitmapCropper.detectedGeometryRegion(
+                site.siteIndex, coordinate.rowIndex, coordinate.columnIndex, ArrayUnitShape.CIRCLE, bounds,
+                ArrayUnitRegionSource.MANUAL_GEOMETRY
+            ).copy(foregroundMask = ByteArray(bounds.width * bounds.height) { index ->
+                val point = GridPoint((bounds.left + index % bounds.width).toDouble(), (bounds.top + index / bounds.width).toDouble())
+                val local = if (fromOriginal) RegularGridGeometry.project(forward, point) else point
+                if (hypot(local.x - normalized.x, local.y - normalized.y) <= radius) 1 else 0
+            }).requireValid()
+            val annulusInner = maxOf(radius + 1.0, minimumPitch * .30)
+            val annulusOuter = maxOf(annulusInner + 1.5, minimumPitch * .44)
+            val sourceScale = originalBounds.width / (2 * radius)
+            ArrayLocalizedSite(site.siteIndex, Plate96LayoutContract.displayLabel(coordinate.rowIndex, coordinate.columnIndex),
+                coordinate, ArrayCoordinateTransformer.canonicalToSource(coordinate, orientation), normalized, original,
+                normalizedBounds, originalBounds, ArrayBackgroundAnnulus(normalized, annulusInner, annulusOuter),
+                ArrayBackgroundAnnulus(original, annulusInner * sourceScale, annulusOuter * sourceScale), radius, 0.0,
+                if (site.source == GridPointSource.MANUAL_ANCHOR) ArraySiteLocalizationSource.MANUAL_ANCHOR
+                else ArraySiteLocalizationSource.MANUAL_INTERPOLATED, emptySet(),
+                region(normalizedBounds.toIntegerBounds(grid.rectifiedWidth, grid.rectifiedHeight), false),
+                region(originalBounds.toIntegerBounds(sourceWidth, sourceHeight), true))
+        }
+        return ArrayLocalizationResult(locatorName = "Manual four-corner grid", locatorVersion = ManualGridGeometry.VERSION,
+            orientation = orientation, imageTransform = transform, sites = sites,
+            diagnostics = ArrayLocalizationDiagnostics(0, 0, sites.size, 0.0, 0.0, false, 0.0)).requireValid()
+    }
 
     fun assemble(
         sourceWidth: Int,

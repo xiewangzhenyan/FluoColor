@@ -7,11 +7,18 @@ import com.muc.fluocolorquant.data.enums.DetectionModality
 import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.data.enums.ReadoutLayout
 import com.muc.fluocolorquant.data.enums.SiteShape
+import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.data.model.AcquisitionProfile
 import com.muc.fluocolorquant.data.model.CarrierProfile
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.SiteMeasurement
+import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
+import com.muc.fluocolorquant.domain.detection.array.ArrayMultiHoleStatistics
+import com.muc.fluocolorquant.domain.detection.array.MultiHoleStatistic
+import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideCodec
+import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideSnapshot
+import com.muc.fluocolorquant.domain.project.TemplateSiteKey
 import com.muc.fluocolorquant.domain.detection.GridGeometryPersistence
 import com.muc.fluocolorquant.domain.detection.evidence.GridPersistedSourceInput
 import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceRecord
@@ -31,6 +38,38 @@ import org.junit.Test
  * 一旦写入历史记录就不可再由当前项目设置补算或替换。
  */
 class GridDetectionPersistenceAssemblerTest {
+
+    @Test
+    fun `跨行同一样本可统计但参考孔和无效孔不能混入`() {
+        val source = snapshot()
+        fun assignment(index: Int, sample: String, role: TemplateSiteRole = TemplateSiteRole.SAMPLE) = TemplateSiteAssignment(
+            id = "hole-$index", templateId = source.template.id, rowIndex = index/4, columnIndex = index%4,
+            analyteId = "cea", roleType = role.code, defaultSampleSlot = sample, repeatGroup = "batch-1", enabled = true
+        )
+        val frozen = source.copy(carrierProfile = source.carrierProfile.copy(rows = 2, columns = 4), siteAssignments = listOf(
+            assignment(0,"sample-x"), assignment(4,"before-override"), assignment(5,"sample-x"),
+            assignment(6,"sample-x",TemplateSiteRole.STANDARD), assignment(7,"sample-y")
+        ))
+        val overrides = TemplateProjectOverrideCodec.encode(TemplateProjectOverrideSnapshot(
+            sampleSlotMapping = mapOf(TemplateSiteKey.format(1,0) to "sample-x")
+        ))
+        fun measurement(index: Int, value: Double, state: String = "QUANTIFIED", reliable: Boolean = true) = SiteMeasurement(
+            runId = "frozen-run", siteIndex = index, analyteId = "cea", detectionMode = "COLORIMETRIC",
+            rawSignalJson = "{}", primaryFeatureName = "GRAY_LUMINOSITY", primaryFeatureValue = value,
+            signalDetectable = false, qualityReliable = reliable, processorName = "colorimetric-photometry", processorVersion = "v1",
+            concentrationValue = value, concentrationUnit = "ng/mL", quantificationState = state
+        )
+        val measurements = listOf(measurement(0,10.0),measurement(4,20.0,"ESTIMATED"),measurement(5,100.0,reliable = false),
+            measurement(6,100.0),measurement(7,100.0))
+        val group = ArrayMultiHoleStatistics.freeze(MultiHoleStatistic.MEAN,frozen,overrides,measurements)?.groups?.single()
+            ?: error("重复孔没有正确分组")
+        assertEquals(listOf(0,4,5),group.siteIndices)
+        assertEquals(15.0,requireNotNull(group.signal.value),.001)
+        assertEquals(2,group.signal.usedWells)
+        assertEquals(null,group.concentration.value)
+        assertEquals(1,group.concentration.usedWells)
+        assertEquals(null,ArrayMultiHoleStatistics.freeze(MultiHoleStatistic.INDIVIDUAL,frozen,overrides,measurements))
+    }
 
     @Test
     fun `组装器冻结实际快照并优先引用长期原图与正确载体几何`() {

@@ -281,6 +281,64 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
+    fun migrate20To21_preservesExistingAnalytesAndAddsPresetColumns() {
+        val dbName = "migration-test-20-to-21"
+        migrationHelper.createDatabase(dbName, 20).apply {
+            execSQL("INSERT INTO analytes (id, name) VALUES ('analyte-cea', 'CEA')")
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            dbName,
+            21,
+            true,
+            DatabaseMigrations.MIGRATION_20_21
+        ).use { database ->
+            database.query(
+                "SELECT id, name, defaultUnit, defaultMaxConcentration, defaultFluorescenceChannel, referenceCutoff FROM analytes WHERE id = 'analyte-cea'"
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("analyte-cea", cursor.getString(0))
+                assertEquals("CEA", cursor.getString(1))
+                assertTrue(cursor.isNull(2))
+                assertTrue(cursor.isNull(3))
+                assertTrue(cursor.isNull(4))
+                assertTrue(cursor.isNull(5))
+            }
+        }
+    }
+
+    @Test
+    fun migrate21To22_preservesExistingReagentsAndAddsLotNumberColumn() {
+        val dbName = "migration-test-21-to-22"
+        migrationHelper.createDatabase(dbName, 21).apply {
+            execSQL("INSERT INTO analytes (id, name) VALUES ('analyte-cea', 'CEA')")
+            execSQL(
+                "INSERT INTO reagents (id, analyteId, reagentName, reagentType, manufacturer, molecularWeight, unit) " +
+                    "VALUES ('reagent-cea-ab', 'analyte-cea', 'Anti-CEA mAb', 'antibody', 'Abcam', NULL, NULL)"
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            dbName,
+            22,
+            true,
+            DatabaseMigrations.MIGRATION_21_22
+        ).use { database ->
+            database.query(
+                "SELECT id, reagentName, manufacturer, lotNumber FROM reagents WHERE id = 'reagent-cea-ab'"
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("reagent-cea-ab", cursor.getString(0))
+                assertEquals("Anti-CEA mAb", cursor.getString(1))
+                assertEquals("Abcam", cursor.getString(2))
+                assertTrue(cursor.isNull(3))
+            }
+        }
+    }
+
+    @Test
     fun migrate16To17_doesNotBackfillResultLightSourceFromMutableProject() {
         migrationHelper.createDatabase(SPECTRUM_LIGHT_SOURCE_DATABASE_NAME, 16).apply {
             insertVersion15SpectrumFixture()

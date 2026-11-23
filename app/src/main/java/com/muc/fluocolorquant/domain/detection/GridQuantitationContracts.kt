@@ -251,7 +251,8 @@ data class GridAnalysisModelOption(
      *
      * 该标记只控制风险提示与显式确认，不绕过文件校验、运行兼容检查或输出域判断。
      */
-    val requiresExplicitScopeConfirmation: Boolean = false
+    val requiresExplicitScopeConfirmation: Boolean = false,
+    val processorVersion: String = "v1"
 )
 
 /**

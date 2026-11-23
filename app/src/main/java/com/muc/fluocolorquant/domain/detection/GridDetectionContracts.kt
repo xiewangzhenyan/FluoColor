@@ -5,10 +5,12 @@ import com.muc.fluocolorquant.data.enums.AnalysisModelType
 import com.muc.fluocolorquant.data.enums.CarrierType
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisPreferences
 import com.muc.fluocolorquant.domain.detection.evidence.GridPersistedSourceInput
 import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceRecord
 import com.muc.fluocolorquant.domain.detection.grid.PgGridResult
 import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
+import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitSegmentationResult
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot
 import java.util.Date
@@ -146,7 +148,8 @@ enum class GridDetectionBlockReason {
     INCONSISTENT_ANALYTE_SNAPSHOT,
     INVALID_SITE_COORDINATE,
     DUPLICATE_ENABLED_SITE,
-    ORPHAN_SITE_ANALYTE
+    ORPHAN_SITE_ANALYTE,
+    PREVIEW_ONLY_LOCALIZATION
 }
 
 /** 执行一次模板驱动阵列检测所需的运行期输入。 */
@@ -159,6 +162,8 @@ data class GridDetectionRequest(
     val runId: String = UUID.randomUUID().toString(),
     val capturedAt: Date = Date(),
     val acquisitionMetadataJson: String? = null,
+    val analysisPreferences: ArrayAnalysisPreferences = ArrayAnalysisPreferences(),
+    val manualCircularDiameterRatio: Double? = null,
     val onStageChanged: (GridDetectionStage) -> Unit = {}
 )
 
@@ -191,7 +196,11 @@ data class GridLocalizationSession(
     val processingVersions: Map<String, String>,
     val confidenceThreshold: Float? = null,
     val iouThreshold: Float? = null,
-    val frameQcIssueCount: Int = 0
+    val frameQcIssueCount: Int = 0,
+    /** 保存未经单孔人工微调前的定位与分割基线，支持单孔独立“恢复自动”而不影响其他已微调孔。 */
+    val automaticGrid: PgGridResult = grid,
+    val automaticSegmentation: ArrayUnitSegmentationResult? = quant.unitSegmentation,
+    val siteBoxScales: Map<Int, Double> = emptyMap()
 )
 
 enum class GridLocalizationPresentation { MICROFLUIDIC, PLATE96 }

@@ -1,6 +1,24 @@
 package com.muc.fluocolorquant.domain.detection
 
 import android.graphics.BitmapFactory
+import androidx.room.Room
+import com.muc.fluocolorquant.data.AppDatabase
+import com.muc.fluocolorquant.application.detection.GridConfigurationResourceCoordinator
+import com.muc.fluocolorquant.data.repository.AcquisitionProfileRepositoryImpl
+import com.muc.fluocolorquant.data.repository.AnalysisModelRepositoryImpl
+import com.muc.fluocolorquant.data.repository.CalibrationSettingsRepository
+import com.muc.fluocolorquant.data.repository.CarrierProfileRepositoryImpl
+import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepositoryImpl
+import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.data.repository.ProjectRepositoryImpl
+import com.muc.fluocolorquant.data.repository.SettingsRepository
+import com.muc.fluocolorquant.ui.viewmodels.GridDetectionUiState
+import com.muc.fluocolorquant.ui.viewmodels.GridDetectionViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.gson.JsonParser
@@ -26,7 +44,18 @@ import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.data.repository.GridDetectionPersistenceBundle
 import com.muc.fluocolorquant.data.repository.GridDetectionRunRepository
 import com.muc.fluocolorquant.domain.detection.grid.OpenCvPgGridLocator
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisPreferences
+import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
+import com.muc.fluocolorquant.domain.detection.array.MultiHoleStatistic
+import com.muc.fluocolorquant.domain.detection.photometry.WellReadoutMode
+import com.muc.fluocolorquant.domain.result.ArrayResultLoadResult
+import com.muc.fluocolorquant.domain.result.ArrayResultSnapshotMapper
+import com.muc.fluocolorquant.domain.result.ArrayResultSnapshotSource
 import com.muc.fluocolorquant.domain.detection.evidence.AndroidGridProcessingEvidenceWriter
+import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceRecord
+import com.muc.fluocolorquant.domain.detection.evidence.GridProcessingEvidenceWriter
+import com.muc.fluocolorquant.domain.detection.grid.PgGridResult
+import com.muc.fluocolorquant.domain.detection.photometry.PgQuantResult
 import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideCodec
@@ -38,6 +67,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -47,6 +77,274 @@ import org.opencv.android.OpenCVLoader
 /** 真实图片 → 定位 → 荧光光度 → 模型兼容 → 持久化数据包的协调器集成测试。 */
 @RunWith(AndroidJUnit4::class)
 class GridDetectionCoordinatorIntegrationTest {
+
+    @Test
+    fun comparisonIsReadOnlyAndFailedMethodNeverShowsPreviousGrid() = runBlocking {
+        val device = InstrumentationRegistry.getInstrumentation()
+        val context = device.targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val photo = java.io.File.createTempFile("comparison-read-only", ".png", context.cacheDir)
+        val repository = RecordingGridRunRepository()
+        try {
+            device.context.assets.open("pg_grid/synthetic_10x10_dark_squares.png").use { input ->
+                photo.outputStream().use { input.copyTo(it) }
+            }
+            val snapshot = snapshot10x10()
+            val project = projectForSnapshot(snapshot, "comparison-test").copy(
+                imageUri = photo.absolutePath, templateSnapshotJson = TemplateProjectSnapshotCodec.encode(snapshot))
+            val projects = object : ProjectRepository by ProjectRepositoryImpl(database.projectDao()) {
+                override suspend fun getProjectById(projectId: String): Project? = project.takeIf { it.id == projectId }
+            }
+            val resources = GridConfigurationResourceCoordinator(ExperimentTemplateRepositoryImpl(database.experimentTemplateDao()),
+                CarrierProfileRepositoryImpl(database.carrierProfileDao()), AcquisitionProfileRepositoryImpl(database.acquisitionProfileDao()),
+                AnalysisModelRepositoryImpl(database.analysisModelDao()))
+            val operations = mutableListOf<ArrayLocatorMode>()
+            val delegate = OpenCvPgGridLocator()
+            val coordinator = GridDetectionCoordinator(locator = { bitmap, config ->
+                operations += config.mode
+                // 人为固定失败来检验状态隔离：图像算法进步不应让这个失败回归变成相反的断言。
+                if (config.mode in setOf(ArrayLocatorMode.DBSCAN, ArrayLocatorMode.KMEANS)) {
+                    throw com.muc.fluocolorquant.domain.detection.grid.TraditionalGridNotFound(config.mode)
+                }
+                delegate.locate(bitmap, config)
+            }, repository = repository)
+            val viewModel = GridDetectionViewModel(context, projects, coordinator, resources, CalibrationSettingsRepository(context))
+            withTimeout(30_000) {
+                withContext(Dispatchers.Main) { viewModel.start(project.id, photo.absolutePath) }
+                val before = viewModel.uiState.filterIsInstance<GridDetectionUiState.LocalizationReady>().first()
+                withContext(Dispatchers.Main) { viewModel.chooseLocator(ArrayLocatorMode.LOG_SPOTS) }
+                val comparison = viewModel.uiState.filterIsInstance<GridDetectionUiState.LocatingArray>()
+                    .first { it.attempt.status is com.muc.fluocolorquant.ui.viewmodels.ArrayLocatorAttemptStatus.Preview }
+                val grid = (comparison.attempt.status as com.muc.fluocolorquant.ui.viewmodels.ArrayLocatorAttemptStatus.Preview).grid
+                assertEquals(ArrayLocatorMode.LOG_SPOTS.name, grid.locatorName)
+                withContext(Dispatchers.Main) {
+                    viewModel.openLayoutEditor()
+                    viewModel.finalizeLayout(before.preview.initialAssignments)
+                    assertSame(comparison, viewModel.uiState.value)
+                    viewModel.chooseLocator(ArrayLocatorMode.DBSCAN)
+                }
+                val failed = viewModel.uiState.filterIsInstance<GridDetectionUiState.LocatingArray>().first {
+                    it.attempt.status == com.muc.fluocolorquant.ui.viewmodels.ArrayLocatorAttemptStatus.NoGrid
+                }
+                assertSame(comparison.attempt.bitmap, failed.attempt.bitmap)
+                assertEquals(ArrayLocatorMode.DBSCAN, failed.attempt.mode)
+                withContext(Dispatchers.Main) {
+                    viewModel.openManualCorners()
+                    assertTrue(viewModel.uiState.value is GridDetectionUiState.ManualCorners)
+                    viewModel.cancelManualCorners()
+                    assertSame(failed, viewModel.uiState.value)
+                    viewModel.chooseLocator(ArrayLocatorMode.KMEANS)
+                }
+                val failedProduction = viewModel.uiState.filterIsInstance<GridDetectionUiState.LocatingArray>().first {
+                    it.attempt.mode == ArrayLocatorMode.KMEANS &&
+                        it.attempt.status == com.muc.fluocolorquant.ui.viewmodels.ArrayLocatorAttemptStatus.NoGrid
+                }
+                assertEquals(ArrayLocatorMode.AUTO, failedProduction.attempt.previousMode)
+                withContext(Dispatchers.Main) {
+                    viewModel.openLayoutEditor()
+                    assertSame(failedProduction, viewModel.uiState.value)
+                    viewModel.restorePreviousLocalization()
+                    val restored = viewModel.uiState.value as GridDetectionUiState.LocalizationReady
+                    assertEquals(before.preview.runId, restored.preview.runId)
+                    assertEquals(before.preview.initialAssignments, restored.preview.initialAssignments)
+                }
+                val blocked = coordinator.execute(GridDetectionRequest(project, snapshot, comparison.attempt.bitmap, photo.absolutePath,
+                    project.userId, analysisPreferences = ArrayAnalysisPreferences(locator = ArrayLocatorMode.DBSCAN)))
+                assertEquals(GridDetectionOutcome.Blocked(setOf(GridDetectionBlockReason.PREVIEW_ONLY_LOCALIZATION)), blocked)
+                assertNull(repository.saved)
+                assertEquals(listOf(ArrayLocatorMode.AUTO, ArrayLocatorMode.LOG_SPOTS, ArrayLocatorMode.DBSCAN, ArrayLocatorMode.KMEANS), operations)
+            }
+        } finally {
+            database.close()
+            photo.delete()
+        }
+    }
+
+    @Test
+    fun changedReadoutReusesGeometryAndReopensFrozenSignalWithoutUsingOldCurve() = runBlocking {
+        val device = InstrumentationRegistry.getInstrumentation()
+        val settings = SettingsRepository(device.targetContext)
+        val previous = settings.globalArrayReadoutDefaults.first()
+        val original = device.context.assets.open("pg_grid/synthetic_10x10_dark_squares.png")
+            .use { requireNotNull(BitmapFactory.decodeStream(it)) }
+        try {
+            val snapshot = snapshot10x10()
+            val project = projectForSnapshot(snapshot, "readout-frozen-history")
+            val repository = RecordingGridRunRepository()
+            var locatorCalls = 0
+            val delegate = OpenCvPgGridLocator()
+            val coordinator = GridDetectionCoordinator(locator = { bitmap, config ->
+                locatorCalls++
+                delegate.locate(bitmap, config)
+            }, repository = repository)
+            val request = GridDetectionRequest(project, snapshot, original, project.imageUri, project.userId)
+            val initial = (coordinator.localize(request) as GridLocalizationOutcome.Ready).session
+            settings.saveGlobalArrayReadoutDefaults(previous.copy(readout = WellReadoutMode.FULL_MEAN, multiHoleStatistic = MultiHoleStatistic.MEAN))
+            val selected = settings.globalArrayReadoutDefaults.first()
+            val updated = coordinator.resampleRegular(initial, request.copy(runId = "readout-result", analysisPreferences = selected)).session
+            assertEquals(1,locatorCalls)
+            assertEquals(initial.grid,updated.grid)
+            assertTrue(updated.quant.sites.any { it.readout?.mode == WellReadoutMode.FULL_MEAN })
+            val complete = coordinator.finalizeLocalized(updated,snapshot)
+            assertTrue(complete is GridDetectionOutcome.Completed)
+            val bundle = requireNotNull(repository.saved)
+            assertTrue(bundle.measurements.all { it.concentrationValue == null })
+            assertTrue(bundle.measurements.any { it.primaryFeatureValue?.isFinite() == true })
+            assertEquals("v1-readout1-FULL_MEAN",bundle.measurements.first().processorVersion)
+            // 使用最新设置重开旧运行不会覆写它的 ROI 口径、统计方案或信号。
+            settings.saveGlobalArrayReadoutDefaults(selected.copy(readout = WellReadoutMode.CENTER_PIXEL))
+            val reopened = ArrayResultSnapshotMapper.map(ArrayResultSnapshotSource(bundle.run,project,
+                listOf(bundle.endpointArtifact)+bundle.diagnosticArtifacts,bundle.measurements)) as ArrayResultLoadResult.Success
+            val versions = JsonParser.parseString(reopened.snapshot.processingVersionJson).asJsonObject
+            assertEquals("FULL_MEAN",versions.get("wellReadout").asString)
+            assertEquals("MEAN",versions.get("multiHoleStatistic").asString)
+            val frozen = reopened.snapshot.sites.flatMap { it.measurements }.first { it.primaryFeatureValue?.isFinite() == true }
+            assertTrue(frozen.rawSignalJson.contains("FULL_MEAN"))
+        } finally {
+            settings.saveGlobalArrayReadoutDefaults(previous)
+            original.recycle()
+        }
+    }
+
+    @Test
+    fun changingOnlyMultiHoleStatisticKeepsLocalizationAndEvidence() = runBlocking {
+        val device = InstrumentationRegistry.getInstrumentation()
+        val context = device.targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val photo = java.io.File.createTempFile("statistics-only", ".png", context.cacheDir)
+        try {
+            device.context.assets.open("pg_grid/synthetic_10x10_dark_squares.png").use { input ->
+                photo.outputStream().use { input.copyTo(it) }
+            }
+            val snapshot = snapshot10x10()
+            val project = projectForSnapshot(snapshot, "statistics-only").copy(
+                imageUri = photo.absolutePath, templateSnapshotJson = TemplateProjectSnapshotCodec.encode(snapshot))
+            val projects = object : ProjectRepository by ProjectRepositoryImpl(database.projectDao()) {
+                override suspend fun getProjectById(projectId: String): Project? = project.takeIf { it.id == projectId }
+            }
+            val resources = GridConfigurationResourceCoordinator(ExperimentTemplateRepositoryImpl(database.experimentTemplateDao()),
+                CarrierProfileRepositoryImpl(database.carrierProfileDao()), AcquisitionProfileRepositoryImpl(database.acquisitionProfileDao()),
+                AnalysisModelRepositoryImpl(database.analysisModelDao()))
+            val delegate = OpenCvPgGridLocator()
+            val writes = mutableListOf<String>()
+            val writer = object : GridProcessingEvidenceWriter {
+                override fun write(runId: String, sourceBitmap: android.graphics.Bitmap, grid: PgGridResult,
+                    quant: PgQuantResult?): List<GridProcessingEvidenceRecord> {
+                    writes += runId
+                    return emptyList()
+                }
+            }
+            val coordinator = GridDetectionCoordinator(delegate, RecordingGridRunRepository(), evidenceWriter = writer)
+            val viewModel = GridDetectionViewModel(context, projects, coordinator, resources, CalibrationSettingsRepository(context))
+            withTimeout(30_000) {
+                withContext(Dispatchers.Main) { viewModel.start(project.id, photo.absolutePath) }
+                val initial = viewModel.uiState.filterIsInstance<GridDetectionUiState.LocalizationReady>().first()
+                val selected = withContext(Dispatchers.Main) {
+                    viewModel.changeArrayAnalysis(initial.preview.analysisPreferences.copy(multiHoleStatistic = MultiHoleStatistic.MEAN))
+                    viewModel.uiState.value as GridDetectionUiState.LocalizationReady
+                }
+                // 仅改汇总时同步更新配置，不生成新 runId、过程文件或忙态。
+                assertEquals(initial.preview.runId, selected.preview.runId)
+                assertEquals(initial.preview.sites, selected.preview.sites)
+                assertNull(selected.readoutStage)
+                assertEquals(listOf(initial.preview.runId), writes)
+                assertEquals(MultiHoleStatistic.MEAN, selected.preview.analysisPreferences.multiHoleStatistic)
+            }
+        } finally {
+            database.close()
+            photo.delete()
+        }
+    }
+
+    @Test
+    fun failedAutoToManualPreviewAndLayout() = runBlocking {
+        val device = InstrumentationRegistry.getInstrumentation()
+        val context = device.targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val photo = java.io.File.createTempFile("manual-grid-test", ".png", context.cacheDir)
+        try {
+            device.context.assets.open("pg_grid/synthetic_10x10_dark_squares.png").use { input -> photo.outputStream().use { input.copyTo(it) } }
+            val snapshot = snapshot10x10()
+            val project = projectForSnapshot(snapshot,"failed-auto-manual").copy(imageUri = photo.absolutePath,
+                templateSnapshotJson = TemplateProjectSnapshotCodec.encode(snapshot))
+            val projects = object : ProjectRepository by ProjectRepositoryImpl(database.projectDao()) {
+                override suspend fun getProjectById(projectId: String): Project? = project.takeIf { it.id == projectId }
+            }
+            val resources = GridConfigurationResourceCoordinator(ExperimentTemplateRepositoryImpl(database.experimentTemplateDao()),
+                CarrierProfileRepositoryImpl(database.carrierProfileDao()), AcquisitionProfileRepositoryImpl(database.acquisitionProfileDao()),
+                AnalysisModelRepositoryImpl(database.analysisModelDao()))
+            var autoCalls = 0
+            val vm = GridDetectionViewModel(context, projects, GridDetectionCoordinator(locator = { _, _ ->
+                autoCalls++; error("测试：图像未形成自动晶格")
+            }, repository = RecordingGridRunRepository()), resources, CalibrationSettingsRepository(context))
+            val grid = device.context.assets.open("pg_grid/v2_1/10x10-dark.json").bufferedReader().use {
+                com.muc.fluocolorquant.domain.detection.grid.PgGridJsonCodec.decode(it.readText())
+            }
+            withTimeout(30_000) {
+                withContext(Dispatchers.Main) { vm.start(project.id, photo.absolutePath) }
+                val failure = vm.uiState.filterIsInstance<GridDetectionUiState.LocatingArray>().first {
+                    it.attempt.status == com.muc.fluocolorquant.ui.viewmodels.ArrayLocatorAttemptStatus.Failed
+                }
+                withContext(Dispatchers.Main) {
+                    vm.openManualCorners(); vm.cancelManualCorners()
+                    assertSame(failure, vm.uiState.value)
+                    vm.openManualCorners()
+                    listOf(0,9,99,90).forEach { vm.addManualCorner(grid.sites[it].original) }
+                }
+                vm.uiState.filterIsInstance<GridDetectionUiState.ManualCorners>().first { it.previewSites.size == 100 }
+                withContext(Dispatchers.Main) { vm.confirmManualCorners(); vm.confirmManualCorners() }
+                val ready = vm.uiState.filterIsInstance<GridDetectionUiState.LocalizationReady>().first()
+                assertTrue(ready.preview.manualGeometry)
+                withContext(Dispatchers.Main) {
+                    vm.openLayoutEditor(); vm.showLocalizationPreview(); vm.openManualCorners()
+                    // 已确认的四点重新打开可复核；撤销后取消不得撤销已应用的运行几何。
+                    assertEquals(4, (vm.uiState.value as GridDetectionUiState.ManualCorners).anchors.size)
+                    vm.undoManualCorner(); vm.cancelManualCorners()
+                    assertEquals(ready.preview.runId, (vm.uiState.value as GridDetectionUiState.LocalizationReady).preview.runId)
+                }
+                assertEquals(1, autoCalls)
+                withContext(Dispatchers.Main) { vm.retry() }
+                val automaticFailure = vm.uiState.filterIsInstance<GridDetectionUiState.LocatingArray>().first {
+                    it.attempt.status == com.muc.fluocolorquant.ui.viewmodels.ArrayLocatorAttemptStatus.Failed
+                }
+                assertEquals(ArrayLocatorMode.MANUAL_CORNERS, automaticFailure.attempt.previousMode)
+                withContext(Dispatchers.Main) { vm.restorePreviousLocalization() }
+                val restored = vm.uiState.filterIsInstance<GridDetectionUiState.LocalizationReady>().first()
+                assertTrue(restored.preview.manualGeometry)
+                assertEquals(ready.preview.runId, restored.preview.runId)
+                assertEquals(2, autoCalls)
+            }
+        } finally { database.close(); photo.delete() }
+    }
+
+    @Test
+    fun manualFallbackPersistsOriginalGeometryForBothModalities() = runBlocking {
+        val device = InstrumentationRegistry.getInstrumentation()
+        val bitmap = device.context.assets.open("pg_grid/synthetic_10x10_dark_squares.png").use { BitmapFactory.decodeStream(it)!! }
+        val known = device.context.assets.open("pg_grid/v2_1/10x10-dark.json").bufferedReader().use {
+            com.muc.fluocolorquant.domain.detection.grid.PgGridJsonCodec.decode(it.readText())
+        }
+        val anchors = listOf(0,9,99,90).map { known.sites[it].original }
+        for (snapshot in listOf(snapshot10x10(), colorimetricSnapshot10x10())) {
+            val repo = RecordingGridRunRepository()
+            val coordinator = GridDetectionCoordinator(locator = { _, _ -> error("四角法不能调用自动定位器") }, repository = repo,
+                evidenceWriter = AndroidGridProcessingEvidenceWriter(device.targetContext))
+            val project = projectForSnapshot(snapshot, "manual-test")
+            val session = (coordinator.localize(GridDetectionRequest(project, snapshot, bitmap, project.imageUri, project.userId), anchors)
+                as GridLocalizationOutcome.Ready).session
+            assertEquals(anchors, session.grid.manualAnchorCenters)
+            assertTrue(coordinator.finalizeLocalized(session, snapshot) is GridDetectionOutcome.Completed)
+            val bundle = requireNotNull(repo.saved)
+            val encoded = JsonParser.parseString(bundle.run.frameQcJson).asJsonObject.get("pgGrid").toString()
+            val frozen = com.muc.fluocolorquant.domain.detection.grid.PgGridJsonCodec.decode(encoded)
+            assertEquals(session.grid, frozen)
+            assertEquals("Manual four-corner grid 1.0", bundle.run.detectionModelUsed)
+            assertTrue(bundle.measurements.isNotEmpty() && bundle.measurements.all { it.confidence == null && it.rawSignalJson.isNotBlank() })
+            assertTrue(bundle.measurements.any { it.primaryFeatureValue?.isFinite() == true })
+            assertFalse(bundle.diagnosticArtifacts.any { it.captureRole == "PROCESS_CANDIDATE_RESPONSE" })
+            assertTrue(java.io.File(bundle.endpointArtifact.originalPath).isFile)
+        }
+    }
 
     @Before
     fun setUp() {
@@ -377,7 +675,7 @@ class GridDetectionCoordinatorIntegrationTest {
         assertEquals(0, reference.siteIndex)
         assertEquals("COLORIMETRIC_REFERENCE_EVIDENCE", reference.primaryFeatureName)
         assertEquals("pg-quant", reference.processorName)
-        assertEquals("pg-quant-android-v2-unit-mask", reference.processorVersion)
+        assertEquals(com.muc.fluocolorquant.domain.detection.photometry.PG_QUANT_PROCESSOR_VERSION, reference.processorVersion)
         val referenceRaw = JsonParser().parse(reference.rawSignalJson).asJsonObject
         assertEquals("colorimetric-reference-evidence-v1", referenceRaw["schemaVersion"].asString)
         assertTrue(referenceRaw.has("site"))
