@@ -33,7 +33,22 @@ enum class GridPointSource {
     MODEL_IMPUTED,
 
     @SerializedName("unadjusted")
-    UNADJUSTED
+    UNADJUSTED,
+
+    /** 原图上由用户明确标记的角孔中心，不是算法观测。 */
+    @SerializedName("manual_anchor")
+    MANUAL_ANCHOR,
+
+    /** 根据四个角孔的平面单应等距推算，不能声称逐孔找到了候选。 */
+    @SerializedName("manual_interpolated")
+    MANUAL_INTERPOLATED,
+
+    /** 操作者在定位确认页对该位点中心或采样框执行了人工微调。 */
+    @SerializedName("user_adjusted")
+    USER_ADJUSTED;
+
+    val isManual: Boolean
+        get() = this == MANUAL_ANCHOR || this == MANUAL_INTERPOLATED || this == USER_ADJUSTED
 }
 
 /** 只描述几何定位阶段产生的逐位点标志，光度 QC 使用独立契约。 */
@@ -358,7 +373,10 @@ data class PgGridResult(
     val geometry: GridGeometryDiagnostics,
     val frameQc: List<GridFrameQcIssue>,
     val locatorName: String,
-    val locatorVersion: String
+    val locatorVersion: String,
+    /** 仅四角模式冻结原图像素坐标，顺序为首行首列、首行末列、末行末列、末行首列。
+     * chipCorners 仍表示矫正图的外框，二者不同。旧运行没有此字段，不回填。 */
+    val manualAnchorCenters: List<GridPoint>? = null
 ) {
     /**
      * 对构造对象和 JSON 解码对象执行同一套强校验。
@@ -390,6 +408,18 @@ data class PgGridResult(
             require(uniqueKeys.add(site.key)) { "阵列包含重复位点：${site.key}" }
         }
         geometry.requireValid(siteCount = expectedCount)
+        if (manualAnchorCenters != null || chipRegionMethod == ManualGridGeometry.METHOD) {
+            require(chipRegionMethod == ManualGridGeometry.METHOD && locatorVersion == ManualGridGeometry.VERSION &&
+                rows >= 2 && columns >= 2 && manualAnchorCenters?.size == 4) { "四角定位快照缺少四个原图锚点或版本不符" }
+            val indices = listOf(0, columns - 1, expectedCount - 1, expectedCount - columns)
+            val anchorsConsistent = indices.zip(requireNotNull(manualAnchorCenters)).all { (siteIdx, anchor) ->
+                sites[siteIdx].source == GridPointSource.USER_ADJUSTED || sites[siteIdx].original == anchor
+            }
+            require(anchorsConsistent && sites.all { site ->
+                site.source == GridPointSource.USER_ADJUSTED ||
+                    site.source == if (site.siteIndex in indices) GridPointSource.MANUAL_ANCHOR else GridPointSource.MANUAL_INTERPOLATED
+            }) { "人工锚点与冻结孔号、坐标或来源不一致" }
+        }
         frameQc.forEach(GridFrameQcIssue::requireValid)
     }
 

@@ -92,7 +92,7 @@ class AnalysisModelFormStateTest {
     fun `智能模型发布时要求校验值输入尺寸和训练数据版本`() {
         val draft = completeStandardCurveDraft().copy(
             modelType = AnalysisModelType.DEEP_LEARNING,
-            modelFileName = "model.pte",
+            modelFileName = "model_uploads/model.ptl",
             checksumSha256 = "bad-checksum",
             inputWidthInput = "0",
             inputHeightInput = "224",
@@ -105,6 +105,26 @@ class AnalysisModelFormStateTest {
         assertTrue(AnalysisModelFormError.CHECKSUM_INVALID in errors)
         assertTrue(AnalysisModelFormError.INPUT_SIZE_INVALID in errors)
         assertTrue(AnalysisModelFormError.TRAINING_DATA_VERSION_REQUIRED in errors)
+    }
+
+    @Test
+    fun `智能模型输出缩放和偏移必须是有限数值`() {
+        val draft = completeStandardCurveDraft().copy(
+            modelType = AnalysisModelType.DEEP_LEARNING,
+            modelFileName = "model_uploads/model.ptl",
+            checksumSha256 = "a".repeat(64),
+            inputWidthInput = "128",
+            inputHeightInput = "128",
+            normalizationJson =
+                "{\"mean\":[0.485,0.456,0.406],\"std\":[0.229,0.224,0.225]}",
+            trainingDataVersion = "microfluidic-v1",
+            outputScaleInput = "NaN",
+            outputOffsetInput = "0"
+        )
+
+        assertTrue(
+            AnalysisModelFormError.OUTPUT_CONTRACT_INVALID in draft.validateForPublication()
+        )
     }
 
     private fun completeStandardCurveDraft(): AnalysisModelDraft = AnalysisModelDraft(

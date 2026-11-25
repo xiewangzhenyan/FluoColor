@@ -2,6 +2,7 @@ package com.muc.fluocolorquant.domain.detection
 
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.domain.calibration.CalibrationPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -11,7 +12,7 @@ import org.junit.Test
 class AnalysisFeaturePolicyTest {
 
     @Test
-    fun `比色和荧光特征不会跨模态混用`() {
+    fun `荧光开放直接颜色特征但不借用比色参考特征`() {
         assertTrue(
             AnalysisFeaturePolicy.isCompatible(
                 DetectionModality.COLORIMETRIC,
@@ -30,10 +31,22 @@ class AnalysisFeaturePolicyTest {
                 AnalysisPrimaryFeature.FLUORESCENCE_SNR
             )
         )
-        assertFalse(
+        assertTrue(
             AnalysisFeaturePolicy.isCompatible(
                 DetectionModality.FLUORESCENCE,
                 AnalysisPrimaryFeature.RED_INTENSITY
+            )
+        )
+        assertTrue(
+            AnalysisFeaturePolicy.isCompatible(
+                DetectionModality.FLUORESCENCE,
+                AnalysisPrimaryFeature.RED_BLUE_RATIO
+            )
+        )
+        assertFalse(
+            AnalysisFeaturePolicy.isCompatible(
+                DetectionModality.FLUORESCENCE,
+                AnalysisPrimaryFeature.DELTA_E_2000
             )
         )
     }
@@ -61,6 +74,14 @@ class AnalysisFeaturePolicyTest {
         assertEquals(
             "fluorescence-photometry" to "v1",
             AnalysisFeaturePolicy.processorIdentity(DetectionModality.FLUORESCENCE)
+        )
+        assertEquals(
+            AnalysisFeaturePolicy.recommendedFeatures(DetectionModality.FLUORESCENCE),
+            CalibrationPolicy.DEFAULT.fluorescenceFeatures
+        )
+        assertTrue(
+            AnalysisPrimaryFeature.CIE_L_STAR in
+                AnalysisFeaturePolicy.recommendedFeatures(DetectionModality.FLUORESCENCE)
         )
     }
 }

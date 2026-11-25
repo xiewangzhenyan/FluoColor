@@ -1,0 +1,15 @@
+﻿protocol,group,method,images,output_count,pass_count,no_output
+auto,color_bare,kmeans,12,7,0,5
+auto,color_bare,components,12,3,0,9
+auto,color_opaque,kmeans,12,12,10,0
+auto,color_opaque,components,12,8,8,4
+auto,color_translucent,kmeans,12,12,11,0
+auto,color_translucent,components,12,12,11,0
+auto,fluo_new,kmeans,12,2,0,10
+auto,fluo_new,components,12,2,1,10
+auto,color_demo,kmeans,2,2,2,0
+auto,color_demo,components,2,2,2,0
+auto,fluo_challenge,kmeans,24,14,4,10
+auto,fluo_challenge,components,24,8,7,16
+auto,real_original,kmeans,6,6,,0
+auto,real_original,components,6,6,,0

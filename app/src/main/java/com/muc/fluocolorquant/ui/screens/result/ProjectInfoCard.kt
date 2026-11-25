@@ -54,6 +54,7 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.ui.components.ScientificExpandableSection
+import com.muc.fluocolorquant.ui.components.localizedAnalysisMethodLabel
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -79,11 +80,7 @@ fun ProjectInfoCard(
         "COLORIMETRIC" -> stringResource(R.string.colorimetric_detection_mode)
         else -> project.detectionMode
     }
-    val analysisMethodLabel = when (project.analysisMethod) {
-        "DL_MODEL" -> stringResource(R.string.deep_learning_analysis)
-        "CURVE_FIT" -> stringResource(R.string.curve_fitting_analysis)
-        else -> project.analysisMethod
-    }
+    val analysisMethodLabel = localizedAnalysisMethodLabel(project.analysisMethod)
     var expanded by rememberSaveable(project.id) { mutableStateOf(false) }
 
     ScientificExpandableSection(

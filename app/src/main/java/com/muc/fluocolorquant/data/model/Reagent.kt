@@ -28,6 +28,7 @@ data class Reagent(
     val reagentName: String,       // 试剂名称, e.g., "Anti-CEA Antibody"
     val reagentType: String,       // 类型: "antigen" 或 "antibody"
     val manufacturer: String?,     // 制造商
-    val molecularWeight: Double?,  // 分子量 (kDa), 用于摩尔浓度换算
-    val unit: String?              // 浓度单位, e.g., "ng/ml", "ug/ml"
-) 
+    val molecularWeight: Double? = null, // 兼容保留可空列（界面不再暴露）
+    val unit: String? = null,      // 兼容保留可空列（单位统一归口分析物）
+    val lotNumber: String? = null  // 批号/货号（用于实验记录与报告溯源）
+)

@@ -1,0 +1,15 @@
+{
+  "opencv": "4.13.0",
+  "numpy": "2.2.6",
+  "python": "3.12.7 | packaged by Anaconda, Inc. | (main, Oct  4 2024, 13:17:27) [MSC v.1929 64 bit (AMD64)]",
+  "seeds": [
+    7321,
+    14891
+  ],
+  "reference_commit": "bc9b9efd0a7f5175eff31a6bd96c5d62891dfb94",
+  "p95_pitch_limit": 0.2,
+  "code_sha256": {
+    "compare_locators.py": "1dd4ee8ea227e7eb2a405dfa97f7a89103a496037c1d3aa18ae6ac5092a9df05",
+    "spot_lattice.py": "bef6c17bec5038e31738cc55a327a6441f3f84267a68c70b0d4368a678a7a574"
+  }
+}

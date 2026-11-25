@@ -2,15 +2,24 @@ package com.muc.fluocolorquant.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.muc.fluocolorquant.data.enums.CarrierType
+import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.TemplateLifecycleStatus
+import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.CurveModel
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.Reagent
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
+import com.muc.fluocolorquant.data.repository.CarrierProfileRepository
 import com.muc.fluocolorquant.data.repository.CurveModelRepository
 import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
 import com.muc.fluocolorquant.data.repository.ReagentRepository
 import com.muc.fluocolorquant.data.repository.SettingsRepository
+import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationMethod
+import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationResourceSnapshotCodec
+import com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec
+import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -58,6 +67,29 @@ data class TemplateWithDetails(
     val curveModel: CurveModel? = null
 )
 
+data class TemplateAnalyteSummaryItem(
+    val analyteName: String,
+    val unit: String,
+    val maxConcentration: Double?,
+    val fluorescenceChannel: FluorescenceChannel?,
+    val methodCode: String,
+    val modelName: String?
+)
+
+data class TemplateLibraryCardModel(
+    val template: ExperimentTemplate,
+    val modality: DetectionModality?,
+    val rows: Int,
+    val columns: Int,
+    val isPlate96: Boolean,
+    val analytes: List<TemplateAnalyteSummaryItem>,
+    val standardCount: Int,
+    val sampleCount: Int,
+    val referenceCount: Int,
+    val roleGrid: Map<Pair<Int, Int>, String>,
+    val isRunnable: Boolean
+)
+
 /**
  * 实验模板ViewModel
  * 管理实验模板的创建、编辑和列表展示
@@ -68,7 +100,8 @@ class ExperimentTemplateViewModel @Inject constructor(
     private val analyteRepository: AnalyteRepository,
     private val reagentRepository: ReagentRepository,
     private val curveModelRepository: CurveModelRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val carrierProfileRepository: CarrierProfileRepository
 ) : ViewModel() {
 
     // 所有实验模板
@@ -114,6 +147,115 @@ class ExperimentTemplateViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    // 面向新版实验模板库的可视化卡片列表（自动解析载体规格、多分析物通道、绑定曲线与孔位排布）
+    val templateCards: StateFlow<List<TemplateLibraryCardModel>> = combine(
+        templates,
+        analyteRepository.getAllAnalytes()
+    ) { allTemplates, analytes ->
+        val analyteMap = analytes.associateBy { it.id }
+        allTemplates
+            .filter { it.status != TemplateLifecycleStatus.ARCHIVED.code }
+            .map { template ->
+                val bundle = experimentTemplateRepository.getBundle(template.id)
+                val carrier = template.carrierProfileId?.let { carrierProfileRepository.getById(it) }
+                val rows = carrier?.rows ?: 8
+                val columns = carrier?.columns ?: 12
+                val isPlate96 = carrier?.carrierType == CarrierType.PLATE.code ||
+                    (carrier == null && rows == 8 && columns == 12)
+                val modality = DetectionModality.fromCode(template.detectionMode)
+                val bindingsByAnalyte = bundle?.quantitationBindings?.associateBy { it.analyteId }.orEmpty()
+                val analyteItems = bundle?.analyteConfigs
+                    ?.sortedBy { it.displayOrder }
+                    ?.map { cfg ->
+                        val analyteName = analyteMap[cfg.analyteId]?.name ?: cfg.analyteId
+                        val channel = if (modality == DetectionModality.FLUORESCENCE) {
+                            ScientificDetectionConfigCodec.decodeFluorescenceChannel(cfg.displayConfigJson)
+                                ?: FluorescenceChannel.GREEN
+                        } else null
+                        val binding = bindingsByAnalyte[cfg.analyteId]
+                        val decoded = binding?.let {
+                            TemplateQuantitationResourceSnapshotCodec.decode(it.resourceSnapshotJson)
+                        }
+                        val methodCode = binding?.method
+                            ?: if (cfg.analysisModelId != null) {
+                                AnalyteQuantitationMethod.STANDARD_CURVE_RESOURCE.name
+                            } else {
+                                AnalyteQuantitationMethod.SIGNAL_ONLY.name
+                            }
+                        TemplateAnalyteSummaryItem(
+                            analyteName = analyteName,
+                            unit = cfg.concentrationUnit,
+                            maxConcentration = cfg.reliableRangeMax,
+                            fluorescenceChannel = channel,
+                            methodCode = methodCode,
+                            modelName = decoded?.analysisModel?.model?.name
+                                ?.takeUnless { it == "signal-only" }
+                        )
+                    }
+                    .orEmpty()
+                    .ifEmpty {
+                        val fallbackName = template.analyteId?.let { analyteMap[it]?.name }
+                        if (fallbackName != null) {
+                            listOf(
+                                TemplateAnalyteSummaryItem(
+                                    analyteName = fallbackName,
+                                    unit = template.concentrationUnit,
+                                    maxConcentration = template.reliableRangeMax.takeIf { it > 0.0 },
+                                    fluorescenceChannel = null,
+                                    methodCode = AnalyteQuantitationMethod.STANDARD_CURVE_RESOURCE.name,
+                                    modelName = null
+                                )
+                            )
+                        } else emptyList()
+                    }
+                val activeSites = bundle?.siteAssignments?.filter { it.enabled }.orEmpty()
+                val roleGrid = activeSites.associate {
+                    (it.rowIndex to it.columnIndex) to it.roleType
+                }
+                TemplateLibraryCardModel(
+                    template = template,
+                    modality = modality,
+                    rows = rows,
+                    columns = columns,
+                    isPlate96 = isPlate96,
+                    analytes = analyteItems,
+                    standardCount = activeSites.count { it.roleType == TemplateSiteRole.STANDARD.code },
+                    sampleCount = activeSites.count { it.roleType == TemplateSiteRole.SAMPLE.code },
+                    referenceCount = activeSites.count {
+                        it.roleType == TemplateSiteRole.BLANK.code ||
+                            it.roleType == TemplateSiteRole.REFERENCE.code
+                    },
+                    roleGrid = roleGrid,
+                    isRunnable = template.status == TemplateLifecycleStatus.PUBLISHED.code &&
+                        template.carrierProfileId != null
+                )
+            }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    /** 直接重命名已保存的实验模板（无需创建新草稿版本或重新走多步向导）。 */
+    fun renameTemplate(
+        template: ExperimentTemplate,
+        newName: String,
+        onSaved: () -> Unit = {}
+    ) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                experimentTemplateRepository.updateTemplate(
+                    template.copy(templateName = trimmed, updatedAt = Date())
+                )
+                onSaved()
+            } catch (e: Exception) {
+                _errorMessage.value = e.message
+            }
+        }
+    }
 
     // 创建状态
     private val _creationState = MutableStateFlow(TemplateCreationState())

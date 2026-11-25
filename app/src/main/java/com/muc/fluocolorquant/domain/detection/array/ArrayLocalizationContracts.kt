@@ -7,11 +7,25 @@ import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitShape
 /** 通用规则阵列定位结果的首个稳定结构版本。 */
 const val ARRAY_LOCALIZATION_SCHEMA_V1: String = "array-localization-v1"
 
-/** 普通界面可选择的定位算法层级，不向用户暴露模型阈值或 OpenCV 参数。 */
+/** 定位算法的稳定记录码；AUTO 仍按冻结载体选用原来的生产链。 */
 enum class ArrayLocatorMode {
     AUTO,
     OBJECT_DETECTION,
-    GEOMETRIC_SHAPE
+    GEOMETRIC_SHAPE,
+    PROJECTION,
+    KMEANS,
+    SPOT_TOPOLOGY,
+    CIRCLES_GRID,
+    HOUGH_GRID,
+    ELLIPSE_GRID,
+    MANUAL_CORNERS,
+    DBSCAN,
+    LOG_SPOTS;
+
+    val usesYolo: Boolean get() = this == AUTO || this == OBJECT_DETECTION || this == GEOMETRIC_SHAPE
+
+    /** 两条路线可以给出几何证据，但实拍同孔号稳定性不足，不能据此建立正式采样会话。 */
+    val isComparisonOnly: Boolean get() = this == DBSCAN || this == LOG_SPOTS
 }
 
 /** 单个位点几何的最终来源，用于过程页解释真实观测与晶格补位。 */
@@ -20,7 +34,9 @@ enum class ArraySiteLocalizationSource {
     SHAPE_REFINED,
     CONTOUR_REFINED,
     GRID_IMPUTED,
-    USER_ADJUSTED
+    USER_ADJUSTED,
+    MANUAL_ANCHOR,
+    MANUAL_INTERPOLATED
 }
 
 /** 不改变主结果颜色的轻量几何状态标记。 */

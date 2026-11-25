@@ -191,16 +191,51 @@ private fun CommonSiteInformation(
             label = stringResource(R.string.array_site_result_value),
             value = measurementResultText(measurement, analyte)
         )
+        analyte?.referenceCutoff?.takeIf { it.isFinite() && it > 0.0 }?.let { cutoff ->
+            DetailRow(
+                label = stringResource(R.string.array_site_reference_cutoff),
+                value = "≤ ${formatArrayHeatmapValue(cutoff)} ${analyte.concentrationUnit}"
+            )
+        }
         DetailRow(
             label = stringResource(R.string.array_site_reliable_range_status),
-            value = reliableRangeLabel(measurement?.reliableRangeStatus)
+            value = reliableRangeLabel(measurement)
         )
+        if (
+            measurement?.qc?.quantificationReason.equals(
+                "OUTPUT_OUT_OF_DECLARED_RANGE",
+                ignoreCase = true
+            )
+        ) {
+            DetailRow(
+                label = stringResource(R.string.array_site_quantification_issue),
+                value = stringResource(R.string.array_site_model_output_out_of_domain)
+            )
+            measurement?.qc?.rawModelOutput?.takeIf(Double::isFinite)?.let { rawOutput ->
+                DetailRow(
+                    label = stringResource(R.string.array_site_raw_model_output),
+                    value = formatArrayHeatmapValue(rawOutput)
+                )
+            }
+            val declaredMinimum = measurement?.qc?.declaredOutputMin?.takeIf(Double::isFinite)
+            val declaredMaximum = measurement?.qc?.declaredOutputMax?.takeIf(Double::isFinite)
+            if (declaredMinimum != null && declaredMaximum != null) {
+                DetailRow(
+                    label = stringResource(R.string.array_site_declared_model_output_range),
+                    value = stringResource(
+                        R.string.array_site_model_output_range_value,
+                        declaredMinimum,
+                        declaredMaximum
+                    )
+                )
+            }
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         DetailRow(
             label = stringResource(R.string.array_site_geometry_source),
             value = geometrySourceLabel(site.geometry.source)
         )
-        DetailRow(
+        if (!site.geometry.source.isManual) DetailRow(
             label = stringResource(R.string.array_site_geometry_confidence),
             value = stringResource(
                 R.string.array_site_percent_value,
@@ -329,12 +364,12 @@ private fun FluorescenceDetailSection(detail: ArrayMeasurementDetail.Fluorescenc
         )
         DetailRow(
             stringResource(R.string.array_site_raw_intensity),
-            formatArrayHeatmapValue(channelValue(base.roiMedianRgb, base.roiMedianGray, site.channel))
+            formatArrayHeatmapValue(channelValue(base.foregroundRgb, base.foregroundGray, site.channel))
         )
         DetailRow(
             stringResource(R.string.array_site_corrected_intensity),
             formatArrayHeatmapValue(
-                channelValue(base.correctedMedianRgb, base.correctedMedianGray, site.channel)
+                channelValue(base.correctedForegroundRgb, base.correctedForegroundGray, site.channel)
             )
         )
         DetailRow(
@@ -363,6 +398,20 @@ private fun FluorescenceDetailSection(detail: ArrayMeasurementDetail.Fluorescenc
             stringResource(R.string.array_site_hot_pixel_ratio),
             stringResource(R.string.array_site_percent_value, base.hotPixelRatio * 100.0)
         )
+        if (base.roiPixelCount > 0) {
+            DetailRow(
+                stringResource(R.string.array_site_pct_above_b2sd),
+                stringResource(R.string.array_site_percent_value, base.pctAboveBgPlus2Sd * 100.0)
+            )
+            DetailRow(
+                stringResource(R.string.array_site_pixel_counts),
+                stringResource(
+                    R.string.array_site_pixel_counts_value,
+                    base.roiPixelCount,
+                    base.annulusPixelCount
+                )
+            )
+        }
         DetailRow(
             stringResource(R.string.array_site_detectability),
             if (site.qc.signalDetectable) {
@@ -431,6 +480,28 @@ private fun BasePhotometryRows(base: BaseSitePhotometry) {
         stringResource(R.string.array_site_snr),
         formatArrayHeatmapValue(base.signalToNoiseRatio)
     )
+    if (base.roiPixelCount > 0) {
+        DetailRow(
+            stringResource(R.string.array_site_fg_mean_median),
+            stringResource(
+                R.string.array_site_dual_value,
+                formatArrayHeatmapValue(base.roiMeanGray),
+                formatArrayHeatmapValue(base.roiMedianGray)
+            )
+        )
+        DetailRow(
+            stringResource(R.string.array_site_pct_above_b2sd),
+            stringResource(R.string.array_site_percent_value, base.pctAboveBgPlus2Sd * 100.0)
+        )
+        DetailRow(
+            stringResource(R.string.array_site_pixel_counts),
+            stringResource(
+                R.string.array_site_pixel_counts_value,
+                base.roiPixelCount,
+                base.annulusPixelCount
+            )
+        )
+    }
 }
 
 @Composable
@@ -549,15 +620,23 @@ private fun measurementResultText(
 }
 
 @Composable
-private fun reliableRangeLabel(status: String?): String {
-    return when (status?.uppercase()) {
-        "WITHIN_RANGE" -> stringResource(R.string.array_site_range_within)
-        "BELOW_RANGE" -> stringResource(R.string.array_site_range_below)
-        "ABOVE_RANGE" -> stringResource(R.string.array_site_range_above)
-        "BELOW_PROJECT_RANGE" -> stringResource(R.string.array_site_range_below_project)
-        "ABOVE_PROJECT_RANGE" -> stringResource(R.string.array_site_range_above_project)
-        "BELOW_TRUSTED_RANGE" -> stringResource(R.string.array_site_range_below_trusted)
-        "ABOVE_TRUSTED_RANGE" -> stringResource(R.string.array_site_range_above_trusted)
+private fun reliableRangeLabel(measurement: ArraySiteMeasurementResult?): String {
+    val status = measurement?.reliableRangeStatus?.uppercase()
+    val boundaryOnly = measurement?.quantificationState.equals("BOUND_ONLY", ignoreCase = true)
+    return when {
+        // BELOW/ABOVE_RANGE 对标准曲线点浓度表示外推；对深度学习单侧界限则表示
+        // 模型可靠范围之外。必须先看强类型状态，避免向用户宣称已经得到外推点浓度。
+        boundaryOnly && status == "BELOW_RANGE" ->
+            stringResource(R.string.array_qc_site_below_range_title)
+        boundaryOnly && status == "ABOVE_RANGE" ->
+            stringResource(R.string.array_qc_site_above_range_title)
+        status == "WITHIN_RANGE" -> stringResource(R.string.array_site_range_within)
+        status == "BELOW_RANGE" -> stringResource(R.string.array_site_range_below)
+        status == "ABOVE_RANGE" -> stringResource(R.string.array_site_range_above)
+        status == "BELOW_PROJECT_RANGE" -> stringResource(R.string.array_site_range_below_project)
+        status == "ABOVE_PROJECT_RANGE" -> stringResource(R.string.array_site_range_above_project)
+        status == "BELOW_TRUSTED_RANGE" -> stringResource(R.string.array_site_range_below_trusted)
+        status == "ABOVE_TRUSTED_RANGE" -> stringResource(R.string.array_site_range_above_trusted)
         else -> stringResource(R.string.array_site_range_not_available)
     }
 }
@@ -580,6 +659,9 @@ internal fun arraySiteRoleLabel(code: String?): String {
 internal fun geometrySourceLabel(source: GridPointSource): String {
     return when (source) {
         GridPointSource.CANDIDATE_REFINED -> stringResource(R.string.array_geometry_candidate_refined)
+        GridPointSource.MANUAL_ANCHOR -> stringResource(R.string.grid_manual_anchor)
+        GridPointSource.MANUAL_INTERPOLATED -> stringResource(R.string.grid_manual_inferred)
+        GridPointSource.USER_ADJUSTED -> stringResource(R.string.array_geometry_user_adjusted)
         GridPointSource.MODEL_IMPUTED -> stringResource(R.string.array_geometry_model_imputed)
         GridPointSource.UNADJUSTED -> stringResource(R.string.array_geometry_unadjusted)
     }

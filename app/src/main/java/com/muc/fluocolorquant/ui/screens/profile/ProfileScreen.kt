@@ -252,14 +252,14 @@ fun ProfileScreen(
                                 .error(R.drawable.placeholder_image)
                                 .build()
                         ),
-                        contentDescription = "用户头像",
+                        contentDescription = stringResource(R.string.user_avatar),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
                 } else {
                     Icon(
                         imageVector = Icons.Default.Person,
-                        contentDescription = "添加头像",
+                        contentDescription = stringResource(R.string.profile_add_avatar),
                         tint = Color(0xFF5D6B98),
                         modifier = Modifier
                             .size(40.dp)
@@ -272,7 +272,7 @@ fun ProfileScreen(
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
-                label = { Text("用户名") },
+                label = { Text(stringResource(R.string.username)) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Person,
@@ -293,7 +293,7 @@ fun ProfileScreen(
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
-                label = { Text("邮箱") },
+                label = { Text(stringResource(R.string.email_required)) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Email,
@@ -334,7 +334,7 @@ fun ProfileScreen(
                     contentDescription = null
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("保存修改")
+                Text(stringResource(R.string.save_changes))
             }
 
             // 修改密码按钮
@@ -354,7 +354,7 @@ fun ProfileScreen(
                     contentDescription = null
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("修改密码")
+                Text(stringResource(R.string.profile_change_password))
             }
         }
 
@@ -364,7 +364,7 @@ fun ProfileScreen(
                 onDismissRequest = { showImagePickerDialog = false },
                 title = { 
                     Text(
-                        "选择头像",
+                        stringResource(R.string.profile_select_avatar),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 8.dp)
@@ -407,7 +407,7 @@ fun ProfileScreen(
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "从相册选择",
+                                    text = stringResource(R.string.select_from_gallery),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color(0xFF5D6B98)
                                 )
@@ -440,7 +440,7 @@ fun ProfileScreen(
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "拍照",
+                                    text = stringResource(R.string.take_photo),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color(0xFF5D6B98)
                                 )
@@ -459,7 +459,7 @@ fun ProfileScreen(
                         ),
                         shape = RoundedCornerShape(FluoRadius.sheet)
                     ) {
-                        Text("取消")
+                        Text(stringResource(R.string.cancel))
                     }
                 },
                 confirmButton = {}
@@ -479,7 +479,7 @@ fun ProfileScreen(
                 onDismissRequest = { showPasswordDialog = false },
                 title = { 
                     Text(
-                        "修改密码",
+                        stringResource(R.string.profile_change_password),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF5D6B98)
@@ -509,7 +509,7 @@ fun ProfileScreen(
                                 oldPassword = it
                                 passwordError = null 
                             },
-                            label = { Text("当前密码") },
+                            label = { Text(stringResource(R.string.profile_current_password)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             visualTransformation = if (isPasswordVisible) VisualTransformation.None 
@@ -536,7 +536,7 @@ fun ProfileScreen(
                                 newPassword = it
                                 passwordError = null
                             },
-                            label = { Text("新密码") },
+                            label = { Text(stringResource(R.string.profile_new_password)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             visualTransformation = if (isPasswordVisible) VisualTransformation.None 
@@ -546,7 +546,7 @@ fun ProfileScreen(
                                     Icon(
                                         imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff
                                                    else Icons.Default.Visibility,
-                                        contentDescription = "切换密码可见性"
+                                        contentDescription = passwordVisibilityDescription
                                     )
                                 }
                             },
@@ -563,7 +563,7 @@ fun ProfileScreen(
                                 confirmPassword = it 
                                 passwordError = null
                             },
-                            label = { Text("确认新密码") },
+                            label = { Text(stringResource(R.string.profile_confirm_new_password)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             visualTransformation = if (isPasswordVisible) VisualTransformation.None 
@@ -573,7 +573,7 @@ fun ProfileScreen(
                                     Icon(
                                         imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff
                                                    else Icons.Default.Visibility,
-                                        contentDescription = "切换密码可见性"
+                                        contentDescription = passwordVisibilityDescription
                                     )
                                 }
                             },
@@ -650,7 +650,7 @@ fun ProfileScreen(
                                 modifier = Modifier.size(24.dp)
                             )
                         } else {
-                            Text("确认修改")
+                            Text(stringResource(R.string.profile_confirm_change))
                         }
                     }
                 },
@@ -668,7 +668,7 @@ fun ProfileScreen(
                             brush = SolidColor(Color(0xFF5D6B98))
                         )
                     ) {
-                        Text("取消")
+                        Text(stringResource(R.string.cancel))
                     }
                 }
             )

@@ -18,6 +18,16 @@ enum class AnalysisModelStatusFilter {
     LEGACY
 }
 
+/** 自训练模型输出的明确语义，稳定编码必须与生产执行器一致。 */
+enum class DeepLearningModelOutputMode {
+    /** 模型直接输出最终浓度。 */
+    RAW_CONCENTRATION,
+    /** 模型输出 0～100，再线性映射到可靠浓度范围。 */
+    PERCENT_OF_RELIABLE_MAX,
+    /** 模型输出 0～1，再线性映射到可靠浓度范围。 */
+    FRACTION_OF_RELIABLE_MAX
+}
+
 /**
  * 分析模型表单的稳定错误码。
  *
@@ -41,7 +51,8 @@ enum class AnalysisModelFormError {
     CHECKSUM_INVALID,
     INPUT_SIZE_INVALID,
     NORMALIZATION_REQUIRED,
-    TRAINING_DATA_VERSION_REQUIRED
+    TRAINING_DATA_VERSION_REQUIRED,
+    OUTPUT_CONTRACT_INVALID
 }
 
 /**
@@ -61,8 +72,8 @@ data class AnalysisModelDraft(
     // 不再由用户手动输入；默认对应默认模态（比色）。
     val processorName: String = COLORIMETRIC_PROCESSOR_NAME,
     val processorVersion: String = COLORIMETRIC_PROCESSOR_VERSION,
-    // 新模型不能默认绑定“通用未标定采集”，否则正式发布时会架空设备兼容验证。
-    // 用户必须在高级兼容性中明确选择本模型经过验证的采集档案。
+    // 空集合表示运行时自动冻结当前手机、镜头与曝光元数据，并不等于已经完成设备级验证；
+    // 如果模型只在固定设备/光学模块上验证过，用户应在高级兼容性中明确选择对应档案。
     val compatibleCarrierTypes: Set<String> = setOf(CarrierType.MICROFLUIDIC_CHIP.code),
     val compatibleAcquisitionProfileIds: Set<String> = emptySet(),
     val concentrationUnit: String = "",
@@ -74,11 +85,17 @@ data class AnalysisModelDraft(
     val lodInput: String = "",
     val loqInput: String = "",
     val modelFileName: String = "",
+    /** 导入前的原始名称只服务 UI 和追溯；执行器始终读取受控私有相对路径。 */
+    val modelOriginalFileName: String = "",
     val checksumSha256: String = "",
     val inputWidthInput: String = "",
     val inputHeightInput: String = "",
     val normalizationJson: String = "{}",
-    val trainingDataVersion: String = ""
+    val trainingDataVersion: String = "",
+    val outputMode: DeepLearningModelOutputMode =
+        DeepLearningModelOutputMode.RAW_CONCENTRATION,
+    val outputScaleInput: String = "1",
+    val outputOffsetInput: String = "0"
 ) {
     /** 当前检测模态允许使用的输入协议。 */
     val allowedProtocols: Set<String>
@@ -175,7 +192,10 @@ data class AnalysisModelDraft(
                 }
                 val width = inputWidthInput.toIntOrNull()
                 val height = inputHeightInput.toIntOrNull()
-                if (width == null || height == null || width <= 0 || height <= 0) {
+                if (width == null || height == null ||
+                    width !in MINIMUM_MODEL_INPUT_SIZE..MAXIMUM_MODEL_INPUT_SIZE ||
+                    height !in MINIMUM_MODEL_INPUT_SIZE..MAXIMUM_MODEL_INPUT_SIZE
+                ) {
                     add(AnalysisModelFormError.INPUT_SIZE_INVALID)
                 }
                 if (normalizationJson.isBlank() || normalizationJson.trim() == "{}") {
@@ -183,6 +203,13 @@ data class AnalysisModelDraft(
                 }
                 if (trainingDataVersion.isBlank()) {
                     add(AnalysisModelFormError.TRAINING_DATA_VERSION_REQUIRED)
+                }
+                val outputScale = outputScaleInput.toDoubleOrNull()
+                val outputOffset = outputOffsetInput.toDoubleOrNull()
+                if (outputScale == null || outputOffset == null ||
+                    !outputScale.isFinite() || !outputOffset.isFinite()
+                ) {
+                    add(AnalysisModelFormError.OUTPUT_CONTRACT_INVALID)
                 }
             }
         }
@@ -201,5 +228,7 @@ data class AnalysisModelDraft(
 
     companion object {
         private val SHA_256_REGEX = Regex("^[0-9a-fA-F]{64}$")
+        private const val MINIMUM_MODEL_INPUT_SIZE = 8
+        private const val MAXIMUM_MODEL_INPUT_SIZE = 4096
     }
 }

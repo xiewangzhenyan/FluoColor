@@ -3,10 +3,12 @@ package com.muc.fluocolorquant.domain.spectrum.export
 import android.graphics.Bitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.SpectrumChannelExportModel
 import com.muc.fluocolorquant.data.model.SpectrumExportData
 import com.muc.fluocolorquant.ui.components.charts.ChartData
+import com.muc.fluocolorquant.utils.LocaleHelper
 import java.io.ByteArrayOutputStream
 import java.util.Date
 import org.junit.Assert.assertEquals
@@ -177,6 +179,28 @@ class SpectrumExportRenderingTest {
         } finally {
             document.close()
         }
+    }
+
+    @Test
+    fun `光谱报告标题和已知光源严格跟随指定的中英文Context`() {
+        // 设备系统语言不参与断言：报告调用方必须显式提供应用语言 Context，才能保证用户在
+        // 英文系统中选择中文后，PDF 仍输出中文标题与光源名称。
+        val chineseContext = LocaleHelper.createLocalizedContext(context, "zh")
+        assertEquals("光谱分析报告", chineseContext.getString(R.string.spectrum_pdf_cover_title))
+        assertEquals(
+            "汞灯",
+            SpectrumPdfExporter.localizedLightSourceName(chineseContext, "MERCURY")
+        )
+
+        val englishContext = LocaleHelper.createLocalizedContext(context, "en")
+        assertEquals(
+            "Spectrum Analysis Report",
+            englishContext.getString(R.string.spectrum_pdf_cover_title)
+        )
+        assertEquals(
+            "Mercury Lamp",
+            SpectrumPdfExporter.localizedLightSourceName(englishContext, "MERCURY")
+        )
     }
 
     /** 采样若干像素判断画布是否只有白底，用于识别“渲染成功但什么都没画”。 */

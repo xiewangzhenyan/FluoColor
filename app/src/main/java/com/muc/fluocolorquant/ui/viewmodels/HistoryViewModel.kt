@@ -1,8 +1,10 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
 import android.annotation.SuppressLint
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.SessionManager
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.Project
@@ -11,6 +13,7 @@ import com.muc.fluocolorquant.data.repository.DetectionRunRepository
 import com.muc.fluocolorquant.data.repository.ProjectAnalyteJoinRepository
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.WellResultRepository
+import com.muc.fluocolorquant.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -68,7 +71,13 @@ class HistoryViewModel @Inject constructor(
 
     // 所有可用的分析物
     val allAnalytes: StateFlow<List<Analyte>> = analyteRepository.getAllAnalytes()
-        .catch { e -> _loadingState.value = LoadingState.Error(e.message ?: "加载分析物列表失败") }
+        .catch { error ->
+            // 数据层异常只进入日志；页面展示稳定的本地化文案，避免数据库实现细节泄漏到 UI。
+            Log.e(TAG, "加载历史筛选所需的分析物列表失败", error)
+            _loadingState.value = LoadingState.Error(
+                UiText.StringResource(R.string.history_load_analytes_failed)
+            )
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -106,8 +115,11 @@ class HistoryViewModel @Inject constructor(
                 } else {
                     LoadingState.Success
                 }
-            } catch (e: Exception) {
-                _loadingState.value = LoadingState.Error(e.message ?: "加载项目失败")
+            } catch (error: Exception) {
+                Log.e(TAG, "加载历史项目失败", error)
+                _loadingState.value = LoadingState.Error(
+                    UiText.StringResource(R.string.error_loading_project_data)
+                )
             }
         }
     }
@@ -184,8 +196,11 @@ class HistoryViewModel @Inject constructor(
                 viewModelScope.launch {
                     _deleteState.value = DeleteState.Idle
                 }
-            } catch (e: Exception) {
-                _deleteState.value = DeleteState.Error(e.message ?: "删除项目失败")
+            } catch (error: Exception) {
+                Log.e(TAG, "删除历史项目失败: $projectId", error)
+                _deleteState.value = DeleteState.Error(
+                    UiText.StringResource(R.string.history_delete_project_failed)
+                )
             }
         }
     }
@@ -217,8 +232,11 @@ class HistoryViewModel @Inject constructor(
                 viewModelScope.launch {
                     _deleteState.value = DeleteState.Idle
                 }
-            } catch (e: Exception) {
-                _deleteState.value = DeleteState.Error(e.message ?: "批量删除项目失败")
+            } catch (error: Exception) {
+                Log.e(TAG, "批量删除历史项目失败", error)
+                _deleteState.value = DeleteState.Error(
+                    UiText.StringResource(R.string.history_delete_projects_failed)
+                )
             }
         }
     }
@@ -379,7 +397,7 @@ class HistoryViewModel @Inject constructor(
         object Success : LoadingState()
         object Empty : LoadingState()
         object FilteredEmpty : LoadingState()
-        data class Error(val message: String) : LoadingState()
+        data class Error(val message: UiText) : LoadingState()
     }
 
     /**
@@ -389,7 +407,7 @@ class HistoryViewModel @Inject constructor(
         object Idle : DeleteState()
         object Loading : DeleteState()
         object Success : DeleteState()
-        data class Error(val message: String) : DeleteState()
+        data class Error(val message: UiText) : DeleteState()
     }
 
     /**
@@ -433,5 +451,9 @@ class HistoryViewModel @Inject constructor(
      */
     enum class SortDirection {
         ASCENDING, DESCENDING
+    }
+
+    private companion object {
+        const val TAG: String = "HistoryViewModel"
     }
 }

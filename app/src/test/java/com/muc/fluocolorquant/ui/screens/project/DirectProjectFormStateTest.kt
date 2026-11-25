@@ -1,6 +1,7 @@
 package com.muc.fluocolorquant.ui.screens.project
 
 import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.SiteShape
 import com.muc.fluocolorquant.domain.project.DirectCarrierPreset
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -96,5 +97,32 @@ class DirectProjectFormStateTest {
 
         assertFalse(base.canSubmit)
         assertTrue(base.copy(customRowsInput = "10").canSubmit)
+    }
+
+    @Test
+    fun `光谱项目不受已隐藏的自定义阵列草稿阻断`() {
+        val state = DirectProjectFormState(
+            projectName = "光谱项目",
+            detectionModality = DetectionModality.SPECTRUM,
+            carrierPreset = DirectCarrierPreset.MICROFLUIDIC_CUSTOM,
+            customRowsInput = "",
+            customColumnsInput = "",
+            selectedAnalytes = listOf(DirectAnalyteSelection("cea", "ng/mL")),
+            imageUri = "content://spectrum/1"
+        )
+
+        assertTrue(state.canSubmit)
+    }
+
+    @Test
+    fun `自定义阵列形状默认兼容方形并可显式选择圆形`() {
+        val base = DirectProjectFormState(
+            carrierPreset = DirectCarrierPreset.MICROFLUIDIC_CUSTOM
+        )
+
+        assertTrue(base.siteShape == SiteShape.SQUARE)
+        assertTrue(base.copy(customSiteShape = SiteShape.CIRCLE).siteShape == SiteShape.CIRCLE)
+        // 圆形自定义阵列仍是 PG-Grid 微流控协议，不能因形状被误判为固定 96 孔板。
+        assertTrue(base.copy(customSiteShape = SiteShape.CIRCLE).carrierType.name == "MICROFLUIDIC_CHIP")
     }
 }

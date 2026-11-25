@@ -59,9 +59,11 @@ import com.muc.fluocolorquant.domain.result.export.ArrayResultPngLabels
 import com.muc.fluocolorquant.domain.result.export.ArrayResultPdfExporter
 import com.muc.fluocolorquant.domain.result.export.ArrayResultPdfLabels
 import com.muc.fluocolorquant.domain.result.export.ArrayResultValidationPdfLabels
+import com.muc.fluocolorquant.domain.result.plate96.Plate96ResultSnapshot
 import com.muc.fluocolorquant.domain.result.validation.ResultValidationSnapshot
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
+import com.muc.fluocolorquant.ui.screens.result.plate96.Plate96WellThumbnailLoader
 import java.io.File
 import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
@@ -89,7 +91,8 @@ fun ArrayResultExportCoordinator(
     onDismiss: () -> Unit,
     selectedAnalyteId: String? = null,
     validations: Map<String, ResultValidationSnapshot> = emptyMap(),
-    pdfLabelsOverride: ArrayResultPdfLabels? = null
+    pdfLabelsOverride: ArrayResultPdfLabels? = null,
+    plateSnapshot: Plate96ResultSnapshot? = null
 ) {
     val context = LocalContext.current
     val toastManager = LocalToastManager.current
@@ -107,14 +110,24 @@ fun ArrayResultExportCoordinator(
     val exportSuccess = stringResource(R.string.array_export_success)
     val exportFailure = stringResource(R.string.array_export_failure)
     var pendingSnapshot by remember { mutableStateOf(snapshot) }
+    var pendingPlateSnapshot by remember { mutableStateOf(plateSnapshot) }
     var exporting by remember { mutableStateOf(false) }
 
-    val writeExport: (Uri, ArrayResultExportFormat, ArrayResultSnapshot) -> Unit =
-        { destination, format, frozenSnapshot ->
+    val writeExport: (
+        Uri,
+        ArrayResultExportFormat,
+        ArrayResultSnapshot,
+        Plate96ResultSnapshot?
+    ) -> Unit = { destination, format, frozenSnapshot, frozenPlateSnapshot ->
             scope.launch {
                 exporting = true
                 val success = withContext(Dispatchers.IO) {
                     runCatching {
+                        // 圆孔裁切只从与当前运行ID一致的孔板快照生成。这里不重新定位，
+                        // 仅把页面已经使用的冻结图像加载器作为 PDF 的逐孔图像提供者。
+                        val wellImageProvider = frozenPlateSnapshot
+                            ?.takeIf { it.runId == frozenSnapshot.runId }
+                            ?.let { plate -> createPlateWellImageProvider(context, plate) }
                         context.contentResolver.openOutputStream(destination, "w")?.use { output ->
                             when (format) {
                                 ArrayResultExportFormat.CSV -> output.write(
@@ -133,7 +146,8 @@ fun ArrayResultExportCoordinator(
                                         snapshot = frozenSnapshot,
                                         labels = pdfLabels,
                                         validations = validations,
-                                        validationLabels = validationPdfLabels
+                                        validationLabels = validationPdfLabels,
+                                        wellImageProvider = wellImageProvider
                                     )
                                 )
                                 ArrayResultExportFormat.ZIP -> ArrayResultExporter.writeArchive(
@@ -148,7 +162,8 @@ fun ArrayResultExportCoordinator(
                                         pdfLabels = pdfLabels,
                                         validationPdfLabels = validationPdfLabels,
                                         pngLabels = pngLabels,
-                                        validations = validations
+                                        validations = validations,
+                                        wellImageProvider = wellImageProvider
                                     )
                                 )
                             }
@@ -167,22 +182,30 @@ fun ArrayResultExportCoordinator(
     val csvLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(ArrayResultExportFormat.CSV.mimeType)
     ) { uri ->
-        uri?.let { writeExport(it, ArrayResultExportFormat.CSV, pendingSnapshot) }
+        uri?.let {
+            writeExport(it, ArrayResultExportFormat.CSV, pendingSnapshot, pendingPlateSnapshot)
+        }
     }
     val pdfLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(ArrayResultExportFormat.PDF.mimeType)
     ) { uri ->
-        uri?.let { writeExport(it, ArrayResultExportFormat.PDF, pendingSnapshot) }
+        uri?.let {
+            writeExport(it, ArrayResultExportFormat.PDF, pendingSnapshot, pendingPlateSnapshot)
+        }
     }
     val pngLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(ArrayResultExportFormat.PNG.mimeType)
     ) { uri ->
-        uri?.let { writeExport(it, ArrayResultExportFormat.PNG, pendingSnapshot) }
+        uri?.let {
+            writeExport(it, ArrayResultExportFormat.PNG, pendingSnapshot, pendingPlateSnapshot)
+        }
     }
     val zipLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(ArrayResultExportFormat.ZIP.mimeType)
     ) { uri ->
-        uri?.let { writeExport(it, ArrayResultExportFormat.ZIP, pendingSnapshot) }
+        uri?.let {
+            writeExport(it, ArrayResultExportFormat.ZIP, pendingSnapshot, pendingPlateSnapshot)
+        }
     }
 
     if (visible) {
@@ -190,21 +213,25 @@ fun ArrayResultExportCoordinator(
             onDismiss = onDismiss,
             onCsvExport = {
                 pendingSnapshot = snapshot
+                pendingPlateSnapshot = plateSnapshot
                 onDismiss()
                 csvLauncher.launch(exportFileName(snapshot, ArrayResultExportFormat.CSV))
             },
             onPngExport = {
                 pendingSnapshot = snapshot
+                pendingPlateSnapshot = plateSnapshot
                 onDismiss()
                 pngLauncher.launch(exportFileName(snapshot, ArrayResultExportFormat.PNG))
             },
             onPdfExport = {
                 pendingSnapshot = snapshot
+                pendingPlateSnapshot = plateSnapshot
                 onDismiss()
                 pdfLauncher.launch(exportFileName(snapshot, ArrayResultExportFormat.PDF))
             },
             onZipExport = {
                 pendingSnapshot = snapshot
+                pendingPlateSnapshot = plateSnapshot
                 onDismiss()
                 zipLauncher.launch(exportFileName(snapshot, ArrayResultExportFormat.ZIP))
             }
@@ -487,7 +514,8 @@ private fun buildArchiveSupplementalFiles(
     pdfLabels: ArrayResultPdfLabels,
     validationPdfLabels: ArrayResultValidationPdfLabels,
     pngLabels: ArrayResultPngLabels,
-    validations: Map<String, ResultValidationSnapshot>
+    validations: Map<String, ResultValidationSnapshot>,
+    wellImageProvider: ((Int) -> android.graphics.Bitmap?)? = null
 ): Map<String, ByteArray> = buildMap {
     put(
         "report/result-summary.pdf",
@@ -496,7 +524,8 @@ private fun buildArchiveSupplementalFiles(
             snapshot = snapshot,
             labels = pdfLabels,
             validations = validations,
-            validationLabels = validationPdfLabels
+            validationLabels = validationPdfLabels,
+            wellImageProvider = wellImageProvider
         )
     )
     snapshot.analytes.sortedBy { analyte -> analyte.displayOrder }
@@ -516,6 +545,24 @@ private fun buildArchiveSupplementalFiles(
                 )
             }
         }
+}
+
+/**
+ * 为 PDF 逐孔附录提供真实圆孔裁切图。
+ *
+ * 查找表在导出开始时一次性构造，避免 96 孔报告的每一行都线性扫描全部孔位；真正的
+ * Bitmap 解码和圆形掩膜继续复用结果页加载器，确保页面缩略图与报告图像完全同源。
+ */
+private fun createPlateWellImageProvider(
+    context: Context,
+    snapshot: Plate96ResultSnapshot
+): (Int) -> android.graphics.Bitmap? {
+    val wellsByIndex = snapshot.wells.associateBy { well -> well.wellIndex }
+    return { siteIndex ->
+        wellsByIndex[siteIndex]?.let { well ->
+            Plate96WellThumbnailLoader.load(context, snapshot, well)
+        }
+    }
 }
 
 private fun exportArchiveSafePart(value: String, fallbackIndex: Int): String = value

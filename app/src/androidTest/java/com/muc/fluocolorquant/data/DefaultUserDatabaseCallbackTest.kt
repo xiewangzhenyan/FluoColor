@@ -4,11 +4,12 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.muc.fluocolorquant.data.security.Pbkdf2PasswordHasher
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,10 +41,15 @@ class DefaultUserDatabaseCallbackTest {
     fun 新数据库打开后可以使用默认账户登录() = runBlocking {
         val database = openDatabase()
 
-        val defaultUser = database.userDao().validateCredentials("user", "123456")
+        val defaultUser = database.userDao().getUserByUsername("user")
 
         assertNotNull(defaultUser)
         assertEquals("user", defaultUser?.username)
+        assertNotEquals("123456", defaultUser?.password)
+        assertEquals(
+            true,
+            Pbkdf2PasswordHasher().verify("123456", requireNotNull(defaultUser).password).matches
+        )
         database.close()
     }
 
@@ -51,15 +57,18 @@ class DefaultUserDatabaseCallbackTest {
     fun 再次打开数据库不会覆盖用户已经修改的密码() = runBlocking {
         val firstDatabase = openDatabase()
         val defaultUser = requireNotNull(firstDatabase.userDao().getUserByUsername("user"))
-        firstDatabase.userDao().updateUser(defaultUser.copy(password = "changed-password"))
+        val changedHash = Pbkdf2PasswordHasher().hash("changed-password")
+        firstDatabase.userDao().updateUser(defaultUser.copy(password = changedHash))
         firstDatabase.close()
 
         val reopenedDatabase = openDatabase()
 
-        assertNotNull(
-            reopenedDatabase.userDao().validateCredentials("user", "changed-password")
+        val reopenedUser = requireNotNull(
+            reopenedDatabase.userDao().getUserByUsername("user")
         )
-        assertNull(reopenedDatabase.userDao().validateCredentials("user", "123456"))
+        val hasher = Pbkdf2PasswordHasher()
+        assertEquals(true, hasher.verify("changed-password", reopenedUser.password).matches)
+        assertEquals(false, hasher.verify("123456", reopenedUser.password).matches)
         reopenedDatabase.close()
     }
 

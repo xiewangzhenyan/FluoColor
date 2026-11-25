@@ -191,10 +191,15 @@ class PgQuantGoldenParityTest {
         PhotometryFlag.UNDER_EXPOSED -> "under_exposed"
         PhotometryFlag.LOW_SNR -> "low_snr"
         PhotometryFlag.ROI_OUT_OF_BOUNDS -> "roi_out_of_bounds"
+        PhotometryFlag.READOUT_UNAVAILABLE -> "readout_unavailable"
         PhotometryFlag.NON_UNIFORM -> "non_uniform"
         PhotometryFlag.BACKGROUND_ANOMALY -> "background_anomaly"
         PhotometryFlag.HOT_PIXEL -> "hot_pixel"
         PhotometryFlag.SPECULAR_HIGHLIGHT -> "specular_highlight"
+        PhotometryFlag.SEGMENTATION_ANOMALY -> "segmentation_anomaly"
+        PhotometryFlag.NEGATIVE_NET_SIGNAL -> "negative_net_signal"
+        PhotometryFlag.BACKGROUND_INSUFFICIENT -> "background_insufficient"
+        PhotometryFlag.MANUAL_BAD -> "manual_bad"
     }
 
     private fun JsonObject.double(name: String): Double = get(name).asDouble

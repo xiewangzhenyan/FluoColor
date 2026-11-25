@@ -6,40 +6,28 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.gson.Gson
 import com.muc.fluocolorquant.R
+import com.muc.fluocolorquant.application.detection.GridConfigurationResourceCoordinator
 import com.muc.fluocolorquant.data.enums.CaptureRole
 import com.muc.fluocolorquant.data.enums.CarrierType
-import com.muc.fluocolorquant.data.enums.AnalysisModelLifecycleStatus
+import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.data.enums.SiteShape
 import com.muc.fluocolorquant.data.enums.AnalysisModelType
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.data.enums.FittingFunction
-import com.muc.fluocolorquant.data.enums.TemplateLifecycleStatus
 import com.muc.fluocolorquant.data.enums.TemplateReferenceScope
 import com.muc.fluocolorquant.data.enums.TemplateSiteRole
 import com.muc.fluocolorquant.data.model.TemplateSiteAssignment
-import com.muc.fluocolorquant.data.model.TemplateQuantitationBinding
-import com.muc.fluocolorquant.data.model.CalibrationPoint
-import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.StandardCurveDefinition
-import com.muc.fluocolorquant.data.repository.AcquisitionProfileRepository
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
-import com.muc.fluocolorquant.data.repository.AnalysisModelRepository
-import com.muc.fluocolorquant.data.repository.CarrierProfileRepository
 import com.muc.fluocolorquant.data.repository.CalibrationPolicyPreferences
-import com.muc.fluocolorquant.data.repository.ExperimentTemplateRepository
-import com.muc.fluocolorquant.data.repository.ExperimentTemplateBundle
 import com.muc.fluocolorquant.data.repository.ProjectRepository
+import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationMethod
 import com.muc.fluocolorquant.domain.calibration.AnalyteQuantitationSnapshot
 import com.muc.fluocolorquant.domain.calibration.CalibrationApplicationDecision
-import com.muc.fluocolorquant.domain.calibration.CalibrationCandidate
-import com.muc.fluocolorquant.domain.calibration.CalibrationResourceFingerprint
-import com.muc.fluocolorquant.domain.calibration.CalibrationResultSet
 import com.muc.fluocolorquant.domain.calibration.OnsiteCalibrationState
 import com.muc.fluocolorquant.domain.calibration.applicationDecision
-import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationBindingFingerprint
-import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationResourceSnapshot
 import com.muc.fluocolorquant.domain.calibration.TemplateQuantitationResourceSnapshotCodec
 import com.muc.fluocolorquant.domain.detection.GridAnalysisModelOption
 import com.muc.fluocolorquant.domain.detection.GridAnalyteQuantitationDraft
@@ -49,20 +37,36 @@ import com.muc.fluocolorquant.domain.detection.GridDetectionBlockReason
 import com.muc.fluocolorquant.domain.detection.GridDetectionCoordinator
 import com.muc.fluocolorquant.domain.detection.GridDetectionOutcome
 import com.muc.fluocolorquant.domain.detection.GridDetectionRequest
-import com.muc.fluocolorquant.domain.detection.GridDetectionRouteResolver
 import com.muc.fluocolorquant.domain.detection.GridDetectionStage
+import com.muc.fluocolorquant.domain.detection.GridDetectionRouteResolver
 import com.muc.fluocolorquant.domain.detection.GridExperimentTemplateOption
 import com.muc.fluocolorquant.domain.detection.GridLayoutConfigurationSource
 import com.muc.fluocolorquant.domain.detection.GridLocalizationOutcome
 import com.muc.fluocolorquant.domain.detection.GridLocalizationPresentation
 import com.muc.fluocolorquant.domain.detection.GridLocalizationSession
+import com.muc.fluocolorquant.domain.detection.grid.TraditionalGridNotFound
+import com.muc.fluocolorquant.domain.detection.grid.GridPoint
+import com.muc.fluocolorquant.domain.detection.grid.GridTargetPolarity
+import com.muc.fluocolorquant.domain.detection.grid.ManualGridGeometry
+import com.muc.fluocolorquant.domain.detection.grid.PgGridLocatorConfig
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisKey
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisPreferences
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisScope
+import com.muc.fluocolorquant.domain.detection.array.ArrayLocatorMode
+import com.muc.fluocolorquant.domain.detection.photometry.WellReadoutMode
+import com.muc.fluocolorquant.domain.detection.acceptOnsiteFitResult
+import com.muc.fluocolorquant.domain.detection.completeOnsiteApplying
 import com.muc.fluocolorquant.domain.detection.isConfigurationComplete
-import com.muc.fluocolorquant.domain.detection.isDirectAcquisitionProfileId
 import com.muc.fluocolorquant.domain.detection.isReadyForConfirmation
+import com.muc.fluocolorquant.domain.detection.rejectOnsiteFitResult
 import com.muc.fluocolorquant.domain.detection.resolvedGridQuantitationMode
+import com.muc.fluocolorquant.domain.detection.restoreOnsiteReviewingAfterApplyFailure
+import com.muc.fluocolorquant.domain.detection.returnToOnsiteEditing
+import com.muc.fluocolorquant.domain.detection.selectOnsiteCandidate
+import com.muc.fluocolorquant.domain.detection.setOnsiteSaveToLibrary
+import com.muc.fluocolorquant.domain.detection.startOnsiteApplying
+import com.muc.fluocolorquant.domain.detection.startOnsiteFitting
 import com.muc.fluocolorquant.domain.detection.withPersistedOnsiteCurveResource
-import com.muc.fluocolorquant.domain.detection.quantification.BuiltInSharedConcentrationModel
-import com.muc.fluocolorquant.domain.detection.segmentation.ArrayUnitRegion
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectSnapshotCodec
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -74,6 +78,8 @@ import java.util.Date
 import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -83,209 +89,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-/** 定位确认页需要展示的分析物摘要。 */
-data class GridLocalizationAnalyte(
-    val id: String,
-    val name: String,
-    val concentrationUnit: String,
-    /** 直接新建项目时由用户设置的最大浓度，用于现场标定输入的上限校验。 */
-    val maxConcentration: Double? = null
-)
-
-/** 一张真实处理证据图片；role 用于 Compose 映射为本地化标签。 */
-data class GridLocalizationEvidence(
-    val role: CaptureRole,
-    val path: String
-)
-
-/** 真实矫正芯片中一个物理位点的裁切中心，用于布局页逐格生成真实缩略图。 */
-data class GridLocalizationSitePreview(
-    val siteIndex: Int,
-    val rowIndex: Int,
-    val columnIndex: Int,
-    val rectifiedX: Double,
-    val rectifiedY: Double,
-    /** 当前运行真实分割出的紧致区域；为空只用于兼容旧内存会话。 */
-    val cropRegion: ArrayUnitRegion? = null
-)
-
-/** 用户确认定位与编辑孔位布局时使用的只读定位摘要。 */
-data class GridLocalizationPreview(
-    val runId: String,
-    val originalImageUri: String,
-    val detectionMode: String = "",
-    val rows: Int,
-    val columns: Int,
-    val siteCount: Int,
-    val observedRatio: Double,
-    val meanConfidence: Double,
-    val frameQcIssueCount: Int,
-    /** 无增强的透视矫正芯片图；布局页从这一张图按 [sites] 中的真实紧致区域逐孔裁切。 */
-    val rectifiedImagePath: String?,
-    /** 仅用于读取没有分割区域的旧内存会话；新运行不会使用固定半径裁切。 */
-    val cropHalfSizePx: Double,
-    val sites: List<GridLocalizationSitePreview>,
-    val analytes: List<GridLocalizationAnalyte>,
-    val evidence: List<GridLocalizationEvidence>,
-    /** 项目上一次保存的布局或创建时冻结的模板布局，用于进入编辑页时直接预填。 */
-    val initialAssignments: List<GridLayoutAssignmentDraft> = emptyList(),
-    /** 布局来源与定量草稿均由 ViewModel 持有，页面重组不会丢失选择。 */
-    val configurationSource: GridLayoutConfigurationSource = GridLayoutConfigurationSource.MANUAL,
-    val selectedTemplateId: String? = null,
-    val availableTemplates: List<GridExperimentTemplateOption> = emptyList(),
-    val availableModels: List<GridAnalysisModelOption> = emptyList(),
-    val quantitationDrafts: List<GridAnalyteQuantitationDraft> = emptyList(),
-    /** 当前工作台只展开这一项，避免多个分析物配置卡同时堆叠。 */
-    val selectedQuantitationAnalyteId: String? = null,
-    /** 页面只根据明确载体呈现选择圆孔或方格，不根据行列数猜测。 */
-    val presentation: GridLocalizationPresentation = GridLocalizationPresentation.MICROFLUIDIC
-)
-
-/** 孔位布局页的一次性操作结果；Compose 负责将稳定事件映射为中英文自定义 Toast。 */
-sealed interface GridConfigurationEvent {
-    data object TemplateApplied : GridConfigurationEvent
-    data object TemplateIncompatible : GridConfigurationEvent
-    data object ModelApplied : GridConfigurationEvent
-    data object ModelIncompatible : GridConfigurationEvent
-    data object FitReady : GridConfigurationEvent
-    data object FitUnavailable : GridConfigurationEvent
-    data object CurveSaveFailed : GridConfigurationEvent
-    data class TemplateSaved(val name: String) : GridConfigurationEvent
-    data object TemplateNameConflict : GridConfigurationEvent
-    data object TemplateSaveIncomplete : GridConfigurationEvent
-    data object TemplateSaveFailed : GridConfigurationEvent
-    data object LowQualityCalibrationBlocked : GridConfigurationEvent
-    data object LowQualityCalibrationConfirmationRequired : GridConfigurationEvent
-    data object LowQualityCalibrationApplied : GridConfigurationEvent
-    data object OperationFailed : GridConfigurationEvent
-}
-
-/**
- * 孔位布局页提交的单个位点草稿。
- * 未配置位点不进入列表；禁用位点保留记录但不会进入任何分析物的信号或浓度计算。
- */
-data class GridLayoutAssignmentDraft(
-    val rowIndex: Int,
-    val columnIndex: Int,
-    val analyteId: String?,
-    val role: TemplateSiteRole,
-    val standardConcentration: Double? = null,
-    val sampleId: String? = null
-)
-
-/**
- * 一次孔位画笔操作的稳定意图。
- *
- * UI 只提交“本笔经过哪些位点、当前分析物和角色是什么”，不再提交它所看到的整张旧 Map，
- * 从而彻底消除 Compose 状态回流时序导致的第二笔覆盖第一笔问题。
- */
-data class GridLayoutPaintIntent(
-    val paintedSiteIndices: Set<Int>,
-    val analyteId: String?,
-    val role: TemplateSiteRole,
-    val standardConcentration: Double? = null,
-    val sampleId: String? = null,
-    val clearMode: Boolean = false
-)
-
-/** 一次画笔合并的结果；受保护位点数用于页面提示用户先清除再重新分配。 */
-data class GridPaintMergeResult(
-    val assignments: Map<Int, GridLayoutAssignmentDraft>,
-    val protectedSiteCount: Int
-)
-
-/** 孔位布局页进入定量计算前的稳定门控原因。 */
-enum class ArrayLayoutReadinessIssue {
-    NO_ASSIGNED_SITES,
-    NO_QUANTITATION_DRAFTS,
-    QUANTITATION_INCOMPLETE
-}
-
-/**
- * 孔位布局和逐分析物定量方案的统一完成状态。
- *
- * Compose只负责展示该对象，ViewModel提交时再次计算同一规则，防止页面按钮与业务门控
- * 各自维护一套条件。未分配孔位仍允许存在，但至少要有一个启用孔位参与本次实验。
- */
-data class ArrayLayoutReadiness(
-    val assignedSiteCount: Int,
-    val totalSiteCount: Int,
-    val completedAnalyteCount: Int,
-    val totalAnalyteCount: Int,
-    val issues: Set<ArrayLayoutReadinessIssue>
-) {
-    val canStart: Boolean get() = issues.isEmpty()
-}
-
-/** 计算孔位与定量方案的双进度；该纯函数供JVM测试、Compose和ViewModel共同使用。 */
-fun evaluateArrayLayoutReadiness(
-    assignments: Collection<GridLayoutAssignmentDraft>,
-    quantitationDrafts: Collection<GridAnalyteQuantitationDraft>,
-    totalSiteCount: Int
-): ArrayLayoutReadiness {
-    val activeAssignments = assignments.count { draft ->
-        draft.role != TemplateSiteRole.DISABLED
-    }
-    val completedAnalytes = quantitationDrafts.count(GridAnalyteQuantitationDraft::isConfigurationComplete)
-    val issues = buildSet {
-        if (activeAssignments == 0) add(ArrayLayoutReadinessIssue.NO_ASSIGNED_SITES)
-        if (quantitationDrafts.isEmpty()) add(ArrayLayoutReadinessIssue.NO_QUANTITATION_DRAFTS)
-        else if (completedAnalytes != quantitationDrafts.size) {
-            add(ArrayLayoutReadinessIssue.QUANTITATION_INCOMPLETE)
-        }
-    }
-    return ArrayLayoutReadiness(
-        assignedSiteCount = activeAssignments,
-        totalSiteCount = totalSiteCount.coerceAtLeast(0),
-        completedAnalyteCount = completedAnalytes,
-        totalAnalyteCount = quantitationDrafts.size,
-        issues = issues
-    )
-}
-
-/** 微流控检测网关 UI 状态；所有用户文案由 Compose 根据枚举读取资源。 */
-sealed interface GridDetectionUiState {
-    data object ResolvingProject : GridDetectionUiState
-    /** 已确认项目为标准96孔板，交由圆孔定位确认页继续。 */
-    data object Plate96Localization : GridDetectionUiState
-
-    data class Processing(
-        val stage: GridDetectionStage,
-        val presentation: GridLocalizationPresentation = GridLocalizationPresentation.MICROFLUIDIC
-    ) : GridDetectionUiState
-
-    data class LocalizationReady(
-        val preview: GridLocalizationPreview,
-        /** true 时直接打开孔位布局；门控失败返回编辑时不再绕回定位确认页。 */
-        val editingLayout: Boolean = false
-    ) : GridDetectionUiState
-
-    data class Completed(
-        val runId: String,
-        val measurementCount: Int,
-        val signalOnlyAnalyteIds: Set<String>,
-        val frameQcIssueCount: Int = 0
-    ) : GridDetectionUiState
-
-    data class RetakeRequired(val runId: String) : GridDetectionUiState
-
-    data class Blocked(
-        val reasons: Set<GridDetectionBlockReason>
-    ) : GridDetectionUiState
-
-    data class Error(
-        val reason: GridDetectionUiError
-    ) : GridDetectionUiState
-}
-
-enum class GridDetectionUiError {
-    INVALID_ARGUMENTS,
-    PROJECT_NOT_FOUND,
-    SNAPSHOT_MISSING_OR_INVALID,
-    IMAGE_LOAD_FAILED,
-    EXECUTION_FAILED
-}
 
 /**
  * 微流控“定位确认 → 孔位布局 → 定量保存”状态机。
@@ -298,14 +101,10 @@ class GridDetectionViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val projectRepository: ProjectRepository,
     private val coordinator: GridDetectionCoordinator,
-    private val templateRepository: ExperimentTemplateRepository,
-    private val carrierProfileRepository: CarrierProfileRepository,
-    private val acquisitionProfileRepository: AcquisitionProfileRepository,
-    private val analysisModelRepository: AnalysisModelRepository,
-    private val calibrationPolicyPreferences: CalibrationPolicyPreferences
+    private val configurationResourceCoordinator: GridConfigurationResourceCoordinator,
+    private val calibrationPolicyPreferences: CalibrationPolicyPreferences,
+    private val settingsRepository: SettingsRepository? = null
 ) : ViewModel() {
-
-    private val gson = Gson()
 
     private val _uiState = MutableStateFlow<GridDetectionUiState>(
         GridDetectionUiState.ResolvingProject
@@ -319,6 +118,13 @@ class GridDetectionViewModel @Inject constructor(
     private var lastImageUri: String? = null
     private var running: Boolean = false
     private var localizationSession: GridLocalizationSession? = null
+    /** 自动定位没返回网格时仍要保留此次已解码的原图；仅限当前微流控项目，不是跨项目图片缓存。 */
+    private var manualInput: GridDetectionRequest? = null
+    private var beforeManual: GridDetectionUiState? = null
+    /** 只在新图进入定位时读取默认值；从布局返回时不重新应用系统设置。 */
+    private var initialAnalysisPreferences = ArrayAnalysisPreferences()
+    fun plateAnalysisPreferences(): ArrayAnalysisPreferences =
+        localizationSession?.request?.analysisPreferences ?: initialAnalysisPreferences
     private val layoutDraftStore = GridLayoutDraftStore()
     private var configurationSource = GridLayoutConfigurationSource.MANUAL
     private var selectedTemplateId: String? = null
@@ -331,6 +137,11 @@ class GridDetectionViewModel @Inject constructor(
     private var manualSnapshotBackup:
         com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot? = null
     private var savingReusableResource: Boolean = false
+    /** 定位复核页由操作者显式标记排除的异常孔索引集合；仅作用于当前已确认几何。 */
+    private var manualBadSiteIndices: Set<Int> = emptySet()
+    private var siteAdjustJob: Job? = null
+    private var evidenceRefreshJob: Job? = null
+    private var evidenceRevisionCounter: Int = 0
 
     fun start(projectId: String?, imageUri: String?) {
         if (projectId.isNullOrBlank() || imageUri.isNullOrBlank()) {
@@ -338,10 +149,14 @@ class GridDetectionViewModel @Inject constructor(
             return
         }
         val sameRequest = projectId == lastProjectId && imageUri == lastImageUri
-        if (running || sameRequest && _uiState.value !is GridDetectionUiState.Error) {
+        if (running || sameRequest) {
             return
         }
         if (!sameRequest) {
+            manualInput = null
+            beforeManual = null
+            initialAnalysisPreferences = ArrayAnalysisPreferences()
+            localizationSession = null
             // ViewModel 可能被导航框架短暂复用；切换项目或图片时必须清空上一实验的布局，
             // 避免同规格芯片之间误带分析物、标准浓度或样本编号。
             layoutDraftStore.clear()
@@ -354,6 +169,10 @@ class GridDetectionViewModel @Inject constructor(
             manualAssignmentsBackup = emptyList()
             manualQuantitationBackup = emptyMap()
             manualSnapshotBackup = null
+            manualBadSiteIndices = emptySet()
+            siteAdjustJob?.cancel()
+            evidenceRefreshJob?.cancel()
+            evidenceRevisionCounter = 0
         }
         lastProjectId = projectId
         lastImageUri = imageUri
@@ -370,15 +189,396 @@ class GridDetectionViewModel @Inject constructor(
             )
             return
         }
+        if (!running && session?.presentation == GridLocalizationPresentation.MICROFLUIDIC &&
+            _uiState.value is GridDetectionUiState.LocalizationReady) {
+            applyMicroGeometry(session.request, null)
+            return
+        }
+        if (!running && _uiState.value is GridDetectionUiState.LocatingArray) {
+            val attempt = (_uiState.value as GridDetectionUiState.LocatingArray).attempt
+            val source = localizationSession?.request ?: manualInput ?: return
+            if (attempt.mode.isComparisonOnly) launchComparison(source, attempt.mode)
+            else applyMicroGeometry(source.copy(analysisPreferences = source.analysisPreferences.copy(locator = attempt.mode)), null)
+            return
+        }
         val projectId = lastProjectId ?: return
         val imageUri = lastImageUri ?: return
         if (!running) localize(projectId, imageUri)
     }
 
+    /** 正常确认页、以及定位失败但原图仍可用的页面，共用同一个手动入口。 */
+    fun openManualCorners() {
+        val current = _uiState.value
+        if (running || !(current is GridDetectionUiState.LocalizationReady && !current.editingLayout &&
+                current.preview.presentation == GridLocalizationPresentation.MICROFLUIDIC ||
+                current is GridDetectionUiState.LocatingArray)) return
+        if (savingReusableResource || quantitationDrafts.values.any {
+                it.onsiteState is OnsiteCalibrationState.Fitting || it.onsiteState is OnsiteCalibrationState.Applying
+            }) return
+        val request = localizationSession?.request ?: manualInput ?: return
+        val profile = request.snapshot.carrierProfile
+        if (profile.rows < 2 || profile.columns < 2) return
+        beforeManual = current
+        val radius = if (profile.siteShape == SiteShape.CIRCLE.code) request.manualCircularDiameterRatio ?: .66 else null
+        val draft = GridDetectionUiState.ManualCorners(request.endpointBitmap, profile.rows, profile.columns,
+            diameterRatio = radius, diameterConfirmed = request.manualCircularDiameterRatio != null)
+        setManualPoints(draft, localizationSession?.grid?.manualAnchorCenters.orEmpty())
+    }
+
+    fun addManualCorner(point: GridPoint) {
+        val state = _uiState.value as? GridDetectionUiState.ManualCorners ?: return
+        if (state.anchors.size >= 4 || point.x !in 0.0..(state.bitmap.width - 1).toDouble() ||
+            point.y !in 0.0..(state.bitmap.height - 1).toDouble()) return
+        setManualPoints(state, state.anchors + point)
+    }
+
+    fun undoManualCorner() {
+        val state = _uiState.value as? GridDetectionUiState.ManualCorners ?: return
+        setManualPoints(state, state.anchors.dropLast(1))
+    }
+
+    fun clearManualCorners() {
+        val state = _uiState.value as? GridDetectionUiState.ManualCorners ?: return
+        setManualPoints(state, emptyList())
+    }
+
+    fun cancelManualCorners() {
+        if (_uiState.value !is GridDetectionUiState.ManualCorners) return
+        beforeManual?.let { _uiState.value = it }
+        beforeManual = null
+    }
+
+    private fun setManualPoints(state: GridDetectionUiState.ManualCorners, anchors: List<GridPoint>) {
+        val draft = state.copy(anchors = anchors, previewSites = emptyList(), rimPreviews = emptyList(), applyFailed = false,
+            diameterConfirmed = state.diameterConfirmed && anchors == state.anchors)
+        _uiState.value = draft
+        if (anchors.size != 4) return
+        viewModelScope.launch {
+            val ready = withContext(Dispatchers.Default) {
+                try {
+                    // 此步只算几何，不读取图像，不写入任何运行附件。快速撤销后迟到的预览不能覆盖新草稿。
+                    val grid = ManualGridGeometry.build(state.bitmap.width, state.bitmap.height,
+                        PgGridLocatorConfig(state.rows, state.columns, GridTargetPolarity.DARK), anchors)
+                    val rims = draft.diameterRatio?.let { ratio ->
+                        val radius = ManualGridGeometry.circularRadius(grid, ratio)
+                        val inverse = grid.homography.inverse.toDoubleArray()
+                        grid.sites.map { ManualGridGeometry.circleOutline(it.rectified, radius, inverse) }
+                    }.orEmpty()
+                    draft.copy(previewSites = grid.sites.map { it.original }, rimPreviews = rims)
+                } catch (_: IllegalArgumentException) { draft.copy(applyFailed = true) }
+            }
+            if (_uiState.value === draft) _uiState.value = ready
+        }
+    }
+
+    fun setManualCircularDiameter(value: Double) {
+        val state = _uiState.value as? GridDetectionUiState.ManualCorners ?: return
+        if (state.diameterRatio != null) setManualPoints(state.copy(diameterRatio = value, diameterConfirmed = false), state.anchors)
+    }
+
+    fun confirmManualCircularDiameter() {
+        val state = _uiState.value as? GridDetectionUiState.ManualCorners ?: return
+        if (state.diameterRatio != null && state.previewSites.isNotEmpty()) _uiState.value = state.copy(diameterConfirmed = true)
+    }
+
+    fun confirmManualCorners() {
+        val draft = _uiState.value as? GridDetectionUiState.ManualCorners ?: return
+        if (running || draft.previewSites.isEmpty() || (draft.diameterRatio != null && !draft.diameterConfirmed)) return
+        applyMicroGeometry(localizationSession?.request ?: manualInput ?: return, draft)
+    }
+
+    fun chooseLocator(method: ArrayLocatorMode) {
+        val visible = _uiState.value
+        if (running || visible !is GridDetectionUiState.LocatingArray &&
+            !(visible is GridDetectionUiState.LocalizationReady && !visible.editingLayout)) return
+        val source = localizationSession?.request ?: manualInput ?: return
+        val profile = source.snapshot.carrierProfile
+        if (profile.rows < 2 || profile.columns < 2) return
+        val scope = ArrayAnalysisScope.from(profile)
+        if (scope == ArrayAnalysisScope.STANDARD_PLATE || method !in scope.localizationChoices) return
+        if (method.isComparisonOnly) {
+            // 未完成的现场拟合或模板保存可能回写布局页，不允许其迟到结果覆盖正在看的对照。
+            if (savingReusableResource || quantitationDrafts.values.any {
+                    it.onsiteState is OnsiteCalibrationState.Fitting || it.onsiteState is OnsiteCalibrationState.Applying
+                }) return
+            if (visible !is GridDetectionUiState.LocatingArray || visible.attempt.mode != method) {
+                launchComparison(source, method)
+            }
+            return
+        }
+        if (method == localizationSession?.activeLocator()) {
+            restorePreviousLocalization()
+            return
+        }
+        applyMicroGeometry(source.copy(analysisPreferences = source.analysisPreferences.copy(locator = method)), null)
+    }
+
+    fun restorePreviousLocalization() {
+        if (running || _uiState.value !is GridDetectionUiState.LocatingArray || localizationSession == null) return
+        // 恢复原会话和原草稿，不触发任何算法、分割或现场重新标定。
+        publishPreview(editingLayout = false)
+    }
+
+    private fun GridLocalizationSession.activeLocator() =
+        if (!grid.manualAnchorCenters.isNullOrEmpty()) ArrayLocatorMode.MANUAL_CORNERS else request.analysisPreferences.locator
+
+    private fun locatorAttempt(request: GridDetectionRequest, mode: ArrayLocatorMode, status: ArrayLocatorAttemptStatus) =
+        GridDetectionUiState.LocatingArray(ArrayLocatorAttempt(request.endpointBitmap,
+            ArrayAnalysisScope.from(request.snapshot.carrierProfile), mode, status, localizationSession?.activeLocator()))
+
+    private fun launchComparison(request: GridDetectionRequest, mode: ArrayLocatorMode) {
+        running = true
+        _uiState.value = locatorAttempt(request, mode, ArrayLocatorAttemptStatus.Running)
+        viewModelScope.launch {
+            try {
+                val status = try {
+                    coordinator.compareLocator(request, mode)?.let { ArrayLocatorAttemptStatus.Preview(it) }
+                        ?: ArrayLocatorAttemptStatus.NoGrid
+                } catch (cancel: kotlinx.coroutines.CancellationException) {
+                    throw cancel
+                } catch (error: Exception) {
+                    android.util.Log.w("GridLocalization", "${mode.name} 对照执行失败", error)
+                    ArrayLocatorAttemptStatus.Failed
+                } catch (error: LinkageError) {
+                    android.util.Log.w("GridLocalization", "对照定位组件不可用", error)
+                    ArrayLocatorAttemptStatus.Failed
+                }
+                _uiState.value = locatorAttempt(request, mode, status)
+            } finally { running = false }
+        }
+    }
+
+    fun changeArrayAnalysis(preferences: ArrayAnalysisPreferences) {
+        val current = _uiState.value as? GridDetectionUiState.LocalizationReady ?: return
+        val previous = localizationSession ?: return
+        if (running || current.editingLayout || previous.presentation != GridLocalizationPresentation.MICROFLUIDIC) return
+        val config = preferences.normalized(current.preview.analysisScope)
+        if (config == previous.request.analysisPreferences) return
+        val previousPreferences = previous.request.analysisPreferences
+        if (config == previousPreferences.copy(multiHoleStatistic = config.multiHoleStatistic)) {
+            // 多孔统计只在最终汇总时读取。仅替换内存里的汇总配置与追溯码，不重新取样、写过程图或撤销曲线。
+            localizationSession = previous.copy(
+                request = previous.request.copy(analysisPreferences = config),
+                processingVersions = previous.processingVersions + ("multiHoleStatistic" to config.multiHoleStatistic.name)
+            )
+            publishPreview(editingLayout = false)
+            return
+        }
+        val sameGeometry = current.preview.manualGeometry || (config.locator == previous.request.analysisPreferences.locator &&
+            config.gridMargin == previous.request.analysisPreferences.gridMargin && config.matchingDistance == previous.request.analysisPreferences.matchingDistance)
+        applyMicroGeometry(previous.request.copy(analysisPreferences = config), null, reuseGeometry = sameGeometry)
+    }
+
+    private fun applyMicroGeometry(source: GridDetectionRequest, draft: GridDetectionUiState.ManualCorners?, reuseGeometry: Boolean = false) {
+        if (running || savingReusableResource || quantitationDrafts.values.any {
+            it.onsiteState is OnsiteCalibrationState.Fitting || it.onsiteState is OnsiteCalibrationState.Applying
+        }) return
+        val prior = localizationSession
+        val readoutPreview = (_uiState.value as? GridDetectionUiState.LocalizationReady)?.takeIf { reuseGeometry && prior != null }
+        running = true
+        val attemptMode = source.analysisPreferences.locator
+        val pending = if (draft == null && readoutPreview == null) locatorAttempt(source, attemptMode, ArrayLocatorAttemptStatus.Running) else null
+        fun publishStage(stage: GridDetectionStage) {
+            _uiState.value = readoutPreview?.copy(readoutStage = stage) ?: pending ?: GridDetectionUiState.Processing(stage)
+        }
+        publishStage(if (readoutPreview == null) GridDetectionStage.LOCATING else GridDetectionStage.PHOTOMETRY)
+        fun restoreAfterFailure(status: ArrayLocatorAttemptStatus) {
+            if (draft != null) _uiState.value = draft.copy(applyFailed = true)
+            else if (reuseGeometry && prior != null) {
+                // 仅取值失败不改变定位，仍可查看原会话；切换定位失败则只显示当前尝试和原图。
+                publishPreview(editingLayout = false)
+                _configurationEvents.tryEmit(GridConfigurationEvent.OperationFailed)
+            } else _uiState.value = locatorAttempt(source, attemptMode, status)
+        }
+        viewModelScope.launch {
+            try {
+                // 证据文件以 runId 为目录。换坐标用新的未保存会话，旧会话仍可在失败/取消时原样恢复。
+                val changesReadout = prior?.request?.analysisPreferences?.readoutVersion("v1") != source.analysisPreferences.readoutVersion("v1")
+                val invalidatesCalibration = !reuseGeometry || changesReadout
+                val snapshot = source.snapshot.let { if (invalidatesCalibration) it.withoutGeometryDependentFits() else it }
+                val request = source.copy(snapshot = snapshot, runId = UUID.randomUUID().toString(),
+                    manualCircularDiameterRatio = if (reuseGeometry) source.manualCircularDiameterRatio else draft?.diameterRatio,
+                    onStageChanged = ::publishStage)
+                val outcome = if (reuseGeometry && prior != null) coordinator.resampleRegular(prior, request)
+                    else coordinator.localize(request, draft?.anchors)
+                when (outcome) {
+                    is GridLocalizationOutcome.Ready -> {
+                        if (!reuseGeometry) {
+                            manualBadSiteIndices = emptySet()
+                        }
+                        val effectiveSession = if (manualBadSiteIndices.isEmpty()) {
+                            outcome.session
+                        } else {
+                            outcome.session.copy(
+                                quant = outcome.session.quant.withManualBadSites(manualBadSiteIndices)
+                            )
+                        }
+                        if (prior == null) {
+                            _uiState.value = initializeLocalizationSession(effectiveSession, false)
+                        } else {
+                            if (changesReadout) loadConfigurationResources(effectiveSession)
+                            localizationSession = effectiveSession
+                            // 布局/标准浓度/选择的资源不变；现场拟合读的像素已变，草稿、冻结曲线与模板切回备份都需失效。
+                            if (invalidatesCalibration) invalidateOnsiteDrafts()
+                            publishPreview(editingLayout = false)
+                        }
+                        manualInput = request
+                        beforeManual = null
+                    }
+                    is GridLocalizationOutcome.Blocked -> _uiState.value = GridDetectionUiState.Blocked(outcome.reasons)
+                    GridLocalizationOutcome.LegacyPlateRequired -> _uiState.value = GridDetectionUiState.Plate96Localization
+                }
+            } catch (cancel: kotlinx.coroutines.CancellationException) {
+                throw cancel
+            } catch (_: TraditionalGridNotFound) {
+                restoreAfterFailure(ArrayLocatorAttemptStatus.NoGrid)
+            } catch (error: Exception) {
+                android.util.Log.w("ManualGrid", "阵列几何应用失败", error)
+                restoreAfterFailure(ArrayLocatorAttemptStatus.Failed)
+            } catch (error: LinkageError) {
+                android.util.Log.w("ManualGrid", "原图处理组件不可用", error)
+                restoreAfterFailure(ArrayLocatorAttemptStatus.Failed)
+            } finally { running = false }
+        }
+    }
+
+    private fun invalidateOnsiteDrafts() {
+        fun reset(drafts: Map<String, GridAnalyteQuantitationDraft>) = drafts.mapValues { (_, entry) ->
+            if (entry.mode == GridAnalyteQuantitationMode.ONSITE_AUTO_FIT) entry.returnToOnsiteEditing() else entry
+        }
+        quantitationDrafts = reset(quantitationDrafts)
+        manualQuantitationBackup = reset(manualQuantitationBackup)
+        manualSnapshotBackup = manualSnapshotBackup?.withoutGeometryDependentFits()
+    }
+
+    /**
+     * 在定位确认页标记或恢复单个异常孔（借鉴 GenePix `Flag Bad` + `Linkage`）。
+     *
+     * 被标为异常的位点保留原始读数证据，但置 `qualityReliable = false`，自动退出白平衡参考、
+     * 现场标准曲线拟合与样本复孔聚合；同时联动失效已预览的旧现场拟合，确保重新确认曲线。
+     */
+    fun toggleManualBadSite(siteIndex: Int) {
+        val current = _uiState.value as? GridDetectionUiState.LocalizationReady ?: return
+        val session = localizationSession ?: return
+        if (running || current.editingLayout || siteIndex !in session.quant.sites.indices) return
+        val updatedBadSet = if (siteIndex in manualBadSiteIndices) {
+            manualBadSiteIndices - siteIndex
+        } else {
+            manualBadSiteIndices + siteIndex
+        }
+        manualBadSiteIndices = updatedBadSet
+        localizationSession = session.copy(
+            quant = session.quant.withManualBadSites(updatedBadSet)
+        )
+        invalidateOnsiteDrafts()
+        publishPreview(editingLayout = false)
+    }
+
+    /** 在矫正坐标系中按像素步长微调单个微流控/圆阵孔位中心，实时刷新单孔读数并防抖同步过程图。 */
+    fun nudgeRegularSite(siteIndex: Int, deltaX: Int, deltaY: Int) {
+        val current = _uiState.value as? GridDetectionUiState.LocalizationReady ?: return
+        val session = localizationSession ?: return
+        if (running || current.editingLayout || session.presentation != GridLocalizationPresentation.MICROFLUIDIC) return
+        if (siteIndex !in session.grid.sites.indices || (deltaX == 0 && deltaY == 0)) return
+        val existingCenter = session.grid.sites[siteIndex].rectified
+        val existingScale = session.siteBoxScales[siteIndex] ?: 1.0
+        applyRegularSiteAdjustment(
+            siteIndex = siteIndex,
+            targetCenter = GridPoint(existingCenter.x + deltaX, existingCenter.y + deltaY),
+            targetScale = existingScale
+        )
+    }
+
+    /** 缩放单个微流控/圆阵孔位的采样框尺寸比例（60%～140%）。 */
+    fun scaleRegularSite(siteIndex: Int, scale: Double) {
+        val current = _uiState.value as? GridDetectionUiState.LocalizationReady ?: return
+        val session = localizationSession ?: return
+        if (running || current.editingLayout || session.presentation != GridLocalizationPresentation.MICROFLUIDIC) return
+        if (siteIndex !in session.grid.sites.indices) return
+        val existingCenter = session.grid.sites[siteIndex].rectified
+        applyRegularSiteAdjustment(
+            siteIndex = siteIndex,
+            targetCenter = existingCenter,
+            targetScale = scale
+        )
+    }
+
+    /** 将单个已微调孔位恢复为当前定位算法的原始自动中心与分割框。 */
+    fun restoreRegularSite(siteIndex: Int) {
+        val current = _uiState.value as? GridDetectionUiState.LocalizationReady ?: return
+        val session = localizationSession ?: return
+        if (running || current.editingLayout || session.presentation != GridLocalizationPresentation.MICROFLUIDIC) return
+        if (siteIndex !in session.grid.sites.indices) return
+        siteAdjustJob?.cancel()
+        siteAdjustJob = viewModelScope.launch {
+            val updated = coordinator.restoreRegularSite(session, siteIndex, manualBadSiteIndices)
+            localizationSession = updated
+            invalidateOnsiteDrafts()
+            publishPreview(editingLayout = false)
+            scheduleRegularEvidenceRefresh()
+        }
+    }
+
+    private fun applyRegularSiteAdjustment(
+        siteIndex: Int,
+        targetCenter: GridPoint,
+        targetScale: Double
+    ) {
+        val baseSession = localizationSession ?: return
+        siteAdjustJob?.cancel()
+        siteAdjustJob = viewModelScope.launch {
+            val updated = coordinator.adjustRegularSite(
+                session = baseSession,
+                siteIndex = siteIndex,
+                requestedRectifiedCenter = targetCenter,
+                requestedBoxScale = targetScale,
+                manualBadSites = manualBadSiteIndices
+            )
+            localizationSession = updated
+            invalidateOnsiteDrafts()
+            publishPreview(editingLayout = false)
+            scheduleRegularEvidenceRefresh()
+        }
+    }
+
+    private fun scheduleRegularEvidenceRefresh() {
+        evidenceRefreshJob?.cancel()
+        evidenceRefreshJob = viewModelScope.launch {
+            delay(180L)
+            val snapshotSession = localizationSession ?: return@launch
+            val refreshed = coordinator.refreshRegularEvidence(snapshotSession)
+            if (localizationSession === snapshotSession) {
+                localizationSession = refreshed
+                evidenceRevisionCounter++
+                val ui = _uiState.value as? GridDetectionUiState.LocalizationReady
+                if (ui != null) {
+                    publishPreview(editingLayout = ui.editingLayout)
+                }
+            }
+        }
+    }
+
     /** 从定位确认进入孔位布局；步骤状态由 ViewModel 持有，旋转屏幕后仍停留在当前步骤。 */
     fun openLayoutEditor() {
         val current = _uiState.value as? GridDetectionUiState.LocalizationReady ?: return
+        if (running) return
         _uiState.value = current.copy(editingLayout = true)
+    }
+
+    /**
+     * 当项目由已绑定定量方案与孔位排布的实验模板创建时，支持在第 1 步确认定位后直接计算浓度并进入结果页。
+     */
+    fun finalizeTemplateDirectly() {
+        val current = _uiState.value as? GridDetectionUiState.LocalizationReady ?: return
+        if (running || current.preview.configurationSource != GridLayoutConfigurationSource.EXPERIMENT_TEMPLATE) return
+        val readiness = evaluateArrayLayoutReadiness(
+            assignments = current.preview.initialAssignments,
+            quantitationDrafts = current.preview.quantitationDrafts,
+            totalSiteCount = current.preview.siteCount
+        )
+        if (!readiness.canStart) return
+        _uiState.value = current.copy(editingLayout = true)
+        finalizeLayout(current.preview.initialAssignments)
     }
 
     /** 返回查看定位证据，但不清空用户已经完成的孔位布局。 */
@@ -436,17 +636,24 @@ class GridDetectionViewModel @Inject constructor(
                     )
                     return@launch
                 }
+                val geometryChanged = previousSession != null &&
+                    previousSession.geometryPersistence.json != com.muc.fluocolorquant.domain.detection.plate96.Plate96RunGeometryCodec.encode(
+                        com.muc.fluocolorquant.domain.detection.plate96.Plate96RunGeometrySnapshot.from(selection.session.result))
+                val readoutChanged = previousSession != null &&
+                    previousSession.request.analysisPreferences.readoutVersion("v1") != selection.analysisPreferences.readoutVersion("v1")
                 val outcome = coordinator.preparePlate96Localization(
                     request = GridDetectionRequest(
                         project = project,
-                        snapshot = snapshot,
+                        snapshot = if (geometryChanged || readoutChanged) snapshot.withoutGeometryDependentFits() else snapshot,
                         endpointBitmap = selection.sourceBitmap,
                         endpointPath = imageUri,
                         operatorId = project.userId,
                         // 复核定位属于同一次尚未完成的运行，不能生成新的运行ID或采集时间。
-                        runId = previousSession?.request?.runId ?: java.util.UUID.randomUUID().toString(),
+                        runId = previousSession?.request?.runId?.takeUnless { geometryChanged || readoutChanged }
+                            ?: java.util.UUID.randomUUID().toString(),
                         capturedAt = previousSession?.request?.capturedAt ?: java.util.Date(),
                         acquisitionMetadataJson = previousSession?.request?.acquisitionMetadataJson,
+                        analysisPreferences = selection.analysisPreferences,
                         onStageChanged = { stage ->
                             _uiState.value = GridDetectionUiState.Processing(
                                 stage = stage,
@@ -470,6 +677,8 @@ class GridDetectionViewModel @Inject constructor(
                             openLayoutImmediately = true
                         )
                     } else {
+                        if (geometryChanged || readoutChanged) invalidateOnsiteDrafts()
+                        if (readoutChanged) loadConfigurationResources(outcome.session)
                         refreshPlate96LocalizationSession(outcome.session)
                     }
                 }
@@ -735,12 +944,12 @@ class GridDetectionViewModel @Inject constructor(
         val session = localizationSession ?: return
         viewModelScope.launch {
             runCatching {
-                val bundle = templateRepository.getBundle(templateId)
+                val resolvedTemplate = configurationResourceCoordinator
+                    .getResolvedTemplate(templateId)
                     ?: error("模板不存在")
+                val bundle = resolvedTemplate.bundle
                 val template = bundle.template
-                val carrier = template.carrierProfileId
-                    ?.let { carrierProfileRepository.getById(it) }
-                    ?: error("模板载体不存在")
+                val carrier = resolvedTemplate.carrier
                 val currentSnapshot = session.request.snapshot
                 val currentAnalytes = currentSnapshot.analytes.associateBy { it.analyte.id }
                 val templateAnalyteIds = bundle.analyteConfigs.map { it.analyteId }.toSet()
@@ -758,15 +967,15 @@ class GridDetectionViewModel @Inject constructor(
                     val current = currentAnalytes.getValue(config.analyteId)
                     val binding = bindingsByAnalyte[config.analyteId]
                     val frozenBinding = binding
-                        ?.let { binding ->
+                        ?.let { templateBinding ->
                             TemplateQuantitationResourceSnapshotCodec.decode(
-                                binding.resourceSnapshotJson
+                                templateBinding.resourceSnapshotJson
                             )
                         }
                     if (frozenBinding != null) {
                         val frozenQuantitation = frozenBinding.quantitation.copy(
                             // 外键被 SET_NULL 表示资源已删除；JSON中的旧ID不能再次当真实外键使用。
-                            sourceResourceId = binding?.sourceResourceId
+                            sourceResourceId = binding.sourceResourceId
                         )
                         require(frozenQuantitation.analyteId == config.analyteId)
                         val frozenMode = frozenQuantitation.method.toGridQuantitationMode()
@@ -787,8 +996,15 @@ class GridDetectionViewModel @Inject constructor(
 
                     // Room 12及更早模板没有冻结绑定，只能按旧 analysisModelId 兼容读取。
                     // 新保存模板一律走上面的摘要路径，不再依赖资源库实时内容。
-                    val selectedBundle = config.analysisModelId
-                        ?.let { analysisModelRepository.getBundle(it) }
+                    val selectedBundle = config.analysisModelId?.let { modelId ->
+                        runCatching {
+                            configurationResourceCoordinator.resolveAnalysisModel(
+                                snapshot = currentSnapshot,
+                                analyteId = config.analyteId,
+                                modelId = modelId
+                            )
+                        }.getOrNull()
+                    }
                     val effectiveBundle = selectedBundle ?: current.toSignalOnlyBundle()
                     val effectiveMode = effectiveBundle.toQuantitationMode()
                     current.copy(
@@ -845,6 +1061,10 @@ class GridDetectionViewModel @Inject constructor(
     /** 为一个分析物切换定量方式；仅信号和现场拟合不会继续误用之前选中的资源库曲线。 */
     fun setQuantitationMode(analyteId: String, mode: GridAnalyteQuantitationMode) {
         val session = localizationSession ?: return
+        if (session.quant.config.readoutMode == WellReadoutMode.CENTER_PIXEL && mode != GridAnalyteQuantitationMode.SIGNAL_ONLY) {
+            _configurationEvents.tryEmit(GridConfigurationEvent.DiagnosticReadout)
+            return
+        }
         val snapshot = session.request.snapshot
         val analytes = snapshot.analytes.map { analyte ->
             if (analyte.analyte.id != analyteId) return@map analyte
@@ -889,16 +1109,16 @@ class GridDetectionViewModel @Inject constructor(
 
     /** 从资源库选择已有标准曲线或深度学习模型，并立即冻结完整模型数据包到项目快照。 */
     fun selectAnalysisModel(analyteId: String, modelId: String) {
-        val session = localizationSession ?: return
+        if (localizationSession == null) return
         val expectedMode = quantitationDrafts[analyteId]?.mode ?: return
         viewModelScope.launch {
             runCatching {
                 val snapshot = requireNotNull(localizationSession).request.snapshot
-                val bundle = if (BuiltInSharedConcentrationModel.isOptionId(modelId)) {
-                    resolveBuiltInSharedModel(snapshot, analyteId)
-                } else {
-                    analysisModelRepository.getBundle(modelId) ?: error("模型不存在")
-                }
+                val bundle = configurationResourceCoordinator.resolveAnalysisModel(
+                    snapshot = snapshot,
+                    analyteId = analyteId,
+                    modelId = modelId
+                )
                 require(bundle.model.analyteId == analyteId)
                 val actualMode = bundle.toQuantitationMode()
                 require(actualMode == expectedMode)
@@ -980,13 +1200,7 @@ class GridDetectionViewModel @Inject constructor(
         val current = quantitationDrafts[analyteId] ?: return
         val requestId = UUID.randomUUID().toString()
         quantitationDrafts = quantitationDrafts + (
-            analyteId to current.copy(
-                onsiteState = OnsiteCalibrationState.Fitting(
-                    requestId = requestId,
-                    inputFingerprint = "pending:$requestId"
-                ),
-                appliedSnapshot = null
-            )
+            analyteId to current.startOnsiteFitting(requestId)
         )
         publishPreview(editingLayout = true)
         viewModelScope.launch(Dispatchers.Default) {
@@ -1002,34 +1216,22 @@ class GridDetectionViewModel @Inject constructor(
                 )
             }.onSuccess { resultSet ->
                 val latest = quantitationDrafts[analyteId] ?: return@onSuccess
-                val fitting = latest.onsiteState as? OnsiteCalibrationState.Fitting
-                    ?: return@onSuccess
-                if (fitting.requestId != requestId) return@onSuccess
+                val updated = latest.acceptOnsiteFitResult(
+                    requestId = requestId,
+                    resultSet = resultSet,
+                    saveToLibraryByDefault = resultSet.policySnapshot.saveToLibraryByDefault
+                ) ?: return@onSuccess
                 quantitationDrafts = quantitationDrafts + (
-                    analyteId to latest.copy(
-                        onsiteState = OnsiteCalibrationState.Reviewing(
-                            resultSet = resultSet,
-                            saveToLibrary = resultSet.policySnapshot.saveToLibraryByDefault
-                        ),
-                        appliedSnapshot = null
-                    )
+                    analyteId to updated
                 )
                 rememberManualQuantitationIfNeeded()
                 publishPreview(editingLayout = true)
                 _configurationEvents.emit(GridConfigurationEvent.FitReady)
             }.onFailure {
                 val latest = quantitationDrafts[analyteId] ?: return@onFailure
-                val fitting = latest.onsiteState as? OnsiteCalibrationState.Fitting
-                    ?: return@onFailure
-                if (fitting.requestId != requestId) return@onFailure
+                val updated = latest.rejectOnsiteFitResult(requestId) ?: return@onFailure
                 quantitationDrafts = quantitationDrafts + (
-                    analyteId to latest.copy(
-                        onsiteState = OnsiteCalibrationState.TechnicalFailure(
-                            requestId = requestId,
-                            inputFingerprint = fitting.inputFingerprint
-                        ),
-                        appliedSnapshot = null
-                    )
+                    analyteId to updated
                 )
                 publishPreview(editingLayout = true)
                 _configurationEvents.emit(GridConfigurationEvent.FitUnavailable)
@@ -1040,13 +1242,9 @@ class GridDetectionViewModel @Inject constructor(
     /** 在拟合结果阶段切换线性、4PL或5PL候选；不可用函数没有候选ID，不能被选择。 */
     fun selectOnsiteCandidate(analyteId: String, candidateId: String) {
         val current = quantitationDrafts[analyteId] ?: return
-        val reviewing = current.onsiteState as? OnsiteCalibrationState.Reviewing ?: return
-        if (reviewing.resultSet.candidate(candidateId) == null) return
+        val updated = current.selectOnsiteCandidate(candidateId) ?: return
         quantitationDrafts = quantitationDrafts + (
-            analyteId to current.copy(
-                onsiteState = reviewing.copy(selectedCandidateId = candidateId),
-                appliedSnapshot = null
-            )
+            analyteId to updated
         )
         publishPreview(editingLayout = true)
     }
@@ -1054,11 +1252,9 @@ class GridDetectionViewModel @Inject constructor(
     /** 保存开关只决定是否创建可复用资源，不改变本次运行最终冻结的曲线内容。 */
     fun setOnsiteSaveToLibrary(analyteId: String, saveToLibrary: Boolean) {
         val current = quantitationDrafts[analyteId] ?: return
-        val reviewing = current.onsiteState as? OnsiteCalibrationState.Reviewing ?: return
+        val updated = current.setOnsiteSaveToLibrary(saveToLibrary) ?: return
         quantitationDrafts = quantitationDrafts + (
-            analyteId to current.copy(
-                onsiteState = reviewing.copy(saveToLibrary = saveToLibrary)
-            )
+            analyteId to updated
         )
         publishPreview(editingLayout = true)
     }
@@ -1068,10 +1264,7 @@ class GridDetectionViewModel @Inject constructor(
         val session = localizationSession ?: return
         val current = quantitationDrafts[analyteId] ?: return
         quantitationDrafts = quantitationDrafts + (
-            analyteId to current.copy(
-                onsiteState = OnsiteCalibrationState.Editing,
-                appliedSnapshot = null
-            )
+            analyteId to current.returnToOnsiteEditing()
         )
         val updatedAnalytes = session.request.snapshot.analytes.map { analyte ->
             if (analyte.analyte.id != analyteId) analyte else analyte.copy(
@@ -1121,14 +1314,9 @@ class GridDetectionViewModel @Inject constructor(
             // 只显示轻量自定义Toast；完整质量指标继续留在候选卡和运行快照中。
             _configurationEvents.tryEmit(GridConfigurationEvent.LowQualityCalibrationApplied)
         }
+        val applying = current.startOnsiteApplying() ?: return
         quantitationDrafts = quantitationDrafts + (
-            analyteId to current.copy(
-                onsiteState = OnsiteCalibrationState.Applying(
-                    resultSet = reviewing.resultSet,
-                    selectedCandidateId = selectedCandidateId,
-                    saveToLibrary = reviewing.saveToLibrary
-                )
-            )
+            analyteId to applying
         )
         publishPreview(editingLayout = true)
 
@@ -1140,12 +1328,13 @@ class GridDetectionViewModel @Inject constructor(
                     val analyteSnapshot = requireNotNull(localizationSession).request.snapshot
                         .analytes.first { it.analyte.id == analyteId }
                     val generatedName = generateOnsiteCurveName(analyteSnapshot.analyte.name)
-                    sourceBundle = createAndPublishOnsiteCurve(
+                    sourceBundle = configurationResourceCoordinator.createAndPublishOnsiteCurve(
                         snapshot = requireNotNull(localizationSession).request.snapshot,
                         analyteSnapshot = analyteSnapshot,
                         resultSet = reviewing.resultSet,
                         selectedCandidateId = selectedCandidateId,
-                        name = generatedName
+                        name = generatedName,
+                        runId = session.request.runId
                     )
                     sourceResourceId = sourceBundle.model.id
                 }
@@ -1170,21 +1359,20 @@ class GridDetectionViewModel @Inject constructor(
                         }
                     )
                 }
-                replaceSessionSnapshot(updatedSnapshot)
                 val applied = requireNotNull(
                     updatedSnapshot.analytes.first { it.analyte.id == analyteId }
                         .analyteQuantitationSnapshot
                 )
                 val latest = requireNotNull(quantitationDrafts[analyteId])
+                val completed = latest.completeOnsiteApplying(
+                    selectedCandidateId = selectedCandidateId,
+                    snapshot = applied
+                ) ?: return@runCatching
+                // 只有仍处于同一 Applying 状态时才发布更新后的项目快照，防止迟到的
+                // 资源保存回调覆盖用户已经重新编辑的现场标定。
+                replaceSessionSnapshot(updatedSnapshot)
                 quantitationDrafts = quantitationDrafts + (
-                    analyteId to latest.copy(
-                        onsiteState = OnsiteCalibrationState.Applied(
-                            snapshot = applied,
-                            resultSet = reviewing.resultSet,
-                            selectedCandidateId = selectedCandidateId
-                        ),
-                        appliedSnapshot = applied
-                    )
+                    analyteId to completed
                 )
                 advanceToNextIncompleteAnalyte(analyteId)
                 rememberManualQuantitationIfNeeded()
@@ -1192,11 +1380,11 @@ class GridDetectionViewModel @Inject constructor(
                 publishPreview(editingLayout = true)
             }.onFailure {
                 val latest = quantitationDrafts[analyteId] ?: return@onFailure
+                val restored = latest.restoreOnsiteReviewingAfterApplyFailure(
+                    selectedCandidateId
+                ) ?: return@onFailure
                 quantitationDrafts = quantitationDrafts + (
-                    analyteId to latest.copy(
-                        onsiteState = reviewing,
-                        appliedSnapshot = null
-                    )
+                    analyteId to restored
                 )
                 publishPreview(editingLayout = true)
                 _configurationEvents.emit(
@@ -1233,7 +1421,7 @@ class GridDetectionViewModel @Inject constructor(
      */
     fun saveCurrentConfigurationAsTemplate(requestedName: String) {
         val normalizedName = requestedName.trim()
-        val session = localizationSession ?: return
+        if (localizationSession == null) return
         if (normalizedName.isEmpty() || savingReusableResource) {
             _configurationEvents.tryEmit(GridConfigurationEvent.TemplateSaveFailed)
             return
@@ -1241,10 +1429,7 @@ class GridDetectionViewModel @Inject constructor(
         viewModelScope.launch {
             savingReusableResource = true
             try {
-                val templateExists = templateRepository.getAllTemplates().first().any { template ->
-                    template.templateName.equals(normalizedName, ignoreCase = true)
-                }
-                if (templateExists) {
+                if (configurationResourceCoordinator.templateNameExists(normalizedName)) {
                     _configurationEvents.emit(GridConfigurationEvent.TemplateNameConflict)
                     return@launch
                 }
@@ -1276,74 +1461,10 @@ class GridDetectionViewModel @Inject constructor(
                     )
                 }
                 snapshot = snapshot.copy(analytes = preparedAnalytes)
-
-                val carrier = resolvePersistedCarrier(snapshot)
-                val acquisition = resolvePersistedAcquisition(snapshot)
-                val temporaryTemplateId = "saved-template-${UUID.randomUUID()}"
-                val firstAnalyte = snapshot.analytes.first()
-                val template = ExperimentTemplate(
-                    id = temporaryTemplateId,
-                    templateName = normalizedName,
-                    analyteId = firstAnalyte.analyte.id,
-                    reagentAntigenId = firstAnalyte.templateConfig.reagentAntigenId,
-                    reagentAntibodyId = firstAnalyte.templateConfig.reagentAntibodyId,
-                    // 新模板使用 TemplateAnalyteConfig.analysisModelId；旧 CurveModel 外键
-                    // 不能指向 AnalysisModel，因此保持 null。
-                    fkCurveModelId = null,
-                    reliableRangeMin = firstAnalyte.templateConfig.reliableRangeMin ?: 0.0,
-                    reliableRangeMax = firstAnalyte.templateConfig.reliableRangeMax
-                        ?: firstAnalyte.analysisModel.model.reliableRangeMax,
-                    concentrationUnit = firstAnalyte.templateConfig.concentrationUnit,
-                    defaultLayoutJson = null,
-                    carrierProfileId = carrier.id,
-                    detectionMode = snapshot.template.detectionMode,
-                    readoutLayout = snapshot.template.readoutLayout,
-                    acquisitionProfileId = acquisition.id,
-                    inputProtocol = snapshot.template.inputProtocol,
-                    qcProfileJson = snapshot.template.qcProfileJson,
-                    purpose = snapshot.template.purpose ?: "array-quantitation-template"
+                configurationResourceCoordinator.savePublishedTemplate(
+                    name = normalizedName,
+                    snapshot = snapshot
                 )
-                val quantitationBindings = snapshot.analytes.map { analyte ->
-                    val quantitation = requireNotNull(analyte.analyteQuantitationSnapshot)
-                    val frozen = TemplateQuantitationResourceSnapshot(
-                        quantitation = quantitation,
-                        analysisModel = analyte.analysisModel
-                    )
-                    TemplateQuantitationBinding(
-                        id = "saved-template-quant-${UUID.randomUUID()}",
-                        templateId = temporaryTemplateId,
-                        analyteId = analyte.analyte.id,
-                        method = quantitation.method.name,
-                        sourceResourceId = quantitation.sourceResourceId,
-                        resourceSnapshotJson =
-                            TemplateQuantitationResourceSnapshotCodec.encode(frozen),
-                        contentFingerprint = TemplateQuantitationBindingFingerprint.create(frozen),
-                        processorName = analyte.analysisModel.model.processorName,
-                        processorVersion = quantitation.processorVersion
-                    )
-                }
-                val bundle = ExperimentTemplateBundle(
-                    template = template,
-                    analyteConfigs = snapshot.analytes.mapIndexed { index, analyte ->
-                        val quantitation = requireNotNull(analyte.analyteQuantitationSnapshot)
-                        analyte.templateConfig.copy(
-                            id = "saved-template-analyte-${UUID.randomUUID()}",
-                            templateId = temporaryTemplateId,
-                            // 外键只记录真实资源关联；现场曲线未保存到曲线库时保持 null。
-                            analysisModelId = quantitation.sourceResourceId,
-                            displayOrder = index
-                        )
-                    },
-                    siteAssignments = snapshot.siteAssignments.map { assignment ->
-                        assignment.copy(
-                            id = "saved-template-site-${UUID.randomUUID()}",
-                            templateId = temporaryTemplateId
-                        )
-                    },
-                    quantitationBindings = quantitationBindings
-                )
-                val created = templateRepository.createDraft(bundle)
-                templateRepository.publish(created.template.id)
 
                 // 当前项目继续使用已经固化的现场曲线，但配置来源仍保持“手动配置”；
                 // 保存模板是复用动作，不应把用户无提示地切换到模板控制模式。
@@ -1367,108 +1488,6 @@ class GridDetectionViewModel @Inject constructor(
             }
         }
     }
-
-    /** 构建并发布一条由本次真实标准孔得到的标准曲线。 */
-    private suspend fun createAndPublishOnsiteCurve(
-        snapshot: com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot,
-        analyteSnapshot: TemplateProjectAnalyteSnapshot,
-        resultSet: CalibrationResultSet,
-        selectedCandidateId: String,
-        name: String
-    ): AnalysisModelBundle {
-        val candidate = requireNotNull(resultSet.candidate(selectedCandidateId)) {
-            "选中的现场曲线候选不存在"
-        }
-        val minimum = candidate.standardPoints.minOf { point -> point.first }
-        val maximum = candidate.standardPoints.maxOf { point -> point.first }
-        val contentFingerprint = CalibrationResourceFingerprint.create(
-            analyteId = analyteSnapshot.analyte.id,
-            modalityCode = snapshot.template.detectionMode.orEmpty(),
-            concentrationUnit = analyteSnapshot.templateConfig.concentrationUnit,
-            candidate = candidate,
-            processorVersion = resultSet.processorVersion,
-            engineVersion = resultSet.engineVersion
-        )
-
-        // 同一科学内容直接复用现有资源。名称只是展示属性，不能让重复点击制造多条曲线。
-        analysisModelRepository.getReusableBundleByContentFingerprint(contentFingerprint)
-            ?.let { existing ->
-                if (existing.model.status == AnalysisModelLifecycleStatus.DRAFT.code) {
-                    analysisModelRepository.publish(existing.model.id)
-                }
-                return analysisModelRepository.getBundle(existing.model.id)
-                    ?: error("标准曲线复用失败")
-            }
-        val now = Date()
-        val model = analyteSnapshot.analysisModel.model.copy(
-            id = UUID.randomUUID().toString(),
-            name = name,
-            modelType = AnalysisModelType.STANDARD_CURVE.code,
-            detectionMode = snapshot.template.detectionMode.orEmpty(),
-            inputProtocol = snapshot.template.inputProtocol,
-            primaryFeature = candidate.primaryFeature.code,
-            processorVersion = resultSet.processorVersion,
-            // 直接新建项目的采集ID包含项目UUID，不能写入长期曲线资源形成伪设备锁定。
-            // 正式设备档案仍保留精确ID；直接自动采集则用空数组表示运行时记录真实元数据。
-            compatibleAcquisitionProfileIdsJson = if (
-                isDirectAcquisitionProfileId(snapshot.acquisitionProfile.id)
-            ) {
-                gson.toJson(emptyList<String>())
-            } else {
-                gson.toJson(listOf(snapshot.acquisitionProfile.id))
-            },
-            concentrationUnit = analyteSnapshot.templateConfig.concentrationUnit,
-            reliableRangeMin = minimum,
-            reliableRangeMax = maximum,
-            validationMetricsJson = gson.toJson(
-                linkedMapOf(
-                    "R2" to candidate.rSquared,
-                    "RMSE" to candidate.rmse,
-                    "NORMALIZED_RMSE" to candidate.normalizedRmse,
-                    "MAE" to candidate.mae,
-                    "BACK_CALCULATED_RMSE_PERCENT" to candidate.backCalculatedRmsePercent,
-                    "ACCEPTED_STANDARD_RATIO" to candidate.acceptedStandardRatio,
-                    "WEIGHTING_CODE" to candidate.weightingCode,
-                    "ACCEPTED" to candidate.accepted,
-                    "INPUT_FINGERPRINT" to resultSet.inputFingerprint,
-                    "CONTENT_FINGERPRINT" to contentFingerprint,
-                    "CALIBRATION_ENGINE_VERSION" to resultSet.engineVersion,
-                    "CALIBRATION_POLICY" to resultSet.policySnapshot
-                )
-            ),
-            contentFingerprint = contentFingerprint,
-            status = AnalysisModelLifecycleStatus.DRAFT.code,
-            createdAt = now,
-            updatedAt = now
-        )
-        val draft = analysisModelRepository.createDraft(
-            AnalysisModelBundle(
-                model = model,
-                standardCurve = StandardCurveDefinition(
-                    analysisModelId = model.id,
-                    fittingFunction = candidate.function.identifier,
-                    parametersJson = gson.toJson(candidate.parameters),
-                    monotonicDirection = "AUTO"
-                ),
-                calibrationPoints = candidate.standardPoints.mapIndexed {
-                    index, (concentration, signal) ->
-                    CalibrationPoint(
-                        id = UUID.randomUUID().toString(),
-                        analysisModelId = model.id,
-                        concentration = concentration,
-                        signalValue = signal,
-                        repeatIndex = index,
-                        runId = sessionRunIdOrNull()
-                    )
-                }
-            )
-        )
-        analysisModelRepository.publish(draft.model.id)
-        return analysisModelRepository.getBundle(draft.model.id)
-            ?: error("标准曲线保存失败")
-    }
-
-    private fun sessionRunIdOrNull(): String? = localizationSession?.request?.runId
 
     /** 将已持久化模型冻结回当前项目分析物，并同步页面定量方式。 */
     private fun applySavedCurveToSession(analyteId: String, bundle: AnalysisModelBundle) {
@@ -1499,46 +1518,6 @@ class GridDetectionViewModel @Inject constructor(
         onsiteSelectedFeatures = null,
         onsiteSelectedFunctions = null
     )
-
-    /** 直接新建项目的内存载体若尚未入库，则复用同规格资源或创建一条真实外键记录。 */
-    private suspend fun resolvePersistedCarrier(
-        snapshot: com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot
-    ): com.muc.fluocolorquant.data.model.CarrierProfile {
-        carrierProfileRepository.getById(snapshot.carrierProfile.id)?.let { return it }
-        val reusable = carrierProfileRepository.observeAll().first().firstOrNull { carrier ->
-            carrier.name == snapshot.carrierProfile.name &&
-                carrier.version == snapshot.carrierProfile.version &&
-                carrier.carrierType == snapshot.carrierProfile.carrierType &&
-                carrier.rows == snapshot.carrierProfile.rows &&
-                carrier.columns == snapshot.carrierProfile.columns &&
-                carrier.siteShape == snapshot.carrierProfile.siteShape &&
-                carrier.locatorConfigJson == snapshot.carrierProfile.locatorConfigJson
-        }
-        if (reusable != null) return reusable
-        carrierProfileRepository.create(snapshot.carrierProfile)
-        return carrierProfileRepository.getById(snapshot.carrierProfile.id)
-            ?: error("载体保存失败")
-    }
-
-    /** 自动采集配置只为模板外键落库；普通用户仍不需要手工填写设备专业参数。 */
-    private suspend fun resolvePersistedAcquisition(
-        snapshot: com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot
-    ): com.muc.fluocolorquant.data.model.AcquisitionProfile {
-        acquisitionProfileRepository.getById(snapshot.acquisitionProfile.id)?.let { return it }
-        val reusable = acquisitionProfileRepository.observeAll().first().firstOrNull { acquisition ->
-            acquisition.name == snapshot.acquisitionProfile.name &&
-                acquisition.version == snapshot.acquisitionProfile.version &&
-                acquisition.supportedModesJson == snapshot.acquisitionProfile.supportedModesJson &&
-                acquisition.compatibleCarrierTypesJson ==
-                    snapshot.acquisitionProfile.compatibleCarrierTypesJson &&
-                acquisition.cameraControlStrategy ==
-                    snapshot.acquisitionProfile.cameraControlStrategy
-        }
-        if (reusable != null) return reusable
-        acquisitionProfileRepository.create(snapshot.acquisitionProfile)
-        return acquisitionProfileRepository.getById(snapshot.acquisitionProfile.id)
-            ?: error("采集配置保存失败")
-    }
 
     /**
      * 在 ViewModel 的最新草稿上增量执行一次画笔操作。
@@ -1573,11 +1552,12 @@ class GridDetectionViewModel @Inject constructor(
      * 坐标去重和边界校验在进入协调器前完成，防止 UI 状态异常制造重复物理位点。
      */
     fun finalizeLayout(drafts: List<GridLayoutAssignmentDraft>) {
+        // 对照时仍保留旧定位以便返回，但迟到的按钮回调不能用那份会话出结果。
+        if ((_uiState.value as? GridDetectionUiState.LocalizationReady)?.editingLayout != true || running) return
         val session = localizationSession ?: run {
             _uiState.value = GridDetectionUiState.Error(GridDetectionUiError.EXECUTION_FAILED)
             return
         }
-        if (running) return
         val readiness = evaluateArrayLayoutReadiness(
             assignments = drafts,
             quantitationDrafts = quantitationDrafts.values,
@@ -1601,12 +1581,15 @@ class GridDetectionViewModel @Inject constructor(
             templateId = templateId,
             idPrefix = "${session.request.runId}-layout"
         )
-        val finalizedSnapshot = session.request.snapshot.copy(siteAssignments = assignments)
 
         viewModelScope.launch {
             running = true
             try {
-                val outcome = coordinator.finalizeLocalized(session, finalizedSnapshot)
+                siteAdjustJob?.join()
+                evidenceRefreshJob?.join()
+                val latestSession = localizationSession ?: session
+                val latestSnapshot = latestSession.request.snapshot.copy(siteAssignments = assignments)
+                val outcome = coordinator.finalizeLocalized(latestSession, latestSnapshot)
                 _uiState.value = when (outcome) {
                     GridDetectionOutcome.LegacyPlateRequired -> GridDetectionUiState.Plate96Localization
                     is GridDetectionOutcome.Blocked -> GridDetectionUiState.Blocked(outcome.reasons)
@@ -1675,6 +1658,14 @@ class GridDetectionViewModel @Inject constructor(
                     )
                     return@launch
                 }
+                val modality = DetectionModality.fromCode(snapshot.template.detectionMode)
+                if (modality != null && modality != DetectionModality.SPECTRUM) {
+                    initialAnalysisPreferences = settingsRepository?.globalArrayReadoutDefaults?.first()
+                        ?: ArrayAnalysisPreferences()
+                }
+                if (snapshot.carrierProfile.rows < 2 || snapshot.carrierProfile.columns < 2) {
+                    initialAnalysisPreferences = initialAnalysisPreferences.copy(locator = ArrayLocatorMode.AUTO)
+                }
                 if (GridDetectionRouteResolver.resolve(carrierType) == GridCarrierRoute.PLATE96) {
                     _uiState.value = GridDetectionUiState.Plate96Localization
                     return@launch
@@ -1686,18 +1677,21 @@ class GridDetectionViewModel @Inject constructor(
                         )
                         return@launch
                     }
-                val outcome = coordinator.localize(
-                    GridDetectionRequest(
+                val request = GridDetectionRequest(
                         project = project,
                         snapshot = snapshot,
                         endpointBitmap = bitmap,
                         endpointPath = imageUri,
                         operatorId = project.userId,
+                        analysisPreferences = initialAnalysisPreferences,
                         onStageChanged = { stage ->
-                            _uiState.value = GridDetectionUiState.Processing(stage)
+                            if (manualInput == null) _uiState.value = GridDetectionUiState.Processing(stage)
                         }
                     )
-                )
+                manualInput = request.takeIf { GridDetectionRouteResolver.resolve(carrierType) == GridCarrierRoute.MICROFLUIDIC_PG_GRID &&
+                    snapshot.carrierProfile.rows >= 2 && snapshot.carrierProfile.columns >= 2 }
+                manualInput?.let { _uiState.value = locatorAttempt(it, it.analysisPreferences.locator, ArrayLocatorAttemptStatus.Running) }
+                val outcome = coordinator.localize(request)
                 _uiState.value = when (outcome) {
                     GridLocalizationOutcome.LegacyPlateRequired -> GridDetectionUiState.Plate96Localization
                     is GridLocalizationOutcome.Blocked -> GridDetectionUiState.Blocked(outcome.reasons)
@@ -1706,15 +1700,25 @@ class GridDetectionViewModel @Inject constructor(
                         openLayoutImmediately = false
                     )
                 }
-            } catch (_: Exception) {
-                _uiState.value = GridDetectionUiState.Error(GridDetectionUiError.EXECUTION_FAILED)
-            } catch (_: LinkageError) {
-                _uiState.value = GridDetectionUiState.Error(GridDetectionUiError.EXECUTION_FAILED)
+            } catch (cancel: kotlinx.coroutines.CancellationException) {
+                throw cancel
+            } catch (_: TraditionalGridNotFound) {
+                _uiState.value = initialLocalizationError(ArrayLocatorAttemptStatus.NoGrid)
+            } catch (error: Exception) {
+                android.util.Log.w("GridLocalization", "定位流程失败", error)
+                _uiState.value = initialLocalizationError(ArrayLocatorAttemptStatus.Failed)
+            } catch (error: LinkageError) {
+                android.util.Log.w("GridLocalization", "定位组件不可用", error)
+                _uiState.value = initialLocalizationError(ArrayLocatorAttemptStatus.Failed)
             } finally {
                 running = false
             }
         }
     }
+
+    private fun initialLocalizationError(status: ArrayLocatorAttemptStatus): GridDetectionUiState =
+        manualInput?.let { locatorAttempt(it, it.analysisPreferences.locator, status) }
+            ?: GridDetectionUiState.Error(GridDetectionUiError.EXECUTION_FAILED)
 
     /**
      * 微流控与96孔板进入布局页前共享的唯一初始化入口。
@@ -1726,15 +1730,44 @@ class GridDetectionViewModel @Inject constructor(
         session: GridLocalizationSession,
         openLayoutImmediately: Boolean
     ): GridDetectionUiState.LocalizationReady {
-        localizationSession = session
         loadConfigurationResources(session)
-        configurationSource = if (session.request.snapshot.sourceTemplateId != null) {
+        localizationSession = session
+        val resolvedTemplateId = session.request.snapshot.sourceTemplateId
+            ?: session.request.project.templateId
+        configurationSource = if (resolvedTemplateId != null) {
             GridLayoutConfigurationSource.EXPERIMENT_TEMPLATE
         } else {
             GridLayoutConfigurationSource.MANUAL
         }
-        selectedTemplateId = session.request.snapshot.sourceTemplateId
-        quantitationDrafts = session.request.snapshot.analytes.associate { analyte ->
+        selectedTemplateId = resolvedTemplateId
+        val adaptedSnapshotAnalytes = session.request.snapshot.analytes.map { analyte ->
+            if (
+                resolvedTemplateId != null &&
+                analyte.analyteQuantitationSnapshot == null &&
+                analyte.analysisModel.model.name != "signal-only"
+            ) {
+                val effectiveMode = analyte.analysisModel.toQuantitationMode()
+                analyte.copy(
+                    quantitationMode = effectiveMode.code,
+                    analyteQuantitationSnapshot = analyte.buildResourceQuantitationSnapshot(
+                        mode = effectiveMode,
+                        bundle = analyte.analysisModel
+                    )
+                )
+            } else {
+                analyte
+            }
+        }
+        if (adaptedSnapshotAnalytes != session.request.snapshot.analytes) {
+            val updatedSession = session.copy(
+                request = session.request.copy(
+                    snapshot = session.request.snapshot.copy(analytes = adaptedSnapshotAnalytes)
+                )
+            )
+            localizationSession = updatedSession
+        }
+        val activeSession = localizationSession ?: session
+        quantitationDrafts = activeSession.request.snapshot.analytes.associate { analyte ->
             analyte.analyte.id to analyte.toQuantitationDraft()
         }
         selectedQuantitationAnalyteId = session.request.snapshot.analytes.firstOrNull()?.analyte?.id
@@ -1775,13 +1808,29 @@ class GridDetectionViewModel @Inject constructor(
             // 兼容旧内存会话的最后兜底值；新运行的每个位点都从 unitSegmentation 取紧致区域。
             cropHalfSizePx = (quant.pitchPx * 0.46).coerceAtLeast(quant.roiRadiusPx),
             sites = grid.sites.map { site ->
+                val sitePhotometry = quant.sites.getOrNull(site.siteIndex)
+                val autoSite = automaticGrid.sites.getOrNull(site.siteIndex) ?: site
                 GridLocalizationSitePreview(
                     siteIndex = site.siteIndex,
                     rowIndex = site.key.rowIndex,
                     columnIndex = site.key.columnIndex,
                     rectifiedX = site.rectified.x,
                     rectifiedY = site.rectified.y,
-                    cropRegion = quant.unitSegmentation?.regions?.getOrNull(site.siteIndex)
+                    cropRegion = quant.unitSegmentation?.regions?.getOrNull(site.siteIndex),
+                    originalX = site.original.x,
+                    originalY = site.original.y,
+                    foregroundMedianGray = sitePhotometry?.roiMedianGray ?: 0.0,
+                    foregroundMeanGray = sitePhotometry?.roiMeanGray ?: 0.0,
+                    selectedReadoutGray = sitePhotometry?.foregroundGray ?: 0.0,
+                    backgroundMedianGray = sitePhotometry?.backgroundMedianGray ?: 0.0,
+                    signalToNoiseRatio = sitePhotometry?.signalToNoiseRatio ?: 0.0,
+                    pctAboveBgPlus2Sd = sitePhotometry?.pctAboveBgPlus2Sd ?: 0.0,
+                    qualityReliable = sitePhotometry?.qc?.qualityReliable ?: true,
+                    manuallyFlaggedBad = sitePhotometry?.manuallyFlaggedBad == true,
+                    isUserAdjusted = site.source == com.muc.fluocolorquant.domain.detection.grid.GridPointSource.USER_ADJUSTED,
+                    boxScale = siteBoxScales[site.siteIndex] ?: 1.0,
+                    autoRectifiedX = autoSite.rectified.x,
+                    autoRectifiedY = autoSite.rectified.y
                 )
             },
             analytes = request.snapshot.analytes
@@ -1809,7 +1858,16 @@ class GridDetectionViewModel @Inject constructor(
             selectedQuantitationAnalyteId = selectedQuantitationAnalyteId
                 ?.takeIf { selectedId -> request.snapshot.analytes.any { it.analyte.id == selectedId } }
                 ?: request.snapshot.analytes.firstOrNull()?.analyte?.id,
-            presentation = presentation
+            presentation = presentation,
+            manualGeometry = grid.manualAnchorCenters != null,
+            analysisScope = ArrayAnalysisScope.from(request.snapshot.carrierProfile),
+            analysisPreferences = request.analysisPreferences,
+            trustedGeometry = grid.geometry.trusted,
+            rectifiedWidth = grid.rectifiedWidth,
+            rectifiedHeight = grid.rectifiedHeight,
+            originalWidth = request.endpointBitmap.width,
+            originalHeight = request.endpointBitmap.height,
+            evidenceRevision = evidenceRevisionCounter
         )
     }
 
@@ -1844,121 +1902,30 @@ class GridDetectionViewModel @Inject constructor(
      * 实际应用时仍会重新读取完整 bundle，防止页面停留期间资源被修改。
      */
     private suspend fun loadConfigurationResources(session: GridLocalizationSession) {
-        val snapshot = session.request.snapshot
-        val analyteIds = snapshot.analytes.map { it.analyte.id }.toSet()
-        val storedModels = analysisModelRepository.observeAll().first().mapNotNull { model ->
-            val type = AnalysisModelType.fromCode(model.modelType) ?: return@mapNotNull null
-            val feature = AnalysisPrimaryFeature.fromCode(model.primaryFeature) ?: return@mapNotNull null
-            if (
-                model.status != AnalysisModelLifecycleStatus.PUBLISHED.code ||
-                model.analyteId !in analyteIds ||
-                model.detectionMode != snapshot.template.detectionMode ||
-                model.inputProtocol != snapshot.template.inputProtocol
-            ) {
-                return@mapNotNull null
-            }
-            GridAnalysisModelOption(
-                id = model.id,
-                name = model.name,
-                version = model.version,
-                analyteId = model.analyteId,
-                modelType = type,
-                primaryFeature = feature,
-                concentrationUnit = model.concentrationUnit,
-                reliableRangeMin = model.reliableRangeMin,
-                reliableRangeMax = model.reliableRangeMax,
-                builtInShared = BuiltInSharedConcentrationModel.isBuiltInResourceName(model.name)
-            )
-        }
-        val persistedBuiltInKeys = storedModels.filter(GridAnalysisModelOption::builtInShared)
-            .map { option -> option.analyteId }
-            .toSet()
-        val builtInOptions = snapshot.analytes.mapNotNull { analyteSnapshot ->
-            if (analyteSnapshot.analyte.id in persistedBuiltInKeys) return@mapNotNull null
-            val feature = AnalysisPrimaryFeature.fromCode(
-                analyteSnapshot.analysisModel.model.primaryFeature
-            ) ?: return@mapNotNull null
-            GridAnalysisModelOption(
-                id = BuiltInSharedConcentrationModel.optionId(
-                    analyteId = analyteSnapshot.analyte.id,
-                    detectionMode = snapshot.template.detectionMode.orEmpty()
-                ),
-                name = BuiltInSharedConcentrationModel.resourceName(
-                    analyteId = analyteSnapshot.analyte.id,
-                    detectionMode = snapshot.template.detectionMode.orEmpty()
-                ),
-                version = 1,
-                analyteId = analyteSnapshot.analyte.id,
-                modelType = AnalysisModelType.DEEP_LEARNING,
-                primaryFeature = feature,
-                concentrationUnit = analyteSnapshot.templateConfig.concentrationUnit,
-                reliableRangeMin = analyteSnapshot.templateConfig.reliableRangeMin,
-                reliableRangeMax = analyteSnapshot.templateConfig.reliableRangeMax,
-                builtInShared = true
-            )
-        }
-        availableModels = (storedModels + builtInOptions).sortedWith(
-            compareBy(GridAnalysisModelOption::analyteId, GridAnalysisModelOption::name)
+        val resources = configurationResourceCoordinator.loadCompatibleResources(
+            snapshot = session.request.snapshot,
+            rows = session.grid.rows,
+            columns = session.grid.columns
         )
-
-        availableTemplates = templateRepository.getAllTemplates().first().mapNotNull { template ->
-            if (
-                template.status != TemplateLifecycleStatus.PUBLISHED.code ||
-                template.detectionMode != snapshot.template.detectionMode
-            ) {
-                return@mapNotNull null
+        val modality = DetectionModality.fromCode(session.request.snapshot.template.detectionMode)
+        val analyteById = session.request.snapshot.analytes.associateBy { it.analyte.id }
+        availableModels = resources.models.filter { option ->
+            val expectedVersion = if (modality == DetectionModality.FLUORESCENCE) {
+                val channel = com.muc.fluocolorquant.domain.detection.ScientificDetectionConfigCodec.decodeFluorescenceChannel(
+                    analyteById[option.analyteId]?.templateConfig?.displayConfigJson
+                ) ?: com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel.GREEN
+                com.muc.fluocolorquant.domain.detection.photometry.FluorescencePhotometryProcessor.processorVersionFor(
+                    session.quant.config,
+                    channel
+                )
+            } else {
+                session.quant.config.versionFor("v1")
             }
-            val bundle = templateRepository.getBundle(template.id) ?: return@mapNotNull null
-            val carrier = template.carrierProfileId
-                ?.let { carrierProfileRepository.getById(it) }
-                ?: return@mapNotNull null
-            val templateAnalyteIds = bundle.analyteConfigs.map { it.analyteId }.toSet()
-            if (
-                carrier.rows != session.grid.rows ||
-                carrier.columns != session.grid.columns ||
-                templateAnalyteIds != analyteIds
-            ) {
-                return@mapNotNull null
-            }
-            GridExperimentTemplateOption(
-                id = template.id,
-                name = template.templateName,
-                version = template.version,
-                analyteIds = templateAnalyteIds
-            )
-        }.sortedBy(GridExperimentTemplateOption::name)
-    }
-
-    /**
-     * 首次选择内置 PTL 时创建并发布分析物专属模型主档；后续直接复用。
-     *
-     * 二进制仍只保留 APK assets 一份，数据库保存的是关联和可复现输入定义，模板不会
-     * 复制约 5 MB 的模型文件。
-     */
-    private suspend fun resolveBuiltInSharedModel(
-        snapshot: com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot,
-        analyteId: String
-    ): AnalysisModelBundle {
-        val resourceName = BuiltInSharedConcentrationModel.resourceName(
-            analyteId = analyteId,
-            detectionMode = snapshot.template.detectionMode.orEmpty()
-        )
-        val existing = analysisModelRepository.observeAll().first().firstOrNull { model ->
-            model.name == resourceName &&
-                model.status == AnalysisModelLifecycleStatus.PUBLISHED.code
+            session.quant.config.readoutMode != WellReadoutMode.CENTER_PIXEL &&
+                (option.modelType != AnalysisModelType.STANDARD_CURVE ||
+                    option.processorVersion == expectedVersion)
         }
-        if (existing != null) {
-            return analysisModelRepository.getBundle(existing.id)
-                ?: error("内置共享模型定义不完整")
-        }
-        val analyteSnapshot = snapshot.analytes.firstOrNull { it.analyte.id == analyteId }
-            ?: error("分析物不存在")
-        val draft = analysisModelRepository.createDraft(
-            BuiltInSharedConcentrationModel.createBundle(snapshot, analyteSnapshot)
-        )
-        analysisModelRepository.publish(draft.model.id)
-        return analysisModelRepository.getBundle(draft.model.id)
-            ?: error("内置共享模型保存失败")
+        availableTemplates = resources.templates
     }
 
     /** 将项目冻结快照转换成可编辑草稿；旧模板中的未知角色会被安全忽略。 */
@@ -1981,6 +1948,15 @@ class GridDetectionViewModel @Inject constructor(
     }
 }
 
+/** 已有资源曲线可继续使用，但本次几何上拟合的标准信号不得跨定位复用。 */
+private fun com.muc.fluocolorquant.domain.project.TemplateProjectSnapshot.withoutGeometryDependentFits() = copy(
+    analytes = analytes.map { analyte ->
+        if (analyte.resolvedGridQuantitationMode() == GridAnalyteQuantitationMode.ONSITE_AUTO_FIT) {
+            analyte.copy(analysisModel = analyte.toSignalOnlyBundle(), analyteQuantitationSnapshot = null)
+        } else analyte
+    }
+)
+
 /** 将模板位点安全转换为页面草稿；未知角色不会进入可编辑布局。 */
 private fun TemplateSiteAssignment.toLayoutDraft(): GridLayoutAssignmentDraft? {
     val role = TemplateSiteRole.fromCode(roleType) ?: return null
@@ -1990,7 +1966,8 @@ private fun TemplateSiteAssignment.toLayoutDraft(): GridLayoutAssignmentDraft? {
         analyteId = analyteId,
         role = role,
         standardConcentration = standardConcentration,
-        sampleId = defaultSampleSlot
+        sampleId = defaultSampleSlot,
+        repeatGroup = repeatGroup
     )
 }
 
@@ -2013,6 +1990,7 @@ private fun List<GridLayoutAssignmentDraft>.toTemplateAssignments(
         standardConcentration = draft.standardConcentration,
         defaultSampleSlot = draft.sampleId?.trim()?.takeIf(String::isNotEmpty)
             ?: defaultArraySampleSlot(draft),
+        repeatGroup = draft.repeatGroup,
         referenceScope = if (isReferenceRole) {
             TemplateReferenceScope.ANALYTE.code
         } else {
@@ -2178,117 +2156,4 @@ private fun Collection<GridAnalyteQuantitationDraft>.sortedByAnalyteOrder(
 ): List<GridAnalyteQuantitationDraft> {
     val order = analyteOrder.withIndex().associate { it.value to it.index }
     return sortedBy { order[it.analyteId] ?: Int.MAX_VALUE }
-}
-
-/**
- * 与 Compose 生命周期无关的布局草稿仓库。
- *
- * 同一项目重新执行定位时，只要行列规格没有变化，就保留用户已经配置的布局；如果规格发生
- * 变化，则回到新定位会话的冻结布局，防止旧坐标落入错误物理孔位。
- */
-internal class GridLayoutDraftStore {
-    private var rows: Int? = null
-    private var columns: Int? = null
-    private var drafts: List<GridLayoutAssignmentDraft> = emptyList()
-
-    fun clear() {
-        rows = null
-        columns = null
-        drafts = emptyList()
-    }
-
-    fun beginSession(
-        rows: Int,
-        columns: Int,
-        frozenAssignments: List<GridLayoutAssignmentDraft>
-    ): List<GridLayoutAssignmentDraft> {
-        if (this.rows != rows || this.columns != columns) {
-            this.rows = rows
-            this.columns = columns
-            drafts = normalize(rows, columns, frozenAssignments)
-        }
-        return drafts
-    }
-
-    fun update(
-        rows: Int,
-        columns: Int,
-        drafts: List<GridLayoutAssignmentDraft>
-    ): List<GridLayoutAssignmentDraft> {
-        this.rows = rows
-        this.columns = columns
-        this.drafts = normalize(rows, columns, drafts)
-        return this.drafts
-    }
-
-    fun current(): List<GridLayoutAssignmentDraft> = drafts
-
-    /** 去除越界和重复坐标，并固定为行优先顺序，保证快照与测试结果稳定可复现。 */
-    private fun normalize(
-        rows: Int,
-        columns: Int,
-        drafts: List<GridLayoutAssignmentDraft>
-    ): List<GridLayoutAssignmentDraft> {
-        return drafts
-            .filter { it.rowIndex in 0 until rows && it.columnIndex in 0 until columns }
-            .distinctBy { it.rowIndex to it.columnIndex }
-            .sortedWith(compareBy(GridLayoutAssignmentDraft::rowIndex, GridLayoutAssignmentDraft::columnIndex))
-    }
-}
-
-/**
- * 将本次画笔经过的位点增量合并进已有布局。
- *
- * 规则保持简单且可预测：空孔位可以写入；完全相同的重复划过保持幂等；已分配给任一
- * 分析物或角色的孔位默认受保护；只有清除画笔可以删除，删除后才允许重新分配。
- */
-internal fun mergePaintedAssignments(
-    existing: Map<Int, GridLayoutAssignmentDraft>,
-    paintedSiteIndices: Set<Int>,
-    rows: Int,
-    columns: Int,
-    analyteId: String?,
-    role: TemplateSiteRole,
-    standardConcentration: Double?,
-    sampleId: String?,
-    clearMode: Boolean
-): GridPaintMergeResult {
-    if (rows <= 0 || columns <= 0 || paintedSiteIndices.isEmpty()) {
-        return GridPaintMergeResult(existing, protectedSiteCount = 0)
-    }
-    val siteCount = rows * columns
-    val validIndices = paintedSiteIndices.filterTo(linkedSetOf()) { it in 0 until siteCount }
-    val updated = existing.toMutableMap()
-
-    if (clearMode) {
-        validIndices.forEach(updated::remove)
-        return GridPaintMergeResult(updated.toSortedMap(), protectedSiteCount = 0)
-    }
-    if (analyteId == null && role != TemplateSiteRole.DISABLED) {
-        return GridPaintMergeResult(existing, protectedSiteCount = 0)
-    }
-
-    var protectedSiteCount = 0
-    validIndices.forEach { index ->
-        val desired = GridLayoutAssignmentDraft(
-            rowIndex = index / columns,
-            columnIndex = index % columns,
-            analyteId = analyteId.takeUnless { role == TemplateSiteRole.DISABLED },
-            role = role,
-            standardConcentration = standardConcentration.takeIf {
-                role == TemplateSiteRole.STANDARD
-            },
-            sampleId = sampleId
-                ?.trim()
-                ?.takeIf(String::isNotEmpty)
-                .takeIf { role == TemplateSiteRole.SAMPLE }
-        )
-        val current = updated[index]
-        when {
-            current == null -> updated[index] = desired
-            current == desired -> Unit
-            else -> protectedSiteCount += 1
-        }
-    }
-    return GridPaintMergeResult(updated.toSortedMap(), protectedSiteCount)
 }

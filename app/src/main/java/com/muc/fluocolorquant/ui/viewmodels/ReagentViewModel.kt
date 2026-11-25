@@ -110,47 +110,34 @@ class ReagentViewModel @Inject constructor(
         reagentType: String,
         manufacturer: String? = null,
         molecularWeightStr: String? = null,
-        unit: String? = null
+        unit: String? = null,
+        lotNumber: String? = null
     ): Boolean {
         if (reagentName.isBlank() || analyteId.isBlank() || reagentType.isBlank()) {
             return false
         }
-        
         _isLoading.value = true
-        
         return try {
-            // 将分子量字符串转换为Double（如果提供）
             val molecularWeight = molecularWeightStr?.trim()?.toDoubleOrNull()
-            
             val result = reagentRepository.addReagent(
                 analyteId = analyteId,
                 reagentName = reagentName,
                 reagentType = reagentType,
                 manufacturer = manufacturer,
                 molecularWeight = molecularWeight,
-                unit = unit
+                unit = unit,
+                lotNumber = lotNumber
             )
             _error.value = null
             result
         } catch (e: Exception) {
-            _error.value = e.message ?: "添加试剂时发生错误"
+            _error.value = e.message
             false
         } finally {
             _isLoading.value = false
         }
     }
-    
-    /**
-     * 更新试剂
-     * @param id 试剂ID
-     * @param analyteId 分析物ID
-     * @param reagentName 试剂名称
-     * @param reagentType 试剂类型 ("antigen" 或 "antibody")
-     * @param manufacturer 制造商（可选）
-     * @param molecularWeightStr 分子量（可选，字符串形式）
-     * @param unit 浓度单位（可选）
-     * @return 更新结果，成功返回true，失败返回false
-     */
+
     suspend fun updateReagent(
         id: String,
         analyteId: String,
@@ -158,18 +145,15 @@ class ReagentViewModel @Inject constructor(
         reagentType: String,
         manufacturer: String? = null,
         molecularWeightStr: String? = null,
-        unit: String? = null
+        unit: String? = null,
+        lotNumber: String? = null
     ): Boolean {
         if (reagentName.isBlank() || analyteId.isBlank() || reagentType.isBlank() || id.isBlank()) {
             return false
         }
-        
         _isLoading.value = true
-        
         return try {
-            // 将分子量字符串转换为Double（如果提供）
             val molecularWeight = molecularWeightStr?.trim()?.toDoubleOrNull()
-            
             val result = reagentRepository.updateReagent(
                 id = id,
                 analyteId = analyteId,
@@ -177,12 +161,13 @@ class ReagentViewModel @Inject constructor(
                 reagentType = reagentType,
                 manufacturer = manufacturer,
                 molecularWeight = molecularWeight,
-                unit = unit
+                unit = unit,
+                lotNumber = lotNumber
             )
             _error.value = null
             result
         } catch (e: Exception) {
-            _error.value = e.message ?: "更新试剂时发生错误"
+            _error.value = e.message
             false
         } finally {
             _isLoading.value = false

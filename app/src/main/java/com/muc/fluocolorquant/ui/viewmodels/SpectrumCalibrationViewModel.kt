@@ -23,6 +23,8 @@ import com.muc.fluocolorquant.data.model.SpectrumAutoCalibrationDebug
 import com.muc.fluocolorquant.data.repository.ProjectRepository
 import com.muc.fluocolorquant.data.repository.SettingsRepository
 import com.muc.fluocolorquant.data.repository.SpectrumRepository
+import com.muc.fluocolorquant.domain.spectrum.SpectrumProcessingConfig
+import com.muc.fluocolorquant.domain.spectrum.SpectrumProcessingConfigSnapshot
 import com.muc.fluocolorquant.utils.UiText
 import com.muc.fluocolorquant.utils.math.SpectrumCalibrationMath
 import com.muc.fluocolorquant.utils.math.EffectiveHeightBounds
@@ -736,6 +738,19 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     else -> SpectrumCalibrationType.MANUAL_POINT
                 }
 
+                // 在结果生成入口一次性读取默认设置，并为本批所有通道写入完全相同的快照。
+                // 后续设置页变化只影响下一次生成，不能改变这一次科研结果的解释参数。
+                val processingDefaults = settingsRepository.spectrumProcessingPreferencesFlow.first()
+                val processingConfig = SpectrumProcessingConfig(
+                    minWavelength = processingDefaults.minWavelength.toDouble(),
+                    maxWavelength = processingDefaults.maxWavelength.toDouble(),
+                    smoothingLevel = processingDefaults.smoothingLevel,
+                    sensitivity = SpectrumProcessingConfig.normalizeSensitivity(
+                        processingDefaults.sensitivity
+                    ) ?: SpectrumProcessingConfig.SENSITIVITY_MEDIUM
+                )
+                val processingConfigJson = SpectrumProcessingConfigSnapshot.encode(processingConfig)
+
                 // 保存标定参数
                 rects.forEachIndexed { index, rect ->
                     val coef = coeffs[index] ?: return@forEachIndexed
@@ -791,6 +806,11 @@ class SpectrumCalibrationViewModel @Inject constructor(
                 
                 // 获取项目配置以获取分析物映射
                 val project = projectRepository.getProjectById(projectId)
+                // 光源来自本项目已经确认的采集元数据，而不是当前设置页。即使用户在完成
+                // 标定前修改“默认光源”，本次结果也必须继续冻结项目创建时的值。
+                val lightSourceSnapshot = project?.lightSource
+                    ?.trim()
+                    ?.takeIf(String::isNotEmpty)
                 val analyteMapping = project?.let {
                     runCatching {
                         val mappingJson = it.spectrumColumnMappingJson
@@ -878,7 +898,7 @@ class SpectrumCalibrationViewModel @Inject constructor(
                     // 6. 获取当前通道的分析物 ID
                     val analyteId = analyteMapping[(index + 1).toString()]
                     
-                    // 7. 保存 SpectrumResult (包含裁切后的图片路径)
+                    // 7. 保存 SpectrumResult。处理配置与版本属于历史快照，必须和原始曲线一起落库。
                     val result = SpectrumResult(
                         projectId = projectId,
                         columnIndex = index,
@@ -886,7 +906,10 @@ class SpectrumCalibrationViewModel @Inject constructor(
                         imagePath = croppedImagePath,  // 使用裁切后的图片路径
                         wavelengths = gson.toJson(wavelengths),
                         intensities = gson.toJson(normalizedIntensities),
-                        peakWavelength = peakWavelength
+                        peakWavelength = peakWavelength,
+                        processingConfigJson = processingConfigJson,
+                        processorVersion = SpectrumProcessingConfig.PROCESSOR_VERSION,
+                        lightSourceSnapshot = lightSourceSnapshot
                     )
                     spectrumRepository.insertResult(result)
                 }

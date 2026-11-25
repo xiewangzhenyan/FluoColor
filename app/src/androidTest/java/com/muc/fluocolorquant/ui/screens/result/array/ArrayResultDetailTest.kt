@@ -1,17 +1,22 @@
 package com.muc.fluocolorquant.ui.screens.result.array
 
+import android.graphics.Bitmap
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.enums.AnalysisPrimaryFeature
 import com.muc.fluocolorquant.domain.detection.grid.GridGeometryDiagnostics
@@ -28,6 +33,9 @@ import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceSitePhotom
 import com.muc.fluocolorquant.domain.detection.photometry.LabPhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.RgbPhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.SitePhotometryQc
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryDirection
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryReason
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryStatus
 import com.muc.fluocolorquant.domain.result.ArrayAnalyteResult
 import com.muc.fluocolorquant.domain.result.ArrayCaptureEvidence
 import com.muc.fluocolorquant.domain.result.ArrayCarrierResult
@@ -36,6 +44,7 @@ import com.muc.fluocolorquant.domain.result.ArrayFrameResult
 import com.muc.fluocolorquant.domain.result.ArrayMeasurementDetail
 import com.muc.fluocolorquant.domain.result.ArrayMeasurementQc
 import com.muc.fluocolorquant.domain.result.ArrayPhysicalSiteResult
+import com.muc.fluocolorquant.domain.result.ArrayRangeRecoveryResult
 import com.muc.fluocolorquant.domain.result.ArrayResultSnapshot
 import com.muc.fluocolorquant.domain.result.ArraySiteGeometry
 import com.muc.fluocolorquant.domain.result.ArraySiteMeasurementResult
@@ -45,6 +54,8 @@ import org.junit.Rule
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
+import java.io.FileOutputStream
 
 /** 位点详情、原图定位图例和 QC 语义分流的 Compose 测试。 */
 @RunWith(AndroidJUnit4::class)
@@ -66,6 +77,23 @@ class ArrayResultDetailTest {
     private fun string(id: Int, vararg formatArgs: Any): String {
         return ApplicationProvider.getApplicationContext<android.content.Context>()
             .getString(id, *formatArgs)
+    }
+
+    /**
+     * 将当前 Compose 首屏写入 Gradle 测试附加产物，供 360dp 布局人工目检。
+     *
+     * 这里不截图系统状态栏，也不写入应用科研目录；测试结束后由 AGP 自动拉回主机，
+     * 避免视觉核查文件混入真实项目、运行快照或用户导出内容。
+     */
+    private fun captureRoot(fileName: String) {
+        val bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
+        val arguments = InstrumentationRegistry.getArguments()
+        val outputRoot = arguments.getString("additionalTestOutputDir")
+            ?: InstrumentationRegistry.getInstrumentation().targetContext.filesDir.absolutePath
+        val target = File(File(outputRoot).apply { mkdirs() }, "$fileName.png")
+        FileOutputStream(target).use { stream ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        }
     }
 
     @Test
@@ -252,6 +280,119 @@ class ArrayResultDetailTest {
         composeRule.onAllNodesWithTag("array_result_tab_qc").assertCountEquals(0)
         composeRule.onAllNodesWithText(string(R.string.array_qc_frame_failure_title))
             .assertCountEquals(0)
+    }
+
+    @Test
+    fun `多数越界且质控校正已应用时显示冻结动态量程复核`() {
+        val source = fluorescenceSnapshot()
+        val analyte = source.analytes.single().copy(
+            rangeRecovery = ArrayRangeRecoveryResult(
+                status = RangeRecoveryStatus.CORRECTION_APPLIED,
+                reason = RangeRecoveryReason.CONTROL_CORRECTION_ACCEPTED,
+                direction = RangeRecoveryDirection.MOSTLY_ABOVE,
+                validSampleCount = 10,
+                withinRangeCount = 2,
+                belowRangeCount = 1,
+                aboveRangeCount = 7,
+                outOfRangeRatio = 0.8,
+                algorithmVersion = "range-review-v1"
+            )
+        )
+        val reviewed = source.copy(analytes = listOf(analyte))
+        composeRule.setContent {
+            FluoColorTheme {
+                ArrayResultContent(
+                    state = ArrayResultUiState.Success(reviewed),
+                    onBack = {},
+                    onRetry = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(
+            "$ARRAY_RANGE_REVIEW_CARD_TAG_PREFIX${analyte.analyteId}"
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            string(R.string.array_range_review_counts, 10, 1, 7, 80.0)
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.array_range_review_applied))
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun `深度学习输出离域卡默认收起并可展开完整原因`() {
+        val source = fluorescenceSnapshot()
+        val analyte = source.analytes.single()
+        val validSite = source.sites.single()
+        val validMeasurement = validSite.measurements.single()
+        val invalidMeasurement = validMeasurement.copy(
+            measurementId = 2L,
+            concentrationValue = null,
+            reliableRangeStatus = null,
+            quantificationState = "UNAVAILABLE",
+            quantificationVersion = "grid-deep-learning-quantifier-v4",
+            qc = validMeasurement.qc.copy(
+                quantificationStatus = "UNAVAILABLE",
+                quantificationScope = "SITE",
+                quantificationReason = "OUTPUT_OUT_OF_DECLARED_RANGE",
+                rawModelOutput = 127.5,
+                transformedModelOutput = 127.5,
+                declaredOutputMin = 0.0,
+                declaredOutputMax = 100.0
+            )
+        )
+        val partial = source.copy(
+            columns = 2,
+            sites = listOf(
+                validSite,
+                site(
+                    siteIndex = 1,
+                    analyte = analyte,
+                    measurement = invalidMeasurement
+                )
+            )
+        )
+        composeRule.setContent {
+            FluoColorTheme {
+                ArrayResultContent(
+                    state = ArrayResultUiState.Success(partial),
+                    onBack = {},
+                    onRetry = {}
+                )
+            }
+        }
+
+        val warningCard = composeRule.onNodeWithTag(
+            "$ARRAY_DEEP_LEARNING_OUTPUT_WARNING_TAG_PREFIX${analyte.analyteId}"
+        )
+        val partialBody = string(R.string.array_deep_learning_output_warning_partial_body, 1, 2, 1)
+        val outputRange = string(
+            R.string.array_deep_learning_output_warning_range,
+            0.0,
+            100.0,
+            127.5,
+            127.5
+        )
+
+        // 结果首屏只保留短标题；逐孔数量、原始输出范围和建议必须由用户主动展开。
+        warningCard.assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.array_deep_learning_output_warning_title))
+            .assertIsDisplayed()
+        composeRule.onAllNodesWithText(partialBody).assertCountEquals(0)
+        composeRule.onAllNodesWithText(outputRange).assertCountEquals(0)
+        composeRule.onAllNodesWithText(string(R.string.array_deep_learning_output_warning_advice))
+            .assertCountEquals(0)
+        captureRoot("array_model_output_warning_collapsed")
+
+        warningCard.performClick()
+        composeRule.onNodeWithText(partialBody).assertIsDisplayed()
+        composeRule.onNodeWithText(outputRange).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.array_deep_learning_output_warning_advice))
+            .assertIsDisplayed()
+        captureRoot("array_model_output_warning_expanded")
+
+        warningCard.performClick()
+        composeRule.onAllNodesWithText(partialBody).assertCountEquals(0)
     }
 
     @Test

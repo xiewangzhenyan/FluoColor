@@ -10,6 +10,7 @@ import com.muc.fluocolorquant.data.enums.InputProtocol
 import com.muc.fluocolorquant.data.enums.ReadoutLayout
 import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.enums.SiteShape
+import com.muc.fluocolorquant.data.enums.SpectrumLightSource
 import com.muc.fluocolorquant.data.enums.TemplateLifecycleStatus
 import com.muc.fluocolorquant.data.model.AcquisitionProfile
 import com.muc.fluocolorquant.data.model.AnalysisModel
@@ -30,6 +31,8 @@ import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR
 import com.muc.fluocolorquant.domain.detection.photometry.FLUORESCENCE_PROCESSOR_NAME
 import com.muc.fluocolorquant.domain.detection.photometry.FLUORESCENCE_PROCESSOR_VERSION
 import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceChannel
+import com.muc.fluocolorquant.domain.detection.photometry.FluorescencePhotometryProcessor
+import com.muc.fluocolorquant.domain.detection.photometry.PgQuantConfig
 import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
 import java.util.Date
 import java.util.UUID
@@ -52,7 +55,11 @@ enum class DirectCarrierPreset {
 data class DirectProjectAnalyteRequest(
     val analyte: Analyte,
     val concentrationUnit: String,
-    val maxConcentration: Double = 100.0
+    val maxConcentration: Double = 100.0,
+    val fluorescenceChannel: FluorescenceChannel = FluorescenceChannel.GREEN,
+    val reagentAntigenId: String? = null,
+    val reagentAntibodyId: String? = null,
+    val reagentSummary: String? = null
 )
 
 /** 普通用户直接创建项目时真正需要提供的运行信息。 */
@@ -62,6 +69,8 @@ data class DirectProjectCreateRequest(
     val carrierPreset: DirectCarrierPreset,
     val customRows: Int? = null,
     val customColumns: Int? = null,
+    val customSiteShape: SiteShape? = null,
+    val spectrumLightSource: SpectrumLightSource? = null,
     val analytes: List<DirectProjectAnalyteRequest>,
     val imageUri: String,
     val userId: String
@@ -76,6 +85,9 @@ sealed interface DirectProjectCreationOutcome {
 
     data object InvalidRequest : DirectProjectCreationOutcome
 }
+
+/** 无模板项目的隐式载体 ID 前缀；每个项目一份，ID 为该前缀加项目 ID。 */
+const val DIRECT_CARRIER_ID_PREFIX: String = "direct-carrier-"
 
 /**
  * 无模板项目创建协调器。
@@ -115,6 +127,11 @@ class DirectProjectCreationCoordinator @Inject constructor(
         }
 
         if (request.detectionModality == DetectionModality.SPECTRUM) {
+            // 光谱光源必须由新建表单明确确认；协调器不读取全局默认值，避免后台创建时
+            // 静默写入一个用户从未看见的采集条件。
+            if (request.spectrumLightSource == null) {
+                return DirectProjectCreationOutcome.InvalidRequest
+            }
             return createSpectrumProject(
                 request = request.copy(analytes = normalizedAnalytes),
                 normalizedName = normalizedName,
@@ -127,7 +144,7 @@ class DirectProjectCreationCoordinator @Inject constructor(
         val now = Date()
         val projectId = UUID.randomUUID().toString()
         val templateId = "direct-template-$projectId"
-        val carrierId = "direct-carrier-$projectId"
+        val carrierId = "$DIRECT_CARRIER_ID_PREFIX$projectId"
         val acquisitionId = "direct-acquisition-$projectId"
         val legacyPrimaryAnalyte = normalizedAnalytes.first()
 
@@ -162,8 +179,8 @@ class DirectProjectCreationCoordinator @Inject constructor(
             templateName = normalizedName,
             // 旧字段仅用于兼容旧页面；多分析物真值以 analytes 子快照为准。
             analyteId = legacyPrimaryAnalyte.analyte.id,
-            reagentAntigenId = null,
-            reagentAntibodyId = null,
+            reagentAntigenId = legacyPrimaryAnalyte.reagentAntigenId,
+            reagentAntibodyId = legacyPrimaryAnalyte.reagentAntibodyId,
             fkCurveModelId = null,
             reliableRangeMin = 0.0,
             reliableRangeMax = legacyPrimaryAnalyte.maxConcentration,
@@ -185,15 +202,17 @@ class DirectProjectCreationCoordinator @Inject constructor(
             DetectionModality.FLUORESCENCE -> AnalysisPrimaryFeature.NET_FLUORESCENCE_INTENSITY
             DetectionModality.SPECTRUM -> error("光谱项目由独立分支创建")
         }
-        val processor = when (request.detectionModality) {
-            DetectionModality.COLORIMETRIC ->
-                COLORIMETRIC_PROCESSOR_NAME to COLORIMETRIC_PROCESSOR_VERSION
-            DetectionModality.FLUORESCENCE ->
-                FLUORESCENCE_PROCESSOR_NAME to FLUORESCENCE_PROCESSOR_VERSION
-            DetectionModality.SPECTRUM -> error("光谱项目由独立分支创建")
-        }
-
         val analyteSnapshots = normalizedAnalytes.mapIndexed { index, selection ->
+            val processor = when (request.detectionModality) {
+                DetectionModality.COLORIMETRIC ->
+                    COLORIMETRIC_PROCESSOR_NAME to COLORIMETRIC_PROCESSOR_VERSION
+                DetectionModality.FLUORESCENCE ->
+                    FLUORESCENCE_PROCESSOR_NAME to FluorescencePhotometryProcessor.processorVersionFor(
+                        PgQuantConfig(),
+                        selection.fluorescenceChannel
+                    )
+                DetectionModality.SPECTRUM -> error("光谱项目由独立分支创建")
+            }
             val modelBundle = createSignalOnlyBundle(
                 projectId = projectId,
                 selection = selection,
@@ -203,26 +222,40 @@ class DirectProjectCreationCoordinator @Inject constructor(
                 processor = processor,
                 now = now
             )
+            // 仅当本项目浓度单位与分析物预设单位一致时冻结阳性参考阈值，避免单位不同导致错判。
+            val frozenCutoff = selection.analyte.referenceCutoff?.takeIf { cutoff ->
+                cutoff.isFinite() && cutoff > 0.0 &&
+                    (selection.analyte.defaultUnit.isNullOrBlank() ||
+                        selection.analyte.defaultUnit.equals(selection.concentrationUnit, ignoreCase = true))
+            }
+            val displayConfigJson = when (request.detectionModality) {
+                DetectionModality.FLUORESCENCE -> ScientificDetectionConfigCodec.encodeFluorescenceDisplay(
+                    channel = selection.fluorescenceChannel,
+                    referenceCutoff = frozenCutoff,
+                    referenceCutoffUnit = selection.concentrationUnit,
+                    reagentSummary = selection.reagentSummary
+                )
+                DetectionModality.COLORIMETRIC -> ScientificDetectionConfigCodec.encodeColorimetricDisplay(
+                    referenceCutoff = frozenCutoff,
+                    referenceCutoffUnit = selection.concentrationUnit,
+                    reagentSummary = selection.reagentSummary
+                )
+                DetectionModality.SPECTRUM -> null
+            }
             TemplateProjectAnalyteSnapshot(
                 analyte = selection.analyte,
                 templateConfig = TemplateAnalyteConfig(
                     id = "direct-analyte-config-$projectId-${selection.analyte.id}",
                     templateId = templateId,
                     analyteId = selection.analyte.id,
+                    reagentAntigenId = selection.reagentAntigenId,
+                    reagentAntibodyId = selection.reagentAntibodyId,
                     analysisModelId = modelBundle.model.id,
                     concentrationUnit = selection.concentrationUnit,
                     reliableRangeMin = 0.0,
                     reliableRangeMax = selection.maxConcentration,
                     displayOrder = index,
-                    displayConfigJson = if (
-                        request.detectionModality == DetectionModality.FLUORESCENCE
-                    ) {
-                        ScientificDetectionConfigCodec.encodeFluorescenceDisplay(
-                            FluorescenceChannel.GREEN
-                        )
-                    } else {
-                        null
-                    }
+                    displayConfigJson = displayConfigJson
                 ),
                 analysisModel = modelBundle,
                 // 直接新建延续“有标准孔就自动推荐曲线”的低门槛默认值；用户仍可在布局页
@@ -344,6 +377,8 @@ class DirectProjectCreationCoordinator @Inject constructor(
             imageUri = normalizedImageUri,
             rows = 1,
             columns = 1,
+            // 仅保存枚举稳定 name，显示名称由资源层本地化；该字段不参与任何光谱校正。
+            lightSource = requireNotNull(request.spectrumLightSource).name,
             spectrumColumnCount = channelCount,
             spectrumColumnMappingJson = encodeSpectrumColumnMapping(request.analytes),
             createTime = now,
@@ -423,12 +458,18 @@ class DirectProjectCreationCoordinator @Inject constructor(
                 val columns = request.customColumns
                     ?.takeIf(GridLayoutPolicy::isValidDimension)
                     ?: return null
+                val siteShape = request.customSiteShape
+                    ?.takeIf { it == SiteShape.CIRCLE || it == SiteShape.SQUARE }
+                    ?: return null
                 DirectGeometry(
                     displayName = "microfluidic-${rows}x$columns",
+                    // “自定义”描述的是行列规格，不表示定位协议未知。普通新建当前明确使用
+                    // PG-Grid，所以圆形位点也保持 MICROFLUIDIC_CHIP；若按 CIRCLE 改成
+                    // PLATE，会错误进入只接受固定 8×12 的 96 孔板定位链。
                     carrierType = CarrierType.MICROFLUIDIC_CHIP,
                     rows = rows,
                     columns = columns,
-                    siteShape = SiteShape.SQUARE,
+                    siteShape = siteShape,
                     polarity = GridTargetPolarity.DARK
                 )
             }

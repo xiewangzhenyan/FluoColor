@@ -1,58 +1,63 @@
 package com.muc.fluocolorquant.ui.screens.settings
 
-import android.util.Log
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.outlined.Analytics
+import androidx.compose.material.icons.outlined.Straighten
+import androidx.compose.material.icons.outlined.Colorize
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.Divider
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -60,19 +65,28 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.ui.components.FluoTopBar
 import com.muc.fluocolorquant.ui.components.LocalToastManager
 import com.muc.fluocolorquant.ui.components.ToastType
-import com.muc.fluocolorquant.utils.math.GridLayoutPolicy
+import com.muc.fluocolorquant.ui.components.ArrayOptionField
+import com.muc.fluocolorquant.ui.components.ArrayPercentSlider
+import com.muc.fluocolorquant.ui.components.FluoSectionCard
+import com.muc.fluocolorquant.ui.components.FluoSectionHeader
+import com.muc.fluocolorquant.ui.components.ScientificPickerOption
+import com.muc.fluocolorquant.ui.components.ScientificPickerSheet
+import com.muc.fluocolorquant.ui.components.ScientificSelectionField
+import com.muc.fluocolorquant.ui.components.detectionModeIcon
+import com.muc.fluocolorquant.ui.components.label
+import com.muc.fluocolorquant.data.enums.DetectionModality
+import com.muc.fluocolorquant.domain.detection.array.ArrayAnalysisPreferences
+import com.muc.fluocolorquant.domain.detection.array.MultiHoleStatistic
+import com.muc.fluocolorquant.domain.detection.photometry.WellReadoutMode
+import com.muc.fluocolorquant.ui.theme.FluoRadius
+import com.muc.fluocolorquant.ui.theme.FluoSpacing
 import com.muc.fluocolorquant.ui.viewmodels.SettingsViewModel
-import androidx.compose.material3.TextButton
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.runtime.LaunchedEffect
-
-private const val TAG = "DetectionSettingsScreen"
 
 /**
- * 检测设置页面
- * 提供检测模式、像素提取方式、图像预处理和默认参数等设置
+ * 统一管理新建项目预填值（检测方式、自定义阵列规格、浓度单位）与全局孔内取值/多孔统计默认规范。
+ *
+ * 定位算法切换收敛在现场定位确认页按图操作，孔内取值与多孔统计集中在本页配置，
+ * 避免两处重复表单或单图临时改口径导致标准曲线版本不兼容；已保存历史运行始终读取冻结快照。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,29 +94,28 @@ fun DetectionSettingsScreen(
     navController: NavController,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
-    val snackbarHostState = remember { SnackbarHostState() }
     val toastManager = LocalToastManager.current
     
     val defaultDetectionMode by viewModel.defaultDetectionMode.collectAsState()
     val defaultConcentrationUnit by viewModel.defaultConcentrationUnit.collectAsState()
     val concentrationUnits by viewModel.concentrationUnits.collectAsState()
     val newUnitInput by viewModel.newUnitInput.collectAsState()
-    val defaultRows by viewModel.defaultRows.collectAsState()
-    val defaultColumns by viewModel.defaultColumns.collectAsState()
-    val pixelExtractionMethod by viewModel.pixelExtractionMethod.collectAsState()
-    val imagePreprocessingEnabled by viewModel.imagePreprocessingEnabled.collectAsState()
+    val settingsUiState by viewModel.uiState.collectAsState()
+    val readoutDefaults by viewModel.globalArrayReadoutDefaults.collectAsState()
+    var defaultRowsInput by rememberSaveable { mutableStateOf("") }
+    var defaultColumnsInput by rememberSaveable { mutableStateOf("") }
+    val invalidGridMessage = stringResource(R.string.default_custom_grid_invalid)
+    val savedMessage = stringResource(R.string.settings_update_success)
+    val unitAddedMessage = stringResource(R.string.unit_added_success)
+    val duplicateUnitMessage = stringResource(R.string.unit_already_exists)
+    val unitDeletedMessage = stringResource(R.string.unit_deleted)
+    val defaultUnitMessage = stringResource(R.string.cannot_delete_default_unit)
 
-    // 添加LaunchedEffect确保页面打开时刷新设置
-    LaunchedEffect(Unit) {
-        viewModel.refreshSettings()
+    // DataStore 首次返回后同步草稿；保存成功后的发射也会把规范化数值写回输入框。
+    LaunchedEffect(settingsUiState.defaultCustomRows, settingsUiState.defaultCustomColumns) {
+        defaultRowsInput = settingsUiState.defaultCustomRows.toString()
+        defaultColumnsInput = settingsUiState.defaultCustomColumns.toString()
     }
-
-    // 将行列输入框的状态提升到这里，使保存按钮可以访问
-    var rowsText by remember(defaultRows) { mutableStateOf(defaultRows.toString()) }
-    var rowInputError by remember { mutableStateOf(false) }
-    var columnsText by remember(defaultColumns) { mutableStateOf(defaultColumns.toString()) }
-    var columnInputError by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -110,573 +123,293 @@ fun DetectionSettingsScreen(
                 title = stringResource(R.string.settings_detection_title),
                 onBack = { navController.navigateUp() }
             )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        }
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp)
                 .verticalScroll(rememberScrollState())
+                .padding(FluoSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(FluoSpacing.lg)
         ) {
-            // 像素提取方式设置
-            Text(
-                text = stringResource(R.string.settings_pixel_extraction_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            
-            Text(
-                text = stringResource(R.string.settings_pixel_extraction_desc),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            
-            PixelExtractionSelector(
-                currentMethod = pixelExtractionMethod,
-                onMethodSelected = { method ->
-                    if (method != pixelExtractionMethod) {
-                        viewModel.setPixelExtractionMethod(method)
-                        toastManager.showToast(
-                            message = context.getString(R.string.settings_update_success),
-                            type = ToastType.SUCCESS
-                        )
+            FluoSectionCard(verticalSpacing = FluoSpacing.sm) {
+                DetectionModeSegments(
+                    title = stringResource(R.string.default_detection_mode),
+                    selected = DetectionModality.fromCode(defaultDetectionMode) ?: DetectionModality.FLUORESCENCE,
+                    modifier = Modifier.testTag("default_detection_mode_picker"),
+                    onSelect = { mode ->
+                        if (mode.code != defaultDetectionMode) {
+                            viewModel.setDefaultDetectionModeWithoutRestart(mode.code)
+                        }
                     }
-                },
-                options = viewModel.pixelExtractionOptions
-            )
-            
-            Divider(
-                modifier = Modifier.padding(vertical = 16.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            )
-            
-            // 图像预处理设置
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.settings_preprocessing_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = stringResource(R.string.settings_preprocessing_desc),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                }
-                
-                Switch(
-                    checked = imagePreprocessingEnabled,
-                    onCheckedChange = { enabled ->
-                        viewModel.setImagePreprocessingEnabled(enabled)
-                        toastManager.showToast(
-                            message = context.getString(R.string.settings_update_success),
-                            type = ToastType.SUCCESS
-                        )
-                    }
+                )
+                Text(
+                    text = stringResource(R.string.default_detection_mode_help),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            
-            Divider(
-                modifier = Modifier.padding(vertical = 16.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            )
 
-            // 默认检测模式选择
-            Text(
-                text = stringResource(R.string.default_detection_mode),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            
-            DetectionModeSelector(
-                currentMode = defaultDetectionMode,
-                onModeSelected = { mode ->
-                    if (mode != defaultDetectionMode) {
-                        viewModel.setDefaultDetectionModeWithoutRestart(mode)
-                        toastManager.showToast(
-                            message = context.getString(R.string.settings_update_success),
-                            type = ToastType.SUCCESS
-                        )
-                    }
-                },
-                modeOptions = viewModel.detectionModeOptions
-            )
-            
-            Divider(
-                modifier = Modifier.padding(vertical = 16.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            )
-            
-            // 默认浓度单位设置
-            Text(
-                text = stringResource(R.string.default_concentration_unit),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            
-            ConcentrationUnitSelector(
-                currentUnit = defaultConcentrationUnit,
-                onUnitSelected = { unit ->
-                    if (unit != defaultConcentrationUnit) {
-                        viewModel.setDefaultConcentrationUnitWithoutRestart(unit)
-                        toastManager.showToast(
-                            message = context.getString(R.string.settings_update_success),
-                            type = ToastType.SUCCESS
-                        )
-                    }
-                },
-                availableUnits = concentrationUnits.toList()
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // 浓度单位管理
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = newUnitInput,
-                    onValueChange = { viewModel.updateNewUnitInput(it) },
-                    label = { Text(stringResource(R.string.new_concentration_unit)) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
+            // 这里只配置“新建自定义阵列”的预填值。固定 96 孔板和已有项目不会读取它；
+            // 行列经同一个 ViewModel 调用原子保存，不能分别写入造成半更新规格。
+            FluoSectionCard(verticalSpacing = FluoSpacing.md) {
+                FluoSectionHeader(
+                    title = stringResource(R.string.default_custom_grid_title),
+                    icon = Icons.Default.GridView
                 )
-                
-                Spacer(modifier = Modifier.width(8.dp))
-                
+                Text(
+                    text = stringResource(R.string.default_custom_grid_help),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)) {
+                    OutlinedTextField(
+                        value = defaultRowsInput,
+                        onValueChange = { defaultRowsInput = it.filter(Char::isDigit).take(2) },
+                        label = { Text(stringResource(R.string.direct_create_rows)) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = defaultColumnsInput,
+                        onValueChange = { defaultColumnsInput = it.filter(Char::isDigit).take(2) },
+                        label = { Text(stringResource(R.string.direct_create_columns)) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
                 Button(
                     onClick = {
-                        val success = viewModel.addConcentrationUnit(newUnitInput)
-                        if (success) {
-                            viewModel.updateNewUnitInput("")
-                            toastManager.showToast(
-                                message = context.getString(R.string.unit_added_success),
-                                type = ToastType.SUCCESS
-                            )
-                        } else {
-                            toastManager.showToast(
-                                message = context.getString(R.string.unit_already_exists),
-                                type = ToastType.ERROR
-                            )
+                        val saved = viewModel.updateDefaultCustomGrid(
+                            rows = defaultRowsInput.toIntOrNull(), columns = defaultColumnsInput.toIntOrNull()
+                        )
+                        toastManager.showToast(
+                            message = if (saved) savedMessage else invalidGridMessage,
+                            type = if (saved) ToastType.SUCCESS else ToastType.ERROR
+                        )
+                    },
+                    modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = null)
+                    Spacer(Modifier.width(FluoSpacing.sm))
+                    Text(stringResource(R.string.save))
+                }
+            }
+
+            ArrayReadoutDefaultsCard(
+                config = readoutDefaults,
+                onSave = { updated ->
+                    if (updated != readoutDefaults) {
+                        viewModel.saveGlobalArrayReadoutDefaults(updated)
+                        toastManager.showToast(savedMessage, ToastType.SUCCESS)
+                    }
+                }
+            )
+
+            FluoSectionCard(verticalSpacing = FluoSpacing.md) {
+                ConcentrationUnitSelector(
+                    currentUnit = defaultConcentrationUnit,
+                    onUnitSelected = { unit ->
+                        if (unit != defaultConcentrationUnit) {
+                            viewModel.setDefaultConcentrationUnitWithoutRestart(unit)
+                            toastManager.showToast(savedMessage, ToastType.SUCCESS)
                         }
                     },
-                    enabled = newUnitInput.isNotBlank()
-                ) {
-                    Text(stringResource(R.string.add))
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // 显示可删除的浓度单位
-            Text(
-                text = stringResource(R.string.available_concentration_units),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            
-            ConcentrationUnitChips(
-                units = concentrationUnits.toList(),
-                defaultUnit = defaultConcentrationUnit,
-                onDeleteUnit = { unit ->
-                    val success = viewModel.deleteConcentrationUnit(unit)
-                    if (success) {
-                        toastManager.showToast(
-                            message = context.getString(R.string.unit_deleted),
-                            type = ToastType.SUCCESS
-                        )
-                    } else {
-                        toastManager.showToast(
-                            message = context.getString(R.string.cannot_delete_default_unit),
-                            type = ToastType.WARNING
-                        )
-                    }
-                }
-            )
-            
-            Divider(
-                modifier = Modifier.padding(vertical = 16.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            )
-            
-            // 默认孔板尺寸设置
-            Text(
-                text = stringResource(R.string.default_plate_size),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // 行数输入
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    
-                    OutlinedTextField(
-                        value = rowsText,
-                        onValueChange = { value ->
-                            // 允许空输入，但不自动填充默认值
-                            if (value.isEmpty()) {
-                                rowsText = value
-                                rowInputError = false
-                                // 不再调用 viewModel.setDefaultRows(12)
-                            } else if (value.matches(Regex("^[0-9]+$"))) {
-                                val numValue = value.toInt()
-                                // 旧检测偏好与载体档案共用 1..99 的逐维边界，不再限制为 96 位点。
-                                val columns: Int = defaultColumns
-                                if (GridLayoutPolicy.isValid(numValue, columns)) {
-                                    rowsText = value
-                                    viewModel.setDefaultRows(numValue)
-                                    rowInputError = false
-                                } else {
-                                    rowInputError = true
-                                    toastManager.showToast(
-                                        message = context.getString(R.string.plate_size_limit_exceeded),
-                                        type = ToastType.WARNING
-                                    )
-                                }
-                            } else {
-                                // 非数字输入，不更新值，显示错误
-                                rowInputError = true
-                                toastManager.showToast(
-                                    message = context.getString(R.string.input_number_only),
-                                    type = ToastType.ERROR
-                                )
-                            }
-                        },
-                        label = { Text(stringResource(R.string.rows)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.GridView,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = if (rowInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = if (rowInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
-                            errorBorderColor = MaterialTheme.colorScheme.error
-                        ),
-                        shape = MaterialTheme.shapes.small,
-                        isError = rowInputError
-                    )
-                }
-                
-                // 列数输入
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    
-                    OutlinedTextField(
-                        value = columnsText,
-                        onValueChange = { value ->
-                            // 允许空输入，但不自动填充默认值
-                            if (value.isEmpty()) {
-                                columnsText = value
-                                columnInputError = false
-                                // 不再调用 viewModel.setDefaultColumns(8)
-                            } else if (value.matches(Regex("^[0-9]+$"))) {
-                                val numValue = value.toInt()
-                                // 逐维校验可支持 10×10、15×15 和自定义阵列。
-                                val rows: Int = defaultRows
-                                if (GridLayoutPolicy.isValid(rows, numValue)) {
-                                    columnsText = value
-                                    viewModel.setDefaultColumns(numValue)
-                                    columnInputError = false
-                                } else {
-                                    columnInputError = true
-                                    toastManager.showToast(
-                                        message = context.getString(R.string.plate_size_limit_exceeded),
-                                        type = ToastType.WARNING
-                                    )
-                                }
-                            } else {
-                                // 非数字输入，不更新值，显示错误
-                                columnInputError = true
-                                toastManager.showToast(
-                                    message = context.getString(R.string.input_number_only),
-                                    type = ToastType.ERROR
-                                )
-                            }
-                        },
-                        label = { Text(stringResource(R.string.columns)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.GridView,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = if (columnInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = if (columnInputError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
-                            errorBorderColor = MaterialTheme.colorScheme.error
-                        ),
-                        shape = MaterialTheme.shapes.small,
-                        isError = columnInputError
-                    )
-                }
-            }
-            
-            // 添加说明文字
-            Text(
-                text = stringResource(R.string.plate_size_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-
-            // 添加保存按钮
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Button(
-                onClick = {
-                    // 检查行列输入是否为空，如果为空则使用上次保存的合法值
-                    if (rowsText.isEmpty() && columnsText.isEmpty()) {
-                        // 两个都为空，不做任何操作，保持原来的值
-                        toastManager.showToast(
-                            message = context.getString(R.string.settings_update_success),
-                            type = ToastType.SUCCESS
-                        )
-                    } else if (rowsText.isEmpty()) {
-                        // 行为空，列不为空
-                        if (columnsText.matches(Regex("^[0-9]+$"))) {
-                            val numColumns = columnsText.toInt()
-                            // 只校验载体支持的行列边界，不再套用旧 96 孔总数上限。
-                            val rows: Int = defaultRows
-                            if (GridLayoutPolicy.isValid(rows, numColumns)) {
-                                viewModel.setDefaultColumns(numColumns)
-                                toastManager.showToast(
-                                    message = context.getString(R.string.settings_update_success),
-                                    type = ToastType.SUCCESS
-                                )
-                            } else {
-                                toastManager.showToast(
-                                    message = context.getString(R.string.plate_size_limit_exceeded),
-                                    type = ToastType.WARNING
-                                )
-                            }
-                        } else {
-                            toastManager.showToast(
-                                message = context.getString(R.string.input_number_only),
-                                type = ToastType.ERROR
-                            )
-                        }
-                    } else if (columnsText.isEmpty()) {
-                        // 列为空，行不为空
-                        if (rowsText.matches(Regex("^[0-9]+$"))) {
-                            val numRows = rowsText.toInt()
-                            // 只校验载体支持的行列边界，不再套用旧 96 孔总数上限。
-                            val columns: Int = defaultColumns
-                            if (GridLayoutPolicy.isValid(numRows, columns)) {
-                                viewModel.setDefaultRows(numRows)
-                                toastManager.showToast(
-                                    message = context.getString(R.string.settings_update_success),
-                                    type = ToastType.SUCCESS
-                                )
-                            } else {
-                                toastManager.showToast(
-                                    message = context.getString(R.string.plate_size_limit_exceeded),
-                                    type = ToastType.WARNING
-                                )
-                            }
-                        } else {
-                            toastManager.showToast(
-                                message = context.getString(R.string.input_number_only),
-                                type = ToastType.ERROR
-                            )
-                        }
-                    } else {
-                        // 两个都不为空
-                        if (rowsText.matches(Regex("^[0-9]+$")) && columnsText.matches(Regex("^[0-9]+$"))) {
-                            val numRows = rowsText.toInt()
-                            val numColumns = columnsText.toInt()
-                            // 统一支持载体档案允许的自定义行列。
-                            if (GridLayoutPolicy.isValid(numRows, numColumns)) {
-                                viewModel.setDefaultRows(numRows)
-                                viewModel.setDefaultColumns(numColumns)
-                                toastManager.showToast(
-                                    message = context.getString(R.string.settings_update_success),
-                                    type = ToastType.SUCCESS
-                                )
-                            } else {
-                                toastManager.showToast(
-                                    message = context.getString(R.string.plate_size_limit_exceeded),
-                                    type = ToastType.WARNING
-                                )
-                            }
-                        } else {
-                            toastManager.showToast(
-                                message = context.getString(R.string.input_number_only),
-                                type = ToastType.ERROR
-                            )
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
+                    availableUnits = concentrationUnits.toList()
                 )
-            ) {
-                Text(stringResource(R.string.save))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(FluoSpacing.sm)
+                ) {
+                    OutlinedTextField(
+                        value = newUnitInput,
+                        onValueChange = viewModel::updateNewUnitInput,
+                        label = { Text(stringResource(R.string.new_concentration_unit)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = {
+                            val added = viewModel.addConcentrationUnit(newUnitInput)
+                            if (added) viewModel.updateNewUnitInput("")
+                            toastManager.showToast(
+                                message = if (added) unitAddedMessage else duplicateUnitMessage,
+                                type = if (added) ToastType.SUCCESS else ToastType.ERROR
+                            )
+                        },
+                        enabled = newUnitInput.isNotBlank()
+                    ) {
+                        Text(stringResource(R.string.add))
+                    }
+                }
+                Text(text = stringResource(R.string.available_concentration_units), style = MaterialTheme.typography.bodyMedium)
+                ConcentrationUnitChips(
+                    units = concentrationUnits.toList(),
+                    defaultUnit = defaultConcentrationUnit,
+                    onDeleteUnit = { unit ->
+                        val deleted = viewModel.deleteConcentrationUnit(unit)
+                        toastManager.showToast(
+                            message = if (deleted) unitDeletedMessage else defaultUnitMessage,
+                            type = if (deleted) ToastType.SUCCESS else ToastType.WARNING
+                        )
+                    }
+                )
             }
         }
     }
 }
 
+/**
+ * 全局孔内取值与多孔统计设置卡（合并入「检测默认值」，不再按 3 种载体 × 2 种模态拆分重复入口）。
+ */
+@Composable
+internal fun ArrayReadoutDefaultsCard(
+    config: ArrayAnalysisPreferences,
+    onSave: (ArrayAnalysisPreferences) -> Unit
+) {
+    val defaultConfig = remember { ArrayAnalysisPreferences() }
+    val isCustomized = config.readout != defaultConfig.readout ||
+        config.multiHoleStatistic != defaultConfig.multiHoleStatistic ||
+        config.centerScale != defaultConfig.centerScale
+    FluoSectionCard(
+        modifier = Modifier.testTag("array_readout_defaults_card"),
+        verticalSpacing = FluoSpacing.md
+    ) {
+        FluoSectionHeader(
+            title = stringResource(R.string.settings_readout_section_title),
+            icon = Icons.Outlined.Colorize
+        )
+        Text(
+            text = stringResource(R.string.settings_readout_section_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        ArrayOptionField(
+            R.string.array_readout_label,
+            WellReadoutMode.entries,
+            config.readout,
+            { it.label() },
+            Icons.Outlined.Colorize,
+            { onSave(config.copy(readout = it)) },
+            Modifier.testTag("array_readout_picker")
+        )
+        if (config.readout in setOf(WellReadoutMode.CENTER_MEDIAN, WellReadoutMode.CENTER_MEAN)) {
+            ArrayPercentSlider(
+                R.string.array_readout_center_percent,
+                config.centerScale,
+                50..90
+            ) { onSave(config.copy(centerScale = it)) }
+        }
+        if (config.readout != WellReadoutMode.FULL_MEDIAN) {
+            Surface(
+                shape = RoundedCornerShape(FluoRadius.badge),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = stringResource(
+                        if (config.readout == WellReadoutMode.CENTER_PIXEL) R.string.array_readout_diagnostic
+                        else R.string.array_readout_recalibrate
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
+        }
+        ArrayOptionField(
+            R.string.array_group_label,
+            MultiHoleStatistic.entries,
+            config.multiHoleStatistic,
+            { it.label() },
+            Icons.Outlined.Analytics,
+            { onSave(config.copy(multiHoleStatistic = it)) },
+            Modifier.testTag("array_group_picker")
+        )
+        if (config.multiHoleStatistic != MultiHoleStatistic.INDIVIDUAL) {
+            Text(
+                text = stringResource(R.string.array_group_help),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (isCustomized) {
+            TextButton(
+                onClick = { onSave(defaultConfig) },
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .heightIn(min = 48.dp)
+                    .testTag("array_readout_reset")
+            ) {
+                Icon(Icons.Outlined.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.array_analysis_reset))
+            }
+        }
+    }
+}
+
+/**
+ * 默认方式和阵列档案共用视觉，不共用写入回调。这里仅显示现有可持久化的比色、荧光，
+ * 不把新建项目里可手选的光谱误当成当前支持的默认值。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PixelExtractionSelector(
-    currentMethod: String,
-    onMethodSelected: (String) -> Unit,
-    options: List<SettingsViewModel.PixelExtractionOption>
+internal fun DetectionModeSegments(
+    title: String,
+    selected: DetectionModality,
+    onSelect: (DetectionModality) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val selectedOptionText = options.find { it.code == currentMethod }?.let {
-        stringResource(id = R.string::class.java.getField(it.resourceId).getInt(null))
-    } ?: options.first().let {
-        stringResource(id = R.string::class.java.getField(it.resourceId).getInt(null))
-    }
-
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            onClick = { expanded = true }
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Science,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    
-                    Spacer(modifier = Modifier.width(8.dp))
-                    
-                    Text(
-                        text = selectedOptionText,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-        }
-        
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.fillMaxWidth(0.7f)
-        ) {
-            options.forEach { option ->
-                val optionText = stringResource(id = R.string::class.java.getField(option.resourceId).getInt(null))
-                DropdownMenuItem(
-                    text = { Text(text = optionText) },
-                    onClick = {
-                        onMethodSelected(option.code)
-                        expanded = false
+    val modes = listOf(DetectionModality.COLORIMETRIC, DetectionModality.FLUORESCENCE)
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(FluoSpacing.xs)) {
+        Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val labels = listOf(stringResource(R.string.array_modality_color), stringResource(R.string.array_modality_fluorescence))
+            val labelStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+            val measure = rememberTextMeasurer()
+            val longestLabel = labels.maxOf { measure.measure(it, style = labelStyle, maxLines = 1).size.width }
+            val iconSize = 18.dp
+            val iconSpacing = 6.dp
+            val inlineWidth = with(LocalDensity.current) { longestLabel.toDp() + iconSize + iconSpacing + 24.dp }
+            // 两侧一起切换图标布局，并按较粗的选中文字测宽。不能只让英文荧光换行，破坏分段接缝。
+            val stackIcons = maxWidth / 2 < inlineWidth
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                modes.forEachIndexed { index, mode ->
+                    SegmentedButton(
+                        selected = mode == selected,
+                        onClick = { onSelect(mode) },
+                        shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                        modifier = Modifier.heightIn(min = if (stackIcons) 64.dp else 48.dp)
+                            .testTag("detection_mode_${mode.name}"),
+                        icon = {}
+                    ) {
+                        val icon: @Composable () -> Unit = {
+                            Icon(detectionModeIcon(mode), contentDescription = null, modifier = Modifier.size(iconSize))
+                        }
+                        val name: @Composable () -> Unit = {
+                            Text(labels[index], style = labelStyle, textAlign = TextAlign.Center)
+                        }
+                        if (stackIcons) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(FluoSpacing.xs)
+                            ) {
+                                icon()
+                                name()
+                            }
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(iconSpacing), verticalAlignment = Alignment.CenterVertically) {
+                                icon()
+                                name()
+                            }
+                        }
                     }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun DetectionModeSelector(
-    currentMode: String,
-    onModeSelected: (String) -> Unit,
-    modeOptions: List<SettingsViewModel.DetectionModeOption>
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val currentModeName by remember(currentMode) {
-        mutableStateOf(
-            modeOptions.find { it.code == currentMode }?.name 
-                ?: if (currentMode == "FLUORESCENCE") 
-                    "Fluorescence Detection" 
-                else 
-                    "Colorimetric Detection"
-        )
-    }
-    
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            onClick = { expanded = true }
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Science,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    
-                    Spacer(modifier = Modifier.width(8.dp))
-                    
-                    Text(
-                        text = currentModeName,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
                 }
-            }
-        }
-        
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.fillMaxWidth(0.7f)
-        ) {
-            modeOptions.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option.name) },
-                    onClick = {
-                        onModeSelected(option.code)
-                        expanded = false
-                    }
-                )
             }
         }
     }
@@ -689,56 +422,20 @@ fun ConcentrationUnitSelector(
     availableUnits: List<String>
 ) {
     var expanded by remember { mutableStateOf(false) }
-    
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            onClick = { expanded = true }
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Science,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    
-                    Spacer(modifier = Modifier.width(8.dp))
-                    
-                    Text(
-                        text = currentUnit,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-        }
-        
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.fillMaxWidth(0.7f)
-        ) {
-            availableUnits.sorted().forEach { unit ->
-                DropdownMenuItem(
-                    text = { Text(unit) },
-                    onClick = {
-                        onUnitSelected(unit)
-                        expanded = false
-                    }
-                )
-            }
-        }
+    val title = stringResource(R.string.default_concentration_unit)
+    ScientificSelectionField(
+        title, currentUnit, title, Icons.Outlined.Straighten,
+        onClick = { expanded = true }, allowValueWrap = true
+    )
+    if (expanded) {
+        ScientificPickerSheet(
+            title = title,
+            options = availableUnits.sorted().map { ScientificPickerOption(id = it, title = it) },
+            selectedId = currentUnit,
+            onSelect = onUnitSelected,
+            onDismiss = { expanded = false },
+            compact = true
+        )
     }
 }
 
@@ -798,7 +495,7 @@ fun ConcentrationUnitChips(
             )
             
             Text(
-                text = "(${stringResource(R.string.default_unit)})",
+                text = stringResource(R.string.parenthesized_value, stringResource(R.string.default_unit)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary
             )

@@ -1,0 +1,26 @@
+{
+  "opencv": "4.13.0",
+  "packages": {
+    "pyphe": "0.983",
+    "kornia": "0.8.2",
+    "scikit-image": "0.25.2",
+    "torch": "2.5.1",
+    "numpy": "2.2.6",
+    "scipy": "1.18.0"
+  },
+  "device": "cuda",
+  "hardware": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "python": "3.12.7 | packaged by Anaconda, Inc. | (main, Oct  4 2024, 13:17:27) [MSC v.1929 64 bit (AMD64)]",
+  "lightglue_commit": "5a650c444718caffc2669dc0094cde908f42dd73",
+  "lightglue_source_digest": "04b2e6fab321bb63c8b31218f070b6abbf9c19c12b99e4c19a8f9c746f1c23e2",
+  "weights": {
+    "superpoint_v1.pth": "52b6708629640ca883673b5d5c097c4ddad37d8048b33f09c8ca0d69db12c40e",
+    "superpoint_lightglue.pth": "6ff7040d0a497fc6639337946d7538dae07428c18f77a067a0b5a960e7cc551a"
+  },
+  "prior_metrics_sha256": "88db333f5f9a11ae0fa990c129f44d8059559243b812f8831289d9a8a1eb1468",
+  "prior_coordinates_sha256": "8661a6012c113ecf4081d89e960bb4288e9f44f5480f6bb4f3546096dada092f",
+  "code_sha256": "34026c7f9bfa076e9713dc86f0db983bab5ecd9314218d6967c1a9957d9d27f6",
+  "max_side": 960,
+  "cutoff_pitch": 0.2,
+  "seed": 37
+}

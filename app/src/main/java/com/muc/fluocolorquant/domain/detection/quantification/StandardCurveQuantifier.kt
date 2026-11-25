@@ -7,6 +7,7 @@ import com.muc.fluocolorquant.data.enums.FittingFunction
 import com.muc.fluocolorquant.data.model.CalibrationPoint
 import com.muc.fluocolorquant.data.repository.AnalysisModelBundle
 import com.muc.fluocolorquant.domain.calibration.CalibrationTrustedRange
+import com.muc.fluocolorquant.domain.calibration.CALIBRATION_ALGORITHM_SCHEMA_V2
 import com.muc.fluocolorquant.utils.math.FittingEngine
 import kotlin.math.abs
 import kotlin.math.exp
@@ -91,8 +92,7 @@ object StandardCurveQuantifier {
             calibrationMinimum = calibrationMinimum,
             calibrationMaximum = calibrationMaximum,
             projectMinimum = projectRangeMin,
-            projectMaximum = projectRangeMax,
-            metadata = metadata
+            projectMaximum = projectRangeMax
         ) ?: return invalidPreparedDefinition()
         val concentrationTolerance = scaledTolerance(
             domain.executionMinimum,
@@ -1049,10 +1049,10 @@ object StandardCurveQuantifier {
     }
 
     /**
-     * 从模型验证快照读取 V2 可信范围。
+     * 从模型验证快照读取 V2 不确定度与可信范围元数据。
      *
-     * 旧资源没有算法 schema 时继续使用旧项目量程行为；明确标记为 V2 的资源若可信范围
-     * 缺失，则只允许在真实标定范围内定量，绝不悄悄退回未经验证的项目范围外推。
+     * 可信范围用于重建逐孔浓度区间和高级风险说明，不再替代用户新建项目时确认的硬量程。
+     * 标准点范围之外、项目量程之内的值会明确标成估计值；只有越过项目量程才降为单侧界限。
      */
     private fun parseQuantificationMetadata(
         validationMetricsJson: String?,
@@ -1069,11 +1069,11 @@ object StandardCurveQuantifier {
         val algorithmV2 = root.get("CALIBRATION_ALGORITHM_SCHEMA")
             ?.takeIf { it.isJsonPrimitive }
             ?.asString
-            ?.equals("calibration-v2", ignoreCase = true) == true
+            ?.equals(CALIBRATION_ALGORITHM_SCHEMA_V2, ignoreCase = true) == true
         if (!algorithmV2) return QuantificationMetadata()
         val trustedElement = root.get("TRUSTED_RANGE")
         if (trustedElement == null || trustedElement.isJsonNull) {
-            return QuantificationMetadata(algorithmV2 = true)
+            return QuantificationMetadata()
         }
         val trusted = try {
             gson.fromJson(trustedElement, CalibrationTrustedRange::class.java)
@@ -1095,7 +1095,6 @@ object StandardCurveQuantifier {
             !covarianceValid
         ) return null
         return QuantificationMetadata(
-            algorithmV2 = true,
             trustedRange = trusted
         )
     }
@@ -1325,32 +1324,25 @@ object StandardCurveQuantifier {
     }
 
     /**
-     * 将曲线标定范围与项目预期量程组合为一次运行的有界反算域。
+     * 将曲线标定范围与项目初始化量程组合为一次运行的有界反算域。
      *
-     * 项目范围缺失时保持历史行为；只提供一个端点、端点非有限或上下限颠倒时拒绝执行，
-     * 避免以隐式默认值污染科研结果。
+     * 项目量程是用户在新建项目时确认的硬边界；标准点范围只区分插值和外推，不能再把
+     * `32～75` 一类现场标准范围误当成项目的 `0～100` 报告边界。项目范围缺失时才回退
+     * 到真实标定范围；只提供一个端点、负下限、非有限值或上下限颠倒时拒绝执行。
      */
     private fun resolveQuantificationDomain(
         calibrationMinimum: Double,
         calibrationMaximum: Double,
         projectMinimum: Double?,
-        projectMaximum: Double?,
-        metadata: QuantificationMetadata
+        projectMaximum: Double?
     ): QuantificationDomain? {
         if ((projectMinimum == null) != (projectMaximum == null)) return null
-        val executionMinimum = when {
-            metadata.trustedRange != null -> metadata.trustedRange.minimum
-            metadata.algorithmV2 -> calibrationMinimum
-            else -> projectMinimum ?: calibrationMinimum
-        }
-        val executionMaximum = when {
-            metadata.trustedRange != null -> metadata.trustedRange.maximum
-            metadata.algorithmV2 -> calibrationMaximum
-            else -> projectMaximum ?: calibrationMaximum
-        }
+        val executionMinimum = projectMinimum ?: calibrationMinimum
+        val executionMaximum = projectMaximum ?: calibrationMaximum
         if (
             !executionMinimum.isFinite() ||
             !executionMaximum.isFinite() ||
+            executionMinimum < 0.0 ||
             executionMaximum <= executionMinimum
         ) {
             return null
@@ -1359,8 +1351,7 @@ object StandardCurveQuantifier {
             calibrationMinimum = calibrationMinimum,
             calibrationMaximum = calibrationMaximum,
             executionMinimum = executionMinimum,
-            executionMaximum = executionMaximum,
-            trustedBoundary = metadata.algorithmV2
+            executionMaximum = executionMaximum
         )
     }
 
@@ -1409,7 +1400,6 @@ object StandardCurveQuantifier {
     private data class AveragedPoint(val concentration: Double, val signal: Double)
 
     private data class QuantificationMetadata(
-        val algorithmV2: Boolean = false,
         val trustedRange: CalibrationTrustedRange? = null
     )
 
@@ -1423,22 +1413,17 @@ object StandardCurveQuantifier {
         val calibrationMinimum: Double,
         val calibrationMaximum: Double,
         val executionMinimum: Double,
-        val executionMaximum: Double,
-        val trustedBoundary: Boolean = false
+        val executionMaximum: Double
     ) {
         val belowExecutionStatus: ReliableRangeStatus
-            get() = if (trustedBoundary) {
-                ReliableRangeStatus.BELOW_TRUSTED_RANGE
-            } else if (executionMinimum == calibrationMinimum) {
+            get() = if (executionMinimum == calibrationMinimum) {
                 ReliableRangeStatus.BELOW_RANGE
             } else {
                 ReliableRangeStatus.BELOW_PROJECT_RANGE
             }
 
         val aboveExecutionStatus: ReliableRangeStatus
-            get() = if (trustedBoundary) {
-                ReliableRangeStatus.ABOVE_TRUSTED_RANGE
-            } else if (executionMaximum == calibrationMaximum) {
+            get() = if (executionMaximum == calibrationMaximum) {
                 ReliableRangeStatus.ABOVE_RANGE
             } else {
                 ReliableRangeStatus.ABOVE_PROJECT_RANGE

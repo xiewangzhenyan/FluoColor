@@ -1,5 +1,6 @@
 package com.muc.fluocolorquant.domain.detection.grid
 
+import kotlin.math.ceil
 import kotlin.math.hypot
 
 /** 横向、纵向和代表性网格间距，单位均为矫正图像素。 */
@@ -16,6 +17,71 @@ data class GridPitch(
  * 行优先顺序返回，与模板位点、Room siteIndex、热力图和 Python V2.1 契约一致。
  */
 object RegularGridGeometry {
+
+    internal data class DensityAxis(val centers: List<Double>, val members: Set<Int>)
+
+    /**
+     * 一维 DBSCAN：排序后用双指针数半径内的邻居（包含点自身），只连接距离可达的核心点。
+     * 边缘点可加入最近的核心簇但不能合并两簇；游离点不参与随后横、纵两轴的共同匹配。
+     * 只接受孔距合理且证据明确的连续窗口。少了整行或两个首行都有相近证据时返回空，不外推编号。
+     */
+    internal fun densityAxis(
+        coordinates: List<Double>,
+        count: Int,
+        crossingCount: Int,
+        nominalPitch: Double
+    ): DensityAxis? {
+        if (count < 2 || crossingCount < 2 || nominalPitch < 4 || coordinates.size < count) return null
+        val epsilon = .12 * nominalPitch
+        val minimumNeighbors = minOf(crossingCount, maxOf(3, ceil(.25 * crossingCount).toInt()))
+        val ordered = coordinates.indices.sortedBy { coordinates[it] }
+        val values = ordered.map { coordinates[it] }
+        val corePositions = buildList {
+            var left = 0
+            var right = 0
+            for (position in values.indices) {
+                while (values[position] - values[left] > epsilon) left++
+                while (right < values.size && values[right] - values[position] <= epsilon) right++
+                if (right - left >= minimumNeighbors) add(position)
+            }
+        }
+        if (corePositions.isEmpty()) return null
+        val groups = mutableListOf<MutableList<Int>>()
+        val coreLabels = IntArray(corePositions.size)
+        corePositions.forEachIndexed { index, position ->
+            if (index == 0 || values[position] - values[corePositions[index - 1]] > epsilon) groups.add(mutableListOf<Int>())
+            coreLabels[index] = groups.lastIndex
+        }
+        var nearestCore = 0
+        for (position in values.indices) {
+            while (nearestCore < corePositions.lastIndex &&
+                (position >= corePositions[nearestCore + 1] ||
+                    values[position] - values[corePositions[nearestCore]] > values[corePositions[nearestCore + 1]] - values[position])) {
+                nearestCore++
+            }
+            if (kotlin.math.abs(values[position] - values[corePositions[nearestCore]]) <= epsilon) {
+                groups[coreLabels[nearestCore]].add(ordered[position])
+            }
+        }
+        val centers = groups.map { members -> median(members.map { coordinates[it] }) }
+        val windows = mutableListOf<Pair<Int, Int>>()
+        for (start in 0..(centers.size - count)) {
+            val window = centers.subList(start, start + count)
+            val gaps = window.zipWithNext { first, second -> second - first }
+            val pitch = median(gaps)
+            if (pitch !in .68 * nominalPitch..1.35 * nominalPitch || gaps.any { it !in .70 * pitch..1.30 * pitch }) continue
+            // 反光边有时也形成一个轴簇。只在正好能解释声明行列且比次选多出明显的观测时解歧，
+            // 不靠选第一个窗口猜孔号；每簇计数上限为另一轴孔数，避免重复候选给同一簇过多票数。
+            val support = (start until start + count).sumOf { index -> minOf(groups[index].size, crossingCount) }
+            windows += start to support
+        }
+        val ranked = windows.sortedByDescending { it.second }
+        val best = ranked.firstOrNull() ?: return null
+        val requiredLead = maxOf(2, ceil(.35 * crossingCount).toInt())
+        if (ranked.getOrNull(1)?.let { best.second - it.second < requiredLead } == true) return null
+        val end = best.first + count
+        return DensityAxis(centers.subList(best.first, end).toList(), groups.subList(best.first, end).flatten().toSet())
+    }
 
     /**
      * 在给定矩形内生成带等比例边距的理论晶格点。

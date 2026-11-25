@@ -16,6 +16,7 @@ import com.muc.fluocolorquant.data.repository.AnalyteRepository
 import com.muc.fluocolorquant.ui.screens.settings.analysis.AnalysisModelDraft
 import com.muc.fluocolorquant.ui.screens.settings.analysis.AnalysisModelFormError
 import com.muc.fluocolorquant.ui.screens.settings.analysis.AnalysisModelStatusFilter
+import com.muc.fluocolorquant.ui.screens.settings.analysis.DeepLearningModelOutputMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineStart
@@ -124,6 +125,39 @@ class AnalysisModelViewModelTest {
         assertEquals(AnalysisModelEvent.DraftSaved, event.await())
         assertFalse(viewModel.uiState.value.isEditorVisible)
     }
+
+    @Test
+    fun `自训练模型草稿冻结私有路径摘要和百分比输出语义`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            viewModel.openCreateEditor()
+            viewModel.updateDraft(
+                completeDraft().copy(
+                    name = "CEA 微流控模型",
+                    modelType = AnalysisModelType.DEEP_LEARNING,
+                    modelFileName = "model_uploads/${"a".repeat(64)}.ptl",
+                    modelOriginalFileName = "cea_chip_v1.ptl",
+                    checksumSha256 = "a".repeat(64),
+                    inputWidthInput = "128",
+                    inputHeightInput = "128",
+                    normalizationJson =
+                        "{\"mean\":[0.485,0.456,0.406],\"std\":[0.229,0.224,0.225]}",
+                    trainingDataVersion = "chip-v1",
+                    outputMode = DeepLearningModelOutputMode.PERCENT_OF_RELIABLE_MAX
+                )
+            )
+            val event = async(start = CoroutineStart.UNDISPATCHED) { viewModel.events.first() }
+
+            viewModel.saveDraft()
+            advanceUntilIdle()
+
+            val deepLearning = requireNotNull(modelRepository.createdBundles.single().deepLearning)
+            assertTrue(deepLearning.modelFileName.startsWith("model_uploads/"))
+            assertEquals("a".repeat(64), deepLearning.checksumSha256)
+            assertTrue(
+                deepLearning.metadataJson.orEmpty().contains("PERCENT_OF_RELIABLE_MAX")
+            )
+            assertEquals(AnalysisModelEvent.DraftSaved, event.await())
+        }
 
     @Test
     fun `空设备范围按手机自动采集语义允许发布`() =

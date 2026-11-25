@@ -2,6 +2,7 @@
 
 package com.muc.fluocolorquant.ui.screens.settings
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,20 +20,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -51,7 +51,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.muc.fluocolorquant.ui.components.FluoSectionCard
+import com.muc.fluocolorquant.ui.theme.FluoMotion
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -93,6 +96,7 @@ fun CalibrationSettingsScreen(
     val policy by viewModel.policy.collectAsState()
     val toastManager = LocalToastManager.current
     val resetMessage = stringResource(R.string.calibration_settings_reset_success)
+    var showAdvanced by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -104,7 +108,7 @@ fun CalibrationSettingsScreen(
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier.padding(innerPadding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
@@ -115,37 +119,6 @@ fun CalibrationSettingsScreen(
                     StrategySelector(
                         selected = policy.strategy,
                         onSelected = viewModel::setStrategy
-                    )
-                }
-            }
-
-            item {
-                CalibrationSettingsSection(
-                    title = stringResource(R.string.calibration_settings_candidates_title),
-                    icon = Icons.Default.Functions
-                ) {
-                    FunctionSelector(
-                        selected = policy.allowedFunctions,
-                        onToggle = viewModel::toggleFunction
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    ThresholdSlider(
-                        policy = policy,
-                        onValueChange = viewModel::setSimplicityTolerance
-                    )
-                    LevelStepper(
-                        label = stringResource(R.string.calibration_settings_4pl_levels),
-                        value = policy.minimumFourParameterLevels,
-                        canDecrease = policy.minimumFourParameterLevels > 5,
-                        onDecrease = { viewModel.changeMinimumFourParameterLevels(-1) },
-                        onIncrease = { viewModel.changeMinimumFourParameterLevels(1) }
-                    )
-                    LevelStepper(
-                        label = stringResource(R.string.calibration_settings_5pl_levels),
-                        value = policy.minimumFiveParameterLevels,
-                        canDecrease = policy.minimumFiveParameterLevels > 6,
-                        onDecrease = { viewModel.changeMinimumFiveParameterLevels(-1) },
-                        onIncrease = { viewModel.changeMinimumFiveParameterLevels(1) }
                     )
                 }
             }
@@ -172,49 +145,117 @@ fun CalibrationSettingsScreen(
                 }
             }
 
-            item {
-                CalibrationSettingsSection(
-                    title = stringResource(R.string.calibration_settings_color_features),
-                    icon = Icons.Default.ColorLens
-                ) {
-                    FeatureSelector(
-                        modality = DetectionModality.COLORIMETRIC,
-                        selected = policy.colorimetricFeatures,
-                        onConfirm = viewModel::setColorimetricFeatures
-                    )
-                }
-            }
-
-            item {
-                CalibrationSettingsSection(
-                    title = stringResource(R.string.calibration_settings_fluorescence_features),
-                    icon = Icons.Default.Science
-                ) {
-                    FeatureSelector(
-                        modality = DetectionModality.FLUORESCENCE,
-                        selected = policy.fluorescenceFeatures,
-                        onConfirm = viewModel::setFluorescenceFeatures
-                    )
-                }
-            }
-
-            item {
-                CalibrationSettingsSection(
-                    title = stringResource(R.string.calibration_settings_weighting_title),
-                    icon = Icons.Default.Tune
-                ) {
-                    WeightingSelector(
-                        selected = policy.enabledWeightingCodes,
-                        onToggle = viewModel::toggleWeighting
-                    )
-                }
-            }
-
             item { CalibrationRulePreview(policy = policy) }
+
+            item {
+                FluoSectionCard(verticalSpacing = 8.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Functions,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = stringResource(R.string.calibration_settings_advanced_toggle),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                            Text(stringResource(if (showAdvanced) R.string.collapse else R.string.expand))
+                            Icon(
+                                imageVector = if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = showAdvanced,
+                        enter = FluoMotion.expandEnter,
+                        exit = FluoMotion.expandExit
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Text(
+                                text = stringResource(R.string.calibration_settings_candidates_title),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            FunctionSelector(
+                                selected = policy.allowedFunctions,
+                                onToggle = viewModel::toggleFunction
+                            )
+                            ThresholdSlider(
+                                policy = policy,
+                                onValueChange = viewModel::setSimplicityTolerance
+                            )
+                            LevelStepper(
+                                label = stringResource(R.string.calibration_settings_4pl_levels),
+                                value = policy.minimumFourParameterLevels,
+                                canDecrease = policy.minimumFourParameterLevels > 5,
+                                onDecrease = { viewModel.changeMinimumFourParameterLevels(-1) },
+                                onIncrease = { viewModel.changeMinimumFourParameterLevels(1) }
+                            )
+                            LevelStepper(
+                                label = stringResource(R.string.calibration_settings_5pl_levels),
+                                value = policy.minimumFiveParameterLevels,
+                                canDecrease = policy.minimumFiveParameterLevels > 6,
+                                onDecrease = { viewModel.changeMinimumFiveParameterLevels(-1) },
+                                onIncrease = { viewModel.changeMinimumFiveParameterLevels(1) }
+                            )
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Text(
+                                text = stringResource(R.string.calibration_settings_color_features),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            FeatureSelector(
+                                modality = DetectionModality.COLORIMETRIC,
+                                selected = policy.colorimetricFeatures,
+                                onConfirm = viewModel::setColorimetricFeatures
+                            )
+
+                            Text(
+                                text = stringResource(R.string.calibration_settings_fluorescence_features),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            FeatureSelector(
+                                modality = DetectionModality.FLUORESCENCE,
+                                selected = policy.fluorescenceFeatures,
+                                onConfirm = viewModel::setFluorescenceFeatures
+                            )
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Text(
+                                text = stringResource(R.string.calibration_settings_weighting_title),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            WeightingSelector(
+                                selected = policy.enabledWeightingCodes,
+                                onToggle = viewModel::toggleWeighting
+                            )
+                        }
+                    }
+                }
+            }
 
             item {
                 OutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(FluoRadius.control),
                     onClick = {
                         viewModel.reset()
                         toastManager.showToast(resetMessage, ToastType.SUCCESS)
@@ -229,49 +270,41 @@ fun CalibrationSettingsScreen(
     }
 }
 
-/** 统一设置分组外观，减少整页卡片风格漂移。 */
+/** 统一设置分组外观，采用冷白描边科研卡片。 */
 @Composable
 private fun CalibrationSettingsSection(
     title: String,
     icon: ImageVector,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(FluoRadius.card)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    FluoSectionCard(verticalSpacing = 12.dp) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = RoundedCornerShape(FluoRadius.badge),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(FluoRadius.badge),
-                    color = MaterialTheme.colorScheme.primaryContainer
+                Box(
+                    modifier = Modifier.size(34.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier.size(34.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
             }
-            content()
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
         }
+        content()
     }
 }
 
@@ -672,34 +705,28 @@ private fun WeightingSelector(
 @Composable
 private fun CalibrationRulePreview(policy: CalibrationPolicy) {
     val recommended = previewRecommendation(policy)
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(FluoRadius.card)
+    FluoSectionCard(
+        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.24f),
+        verticalSpacing = 6.dp
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                stringResource(R.string.calibration_settings_preview_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                stringResource(R.string.calibration_settings_preview_metrics),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                stringResource(
-                    R.string.calibration_settings_preview_recommendation,
-                    functionLabel(recommended)
-                ),
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        Text(
+            stringResource(R.string.calibration_settings_preview_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            stringResource(R.string.calibration_settings_preview_metrics),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            stringResource(
+                R.string.calibration_settings_preview_recommendation,
+                functionLabel(recommended)
+            ),
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -743,7 +770,7 @@ private fun modelComplexity(function: FittingFunction): Int = when (function) {
 }
 
 @Composable
-private fun functionLabel(function: FittingFunction): String = stringResource(
+internal fun functionLabel(function: FittingFunction): String = stringResource(
     when (function) {
         FittingFunction.LINEAR -> R.string.fitting_function_linear
         FittingFunction.QUADRATIC -> R.string.fitting_function_quadratic

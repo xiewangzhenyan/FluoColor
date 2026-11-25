@@ -1,5 +1,7 @@
 package com.muc.fluocolorquant.ui.screens.settings.analysis
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +39,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
@@ -80,6 +83,7 @@ import com.muc.fluocolorquant.data.enums.ResourceStatus
 import com.muc.fluocolorquant.data.model.AcquisitionProfile
 import com.muc.fluocolorquant.data.model.AnalysisModel
 import com.muc.fluocolorquant.data.model.Analyte
+import com.muc.fluocolorquant.data.storage.DeepLearningModelFileFailureReason
 import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR_NAME
 import com.muc.fluocolorquant.domain.detection.photometry.COLORIMETRIC_PROCESSOR_VERSION
 import com.muc.fluocolorquant.domain.detection.photometry.FLUORESCENCE_PROCESSOR_NAME
@@ -93,6 +97,7 @@ import com.muc.fluocolorquant.ui.viewmodels.AnalysisModelEditorMode
 import com.muc.fluocolorquant.ui.viewmodels.AnalysisModelEvent
 import com.muc.fluocolorquant.ui.viewmodels.AnalysisModelUiState
 import com.muc.fluocolorquant.ui.viewmodels.AnalysisModelViewModel
+import com.muc.fluocolorquant.ui.viewmodels.DeepLearningModelFileUiState
 import kotlinx.coroutines.flow.Flow
 import com.muc.fluocolorquant.ui.theme.FluoRadius
 
@@ -116,6 +121,11 @@ fun AnalysisModelManagementScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     AnalysisModelEventEffect(viewModel.events)
+    val modelFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let(viewModel::importDeepLearningModel)
+    }
 
     AnalysisModelManagementContent(
         state = state,
@@ -129,6 +139,11 @@ fun AnalysisModelManagementScreen(
         onPublish = viewModel::publish,
         onArchive = viewModel::archive,
         onDraftChange = viewModel::updateDraft,
+        onImportModelFile = {
+            // PTL 通常由 DocumentsProvider 作为 application/octet-stream 返回；保留 */*
+            // 兜底，实际扩展名、大小和 Lite 格式仍由文件管理器严格校验。
+            modelFilePicker.launch(arrayOf("application/octet-stream", "*/*"))
+        },
         onDismissEditor = viewModel::dismissEditor,
         onSaveDraft = viewModel::saveDraft
     )
@@ -154,6 +169,7 @@ fun AnalysisModelManagementContent(
     onPublish: (String) -> Unit,
     onArchive: (String) -> Unit,
     onDraftChange: (AnalysisModelDraft) -> Unit,
+    onImportModelFile: () -> Unit = {},
     onDismissEditor: () -> Unit,
     onSaveDraft: () -> Unit
 ) {
@@ -230,6 +246,7 @@ fun AnalysisModelManagementContent(
         AnalysisModelEditorSheet(
             state = state,
             onDraftChange = onDraftChange,
+            onImportModelFile = onImportModelFile,
             onDismiss = onDismissEditor,
             onSave = onSaveDraft
         )
@@ -685,6 +702,7 @@ private fun StatusBadge(status: String) {
 private fun AnalysisModelEditorSheet(
     state: AnalysisModelUiState,
     onDraftChange: (AnalysisModelDraft) -> Unit,
+    onImportModelFile: () -> Unit,
     onDismiss: () -> Unit,
     onSave: () -> Unit
 ) {
@@ -834,8 +852,8 @@ private fun AnalysisModelEditorSheet(
                     )
                 }
             )
-            // 采集设备兼容性会直接影响模型是否能用于正式定量，因此不能由“万能默认设备”
-            // 偷偷满足。为保持普通表单简洁，将它放入高级折叠区，但发布前仍要求明确选择。
+            // 固定设备档案属于可选的严格约束：只在模型确实经过该设备/光学模块验证时选择。
+            // 留空会在运行时冻结真实手机与曝光元数据，但不能被解释成已完成设备级验证。
             TextButton(
                 onClick = { showAdvancedCompatibility = !showAdvancedCompatibility },
                 modifier = Modifier.fillMaxWidth()
@@ -887,12 +905,18 @@ private fun AnalysisModelEditorSheet(
             EditorSectionTitle(stringResource(R.string.analysis_model_definition_section))
             when (draft.modelType) {
                 AnalysisModelType.STANDARD_CURVE -> StandardCurveFields(draft, onDraftChange)
-                AnalysisModelType.DEEP_LEARNING -> DeepLearningFields(draft, onDraftChange)
+                AnalysisModelType.DEEP_LEARNING -> DeepLearningFields(
+                    draft = draft,
+                    fileState = state.modelFileState,
+                    onImportModelFile = onImportModelFile,
+                    onDraftChange = onDraftChange
+                )
             }
 
             Button(
                 onClick = onSave,
-                enabled = !state.isSaving,
+                enabled = !state.isSaving &&
+                    state.modelFileState !is DeepLearningModelFileUiState.Importing,
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(vertical = 13.dp)
             ) {
@@ -950,21 +974,102 @@ private fun StandardCurveFields(
 @Composable
 private fun DeepLearningFields(
     draft: AnalysisModelDraft,
+    fileState: DeepLearningModelFileUiState,
+    onImportModelFile: () -> Unit,
     onDraftChange: (AnalysisModelDraft) -> Unit
 ) {
+    Surface(
+        shape = RoundedCornerShape(FluoRadius.control),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                Icon(Icons.Default.Memory, contentDescription = null)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.analysis_model_import_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(R.string.analysis_model_import_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Button(
+                onClick = onImportModelFile,
+                enabled = fileState !is DeepLearningModelFileUiState.Importing,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (fileState is DeepLearningModelFileUiState.Importing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(
+                        if (draft.modelFileName.isBlank()) {
+                            R.string.analysis_model_import_choose
+                        } else {
+                            R.string.analysis_model_import_replace
+                        }
+                    )
+                )
+            }
+            when (fileState) {
+                DeepLearningModelFileUiState.Idle -> Unit
+                DeepLearningModelFileUiState.Importing -> Text(
+                    stringResource(R.string.analysis_model_importing),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                is DeepLearningModelFileUiState.Ready -> Text(
+                    stringResource(
+                        R.string.analysis_model_import_ready,
+                        fileState.originalFileName,
+                        formatFileSize(fileState.byteCount)
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                is DeepLearningModelFileUiState.Failed -> Text(
+                    modelFileFailureMessage(fileState.reason),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
     OutlinedTextField(
-        value = draft.modelFileName,
-        onValueChange = { onDraftChange(draft.copy(modelFileName = it)) },
+        value = draft.modelOriginalFileName.ifBlank {
+            draft.modelFileName.substringAfterLast('/')
+        },
+        onValueChange = {},
         label = { Text(stringResource(R.string.analysis_model_file_label)) },
         modifier = Modifier.fillMaxWidth(),
-        singleLine = true
+        singleLine = true,
+        readOnly = true
     )
     OutlinedTextField(
         value = draft.checksumSha256,
-        onValueChange = { onDraftChange(draft.copy(checksumSha256 = it)) },
+        onValueChange = {},
         label = { Text(stringResource(R.string.analysis_model_checksum_label)) },
         modifier = Modifier.fillMaxWidth(),
-        minLines = 2
+        minLines = 2,
+        readOnly = true,
+        supportingText = { Text(stringResource(R.string.analysis_model_checksum_auto_desc)) }
     )
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedTextField(
@@ -996,6 +1101,77 @@ private fun DeepLearningFields(
         modifier = Modifier.fillMaxWidth(),
         singleLine = true
     )
+    ChoiceRow(
+        title = stringResource(R.string.analysis_model_output_mode_label),
+        options = DeepLearningModelOutputMode.entries,
+        selected = draft.outputMode,
+        label = { outputModeLabel(it) },
+        onSelected = { onDraftChange(draft.copy(outputMode = it)) }
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedTextField(
+            value = draft.outputScaleInput,
+            onValueChange = { onDraftChange(draft.copy(outputScaleInput = it)) },
+            label = { Text(stringResource(R.string.analysis_model_output_scale_label)) },
+            modifier = Modifier.weight(1f),
+            singleLine = true
+        )
+        OutlinedTextField(
+            value = draft.outputOffsetInput,
+            onValueChange = { onDraftChange(draft.copy(outputOffsetInput = it)) },
+            label = { Text(stringResource(R.string.analysis_model_output_offset_label)) },
+            modifier = Modifier.weight(1f),
+            singleLine = true
+        )
+    }
+    Text(
+        stringResource(R.string.analysis_model_output_contract_desc),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+private fun outputModeLabel(mode: DeepLearningModelOutputMode): String = when (mode) {
+    DeepLearningModelOutputMode.RAW_CONCENTRATION -> stringResource(
+        R.string.analysis_model_output_raw
+    )
+    DeepLearningModelOutputMode.PERCENT_OF_RELIABLE_MAX -> stringResource(
+        R.string.analysis_model_output_percent
+    )
+    DeepLearningModelOutputMode.FRACTION_OF_RELIABLE_MAX -> stringResource(
+        R.string.analysis_model_output_fraction
+    )
+}
+
+@Composable
+private fun modelFileFailureMessage(reason: DeepLearningModelFileFailureReason): String {
+    val resource = when (reason) {
+        DeepLearningModelFileFailureReason.UNSUPPORTED_FILE_TYPE ->
+            R.string.analysis_model_import_error_type
+        DeepLearningModelFileFailureReason.EMPTY_FILE,
+        DeepLearningModelFileFailureReason.READ_FAILED,
+        DeepLearningModelFileFailureReason.FILE_MISSING ->
+            R.string.analysis_model_import_error_read
+        DeepLearningModelFileFailureReason.FILE_TOO_LARGE ->
+            R.string.analysis_model_import_error_size
+        DeepLearningModelFileFailureReason.INVALID_LITE_MODULE ->
+            R.string.analysis_model_import_error_lite
+        DeepLearningModelFileFailureReason.CHECKSUM_MISMATCH ->
+            R.string.analysis_model_import_error_checksum
+        DeepLearningModelFileFailureReason.INPUT_SIZE_INVALID,
+        DeepLearningModelFileFailureReason.NORMALIZATION_INVALID,
+        DeepLearningModelFileFailureReason.INFERENCE_CONTRACT_INVALID,
+        DeepLearningModelFileFailureReason.NON_FINITE_OUTPUT ->
+            R.string.analysis_model_import_error_contract
+    }
+    return stringResource(resource)
+}
+
+private fun formatFileSize(byteCount: Long): String = when {
+    byteCount <= 0L -> "—"
+    byteCount < 1024L * 1024L -> "${byteCount / 1024L} KB"
+    else -> String.format(java.util.Locale.US, "%.1f MB", byteCount / (1024.0 * 1024.0))
 }
 
 @Composable
@@ -1234,8 +1410,14 @@ private fun AnalysisModelEventEffect(events: Flow<AnalysisModelEvent>) {
         ),
         AnalysisModelFormError.TRAINING_DATA_VERSION_REQUIRED to stringResource(
             R.string.analysis_model_validation_file
+        ),
+        AnalysisModelFormError.OUTPUT_CONTRACT_INVALID to stringResource(
+            R.string.analysis_model_validation_output_contract
         )
     )
+    val modelFileFailureMessages = DeepLearningModelFileFailureReason.entries.associateWith { reason ->
+        modelFileFailureMessage(reason)
+    }
 
     LaunchedEffect(events) {
         events.collect { event ->
@@ -1256,6 +1438,10 @@ private fun AnalysisModelEventEffect(events: Flow<AnalysisModelEvent>) {
                 AnalysisModelEvent.Archived -> toastManager.showToast(
                     archived,
                     ToastType.SUCCESS
+                )
+                is AnalysisModelEvent.ModelContractValidationFailed -> toastManager.showToast(
+                    modelFileFailureMessages.getValue(event.reason),
+                    ToastType.ERROR
                 )
                 is AnalysisModelEvent.OperationFailed -> toastManager.showToast(
                     failed,

@@ -70,7 +70,11 @@ enum class ArraySiteQcCode {
     NON_UNIFORM,
     BACKGROUND_ANOMALY,
     HOT_PIXEL,
-    SPECULAR_HIGHLIGHT
+    SPECULAR_HIGHLIGHT,
+    SEGMENTATION_ANOMALY,
+    NEGATIVE_NET_SIGNAL,
+    BACKGROUND_INSUFFICIENT,
+    MANUAL_BAD
 }
 
 data class ArraySiteQcEntry(
@@ -85,6 +89,9 @@ fun buildArraySiteQcEntries(snapshot: ArrayResultSnapshot): List<ArraySiteQcEntr
         val codes = buildSet {
             when (site.geometry.source) {
                 GridPointSource.CANDIDATE_REFINED -> Unit
+                GridPointSource.MANUAL_ANCHOR,
+                GridPointSource.MANUAL_INTERPOLATED,
+                GridPointSource.USER_ADJUSTED -> Unit // 人工来源不是光度失败，硬质量问题仍由下面的逐孔 QC 标识。
                 GridPointSource.MODEL_IMPUTED -> add(ArraySiteQcCode.MODEL_IMPUTED)
                 GridPointSource.UNADJUSTED -> add(ArraySiteQcCode.UNADJUSTED)
             }
@@ -114,6 +121,10 @@ fun buildArraySiteQcEntries(snapshot: ArrayResultSnapshot): List<ArraySiteQcEntr
                         "BACKGROUND_ANOMALY" -> add(ArraySiteQcCode.BACKGROUND_ANOMALY)
                         "HOT_PIXEL" -> add(ArraySiteQcCode.HOT_PIXEL)
                         "SPECULAR_HIGHLIGHT" -> add(ArraySiteQcCode.SPECULAR_HIGHLIGHT)
+                        "SEGMENTATION_ANOMALY" -> add(ArraySiteQcCode.SEGMENTATION_ANOMALY)
+                        "NEGATIVE_NET_SIGNAL" -> add(ArraySiteQcCode.NEGATIVE_NET_SIGNAL)
+                        "BACKGROUND_INSUFFICIENT" -> add(ArraySiteQcCode.BACKGROUND_INSUFFICIENT)
+                        "MANUAL_BAD" -> add(ArraySiteQcCode.MANUAL_BAD)
                     }
                 }
                 measurement.qc.geometryFlags.forEach { flag ->
@@ -199,6 +210,10 @@ private fun GeometrySummaryCard(snapshot: ArrayResultSnapshot) {
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
+            if (snapshot.frame.chipRegionMethod == com.muc.fluocolorquant.domain.detection.grid.ManualGridGeometry.METHOD) {
+                Text(stringResource(R.string.grid_manual_summary, snapshot.rows * snapshot.columns - 4))
+                return@Column
+            }
             Text(
                 text = stringResource(
                     R.string.array_result_geometry_qc_body,
@@ -428,6 +443,10 @@ private fun siteQcTitle(code: ArraySiteQcCode): String = when (code) {
     ArraySiteQcCode.BACKGROUND_ANOMALY -> stringResource(R.string.array_qc_site_background_title)
     ArraySiteQcCode.HOT_PIXEL -> stringResource(R.string.array_qc_site_hot_pixel_title)
     ArraySiteQcCode.SPECULAR_HIGHLIGHT -> stringResource(R.string.array_qc_site_specular_title)
+    ArraySiteQcCode.SEGMENTATION_ANOMALY -> stringResource(R.string.array_qc_site_segmentation_title)
+    ArraySiteQcCode.NEGATIVE_NET_SIGNAL -> stringResource(R.string.array_qc_site_negative_net_title)
+    ArraySiteQcCode.BACKGROUND_INSUFFICIENT -> stringResource(R.string.array_qc_site_bg_insufficient_title)
+    ArraySiteQcCode.MANUAL_BAD -> stringResource(R.string.array_qc_site_manual_bad_title)
 }
 
 @Composable
@@ -447,6 +466,10 @@ private fun siteQcAdvice(code: ArraySiteQcCode): String = when (code) {
     ArraySiteQcCode.BACKGROUND_ANOMALY -> stringResource(R.string.array_qc_site_background_advice)
     ArraySiteQcCode.HOT_PIXEL -> stringResource(R.string.array_qc_site_hot_pixel_advice)
     ArraySiteQcCode.SPECULAR_HIGHLIGHT -> stringResource(R.string.array_qc_site_specular_advice)
+    ArraySiteQcCode.SEGMENTATION_ANOMALY -> stringResource(R.string.array_qc_site_segmentation_advice)
+    ArraySiteQcCode.NEGATIVE_NET_SIGNAL -> stringResource(R.string.array_qc_site_negative_net_advice)
+    ArraySiteQcCode.BACKGROUND_INSUFFICIENT -> stringResource(R.string.array_qc_site_bg_insufficient_advice)
+    ArraySiteQcCode.MANUAL_BAD -> stringResource(R.string.array_qc_site_manual_bad_advice)
 }
 
 private fun siteQcSeverity(code: ArraySiteQcCode): GridQcSeverity = when (code) {
@@ -456,7 +479,9 @@ private fun siteQcSeverity(code: ArraySiteQcCode): GridQcSeverity = when (code) 
     ArraySiteQcCode.LOW_LOCAL_EVIDENCE,
     ArraySiteQcCode.EXTRAPOLATED_POSITION,
     ArraySiteQcCode.BELOW_RELIABLE_RANGE,
-    ArraySiteQcCode.ABOVE_RELIABLE_RANGE -> GridQcSeverity.WARNING
+    ArraySiteQcCode.ABOVE_RELIABLE_RANGE,
+    ArraySiteQcCode.NEGATIVE_NET_SIGNAL,
+    ArraySiteQcCode.BACKGROUND_INSUFFICIENT -> GridQcSeverity.WARNING
     else -> GridQcSeverity.FAILURE
 }
 

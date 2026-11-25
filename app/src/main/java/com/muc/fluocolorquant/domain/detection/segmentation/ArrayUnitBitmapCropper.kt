@@ -2,6 +2,11 @@ package com.muc.fluocolorquant.domain.detection.segmentation
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import com.muc.fluocolorquant.domain.detection.grid.ManualGridGeometry
+import com.muc.fluocolorquant.domain.detection.grid.PgGridResult
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.hypot
 
 /**
  * 方形芯片单元与圆形孔板共用的 Bitmap 裁切器。
@@ -10,6 +15,27 @@ import android.graphics.Color
  * 圆形/自定义区域可选择把掩膜外像素设为透明，避免界面把矩形外接框四角误认为孔内信号。
  */
 object ArrayUnitBitmapCropper {
+
+    /** 自定义圆孔的手动方案与标准板使用同一相对内径定义，矩形布局仍按最小相邻间距约束。 */
+    fun manualCircularRegions(grid: PgGridResult, diameterRatio: Double): ArrayUnitSegmentationResult {
+        val radius = ManualGridGeometry.circularRadius(grid, diameterRatio)
+        val regions = grid.sites.map { site ->
+            val center = site.rectified
+            val bounds = ArrayUnitBounds(floor(center.x - radius).toInt().coerceAtLeast(0),
+                floor(center.y - radius).toInt().coerceAtLeast(0), (ceil(center.x + radius).toInt() + 1).coerceAtMost(grid.rectifiedWidth),
+                (ceil(center.y + radius).toInt() + 1).coerceAtMost(grid.rectifiedHeight))
+            val mask = ByteArray(bounds.width * bounds.height) { offset ->
+                val pixelX = bounds.left + offset % bounds.width
+                val pixelY = bounds.top + offset / bounds.width
+                if (hypot(pixelX - center.x, pixelY - center.y) <= radius) 1 else 0
+            }
+            ArrayUnitRegion(site.siteIndex,site.key.rowIndex,site.key.columnIndex,ArrayUnitShape.CIRCLE,bounds,
+                ArrayUnitRegionSource.MANUAL_GEOMETRY,mask)
+        }
+        val diameter = ceil(2 * radius).toInt().coerceAtLeast(1)
+        return ArrayUnitSegmentationResult(grid.rows,grid.columns,grid.rectifiedWidth,grid.rectifiedHeight,
+            2 * radius / diameterRatio,diameter,diameter,regions).requireValid()
+    }
 
     fun crop(
         source: Bitmap,

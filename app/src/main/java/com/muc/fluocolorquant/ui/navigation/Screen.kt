@@ -1,5 +1,7 @@
 package com.muc.fluocolorquant.ui.navigation
 
+import android.net.Uri
+
 /**
  * 定义应用的所有页面路由
  */
@@ -11,8 +13,12 @@ sealed class Screen(open val route: String) {
     object NewProject : Screen("new_project") {
         fun createRoute(): String = route
     }
-    object QuickCreateProject : Screen("quick_create_project") {
-        fun createRoute(): String = route
+    /** 直接新建项目的唯一生产路由；旧 quick_create_project 只在导航图中作为入站别名。 */
+    object DirectCreateProject : Screen("direct_create_project") {
+        fun createRoute(templateId: String? = null): String {
+            return if (templateId.isNullOrBlank()) route else "$route?templateId=${Uri.encode(templateId)}"
+        }
+        const val LEGACY_ROUTE: String = "quick_create_project"
     }
     object ImageCapture : Screen("image_capture") {
         fun createRoute(
@@ -48,22 +54,25 @@ sealed class Screen(open val route: String) {
         fun createRoute(runId: String): String {
             return "$route/$runId"
         }
-    }
-    
-    // 添加新的结果展示页面路由
-    object NewResult : Screen("new_result") {
-        fun createRoute(runId: String): String {
-            return "$route/$runId"
-        }
+
+        /** 2.x 旧入口继续接收历史返回栈，但所有新跳转只生成 [createRoute]。 */
+        fun legacyRoute(runId: String): String = "new_result/$runId"
     }
     object History : Screen("history")
     object Settings : Screen("settings")
     object Profile : Screen("profile")
     object AppSettings : Screen("app_settings")
+    /** 统一管理新建预填（检测方式、自定义阵列规格、浓度单位）与全局孔内取值/多孔统计默认值。 */
     object DetectionSettings : Screen("detection_settings")
+    /** 旧版独立阵列分析入口入站别名，自动跳转至 [DetectionSettings]。 */
+    object ArrayAnalysisSettings : Screen("array_analysis_settings")
     object SpectrumSettings : Screen("spectrum_settings")
     object AnalyteManagement : Screen("analyte_management")
-    object ReagentLibrary : Screen("reagent_library")
+    object ReagentLibrary : Screen("reagent_library") {
+        fun createRoute(analyteId: String? = null): String {
+            return if (analyteId.isNullOrBlank()) route else "$route?analyteId=${Uri.encode(analyteId)}"
+        }
+    }
     object CurveModelLibrary : Screen("curve_model_library")
     object CalibrationSettings : Screen("calibration_settings")
     // 旧路由继续指向统一分析模型库；历史曲线使用独立兼容入口，避免旧项目数据丢失。

@@ -38,6 +38,8 @@ fun ImageCropScreen(
     // uCrop 的配置在 LaunchedEffect 里构造，而 stringResource 与 MaterialTheme 只能在
     // Composable 上下文读取，因此先取到局部变量（AGENTS.md 5）。
     val cropTitle = stringResource(R.string.image_crop_title)
+    val originalRatio = stringResource(R.string.image_crop_original_ratio)
+    val croppingAvatar = navController.previousBackStackEntry?.destination?.route == Screen.Profile.route
     val accentColorArgb = MaterialTheme.colorScheme.primary.toArgb()
     // var isLoading by remember { mutableStateOf(false) } // isLoading 似乎没有在UI中使用，可以考虑移除
 
@@ -142,13 +144,13 @@ fun ImageCropScreen(
 
                 options.setHideBottomControls(false)
 
-                // 添加宽高比选项 (对应图3的功能)
-                // 第一个参数是默认选中的宽高比的索引
+                // 检测图首次打开保留原始比例，避免竖拍 8×12 板没拖框就裁掉整行孔，
+                // 或把矩形芯片与多通道光谱误裁成方图。头像仍沿用方形默认，检测图仍可主动选比例或自由裁切。
                 options.setAspectRatioOptions(
-                    0, // 默认选中第一个 (例如 "1:1")
-                    AspectRatio("1:1", 1f, 1f),
+                    0,
+                    if (croppingAvatar) AspectRatio("1:1", 1f, 1f) else AspectRatio(originalRatio, 0f, 0f),
                     AspectRatio("4:3", 4f, 3f),
-                    AspectRatio("ORIGINAL", 0f, 0f), // 0,0 表示原始比例
+                    if (croppingAvatar) AspectRatio(originalRatio, 0f, 0f) else AspectRatio("1:1", 1f, 1f),
                     AspectRatio("3:2", 3f, 2f),
                     AspectRatio("16:9", 16f, 9f)
                 )

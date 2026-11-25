@@ -90,8 +90,13 @@ fun Plate96WellThumbnail(
     }
 }
 
-/** 以运行ID和孔位索引缓存结果缩略图，避免列表滚动反复解码整张原图。 */
-private object Plate96WellThumbnailLoader {
+/**
+ * 以运行ID和孔位索引缓存真实圆孔裁切图，避免列表滚动或 PDF 导出反复解码整张原图。
+ *
+ * 该加载器只消费结果快照中已经冻结的图像路径与裁切边界，不重新执行定位。开放为模块内
+ * 能力后，页面缩略图与 PDF 逐孔附录会读取同一份图像证据，避免再次维护两套裁切逻辑。
+ */
+internal object Plate96WellThumbnailLoader {
     private const val TARGET_SIZE_PX = 128
     private val sourceCache = object : LruCache<String, Bitmap>(32 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024

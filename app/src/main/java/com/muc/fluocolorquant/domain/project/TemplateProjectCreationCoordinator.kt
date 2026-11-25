@@ -359,7 +359,10 @@ class TemplateProjectCreationCoordinator @Inject constructor(
             analytes = resolvedAnalytes,
             siteAssignments = bundle.siteAssignments.sortedWith(
                 compareBy({ it.rowIndex }, { it.columnIndex }, { it.id })
-            )
+            ),
+            sourceTemplateId = template.id,
+            sourceTemplateName = template.templateName,
+            sourceTemplateVersion = template.version
         )
         return TemplateResolution.Ready(
             ResolvedTemplateProjectConfiguration(

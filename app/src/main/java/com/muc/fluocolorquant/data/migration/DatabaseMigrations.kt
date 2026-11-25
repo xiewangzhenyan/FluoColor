@@ -169,6 +169,152 @@ object DatabaseMigrations {
     }
 
     /**
+     * 版本 15 → 16：为每条光谱结果增加处理参数与算法版本快照。
+     *
+     * 旧记录保持 null，读取时由领域层明确映射为固定 Legacy 配置；迁移阶段不能拿安装设备
+     * 当前的 DataStore 设置回填，否则同一数据库在不同设备上的历史解释会不一致。
+     */
+    val MIGRATION_15_16: Migration = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `spectrum_results` ADD COLUMN `processingConfigJson` TEXT")
+            db.execSQL("ALTER TABLE `spectrum_results` ADD COLUMN `processorVersion` TEXT")
+        }
+    }
+
+    /**
+     * 版本 16 → 17：为光谱结果增加项目采集光源快照。
+     *
+     * 旧结果保持 null，不能拿 `projects.lightSource` 回填：项目元数据可能在结果生成后被修改，
+     * 回填会把“当前项目值”伪装成“当时采集值”，破坏历史结果的可追溯性。
+     */
+    val MIGRATION_16_17: Migration = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `spectrum_results` ADD COLUMN `lightSourceSnapshot` TEXT")
+        }
+    }
+
+    /**
+     * 版本 17 → 18：开始“完整运行快照 + 定量 V2”科研数据代际。
+     *
+     * 用户已经明确选择重新发布后不保留旧项目、历史运行、曲线、模板和载体配置。这里
+     * 采用显式表级清退而不是 destructive migration：账户、分析物、试剂以及数据库外的
+     * 语言/主题等普通设置均被保留。删除顺序从子表到主表，既满足外键约束，也让迁移测试
+     * 可以精确证明清理范围；默认载体和采集档案会在数据库打开回调中重新幂等播种。
+     */
+    val MIGRATION_17_18: Migration = object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 运行与项目数据：先删除全部子资源，禁止依赖某台设备是否启用了外键级联。
+            db.execSQL("DELETE FROM `result_validation_records`")
+            db.execSQL("DELETE FROM `capture_artifacts`")
+            db.execSQL("DELETE FROM `site_measurements`")
+            db.execSQL("DELETE FROM `well_results`")
+            db.execSQL("DELETE FROM `spectrum_results`")
+            db.execSQL("DELETE FROM `spectrum_calibrations`")
+            db.execSQL("DELETE FROM `detection_runs`")
+            db.execSQL("DELETE FROM `project_analytes_join`")
+            db.execSQL("DELETE FROM `projects`")
+
+            // 模板与定量绑定必须整体清退，避免新项目继续引用缺少 V2 快照语义的旧方案。
+            db.execSQL("DELETE FROM `template_quantitation_bindings`")
+            db.execSQL("DELETE FROM `template_site_assignments`")
+            db.execSQL("DELETE FROM `template_analyte_configs`")
+            db.execSQL("DELETE FROM `experiment_templates`")
+
+            // 旧曲线和模型没有完整量程/逐孔状态快照，不能进入新数据代际的自动匹配。
+            db.execSQL("DELETE FROM `deep_learning_model_definitions`")
+            db.execSQL("DELETE FROM `calibration_points`")
+            db.execSQL("DELETE FROM `standard_curve_definitions`")
+            db.execSQL("DELETE FROM `analysis_models`")
+            db.execSQL("DELETE FROM `curve_models`")
+
+            // 载体/采集档案可能携带旧路由和定位 JSON；清理后由 V2 默认资源重新播种。
+            db.execSQL("DELETE FROM `carrier_profiles`")
+            db.execSQL("DELETE FROM `acquisition_profiles`")
+        }
+    }
+
+    /**
+     * 版本 18 → 19：新增比色—荧光双模态判定修订表。
+     *
+     * 判定记录同时关联比色运行与荧光运行，任一侧删除即级联清理；记录只追加修订，
+     * 不回写 DetectionRun 或 SiteMeasurement，两次运行冻结的浓度保持不变。
+     */
+    val MIGRATION_18_19: Migration = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `dual_modal_adjudication_records` (
+                    `adjudicationId` TEXT NOT NULL,
+                    `colorimetricRunId` TEXT NOT NULL,
+                    `fluorescenceRunId` TEXT NOT NULL,
+                    `revision` INTEGER NOT NULL,
+                    `revoked` INTEGER NOT NULL,
+                    `ruleVersion` TEXT NOT NULL,
+                    `thresholdsJson` TEXT NOT NULL,
+                    `readingsJson` TEXT NOT NULL,
+                    `inputFingerprint` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`adjudicationId`),
+                    FOREIGN KEY(`colorimetricRunId`) REFERENCES `detection_runs`(`runId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`fluorescenceRunId`) REFERENCES `detection_runs`(`runId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_dual_modal_adjudication_records_colorimetricRunId` " +
+                    "ON `dual_modal_adjudication_records` (`colorimetricRunId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_dual_modal_adjudication_records_fluorescenceRunId` " +
+                    "ON `dual_modal_adjudication_records` (`fluorescenceRunId`)"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                    "`index_dual_modal_adjudication_records_colorimetricRunId_fluorescenceRunId_revision` " +
+                    "ON `dual_modal_adjudication_records` (`colorimetricRunId`, `fluorescenceRunId`, `revision`)"
+            )
+        }
+    }
+
+    /**
+     * 版本 19 → 20：判定修订表新增可空列 `networkJson`，冻结 DualNet 网络判读。
+     *
+     * 只追加列，不改写任何已有修订；旧修订该列为空，页面显示"本修订没有网络判读"，
+     * 重新判定才会生成新的、带网络判读的修订。
+     */
+    val MIGRATION_19_20: Migration = object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `dual_modal_adjudication_records` ADD COLUMN `networkJson` TEXT")
+        }
+    }
+
+    /**
+     * 版本 20 → 21：分析物表追加可空预设列（默认单位、默认最大浓度、默认荧光通道、阳性参考阈值）。
+     *
+     * 纯追加可空列，完全保留既有分析物、项目、模板、标准曲线与历史运行快照；旧记录保持 NULL，
+     * 不会回改任何已冻结项目的单位、量程或通道配置。
+     */
+    val MIGRATION_20_21: Migration = object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `analytes` ADD COLUMN `defaultUnit` TEXT")
+            db.execSQL("ALTER TABLE `analytes` ADD COLUMN `defaultMaxConcentration` REAL")
+            db.execSQL("ALTER TABLE `analytes` ADD COLUMN `defaultFluorescenceChannel` TEXT")
+            db.execSQL("ALTER TABLE `analytes` ADD COLUMN `referenceCutoff` REAL")
+        }
+    }
+
+    /**
+     * 版本 21 → 22：为 `reagents` 表补充可空批号/货号列 `lotNumber`，支撑实验批次与报告溯源。
+     */
+    val MIGRATION_21_22: Migration = object : Migration(21, 22) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `reagents` ADD COLUMN `lotNumber` TEXT")
+        }
+    }
+
+    /**
      * 重建模板主表并保持所有外部引用仍指向 `experiment_templates`。
      *
      * `legacy_alter_table` 防止 SQLite 在旧表改名时把子表外键同步改到临时表名；新表

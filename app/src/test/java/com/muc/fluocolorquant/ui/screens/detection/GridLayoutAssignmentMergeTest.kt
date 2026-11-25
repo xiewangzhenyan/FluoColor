@@ -18,6 +18,29 @@ import org.junit.Test
 class GridLayoutAssignmentMergeTest {
 
     @Test
+    fun `阳控绘制时保留名义浓度而样本不携带浓度`() {
+        fun paintRole(role: TemplateSiteRole, sites: List<Int>) = mergePaintedAssignments(
+            existing = emptyMap(),
+            paintedSiteIndices = sites.toSet(),
+            rows = 15,
+            columns = 15,
+            analyteId = "cea",
+            role = role,
+            standardConcentration = 25.0,
+            sampleId = null,
+            clearMode = false
+        )
+
+        val positive = paintRole(TemplateSiteRole.POSITIVE_CONTROL, listOf(13, 28))
+        val sample = paintRole(TemplateSiteRole.SAMPLE, listOf(1))
+
+        // 双模态判定以阳控名义浓度比较实测与曲线预测信号；直接新建的项目必须能保存它。
+        assertEquals(25.0, positive.assignments.getValue(13).standardConcentration)
+        assertEquals(25.0, positive.assignments.getValue(28).standardConcentration)
+        assertEquals(null, sample.assignments.getValue(1).standardConcentration)
+    }
+
+    @Test
     fun `连续两笔绘制会保留第一笔并累计十个孔位`() {
         val first = paint(emptyMap(), 0 until 5, analyteId = "cea")
         val second = paint(first.assignments, 15 until 20, analyteId = "cea")

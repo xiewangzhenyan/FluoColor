@@ -8,6 +8,7 @@ import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.model.CarrierProfile
 import com.muc.fluocolorquant.data.model.CalibrationPoint
 import com.muc.fluocolorquant.data.model.DetectionRun
+import com.muc.fluocolorquant.data.model.DeepLearningModelDefinition
 import com.muc.fluocolorquant.data.model.ExperimentTemplate
 import com.muc.fluocolorquant.data.model.Project
 import com.muc.fluocolorquant.data.model.SiteMeasurement
@@ -31,6 +32,9 @@ import com.muc.fluocolorquant.domain.detection.photometry.FluorescenceSitePhotom
 import com.muc.fluocolorquant.domain.detection.photometry.LabPhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.RgbPhotometry
 import com.muc.fluocolorquant.domain.detection.photometry.SitePhotometryQc
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryDirection
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryReason
+import com.muc.fluocolorquant.domain.detection.quantification.RangeRecoveryStatus
 import com.muc.fluocolorquant.domain.project.TemplateProjectAnalyteSnapshot
 import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideCodec
 import com.muc.fluocolorquant.domain.project.TemplateProjectOverrideSnapshot
@@ -72,8 +76,9 @@ class ArrayResultSnapshotMapperTest {
         assertEquals(2, analyte.calibrationPoints.size)
         assertEquals(0.0, analyte.projectRangeMin ?: Double.NaN, 1e-9)
         assertEquals(100.0, analyte.projectRangeMax ?: Double.NaN, 1e-9)
-        assertEquals(28.0, analyte.calibrationRangeMin ?: Double.NaN, 1e-9)
-        assertEquals(34.0, analyte.calibrationRangeMax ?: Double.NaN, 1e-9)
+        // 标定范围必须来自冻结标准点，而不是可能被验证流程主动收窄的模型可靠范围。
+        assertEquals(1.0, analyte.calibrationRangeMin ?: Double.NaN, 1e-9)
+        assertEquals(10.0, analyte.calibrationRangeMax ?: Double.NaN, 1e-9)
     }
 
     @Test
@@ -234,6 +239,216 @@ class ArrayResultSnapshotMapperTest {
             ArrayResultErrorCode.INVALID_MEASUREMENT,
             (inconsistent as ArrayResultLoadResult.Failure).errorCode
         )
+    }
+
+    @Test
+    fun `旧深度学习百分比越界记录不得从模型量程伪造浓度界限`() {
+        val fixture = deepLearningFixture(rows = 10, columns = 10)
+        val frozen = TemplateProjectSnapshotCodec.decode(
+            requireNotNull(fixture.source.run.effectiveConfigSnapshotJson)
+        )
+        val model = frozen.analytes.single().analysisModel.model
+        val modelSnapshotJson = gson.toJson(
+            linkedMapOf(
+                "schemaVersion" to "deep-learning-model-snapshot-v1",
+                "model" to model
+            )
+        )
+        val legacyQc = { rangeStatus: String ->
+            gson.toJson(
+                linkedMapOf(
+                    "status" to "OUT_OF_RELIABLE_RANGE",
+                    "method" to "DEEP_LEARNING",
+                    "rangeStatus" to rangeStatus,
+                    "concentrationSuppressed" to true
+                )
+            )
+        }
+        val above = measurement(siteIndex = 1, correctedSignalJson = null).copy(
+            concentrationValue = null,
+            concentrationUnit = "ng/mL",
+            reliableRangeStatus = "ABOVE_RANGE",
+            modelSnapshotJson = modelSnapshotJson,
+            quantificationQcJson = legacyQc("ABOVE_RANGE")
+        )
+        val below = measurement(siteIndex = 2, correctedSignalJson = null).copy(
+            concentrationValue = null,
+            concentrationUnit = "ng/mL",
+            reliableRangeStatus = "BELOW_RANGE",
+            modelSnapshotJson = modelSnapshotJson,
+            quantificationQcJson = legacyQc("BELOW_RANGE")
+        )
+
+        val result = ArrayResultSnapshotMapper.map(
+            fixture.source.copy(measurements = listOf(above, below))
+        ) as ArrayResultLoadResult.Success
+        val aboveMapped = result.snapshot.sites[1].measurements.single()
+        val belowMapped = result.snapshot.sites[2].measurements.single()
+
+        // 旧记录没有冻结原始模型百分比，而且共享 PTL 的线性输出并不受 0～100 约束。
+        // ABOVE/BELOW 只能证明旧写入链拒绝了该输出，不能证明真实浓度必然高于或低于量程。
+        assertNull(aboveMapped.quantificationState)
+        assertNull(aboveMapped.concentrationLowerBound)
+        assertNull(aboveMapped.concentrationUpperBound)
+        assertNull(aboveMapped.censoringDirection)
+        assertNull(aboveMapped.concentrationValue)
+        assertNull(aboveMapped.quantificationVersion)
+
+        assertNull(belowMapped.quantificationState)
+        assertNull(belowMapped.concentrationUpperBound)
+        assertNull(belowMapped.concentrationLowerBound)
+        assertNull(belowMapped.censoringDirection)
+        assertNull(belowMapped.concentrationValue)
+    }
+
+    @Test
+    fun `非深度学习旧记录不得借范围状态伪造单侧界限`() {
+        val fixture = fixture(rows = 10, columns = 10)
+        val frozen = TemplateProjectSnapshotCodec.decode(
+            requireNotNull(fixture.source.run.effectiveConfigSnapshotJson)
+        )
+        val modelSnapshotJson = gson.toJson(
+            linkedMapOf("model" to frozen.analytes.single().analysisModel.model)
+        )
+        val legacyCurveMeasurement = measurement(siteIndex = 1, correctedSignalJson = null).copy(
+            concentrationValue = null,
+            concentrationUnit = "ng/mL",
+            reliableRangeStatus = "ABOVE_RANGE",
+            modelSnapshotJson = modelSnapshotJson,
+            quantificationQcJson = gson.toJson(
+                linkedMapOf(
+                    "status" to "OUT_OF_RELIABLE_RANGE",
+                    "method" to "STANDARD_CURVE",
+                    "rangeStatus" to "ABOVE_RANGE"
+                )
+            )
+        )
+
+        val result = ArrayResultSnapshotMapper.map(
+            fixture.source.copy(measurements = listOf(legacyCurveMeasurement))
+        ) as ArrayResultLoadResult.Success
+        val mapped = result.snapshot.sites[1].measurements.single()
+
+        assertNull(mapped.quantificationState)
+        assertNull(mapped.concentrationLowerBound)
+        assertNull(mapped.concentrationUpperBound)
+        assertNull(mapped.censoringDirection)
+    }
+
+    @Test
+    fun `深度学习位点离域证据映射原始输出和声明范围`() {
+        val fixture = fixture(rows = 10, columns = 10)
+        val sourceMeasurement = measurement(
+            siteIndex = 1,
+            correctedSignalJson = null
+        ).copy(
+            concentrationValue = null,
+            quantificationState = "UNAVAILABLE",
+            quantificationQcJson = gson.toJson(
+                linkedMapOf(
+                    "status" to "UNAVAILABLE",
+                    "scope" to "SITE",
+                    "method" to "DEEP_LEARNING",
+                    "reason" to "OUTPUT_OUT_OF_DECLARED_RANGE",
+                    "rawModelOutput" to 127.5,
+                    "transformedModelOutput" to 127.5,
+                    "declaredOutputMin" to 0.0,
+                    "declaredOutputMax" to 100.0
+                )
+            )
+        )
+
+        val result = ArrayResultSnapshotMapper.map(
+            fixture.source.copy(measurements = listOf(sourceMeasurement))
+        ) as ArrayResultLoadResult.Success
+        val qc = result.snapshot.sites[sourceMeasurement.siteIndex].measurements.single().qc
+
+        assertEquals("UNAVAILABLE", qc.quantificationStatus)
+        assertEquals("SITE", qc.quantificationScope)
+        assertEquals("OUTPUT_OUT_OF_DECLARED_RANGE", qc.quantificationReason)
+        assertEquals(127.5, requireNotNull(qc.rawModelOutput), 0.0)
+        assertEquals(127.5, requireNotNull(qc.transformedModelOutput), 0.0)
+        assertEquals(0.0, requireNotNull(qc.declaredOutputMin), 0.0)
+        assertEquals(100.0, requireNotNull(qc.declaredOutputMax), 0.0)
+    }
+
+    @Test
+    fun `合法动态量程复核只映射到对应分析物`() {
+        val fixture = fixture(rows = 10, columns = 10)
+        val usageJson = gson.toJson(
+            linkedMapOf(
+                ANALYTE_ID to mapOf(
+                    "rangeRecovery" to rangeRecoverySnapshot()
+                ),
+                "another-analyte" to mapOf(
+                    "rangeRecovery" to rangeRecoverySnapshot(
+                        status = RangeRecoveryStatus.CORRECTION_REJECTED,
+                        reason = RangeRecoveryReason.CONTROL_VALIDATION_FAILED
+                    )
+                )
+            )
+        )
+
+        val result = ArrayResultSnapshotMapper.map(
+            fixture.source.copy(
+                run = fixture.source.run.copy(concentrationModelUsed = usageJson)
+            )
+        ) as ArrayResultLoadResult.Success
+        val recovery = requireNotNull(result.snapshot.analytes.single().rangeRecovery)
+
+        assertEquals(RangeRecoveryStatus.CORRECTION_APPLIED, recovery.status)
+        assertEquals(RangeRecoveryReason.CONTROL_CORRECTION_ACCEPTED, recovery.reason)
+        assertEquals(RangeRecoveryDirection.MOSTLY_ABOVE, recovery.direction)
+        assertEquals(10, recovery.validSampleCount)
+        assertEquals(2, recovery.withinRangeCount)
+        assertEquals(1, recovery.belowRangeCount)
+        assertEquals(7, recovery.aboveRangeCount)
+        assertEquals(0.8, recovery.outOfRangeRatio, 1e-9)
+        assertEquals("range-review-v1", recovery.algorithmVersion)
+    }
+
+    @Test
+    fun `损坏计数和未知算法版本只忽略附加复核而不破坏历史结果`() {
+        val fixture = fixture(rows = 10, columns = 10)
+        val invalidSnapshots = listOf(
+            rangeRecoverySnapshot().toMutableMap().apply {
+                // valid=10 时四类计数必须闭合；故意破坏计数，验证读取端失败闭合。
+                this["aboveRangeCount"] = 8
+            },
+            rangeRecoverySnapshot().toMutableMap().apply {
+                this["algorithmVersion"] = "range-review-v999"
+            }
+        )
+
+        invalidSnapshots.forEach { invalidRecovery ->
+            val usageJson = gson.toJson(
+                mapOf(ANALYTE_ID to mapOf("rangeRecovery" to invalidRecovery))
+            )
+            val result = ArrayResultSnapshotMapper.map(
+                fixture.source.copy(
+                    run = fixture.source.run.copy(concentrationModelUsed = usageJson)
+                )
+            )
+
+            assertTrue(result is ArrayResultLoadResult.Success)
+            assertNull((result as ArrayResultLoadResult.Success).snapshot.analytes.single().rangeRecovery)
+        }
+    }
+
+    @Test
+    fun `其他分析物的动态复核不得串到当前分析物`() {
+        val fixture = fixture(rows = 10, columns = 10)
+        val usageJson = gson.toJson(
+            mapOf("another-analyte" to mapOf("rangeRecovery" to rangeRecoverySnapshot()))
+        )
+
+        val result = ArrayResultSnapshotMapper.map(
+            fixture.source.copy(
+                run = fixture.source.run.copy(concentrationModelUsed = usageJson)
+            )
+        ) as ArrayResultLoadResult.Success
+
+        assertNull(result.snapshot.analytes.single().rangeRecovery)
     }
 
     @Test
@@ -432,6 +647,67 @@ class ArrayResultSnapshotMapperTest {
             )
         )
     }
+
+    /**
+     * 在既有快照夹具上只替换模型类型，避免为同一套载体、布局和运行关系再复制一份大夹具。
+     */
+    private fun deepLearningFixture(rows: Int, columns: Int): Fixture {
+        val fixture = fixture(rows = rows, columns = columns)
+        val snapshot = TemplateProjectSnapshotCodec.decode(
+            requireNotNull(fixture.source.run.effectiveConfigSnapshotJson)
+        )
+        val originalAnalyte = snapshot.analytes.single()
+        val deepLearningModel = originalAnalyte.analysisModel.model.copy(
+            name = "CEA深度学习模型",
+            modelType = "DEEP_LEARNING",
+            reliableRangeMin = 0.0,
+            reliableRangeMax = 100.0
+        )
+        val deepLearningSnapshot = snapshot.copy(
+            analytes = listOf(
+                originalAnalyte.copy(
+                    analysisModel = AnalysisModelBundle(
+                        model = deepLearningModel,
+                        deepLearning = DeepLearningModelDefinition(
+                            analysisModelId = deepLearningModel.id,
+                            modelFileName = "models/test-concentration.ptl",
+                            checksumSha256 = "0".repeat(64),
+                            inputWidth = 128,
+                            inputHeight = 128,
+                            normalizationJson =
+                                "{\"mean\":[0.485,0.456,0.406],\"std\":[0.229,0.224,0.225]}",
+                            trainingDataVersion = "legacy-compat-test"
+                        )
+                    )
+                )
+            )
+        )
+        return fixture.copy(
+            source = fixture.source.copy(
+                run = fixture.source.run.copy(
+                    effectiveConfigSnapshotJson =
+                        TemplateProjectSnapshotCodec.encode(deepLearningSnapshot)
+                )
+            )
+        )
+    }
+
+    /** 构造与生产 [RangeRecoveryDecision.toSnapshot] 一致的最小稳定附加快照。 */
+    private fun rangeRecoverySnapshot(
+        status: RangeRecoveryStatus = RangeRecoveryStatus.CORRECTION_APPLIED,
+        reason: RangeRecoveryReason = RangeRecoveryReason.CONTROL_CORRECTION_ACCEPTED
+    ): Map<String, Any> = linkedMapOf(
+        "schemaVersion" to 1,
+        "algorithmVersion" to "range-review-v1",
+        "status" to status.name,
+        "reason" to reason.name,
+        "direction" to RangeRecoveryDirection.MOSTLY_ABOVE.name,
+        "validSampleCount" to 10,
+        "withinRangeCount" to 2,
+        "belowRangeCount" to 1,
+        "aboveRangeCount" to 7,
+        "outOfRangeRatio" to 0.8
+    )
 
     private fun snapshot(rows: Int, columns: Int, detectionMode: String): TemplateProjectSnapshot {
         val analyte = Analyte(ANALYTE_ID, "CEA")

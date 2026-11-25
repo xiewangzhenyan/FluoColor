@@ -175,7 +175,7 @@ class ResultViewModel @Inject constructor(
                 )
             } catch (e: Exception) {
                 Log.e("ResultViewModel", "加载项目结果失败", e)
-                _resultState.value = ResultState.Error(application.getString(R.string.error_loading_results, e.message ?: "Unknown error"))
+                _resultState.value = ResultState.Error(application.getString(R.string.error_loading_results, e.message ?: application.getString(R.string.unknown)))
             }
         }
     }
@@ -317,7 +317,7 @@ class ResultViewModel @Inject constructor(
                 )
             } catch (e: Exception) {
                 Log.e("ResultViewModel", "加载运行结果失败", e)
-                _resultState.value = ResultState.Error(application.getString(R.string.error_loading_results, e.message ?: "Unknown error"))
+                _resultState.value = ResultState.Error(application.getString(R.string.error_loading_results, e.message ?: application.getString(R.string.unknown)))
             }
         }
     }
@@ -425,7 +425,7 @@ class ResultViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.e("ResultViewModel", "加载默认结果失败", e)
-                _resultState.value = ResultState.Error(application.getString(R.string.error_loading_results, e.message ?: "Unknown error"))
+                _resultState.value = ResultState.Error(application.getString(R.string.error_loading_results, e.message ?: application.getString(R.string.unknown)))
             }
         }
     }
@@ -600,14 +600,17 @@ class ResultViewModel @Inject constructor(
         val adjustedYMax = yMax + yRange * 0.05 // 上方添加5%的边距
 
         return ChartData(
-            title = "Standard Curve",
+            title = application.getString(R.string.pdf_standard_curve_title),
             xRange = Pair(xMin, xMax),
             yRange = Pair(adjustedYMin, adjustedYMax), // 使用调整后的Y轴范围
             standardPoints = dataPoints,
             curvePoints = curvePoints,
             formula = curveModel.function.toString(),
-            xAxisLabel = "Concentration ($unit)",
-            yAxisLabel = "Pixel (${curveModel.pixelType?.name ?: "Unknown"})",
+            xAxisLabel = application.getString(R.string.chart_concentration_with_unit, unit),
+            yAxisLabel = application.getString(
+                R.string.chart_pixel_with_type,
+                curveModel.pixelType?.name ?: application.getString(R.string.unknown)
+            ),
             fittedCurve = fittedFunction
         )
     }
@@ -631,7 +634,7 @@ class ResultViewModel @Inject constructor(
             val wellLabel = if (result.virtualRow != null && result.virtualCol != null) {
                 "${('A' + result.virtualRow).toChar()}${result.virtualCol + 1}"
             } else {
-                "Well ${result.wellIndex + 1}"
+                application.getString(R.string.chart_well_label, result.wellIndex + 1)
             }
 
             ChartPoint(
@@ -648,13 +651,13 @@ class ResultViewModel @Inject constructor(
         } else 100.0
 
         return ChartData(
-            title = "$analyteName Concentration",
+            title = application.getString(R.string.chart_analyte_concentration, analyteName),
             xRange = Pair(0.0, (validResults.size - 1).toDouble().coerceAtLeast(1.0)),
             yRange = Pair(yMin, yMax * 1.1), // 留出10%的顶部空间
             standardPoints = emptyList(),
             curvePoints = scatterPoints.map { Pair(it.x, it.y) },
-            xAxisLabel = "Wells",
-            yAxisLabel = "Concentration ($unit)",
+            xAxisLabel = application.getString(R.string.chart_wells),
+            yAxisLabel = application.getString(R.string.chart_concentration_with_unit, unit),
             scatterPoints = scatterPoints
         )
     }
@@ -813,7 +816,11 @@ class ResultViewModel @Inject constructor(
 
         // --- 3. 准备图表数据 ---
         val scatterPoints = modelPredictedValues.zip(observedValues).mapIndexed { index, (predicted, actual) ->
-            ChartPoint(x = predicted, y = actual, label = "Point ${index + 1}")
+            ChartPoint(
+                x = predicted,
+                y = actual,
+                label = application.getString(R.string.chart_point_label, index + 1)
+            )
         }
 
         // 【修复】确定X轴和Y轴范围
@@ -835,14 +842,14 @@ class ResultViewModel @Inject constructor(
         }
 
         val chartData = ChartData(
-            title = "Validation",
+            title = application.getString(R.string.chart_validation),
             xRange = Pair(minValue, maxValue),
             yRange = Pair(minValue, maxValue),
             standardPoints = idealLinePoints, // y=x line (标准参考线)
             curvePoints = regressionLinePoints, // regression line (回归线)
             formula = "y = ${String.format("%.4f", slope)}x + ${String.format("%.4f", intercept)}",
-            xAxisLabel = "Predicted",
-            yAxisLabel = "Actual",
+            xAxisLabel = application.getString(R.string.chart_predicted),
+            yAxisLabel = application.getString(R.string.chart_actual),
             scatterPoints = scatterPoints,
             chartType = "REGRESSION" // 设置图表类型为回归分析
         )
@@ -850,8 +857,8 @@ class ResultViewModel @Inject constructor(
         // --- 4. 准备指标映射用于显示 ---
         val metricsMap = mapOf(
             "R²" to String.format("%.4f", metrics["R²"] ?: 0.0),
-            "Slope" to String.format("%.4f", slope),
-            "Intercept" to String.format("%.4f", intercept),
+            application.getString(R.string.plate_validation_metric_slope) to String.format("%.4f", slope),
+            application.getString(R.string.chart_metric_intercept) to String.format("%.4f", intercept),
             "MSE" to String.format("%.4f", metrics["MSE"] ?: 0.0),
             "RMSE" to String.format("%.4f", metrics["RMSE"] ?: 0.0),
             "MAE" to String.format("%.4f", metrics["MAE"] ?: 0.0)
@@ -899,7 +906,7 @@ class ResultViewModel @Inject constructor(
             ChartPoint(
                 x = avg,
                 y = diff,
-                label = "Point ${index + 1}"
+                label = application.getString(R.string.chart_point_label, index + 1)
             )
         }
 
@@ -920,11 +927,11 @@ class ResultViewModel @Inject constructor(
 
         // 创建图表数据
         val chartData = ChartData(
-            title = "Bland-Altman Analysis",
+            title = application.getString(R.string.bland_altman_analysis),
             xRange = Pair(xMin, xMax),
             yRange = Pair(yMin, yMax),
-            xAxisLabel = "Mean ((Predicted+Actual)/2)",
-            yAxisLabel = "Difference (Actual-Predicted)",
+            xAxisLabel = application.getString(R.string.chart_bland_mean_axis),
+            yAxisLabel = application.getString(R.string.chart_bland_difference_axis),
             scatterPoints = scatterPoints,
             chartType = "BLAND_ALTMAN", // 设置图表类型为Bland-Altman分析
             additionalLines = mapOf(
@@ -936,11 +943,11 @@ class ResultViewModel @Inject constructor(
 
         // 创建指标映射
         val metricsMap = mapOf(
-            "Mean Difference" to String.format("%.4f", meanDifference),
-            "Standard Deviation" to String.format("%.4f", sdDifference),
-            "Upper Limit (+1.96 SD)" to String.format("%.4f", upperLimit),
-            "Lower Limit (-1.96 SD)" to String.format("%.4f", lowerLimit),
-            "Points within Limits" to String.format("%.2f%%", pointsInRange)
+            application.getString(R.string.chart_metric_mean_difference) to String.format("%.4f", meanDifference),
+            application.getString(R.string.chart_metric_standard_deviation) to String.format("%.4f", sdDifference),
+            application.getString(R.string.chart_metric_upper_limit) to String.format("%.4f", upperLimit),
+            application.getString(R.string.chart_metric_lower_limit) to String.format("%.4f", lowerLimit),
+            application.getString(R.string.chart_metric_points_within_limits) to String.format("%.2f%%", pointsInRange)
         )
 
         return Pair(chartData, metricsMap)

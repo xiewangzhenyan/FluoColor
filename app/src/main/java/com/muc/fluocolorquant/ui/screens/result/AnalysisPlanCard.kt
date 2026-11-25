@@ -28,6 +28,7 @@ import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.AnalyteResultDetails
 import com.muc.fluocolorquant.data.model.Reagent
 import com.muc.fluocolorquant.ui.components.ScientificExpandableSection
+import com.muc.fluocolorquant.ui.components.localizedAnalysisMethodLabel
 import com.muc.fluocolorquant.ui.viewmodels.ReagentViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,11 +47,7 @@ fun AnalysisPlanCard(
     var antibody by remember { mutableStateOf<Reagent?>(null) }
     var expanded by rememberSaveable(analyteDetails.analyte.id) { mutableStateOf(false) }
     val missingValue = stringResource(R.string.result_traceability_not_available)
-    val analysisMethodLabel = when (analyteDetails.analysisMethod) {
-        "CURVE_FIT" -> stringResource(R.string.curve_fitting_analysis)
-        "DL_MODEL" -> stringResource(R.string.deep_learning_analysis)
-        else -> analyteDetails.analysisMethod
-    }
+    val analysisMethodLabel = localizedAnalysisMethodLabel(analyteDetails.analysisMethod)
     val templateName = analyteDetails.usedTemplate?.templateName
         ?: stringResource(R.string.no_template_used)
     val curveModelName = analyteDetails.fittedCurveModel?.name

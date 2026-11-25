@@ -38,6 +38,34 @@ class PgGridJsonCodecTest {
         PgGridJsonCodec.decode("   ")
     }
 
+    @Test
+    fun `单孔人工微调来源可编解码且与四角手动网格兼容`() {
+        val manualGrid = ManualGridGeometry.build(
+            width = 200,
+            height = 200,
+            config = PgGridLocatorConfig(rows = 3, columns = 3, targetPolarity = GridTargetPolarity.DARK),
+            corners = listOf(
+                GridPoint(20.0, 20.0),
+                GridPoint(180.0, 20.0),
+                GridPoint(180.0, 180.0),
+                GridPoint(20.0, 180.0)
+            )
+        )
+        val fineTuned = manualGrid.copy(
+            sites = manualGrid.sites.mapIndexed { idx, site ->
+                if (idx == 0) site.copy(
+                    rectified = GridPoint(site.rectified.x + 2.0, site.rectified.y + 1.0),
+                    original = GridPoint(site.original.x + 2.0, site.original.y + 1.0),
+                    source = GridPointSource.USER_ADJUSTED
+                ) else site
+            }
+        )
+
+        val restored = PgGridJsonCodec.decode(PgGridJsonCodec.encode(fineTuned))
+        assertEquals(GridPointSource.USER_ADJUSTED, restored.sites.first().source)
+        assertTrue(restored.sites.first().source.isManual)
+    }
+
     /** 构造包含一个模型补位点的 2×3 契约样本。 */
     private fun smallResult(): PgGridResult {
         val sites = List(6) { index ->

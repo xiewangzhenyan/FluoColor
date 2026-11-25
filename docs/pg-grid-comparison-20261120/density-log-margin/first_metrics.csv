@@ -1,0 +1,321 @@
+﻿case,group,size,protocol,method,sha256,region,polarity,output,observed,median_pitch,p95_pitch,hit_fraction,passed,elapsed_ms,failure
+color_bare_ideal_n10_s7321,color_bare,10,auto,dbscan,0d76d9a9ed1e14933d342b513b265c74a63d2d63924ad3b5389bf6e2950c7890,opencv_bright_region_wide,dark,0,,,,,0,60.12,候选不足
+color_bare_ideal_n10_s7321,color_bare,10,auto,log,0d76d9a9ed1e14933d342b513b265c74a63d2d63924ad3b5389bf6e2950c7890,整幅原图,亮暗＋色差,1,93,0.015471674126641962,0.14707728145335577,0.95,1,1614.15,
+color_bare_ideal_n10_s7321,color_bare,10,auto,m3g,0d76d9a9ed1e14933d342b513b265c74a63d2d63924ad3b5389bf6e2950c7890,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 75×75 不符 9×9
+color_bare_ideal_n10_s7321,color_bare,10,auto,kmeans,0d76d9a9ed1e14933d342b513b265c74a63d2d63924ad3b5389bf6e2950c7890,opencv_bright_region_wide,dark,0,,,,,0,60.12,候选不足或行列无法组网
+color_opaque_ideal_n10_s7321,color_opaque,10,auto,dbscan,e8d65a1d0ddcc23bd5d3726595f2ba68b7c637be7563eec4bb3ff5b885e8bcad,opencv_emitting_dots,bright,1,100,0.009156040498515766,0.012539822547733968,1.0,1,199.19,
+color_opaque_ideal_n10_s7321,color_opaque,10,auto,log,e8d65a1d0ddcc23bd5d3726595f2ba68b7c637be7563eec4bb3ff5b885e8bcad,整幅原图,亮暗＋色差,1,100,0.011651136008541936,0.020597881297906885,1.0,1,1581.48,
+color_opaque_ideal_n10_s7321,color_opaque,10,auto,m3g,e8d65a1d0ddcc23bd5d3726595f2ba68b7c637be7563eec4bb3ff5b885e8bcad,opencv_emitting_dots,bright,0,,,,,0,,分隔线数 74×75 不符 9×9
+color_opaque_ideal_n10_s7321,color_opaque,10,auto,kmeans,e8d65a1d0ddcc23bd5d3726595f2ba68b7c637be7563eec4bb3ff5b885e8bcad,opencv_emitting_dots,bright,1,100,0.009156040498515766,0.012539822547733968,1.0,1,197.16,
+color_translucent_ideal_n10_s7321,color_translucent,10,auto,dbscan,68c1f0b6b5bfb5619ed6fcff0b50da750976fa0ab9ac7cc9baf1aedc91df059e,opencv_faint_substrate,bright,1,100,0.009289780815622267,0.013305487170418873,1.0,1,102.08,
+color_translucent_ideal_n10_s7321,color_translucent,10,auto,log,68c1f0b6b5bfb5619ed6fcff0b50da750976fa0ab9ac7cc9baf1aedc91df059e,整幅原图,亮暗＋色差,1,100,0.011651136008541936,0.02172008347457025,1.0,1,1553.4,
+color_translucent_ideal_n10_s7321,color_translucent,10,auto,m3g,68c1f0b6b5bfb5619ed6fcff0b50da750976fa0ab9ac7cc9baf1aedc91df059e,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×75 不符 9×9
+color_translucent_ideal_n10_s7321,color_translucent,10,auto,kmeans,68c1f0b6b5bfb5619ed6fcff0b50da750976fa0ab9ac7cc9baf1aedc91df059e,opencv_faint_substrate,bright,1,100,0.009289780815622267,0.013305487170418873,1.0,1,100.14,
+fluo_new_ideal_n10_s7321,fluo_new,10,auto,dbscan,100a65c84e6ac60720ba638cb74c8a1b00333559373ec6bc936a690f5bd0abc2,opencv_faint_substrate,bright,0,,,,,0,85.43,候选不足
+fluo_new_ideal_n10_s7321,fluo_new,10,auto,log,100a65c84e6ac60720ba638cb74c8a1b00333559373ec6bc936a690f5bd0abc2,整幅原图,亮暗＋色差,1,74,0.00950904910051388,0.030774606943939718,1.0,1,1500.48,
+fluo_new_ideal_n10_s7321,fluo_new,10,auto,m3g,100a65c84e6ac60720ba638cb74c8a1b00333559373ec6bc936a690f5bd0abc2,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×74 不符 9×9
+fluo_new_ideal_n10_s7321,fluo_new,10,auto,kmeans,100a65c84e6ac60720ba638cb74c8a1b00333559373ec6bc936a690f5bd0abc2,opencv_faint_substrate,bright,0,,,,,0,85.43,候选不足或行列无法组网
+color_bare_ideal_n10_s14891,color_bare,10,auto,dbscan,ccabce612d74aa617c02454d5c81178854c5de693e4e256fda37322b8077e9cb,opencv_bright_region_wide,dark,0,,,,,0,57.51,候选不足
+color_bare_ideal_n10_s14891,color_bare,10,auto,log,ccabce612d74aa617c02454d5c81178854c5de693e4e256fda37322b8077e9cb,整幅原图,亮暗＋色差,1,95,0.015246215239849686,0.0904955568088833,0.98,1,1620.33,
+color_bare_ideal_n10_s14891,color_bare,10,auto,m3g,ccabce612d74aa617c02454d5c81178854c5de693e4e256fda37322b8077e9cb,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 74×75 不符 9×9
+color_bare_ideal_n10_s14891,color_bare,10,auto,kmeans,ccabce612d74aa617c02454d5c81178854c5de693e4e256fda37322b8077e9cb,opencv_bright_region_wide,dark,0,,,,,0,57.5,候选不足或行列无法组网
+color_opaque_ideal_n10_s14891,color_opaque,10,auto,dbscan,dc728e10067a5d70e9e2d48e5b4b4b843cbc458cc0b0f78d8e7499986157ecc2,opencv_faint_substrate,bright,1,100,0.010154483158088728,0.013548603046504848,1.0,1,93.42,
+color_opaque_ideal_n10_s14891,color_opaque,10,auto,log,dc728e10067a5d70e9e2d48e5b4b4b843cbc458cc0b0f78d8e7499986157ecc2,整幅原图,亮暗＋色差,1,100,0.01303578546220344,0.023424519124916273,1.0,1,1612.51,
+color_opaque_ideal_n10_s14891,color_opaque,10,auto,m3g,dc728e10067a5d70e9e2d48e5b4b4b843cbc458cc0b0f78d8e7499986157ecc2,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 73×74 不符 9×9
+color_opaque_ideal_n10_s14891,color_opaque,10,auto,kmeans,dc728e10067a5d70e9e2d48e5b4b4b843cbc458cc0b0f78d8e7499986157ecc2,opencv_faint_substrate,bright,1,100,0.010154483158088728,0.013548603046504848,1.0,1,91.83,
+color_translucent_ideal_n10_s14891,color_translucent,10,auto,dbscan,ece04582a65cd0cc88361bdd269ed2ba38969090d63fa556c34bec55a6eecc46,opencv_faint_substrate,bright,1,100,0.01096698205088662,0.01675860496590281,1.0,1,101.68,
+color_translucent_ideal_n10_s14891,color_translucent,10,auto,log,ece04582a65cd0cc88361bdd269ed2ba38969090d63fa556c34bec55a6eecc46,整幅原图,亮暗＋色差,1,100,0.012790698327853012,0.024081348782760647,1.0,1,1620.36,
+color_translucent_ideal_n10_s14891,color_translucent,10,auto,m3g,ece04582a65cd0cc88361bdd269ed2ba38969090d63fa556c34bec55a6eecc46,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×75 不符 9×9
+color_translucent_ideal_n10_s14891,color_translucent,10,auto,kmeans,ece04582a65cd0cc88361bdd269ed2ba38969090d63fa556c34bec55a6eecc46,opencv_faint_substrate,bright,1,100,0.01096698205088662,0.01675860496590281,1.0,1,100.27,
+fluo_new_ideal_n10_s14891,fluo_new,10,auto,dbscan,f5a007db38070d5cfce14c7c98003f3c79c4974d1f36c4705642e8e38b1c72b4,opencv_faint_substrate,bright,0,,,,,0,92.98,候选不足
+fluo_new_ideal_n10_s14891,fluo_new,10,auto,log,f5a007db38070d5cfce14c7c98003f3c79c4974d1f36c4705642e8e38b1c72b4,整幅原图,亮暗＋色差,1,74,0.009572694979357836,0.022742065138622647,1.0,1,1567.32,
+fluo_new_ideal_n10_s14891,fluo_new,10,auto,m3g,f5a007db38070d5cfce14c7c98003f3c79c4974d1f36c4705642e8e38b1c72b4,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×75 不符 9×9
+fluo_new_ideal_n10_s14891,fluo_new,10,auto,kmeans,f5a007db38070d5cfce14c7c98003f3c79c4974d1f36c4705642e8e38b1c72b4,opencv_faint_substrate,bright,0,,,,,0,92.98,候选不足或行列无法组网
+color_bare_typical_n10_s7321,color_bare,10,auto,dbscan,f0f35f3da150f310d591bbe938d3606a42242974dde08064383cca17b17ce361,opencv_bright_region_wide,dark,0,,,,,0,57.93,候选不足
+color_bare_typical_n10_s7321,color_bare,10,auto,log,f0f35f3da150f310d591bbe938d3606a42242974dde08064383cca17b17ce361,整幅原图,亮暗＋色差,1,77,1.4294492378024852,4.225266542646765,0.01,0,1644.11,
+color_bare_typical_n10_s7321,color_bare,10,auto,m3g,f0f35f3da150f310d591bbe938d3606a42242974dde08064383cca17b17ce361,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 75×75 不符 9×9
+color_bare_typical_n10_s7321,color_bare,10,auto,kmeans,f0f35f3da150f310d591bbe938d3606a42242974dde08064383cca17b17ce361,opencv_bright_region_wide,dark,0,,,,,0,57.92,候选不足或行列无法组网
+color_opaque_typical_n10_s7321,color_opaque,10,auto,dbscan,752f0aef5366c02595710b06f0c2800e85da7d96074253322b26f4c30a8128fb,opencv_faint_substrate,bright,1,100,0.011549287398215714,0.0152240740592547,1.0,1,90.37,
+color_opaque_typical_n10_s7321,color_opaque,10,auto,log,752f0aef5366c02595710b06f0c2800e85da7d96074253322b26f4c30a8128fb,整幅原图,亮暗＋色差,1,100,0.014431599811455163,0.025967829186169675,1.0,1,1597.76,
+color_opaque_typical_n10_s7321,color_opaque,10,auto,m3g,752f0aef5366c02595710b06f0c2800e85da7d96074253322b26f4c30a8128fb,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 75×75 不符 9×9
+color_opaque_typical_n10_s7321,color_opaque,10,auto,kmeans,752f0aef5366c02595710b06f0c2800e85da7d96074253322b26f4c30a8128fb,opencv_faint_substrate,bright,1,100,0.011549287398215714,0.0152240740592547,1.0,1,89.17,
+color_translucent_typical_n10_s7321,color_translucent,10,auto,dbscan,a7789944a5e08aa9ead4ce3b7cbd5342bf519d651e7d334ac5f621a0331e89aa,opencv_faint_substrate,bright,1,100,0.011290301107423644,0.016869704420240286,1.0,1,99.64,
+color_translucent_typical_n10_s7321,color_translucent,10,auto,log,a7789944a5e08aa9ead4ce3b7cbd5342bf519d651e7d334ac5f621a0331e89aa,整幅原图,亮暗＋色差,1,100,0.014642974078636106,0.027149697854673187,1.0,1,1592.99,
+color_translucent_typical_n10_s7321,color_translucent,10,auto,m3g,a7789944a5e08aa9ead4ce3b7cbd5342bf519d651e7d334ac5f621a0331e89aa,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×75 不符 9×9
+color_translucent_typical_n10_s7321,color_translucent,10,auto,kmeans,a7789944a5e08aa9ead4ce3b7cbd5342bf519d651e7d334ac5f621a0331e89aa,opencv_faint_substrate,bright,1,100,0.011290301107423644,0.016869704420240286,1.0,1,97.82,
+fluo_new_typical_n10_s7321,fluo_new,10,auto,dbscan,9aa8c1f2afee3a3165ffa5605a14dde39410a6137821427216687e5e933a9f6a,opencv_faint_substrate,bright,0,,,,,0,84.58,候选不足
+fluo_new_typical_n10_s7321,fluo_new,10,auto,log,9aa8c1f2afee3a3165ffa5605a14dde39410a6137821427216687e5e933a9f6a,整幅原图,亮暗＋色差,1,56,1.7941647189162484,3.08111689193831,0.0,0,1515.86,
+fluo_new_typical_n10_s7321,fluo_new,10,auto,m3g,9aa8c1f2afee3a3165ffa5605a14dde39410a6137821427216687e5e933a9f6a,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×75 不符 9×9
+fluo_new_typical_n10_s7321,fluo_new,10,auto,kmeans,9aa8c1f2afee3a3165ffa5605a14dde39410a6137821427216687e5e933a9f6a,opencv_faint_substrate,bright,0,,,,,0,84.57,候选不足或行列无法组网
+color_bare_typical_n10_s14891,color_bare,10,auto,dbscan,a79127202dae3208eb0c5cc43aaec71b9c5a029d3de9fd02d4c04214cf798e10,opencv_bright_region_wide,dark,0,,,,,0,57.27,候选不足
+color_bare_typical_n10_s14891,color_bare,10,auto,log,a79127202dae3208eb0c5cc43aaec71b9c5a029d3de9fd02d4c04214cf798e10,整幅原图,亮暗＋色差,1,92,0.01939255286496958,0.14701979218649583,0.98,1,1606.81,
+color_bare_typical_n10_s14891,color_bare,10,auto,m3g,a79127202dae3208eb0c5cc43aaec71b9c5a029d3de9fd02d4c04214cf798e10,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 74×74 不符 9×9
+color_bare_typical_n10_s14891,color_bare,10,auto,kmeans,a79127202dae3208eb0c5cc43aaec71b9c5a029d3de9fd02d4c04214cf798e10,opencv_bright_region_wide,dark,0,,,,,0,57.27,候选不足或行列无法组网
+color_opaque_typical_n10_s14891,color_opaque,10,auto,dbscan,1ed4257d1c552c10113494d4d217b84072c99858b42c8da64b9efd52a6268d6d,opencv_emitting_dots,bright,1,100,0.013381844494363474,0.018228629475604073,1.0,1,181.6,
+color_opaque_typical_n10_s14891,color_opaque,10,auto,log,1ed4257d1c552c10113494d4d217b84072c99858b42c8da64b9efd52a6268d6d,整幅原图,亮暗＋色差,1,100,0.01495170918763701,0.027125194615875165,1.0,1,1504.86,
+color_opaque_typical_n10_s14891,color_opaque,10,auto,m3g,1ed4257d1c552c10113494d4d217b84072c99858b42c8da64b9efd52a6268d6d,opencv_emitting_dots,bright,0,,,,,0,,分隔线数 74×74 不符 9×9
+color_opaque_typical_n10_s14891,color_opaque,10,auto,kmeans,1ed4257d1c552c10113494d4d217b84072c99858b42c8da64b9efd52a6268d6d,opencv_emitting_dots,bright,1,100,0.013381844494363474,0.018228629475604073,1.0,1,179.99,
+color_translucent_typical_n10_s14891,color_translucent,10,auto,dbscan,3e0ab5107c3ce1a48da43e81f731d0341b8500130f32634b1879e53e79fea045,opencv_faint_substrate,bright,1,100,0.01365884017544667,0.020249143286787768,1.0,1,91.62,
+color_translucent_typical_n10_s14891,color_translucent,10,auto,log,3e0ab5107c3ce1a48da43e81f731d0341b8500130f32634b1879e53e79fea045,整幅原图,亮暗＋色差,1,100,0.016075812311106684,0.0297956847121855,1.0,1,1504.75,
+color_translucent_typical_n10_s14891,color_translucent,10,auto,m3g,3e0ab5107c3ce1a48da43e81f731d0341b8500130f32634b1879e53e79fea045,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×75 不符 9×9
+color_translucent_typical_n10_s14891,color_translucent,10,auto,kmeans,3e0ab5107c3ce1a48da43e81f731d0341b8500130f32634b1879e53e79fea045,opencv_faint_substrate,bright,1,100,0.01365884017544667,0.020249143286787768,1.0,1,89.89,
+fluo_new_typical_n10_s14891,fluo_new,10,auto,dbscan,850e8c9a88354d5cabffc923d50ee90ff4b043e45ba94deb6f544c033bf2d238,opencv_faint_substrate,bright,0,,,,,0,84.7,候选不足
+fluo_new_typical_n10_s14891,fluo_new,10,auto,log,850e8c9a88354d5cabffc923d50ee90ff4b043e45ba94deb6f544c033bf2d238,整幅原图,亮暗＋色差,1,62,0.013629937087642468,0.03315263085431699,1.0,1,1534.65,
+fluo_new_typical_n10_s14891,fluo_new,10,auto,m3g,850e8c9a88354d5cabffc923d50ee90ff4b043e45ba94deb6f544c033bf2d238,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×74 不符 9×9
+fluo_new_typical_n10_s14891,fluo_new,10,auto,kmeans,850e8c9a88354d5cabffc923d50ee90ff4b043e45ba94deb6f544c033bf2d238,opencv_faint_substrate,bright,0,,,,,0,84.69,候选不足或行列无法组网
+color_bare_hard_n10_s7321,color_bare,10,auto,dbscan,3e6e2bd20f93a280bc131c0da55802081d9fb73dfc28a8fec387dc81f33879a2,opencv_bright_region_wide,dark,0,,,,,0,58.34,候选不足
+color_bare_hard_n10_s7321,color_bare,10,auto,log,3e6e2bd20f93a280bc131c0da55802081d9fb73dfc28a8fec387dc81f33879a2,整幅原图,亮暗＋色差,1,81,1.2916412534421617,2.3174090432421997,0.02,0,1662.07,
+color_bare_hard_n10_s7321,color_bare,10,auto,m3g,3e6e2bd20f93a280bc131c0da55802081d9fb73dfc28a8fec387dc81f33879a2,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 75×75 不符 9×9
+color_bare_hard_n10_s7321,color_bare,10,auto,kmeans,3e6e2bd20f93a280bc131c0da55802081d9fb73dfc28a8fec387dc81f33879a2,opencv_bright_region_wide,dark,0,,,,,0,58.34,候选不足或行列无法组网
+color_opaque_hard_n10_s7321,color_opaque,10,auto,dbscan,78fa9a30e27dd7295320433915bad7db0323fde0a2adcf9f8758de98d9a414a1,opencv_faint_substrate,bright,0,,,,,0,92.22,密度簇不足、孔距不规则或首行列不唯一
+color_opaque_hard_n10_s7321,color_opaque,10,auto,log,78fa9a30e27dd7295320433915bad7db0323fde0a2adcf9f8758de98d9a414a1,整幅原图,亮暗＋色差,1,100,0.015108930635587568,0.023934552295787972,0.99,1,1536.63,
+color_opaque_hard_n10_s7321,color_opaque,10,auto,m3g,78fa9a30e27dd7295320433915bad7db0323fde0a2adcf9f8758de98d9a414a1,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 70×16 不符 9×9
+color_opaque_hard_n10_s7321,color_opaque,10,auto,kmeans,78fa9a30e27dd7295320433915bad7db0323fde0a2adcf9f8758de98d9a414a1,opencv_faint_substrate,bright,1,54,1.4398857443670001,2.2387718921968234,0.02,0,90.79,
+color_translucent_hard_n10_s7321,color_translucent,10,auto,dbscan,4bdfc0caf6b7ce81a865a6d600afe9c188d30356d1b353aebeb4e692c430fbe6,opencv_bright_region_wide,bright,1,100,0.012141867219158666,0.018267039698440915,1.0,1,61.58,
+color_translucent_hard_n10_s7321,color_translucent,10,auto,log,4bdfc0caf6b7ce81a865a6d600afe9c188d30356d1b353aebeb4e692c430fbe6,整幅原图,亮暗＋色差,1,98,0.01571319302872649,0.030182049632309978,1.0,1,1513.43,
+color_translucent_hard_n10_s7321,color_translucent,10,auto,m3g,4bdfc0caf6b7ce81a865a6d600afe9c188d30356d1b353aebeb4e692c430fbe6,opencv_bright_region_wide,bright,0,,,,,0,,分隔线数 74×74 不符 9×9
+color_translucent_hard_n10_s7321,color_translucent,10,auto,kmeans,4bdfc0caf6b7ce81a865a6d600afe9c188d30356d1b353aebeb4e692c430fbe6,opencv_bright_region_wide,bright,1,100,0.012141867219158666,0.018267039698440915,1.0,1,59.88,
+fluo_new_hard_n10_s7321,fluo_new,10,auto,dbscan,a7866095a3ae00e264d96b4733930563837cf3dc516e63339b33aa93db88a7a2,opencv_faint_substrate,bright,0,,,,,0,84.8,候选不足
+fluo_new_hard_n10_s7321,fluo_new,10,auto,log,a7866095a3ae00e264d96b4733930563837cf3dc516e63339b33aa93db88a7a2,整幅原图,亮暗＋色差,0,,,,,0,1489.43,LoG 候选没有形成覆盖四边的可编号晶格
+fluo_new_hard_n10_s7321,fluo_new,10,auto,m3g,a7866095a3ae00e264d96b4733930563837cf3dc516e63339b33aa93db88a7a2,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 75×75 不符 9×9
+fluo_new_hard_n10_s7321,fluo_new,10,auto,kmeans,a7866095a3ae00e264d96b4733930563837cf3dc516e63339b33aa93db88a7a2,opencv_faint_substrate,bright,0,,,,,0,84.79,候选不足或行列无法组网
+color_bare_hard_n10_s14891,color_bare,10,auto,dbscan,eda76a3794b55da878e73ac32ee12da84ff9083caeffcee9f173d531f126cb0c,opencv_bright_region_wide,dark,0,,,,,0,62.68,密度簇不足、孔距不规则或首行列不唯一
+color_bare_hard_n10_s14891,color_bare,10,auto,log,eda76a3794b55da878e73ac32ee12da84ff9083caeffcee9f173d531f126cb0c,整幅原图,亮暗＋色差,1,77,1.2895106198039512,2.819977590057844,0.0,0,1589.81,
+color_bare_hard_n10_s14891,color_bare,10,auto,m3g,eda76a3794b55da878e73ac32ee12da84ff9083caeffcee9f173d531f126cb0c,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 74×74 不符 9×9
+color_bare_hard_n10_s14891,color_bare,10,auto,kmeans,eda76a3794b55da878e73ac32ee12da84ff9083caeffcee9f173d531f126cb0c,opencv_bright_region_wide,dark,1,41,2.5323717799398766,5.036022924280585,0.1,0,61.52,
+color_opaque_hard_n10_s14891,color_opaque,10,auto,dbscan,8bed6be3caf0994fef2222424f8704e568d624bec503578898f08b07949d5a8e,opencv_emitting_dots,bright,1,100,0.008826294392426045,0.013458403885216205,1.0,1,193.38,
+color_opaque_hard_n10_s14891,color_opaque,10,auto,log,8bed6be3caf0994fef2222424f8704e568d624bec503578898f08b07949d5a8e,整幅原图,亮暗＋色差,1,99,0.011159589277894635,0.021717299356310834,0.98,1,1504.23,
+color_opaque_hard_n10_s14891,color_opaque,10,auto,m3g,8bed6be3caf0994fef2222424f8704e568d624bec503578898f08b07949d5a8e,opencv_emitting_dots,bright,0,,,,,0,,分隔线数 74×74 不符 9×9
+color_opaque_hard_n10_s14891,color_opaque,10,auto,kmeans,8bed6be3caf0994fef2222424f8704e568d624bec503578898f08b07949d5a8e,opencv_emitting_dots,bright,1,100,0.008826294392426045,0.013458403885216205,1.0,1,191.73,
+color_translucent_hard_n10_s14891,color_translucent,10,auto,dbscan,e7052543c94e6e339532c2361115fe8794a17128fe252cf751de7f47fc7e889b,opencv_faint_substrate,bright,1,100,0.009856345610599093,0.015522227809250949,1.0,1,95.82,
+color_translucent_hard_n10_s14891,color_translucent,10,auto,log,e7052543c94e6e339532c2361115fe8794a17128fe252cf751de7f47fc7e889b,整幅原图,亮暗＋色差,1,100,0.012210639094268092,0.024816441499927223,1.0,1,1503.39,
+color_translucent_hard_n10_s14891,color_translucent,10,auto,m3g,e7052543c94e6e339532c2361115fe8794a17128fe252cf751de7f47fc7e889b,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×74 不符 9×9
+color_translucent_hard_n10_s14891,color_translucent,10,auto,kmeans,e7052543c94e6e339532c2361115fe8794a17128fe252cf751de7f47fc7e889b,opencv_faint_substrate,bright,1,100,0.009856345610599093,0.015522227809250949,1.0,1,94.24,
+fluo_new_hard_n10_s14891,fluo_new,10,auto,dbscan,b8af6e731890574bd542c1156f4fe7e35f5d72d4f64caa9364e66e56ab3c9adc,fallback_center,bright,0,,,,,0,162.39,未检测到芯片区域，仅有中央兜底框
+fluo_new_hard_n10_s14891,fluo_new,10,auto,log,b8af6e731890574bd542c1156f4fe7e35f5d72d4f64caa9364e66e56ab3c9adc,整幅原图,亮暗＋色差,1,55,0.014085014767171163,0.18878648127943287,0.95,1,1493.39,
+fluo_new_hard_n10_s14891,fluo_new,10,auto,m3g,b8af6e731890574bd542c1156f4fe7e35f5d72d4f64caa9364e66e56ab3c9adc,fallback_center,bright,0,,,,,0,,未检测到芯片区域，仅有中央兜底框
+fluo_new_hard_n10_s14891,fluo_new,10,auto,kmeans,b8af6e731890574bd542c1156f4fe7e35f5d72d4f64caa9364e66e56ab3c9adc,fallback_center,bright,0,,,,,0,162.39,未检测到芯片区域，仅有中央兜底框
+color_bare_ideal_n15_s7321,color_bare,15,auto,dbscan,e143dcfc88ffe416940484f9a6db8c63c2699715fe2514b644f3cee353b8638d,opencv_bright_region_wide,dark,0,,,,,0,114.24,密度簇不足、孔距不规则或首行列不唯一
+color_bare_ideal_n15_s7321,color_bare,15,auto,log,e143dcfc88ffe416940484f9a6db8c63c2699715fe2514b644f3cee353b8638d,整幅原图,亮暗＋色差,1,213,0.025274388056579288,0.1624309215047425,0.9733333333333334,1,876.9,
+color_bare_ideal_n15_s7321,color_bare,15,auto,m3g,e143dcfc88ffe416940484f9a6db8c63c2699715fe2514b644f3cee353b8638d,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 75×75 不符 14×14
+color_bare_ideal_n15_s7321,color_bare,15,auto,kmeans,e143dcfc88ffe416940484f9a6db8c63c2699715fe2514b644f3cee353b8638d,opencv_bright_region_wide,dark,1,76,4.003434859336915,8.095874750960068,0.06666666666666667,0,113.14,
+color_opaque_ideal_n15_s7321,color_opaque,15,auto,dbscan,79176306c2201ebc6ff846dea1decb318e0fdb2a9bda9756a2367c22dfd122f4,opencv_emitting_dots,bright,1,225,0.017803187111705178,0.022758948758554356,1.0,1,249.44,
+color_opaque_ideal_n15_s7321,color_opaque,15,auto,log,79176306c2201ebc6ff846dea1decb318e0fdb2a9bda9756a2367c22dfd122f4,整幅原图,亮暗＋色差,1,225,0.023201429220096673,0.038379499201172146,1.0,1,787.55,
+color_opaque_ideal_n15_s7321,color_opaque,15,auto,m3g,79176306c2201ebc6ff846dea1decb318e0fdb2a9bda9756a2367c22dfd122f4,opencv_emitting_dots,bright,1,,0.03511735404085823,0.05155730357859801,1.0,1,,
+color_opaque_ideal_n15_s7321,color_opaque,15,auto,kmeans,79176306c2201ebc6ff846dea1decb318e0fdb2a9bda9756a2367c22dfd122f4,opencv_emitting_dots,bright,1,225,0.017803187111705178,0.022758948758554356,1.0,1,247.83,
+color_translucent_ideal_n15_s7321,color_translucent,15,auto,dbscan,f4adba6febb25ad5a29bfe82e3bb55d019b49011ef66dcb139e7066e451037d7,opencv_faint_substrate,bright,1,225,0.018198295910253043,0.023853916025875794,1.0,1,145.27,
+color_translucent_ideal_n15_s7321,color_translucent,15,auto,log,f4adba6febb25ad5a29bfe82e3bb55d019b49011ef66dcb139e7066e451037d7,整幅原图,亮暗＋色差,1,225,0.022846733248012657,0.038530987212170166,1.0,1,783.75,
+color_translucent_ideal_n15_s7321,color_translucent,15,auto,m3g,f4adba6febb25ad5a29bfe82e3bb55d019b49011ef66dcb139e7066e451037d7,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+color_translucent_ideal_n15_s7321,color_translucent,15,auto,kmeans,f4adba6febb25ad5a29bfe82e3bb55d019b49011ef66dcb139e7066e451037d7,opencv_faint_substrate,bright,1,225,0.018198295910253043,0.023853916025875794,1.0,1,143.79,
+fluo_new_ideal_n15_s7321,fluo_new,15,auto,dbscan,0c7182c96b3805ddc87c4457aa36bb1a6423d2786a5edead329d231c01a9cfbb,opencv_faint_substrate,bright,0,,,,,0,134.81,候选不足
+fluo_new_ideal_n15_s7321,fluo_new,15,auto,log,0c7182c96b3805ddc87c4457aa36bb1a6423d2786a5edead329d231c01a9cfbb,整幅原图,亮暗＋色差,0,,,,,0,754.37,LoG 网格越界或局部与四边支撑不足
+fluo_new_ideal_n15_s7321,fluo_new,15,auto,m3g,0c7182c96b3805ddc87c4457aa36bb1a6423d2786a5edead329d231c01a9cfbb,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 70×16 不符 14×14
+fluo_new_ideal_n15_s7321,fluo_new,15,auto,kmeans,0c7182c96b3805ddc87c4457aa36bb1a6423d2786a5edead329d231c01a9cfbb,opencv_faint_substrate,bright,0,,,,,0,134.81,候选不足或行列无法组网
+color_bare_ideal_n15_s14891,color_bare,15,auto,dbscan,addb09f054e25315ed7aad9f8b1b74c9f6449185bca378375301afc948369457,opencv_bright_region_wide,dark,0,,,,,0,111.73,密度簇不足、孔距不规则或首行列不唯一
+color_bare_ideal_n15_s14891,color_bare,15,auto,log,addb09f054e25315ed7aad9f8b1b74c9f6449185bca378375301afc948369457,整幅原图,亮暗＋色差,1,150,2.2542397826055485,5.845061064462867,0.0,0,858.91,
+color_bare_ideal_n15_s14891,color_bare,15,auto,m3g,addb09f054e25315ed7aad9f8b1b74c9f6449185bca378375301afc948369457,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 75×75 不符 14×14
+color_bare_ideal_n15_s14891,color_bare,15,auto,kmeans,addb09f054e25315ed7aad9f8b1b74c9f6449185bca378375301afc948369457,opencv_bright_region_wide,dark,1,79,3.991271917914623,7.946033831491188,0.06666666666666667,0,110.55,
+color_opaque_ideal_n15_s14891,color_opaque,15,auto,dbscan,2179edcdc3bd2e39bba0486153b330a01d293701da4926b33e95895cf2426d39,opencv_emitting_dots,bright,1,225,0.016283304226924464,0.020973465849232226,1.0,1,246.32,
+color_opaque_ideal_n15_s14891,color_opaque,15,auto,log,2179edcdc3bd2e39bba0486153b330a01d293701da4926b33e95895cf2426d39,整幅原图,亮暗＋色差,1,225,0.019781670195155997,0.03236305183311195,1.0,1,768.75,
+color_opaque_ideal_n15_s14891,color_opaque,15,auto,m3g,2179edcdc3bd2e39bba0486153b330a01d293701da4926b33e95895cf2426d39,opencv_emitting_dots,bright,0,,,,,0,,分隔线数 14×16 不符 14×14
+color_opaque_ideal_n15_s14891,color_opaque,15,auto,kmeans,2179edcdc3bd2e39bba0486153b330a01d293701da4926b33e95895cf2426d39,opencv_emitting_dots,bright,1,225,0.016283304226924464,0.020973465849232226,1.0,1,245.07,
+color_translucent_ideal_n15_s14891,color_translucent,15,auto,dbscan,373929e2efae701b4e869c6bdbb8bf948450c3e12d7df1df6c8737ff8151c65b,opencv_bright_region_wide,bright,1,225,0.016327759299777783,0.020983975652658998,1.0,1,112.45,
+color_translucent_ideal_n15_s14891,color_translucent,15,auto,log,373929e2efae701b4e869c6bdbb8bf948450c3e12d7df1df6c8737ff8151c65b,整幅原图,亮暗＋色差,1,225,0.019546304826631514,0.0328235472230129,1.0,1,772.37,
+color_translucent_ideal_n15_s14891,color_translucent,15,auto,m3g,373929e2efae701b4e869c6bdbb8bf948450c3e12d7df1df6c8737ff8151c65b,opencv_bright_region_wide,bright,0,,,,,0,,分隔线数 16×16 不符 14×14
+color_translucent_ideal_n15_s14891,color_translucent,15,auto,kmeans,373929e2efae701b4e869c6bdbb8bf948450c3e12d7df1df6c8737ff8151c65b,opencv_bright_region_wide,bright,1,225,0.016327759299777783,0.020983975652658998,1.0,1,111.2,
+fluo_new_ideal_n15_s14891,fluo_new,15,auto,dbscan,c2c21fcd67d48add8a460e3859db58afc9a3160bd5d87e240c46c353e412d052,opencv_faint_substrate,bright,0,,,,,0,136.16,候选不足
+fluo_new_ideal_n15_s14891,fluo_new,15,auto,log,c2c21fcd67d48add8a460e3859db58afc9a3160bd5d87e240c46c353e412d052,整幅原图,亮暗＋色差,1,153,0.01326536074362164,0.030550926665666018,1.0,1,721.1,
+fluo_new_ideal_n15_s14891,fluo_new,15,auto,m3g,c2c21fcd67d48add8a460e3859db58afc9a3160bd5d87e240c46c353e412d052,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+fluo_new_ideal_n15_s14891,fluo_new,15,auto,kmeans,c2c21fcd67d48add8a460e3859db58afc9a3160bd5d87e240c46c353e412d052,opencv_faint_substrate,bright,0,,,,,0,136.16,候选不足或行列无法组网
+color_bare_typical_n15_s7321,color_bare,15,auto,dbscan,81d1c74157d62600168f50801fde6f1082d54fc4662fd83f61c3bad0e81ab5bc,opencv_bright_region_wide,dark,0,,,,,0,114.76,密度簇不足、孔距不规则或首行列不唯一
+color_bare_typical_n15_s7321,color_bare,15,auto,log,81d1c74157d62600168f50801fde6f1082d54fc4662fd83f61c3bad0e81ab5bc,整幅原图,亮暗＋色差,1,157,2.117701265337955,5.5643782366676815,0.05333333333333334,0,819.69,
+color_bare_typical_n15_s7321,color_bare,15,auto,m3g,81d1c74157d62600168f50801fde6f1082d54fc4662fd83f61c3bad0e81ab5bc,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 74×74 不符 14×14
+color_bare_typical_n15_s7321,color_bare,15,auto,kmeans,81d1c74157d62600168f50801fde6f1082d54fc4662fd83f61c3bad0e81ab5bc,opencv_bright_region_wide,dark,1,84,4.0058656464578615,7.8791677090768095,0.06666666666666667,0,113.59,
+color_opaque_typical_n15_s7321,color_opaque,15,auto,dbscan,850ae6cbcf864576cc8f24b319731b298c2f6d9e20d9876a39d706930446c7ec,opencv_emitting_dots,bright,1,225,0.01802407743580653,0.023794212988107237,1.0,1,245.49,
+color_opaque_typical_n15_s7321,color_opaque,15,auto,log,850ae6cbcf864576cc8f24b319731b298c2f6d9e20d9876a39d706930446c7ec,整幅原图,亮暗＋色差,1,225,0.022258388660314585,0.03890673017174584,1.0,1,781.39,
+color_opaque_typical_n15_s7321,color_opaque,15,auto,m3g,850ae6cbcf864576cc8f24b319731b298c2f6d9e20d9876a39d706930446c7ec,opencv_emitting_dots,bright,1,,0.04518986555851798,0.12780611184531032,1.0,1,,
+color_opaque_typical_n15_s7321,color_opaque,15,auto,kmeans,850ae6cbcf864576cc8f24b319731b298c2f6d9e20d9876a39d706930446c7ec,opencv_emitting_dots,bright,1,225,0.01802407743580653,0.023794212988107237,1.0,1,244.15,
+color_translucent_typical_n15_s7321,color_translucent,15,auto,dbscan,c05d16ed603dcc56a403fd891b9856de5fb3b9b5dc9b2dd6934ffe6bec10b016,opencv_faint_substrate,bright,1,225,0.018679248986283894,0.02557077760600492,1.0,1,144.23,
+color_translucent_typical_n15_s7321,color_translucent,15,auto,log,c05d16ed603dcc56a403fd891b9856de5fb3b9b5dc9b2dd6934ffe6bec10b016,整幅原图,亮暗＋色差,1,225,0.022311096845850007,0.03939351726625745,1.0,1,772.8,
+color_translucent_typical_n15_s7321,color_translucent,15,auto,m3g,c05d16ed603dcc56a403fd891b9856de5fb3b9b5dc9b2dd6934ffe6bec10b016,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+color_translucent_typical_n15_s7321,color_translucent,15,auto,kmeans,c05d16ed603dcc56a403fd891b9856de5fb3b9b5dc9b2dd6934ffe6bec10b016,opencv_faint_substrate,bright,1,225,0.018679248986283894,0.02557077760600492,1.0,1,142.78,
+fluo_new_typical_n15_s7321,fluo_new,15,auto,dbscan,3457e55eced1089907c1abd7307ff34e2591b48097938cb3e2e571ff1ff1dc4d,opencv_faint_substrate,bright,0,,,,,0,133.68,候选不足
+fluo_new_typical_n15_s7321,fluo_new,15,auto,log,3457e55eced1089907c1abd7307ff34e2591b48097938cb3e2e571ff1ff1dc4d,整幅原图,亮暗＋色差,0,,,,,0,751.37,LoG 网格越界或局部与四边支撑不足
+fluo_new_typical_n15_s7321,fluo_new,15,auto,m3g,3457e55eced1089907c1abd7307ff34e2591b48097938cb3e2e571ff1ff1dc4d,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 70×16 不符 14×14
+fluo_new_typical_n15_s7321,fluo_new,15,auto,kmeans,3457e55eced1089907c1abd7307ff34e2591b48097938cb3e2e571ff1ff1dc4d,opencv_faint_substrate,bright,0,,,,,0,133.68,候选不足或行列无法组网
+color_bare_typical_n15_s14891,color_bare,15,auto,dbscan,dc90184cf6255e1351e1bd081fafdd2b4fe79b3ad32a6a9c68cb55f659f47f38,opencv_bright_region_wide,dark,0,,,,,0,112.83,密度簇不足、孔距不规则或首行列不唯一
+color_bare_typical_n15_s14891,color_bare,15,auto,log,dc90184cf6255e1351e1bd081fafdd2b4fe79b3ad32a6a9c68cb55f659f47f38,整幅原图,亮暗＋色差,1,210,0.02153789712029743,0.19922140883930745,0.9511111111111111,1,827.35,
+color_bare_typical_n15_s14891,color_bare,15,auto,m3g,dc90184cf6255e1351e1bd081fafdd2b4fe79b3ad32a6a9c68cb55f659f47f38,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 74×74 不符 14×14
+color_bare_typical_n15_s14891,color_bare,15,auto,kmeans,dc90184cf6255e1351e1bd081fafdd2b4fe79b3ad32a6a9c68cb55f659f47f38,opencv_bright_region_wide,dark,1,87,4.101596296618678,7.9576955965689224,0.06666666666666667,0,111.74,
+color_opaque_typical_n15_s14891,color_opaque,15,auto,dbscan,5d72d0cbd04b0453f690eb7eed9a7ff7758c1b991228c38d600abb7ffde1e70f,opencv_emitting_dots,bright,1,225,0.01496408067019736,0.01983461656256563,1.0,1,247.22,
+color_opaque_typical_n15_s14891,color_opaque,15,auto,log,5d72d0cbd04b0453f690eb7eed9a7ff7758c1b991228c38d600abb7ffde1e70f,整幅原图,亮暗＋色差,1,225,0.019689912868252796,0.03377980311073804,1.0,1,730.41,
+color_opaque_typical_n15_s14891,color_opaque,15,auto,m3g,5d72d0cbd04b0453f690eb7eed9a7ff7758c1b991228c38d600abb7ffde1e70f,opencv_emitting_dots,bright,0,,,,,0,,分隔线数 14×15 不符 14×14
+color_opaque_typical_n15_s14891,color_opaque,15,auto,kmeans,5d72d0cbd04b0453f690eb7eed9a7ff7758c1b991228c38d600abb7ffde1e70f,opencv_emitting_dots,bright,1,225,0.01496408067019736,0.01983461656256563,1.0,1,245.84,
+color_translucent_typical_n15_s14891,color_translucent,15,auto,dbscan,0ea8734ef4fb89e7045385e460110fe5dd20b75f7058177e9efc733cddd2d08f,opencv_bright_region_wide,bright,1,225,0.015133131422238938,0.02110896778706399,1.0,1,112.43,
+color_translucent_typical_n15_s14891,color_translucent,15,auto,log,0ea8734ef4fb89e7045385e460110fe5dd20b75f7058177e9efc733cddd2d08f,整幅原图,亮暗＋色差,1,224,0.020001838961852505,0.033915734514238245,0.9955555555555555,1,748.81,
+color_translucent_typical_n15_s14891,color_translucent,15,auto,m3g,0ea8734ef4fb89e7045385e460110fe5dd20b75f7058177e9efc733cddd2d08f,opencv_bright_region_wide,bright,0,,,,,0,,分隔线数 16×16 不符 14×14
+color_translucent_typical_n15_s14891,color_translucent,15,auto,kmeans,0ea8734ef4fb89e7045385e460110fe5dd20b75f7058177e9efc733cddd2d08f,opencv_bright_region_wide,bright,1,225,0.015133131422238938,0.02110896778706399,1.0,1,111.17,
+fluo_new_typical_n15_s14891,fluo_new,15,auto,dbscan,0bbb44054914ceb489a179102201cf780f1009f3d866825fc250d63f02fac7c3,opencv_faint_substrate,bright,0,,,,,0,139.45,密度簇不足、孔距不规则或首行列不唯一
+fluo_new_typical_n15_s14891,fluo_new,15,auto,log,0bbb44054914ceb489a179102201cf780f1009f3d866825fc250d63f02fac7c3,整幅原图,亮暗＋色差,1,149,0.018516473370622222,0.057777509648724974,1.0,1,715.18,
+fluo_new_typical_n15_s14891,fluo_new,15,auto,m3g,0bbb44054914ceb489a179102201cf780f1009f3d866825fc250d63f02fac7c3,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+fluo_new_typical_n15_s14891,fluo_new,15,auto,kmeans,0bbb44054914ceb489a179102201cf780f1009f3d866825fc250d63f02fac7c3,opencv_faint_substrate,bright,1,61,0.9800851588501475,1.0402213498739366,0.4,0,138.26,
+color_bare_hard_n15_s7321,color_bare,15,auto,dbscan,e49ac52d83a905157cc43c7ee2ca853d035b534e5ae76fe05500c616074adffc,opencv_bright_region_wide,dark,0,,,,,0,114.1,密度簇不足、孔距不规则或首行列不唯一
+color_bare_hard_n15_s7321,color_bare,15,auto,log,e49ac52d83a905157cc43c7ee2ca853d035b534e5ae76fe05500c616074adffc,整幅原图,亮暗＋色差,0,,,,,0,760.61,LoG 网格越界或局部与四边支撑不足
+color_bare_hard_n15_s7321,color_bare,15,auto,m3g,e49ac52d83a905157cc43c7ee2ca853d035b534e5ae76fe05500c616074adffc,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 74×74 不符 14×14
+color_bare_hard_n15_s7321,color_bare,15,auto,kmeans,e49ac52d83a905157cc43c7ee2ca853d035b534e5ae76fe05500c616074adffc,opencv_bright_region_wide,dark,1,93,3.0348425458945925,4.078326600684826,0.06222222222222222,0,112.82,
+color_opaque_hard_n15_s7321,color_opaque,15,auto,dbscan,84da53132e94c0b992ae4752ebfc39e5277c9f963c8cf4d0e660ebdd9f834d78,opencv_emitting_dots,bright,1,223,0.014855217863994498,0.021623450646132265,0.9911111111111112,1,248.02,
+color_opaque_hard_n15_s7321,color_opaque,15,auto,log,84da53132e94c0b992ae4752ebfc39e5277c9f963c8cf4d0e660ebdd9f834d78,整幅原图,亮暗＋色差,1,216,0.01948520136115714,0.04090427677338093,0.9511111111111111,1,778.79,
+color_opaque_hard_n15_s7321,color_opaque,15,auto,m3g,84da53132e94c0b992ae4752ebfc39e5277c9f963c8cf4d0e660ebdd9f834d78,opencv_emitting_dots,bright,1,,0.0910654036845973,0.15456932163383366,0.9866666666666667,1,,
+color_opaque_hard_n15_s7321,color_opaque,15,auto,kmeans,84da53132e94c0b992ae4752ebfc39e5277c9f963c8cf4d0e660ebdd9f834d78,opencv_emitting_dots,bright,1,224,0.014833231972503143,0.02147742567948058,0.9955555555555555,1,246.53,
+color_translucent_hard_n15_s7321,color_translucent,15,auto,dbscan,afd3545cede4373ff76baaf04672b75de1562a696a0325f3abe86123ff0527d8,opencv_bright_region_wide,bright,1,223,0.016076096696992462,0.025738009093663517,0.9911111111111112,1,114.9,
+color_translucent_hard_n15_s7321,color_translucent,15,auto,log,afd3545cede4373ff76baaf04672b75de1562a696a0325f3abe86123ff0527d8,整幅原图,亮暗＋色差,1,220,0.0196688572643776,0.03897487057143614,0.9777777777777777,1,819.46,
+color_translucent_hard_n15_s7321,color_translucent,15,auto,m3g,afd3545cede4373ff76baaf04672b75de1562a696a0325f3abe86123ff0527d8,opencv_bright_region_wide,bright,0,,,,,0,,分隔线数 16×16 不符 14×14
+color_translucent_hard_n15_s7321,color_translucent,15,auto,kmeans,afd3545cede4373ff76baaf04672b75de1562a696a0325f3abe86123ff0527d8,opencv_bright_region_wide,bright,1,224,0.015991005790785686,0.025421809762459453,0.9955555555555555,1,114.39,
+fluo_new_hard_n15_s7321,fluo_new,15,auto,dbscan,e17acb27bcb008ec84af1be8592747f35463838a43e65105310fb82b1f29fda8,opencv_faint_substrate,bright,0,,,,,0,145.84,候选不足
+fluo_new_hard_n15_s7321,fluo_new,15,auto,log,e17acb27bcb008ec84af1be8592747f35463838a43e65105310fb82b1f29fda8,整幅原图,亮暗＋色差,0,,,,,0,816.56,LoG 网格越界或局部与四边支撑不足
+fluo_new_hard_n15_s7321,fluo_new,15,auto,m3g,e17acb27bcb008ec84af1be8592747f35463838a43e65105310fb82b1f29fda8,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 72×15 不符 14×14
+fluo_new_hard_n15_s7321,fluo_new,15,auto,kmeans,e17acb27bcb008ec84af1be8592747f35463838a43e65105310fb82b1f29fda8,opencv_faint_substrate,bright,0,,,,,0,145.83,候选不足或行列无法组网
+color_bare_hard_n15_s14891,color_bare,15,auto,dbscan,c91ef838382aec2d0471cd527e8f5022f19d642cf882ae073be3873285d67c9e,opencv_bright_region_wide,dark,0,,,,,0,119.36,密度簇不足、孔距不规则或首行列不唯一
+color_bare_hard_n15_s14891,color_bare,15,auto,log,c91ef838382aec2d0471cd527e8f5022f19d642cf882ae073be3873285d67c9e,整幅原图,亮暗＋色差,1,143,1.0706033758998923,1.8099493149686932,0.008888888888888889,0,872.47,
+color_bare_hard_n15_s14891,color_bare,15,auto,m3g,c91ef838382aec2d0471cd527e8f5022f19d642cf882ae073be3873285d67c9e,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 74×74 不符 14×14
+color_bare_hard_n15_s14891,color_bare,15,auto,kmeans,c91ef838382aec2d0471cd527e8f5022f19d642cf882ae073be3873285d67c9e,opencv_bright_region_wide,dark,1,92,4.243549355985763,6.019151306203546,0.05333333333333334,0,117.85,
+color_opaque_hard_n15_s14891,color_opaque,15,auto,dbscan,225a9bf82ffa7a46f9af3a53d2e01a8c2abc39ba066874b350b61cf5de099975,opencv_emitting_dots,bright,0,,,,,0,268.42,密度簇不足、孔距不规则或首行列不唯一
+color_opaque_hard_n15_s14891,color_opaque,15,auto,log,225a9bf82ffa7a46f9af3a53d2e01a8c2abc39ba066874b350b61cf5de099975,整幅原图,亮暗＋色差,1,219,0.019235512297314215,0.038028799246901675,0.9644444444444444,1,782.21,
+color_opaque_hard_n15_s14891,color_opaque,15,auto,m3g,225a9bf82ffa7a46f9af3a53d2e01a8c2abc39ba066874b350b61cf5de099975,opencv_emitting_dots,bright,0,,,,,0,,分隔线数 14×23 不符 14×14
+color_opaque_hard_n15_s14891,color_opaque,15,auto,kmeans,225a9bf82ffa7a46f9af3a53d2e01a8c2abc39ba066874b350b61cf5de099975,opencv_emitting_dots,bright,1,106,1.0122613256867434,2.0364226247760593,0.13777777777777778,0,267.85,
+color_translucent_hard_n15_s14891,color_translucent,15,auto,dbscan,601e652b6ccd7af214245f3ef4037b07e8ad5c795b99d31b5982b72e3de522a4,opencv_faint_substrate,bright,1,197,0.01629712389135146,0.4144915700215717,0.8755555555555555,0,157.98,
+color_translucent_hard_n15_s14891,color_translucent,15,auto,log,601e652b6ccd7af214245f3ef4037b07e8ad5c795b99d31b5982b72e3de522a4,整幅原图,亮暗＋色差,1,107,2.0914529050194943,3.6848222940658117,0.0,0,768.51,
+color_translucent_hard_n15_s14891,color_translucent,15,auto,m3g,601e652b6ccd7af214245f3ef4037b07e8ad5c795b99d31b5982b72e3de522a4,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 14×15 不符 14×14
+color_translucent_hard_n15_s14891,color_translucent,15,auto,kmeans,601e652b6ccd7af214245f3ef4037b07e8ad5c795b99d31b5982b72e3de522a4,opencv_faint_substrate,bright,1,208,0.015941341935713657,0.33981950398451755,0.9244444444444444,0,155.87,
+fluo_new_hard_n15_s14891,fluo_new,15,auto,dbscan,822cfc3a9bf58525e1baab4fc652b2e013cb878df96a6c42ff151131e8c680a9,opencv_faint_substrate,bright,1,100,0.02558815516465822,0.3503769429602053,0.88,0,147.83,
+fluo_new_hard_n15_s14891,fluo_new,15,auto,log,822cfc3a9bf58525e1baab4fc652b2e013cb878df96a6c42ff151131e8c680a9,整幅原图,亮暗＋色差,1,110,0.022024167275385156,0.1599440428631966,0.96,1,748.41,
+fluo_new_hard_n15_s14891,fluo_new,15,auto,m3g,822cfc3a9bf58525e1baab4fc652b2e013cb878df96a6c42ff151131e8c680a9,opencv_faint_substrate,bright,1,,0.09632592195469564,0.2342755260186708,0.9333333333333333,0,,
+fluo_new_hard_n15_s14891,fluo_new,15,auto,kmeans,822cfc3a9bf58525e1baab4fc652b2e013cb878df96a6c42ff151131e8c680a9,opencv_faint_substrate,bright,1,110,0.014354909917754255,0.20214351953963658,0.9422222222222222,0,145.99,
+color_demo_plate,color_demo,15,auto,dbscan,d134c3dfaf437db604b6dd9d5c77961ce6926060fb490d33d260f029ade7874e,opencv_bright_region_wide,dark,1,224,0.01831770841362847,0.03327623233059114,0.9955555555555555,1,120.19,
+color_demo_plate,color_demo,15,auto,log,d134c3dfaf437db604b6dd9d5c77961ce6926060fb490d33d260f029ade7874e,整幅原图,亮暗＋色差,0,,,,,0,854.39,LoG 网格越界或局部与四边支撑不足
+color_demo_plate,color_demo,15,auto,m3g,d134c3dfaf437db604b6dd9d5c77961ce6926060fb490d33d260f029ade7874e,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 74×74 不符 14×14
+color_demo_plate,color_demo,15,auto,kmeans,d134c3dfaf437db604b6dd9d5c77961ce6926060fb490d33d260f029ade7874e,opencv_bright_region_wide,dark,1,225,0.01830572105447473,0.032784315156351385,1.0,1,118.99,
+color_demo_zero,color_demo,15,auto,dbscan,c50359c737b6c91c854c007719665e58eaa516f1422ee4636516712dc0c749e0,opencv_bright_region_wide,dark,1,224,0.021275877676709375,0.040834645338869296,0.9955555555555555,1,125.7,
+color_demo_zero,color_demo,15,auto,log,c50359c737b6c91c854c007719665e58eaa516f1422ee4636516712dc0c749e0,整幅原图,亮暗＋色差,1,133,2.0123201115587737,4.41879399845648,0.0,0,866.23,
+color_demo_zero,color_demo,15,auto,m3g,c50359c737b6c91c854c007719665e58eaa516f1422ee4636516712dc0c749e0,opencv_bright_region_wide,dark,0,,,,,0,,分隔线数 75×75 不符 14×14
+color_demo_zero,color_demo,15,auto,kmeans,c50359c737b6c91c854c007719665e58eaa516f1422ee4636516712dc0c749e0,opencv_bright_region_wide,dark,1,225,0.021268435506545016,0.04052374011566961,1.0,1,123.62,
+real_10x10_01,real_original,10,auto,dbscan,d9cff7bea7a383eda58eeb5498baa0c0fc66382489b7aee2413682e62f586192,opencv_bright_region_wide,dark,0,,,,,,416.86,密度簇不足、孔距不规则或首行列不唯一
+real_10x10_01,real_original,10,auto,log,d9cff7bea7a383eda58eeb5498baa0c0fc66382489b7aee2413682e62f586192,整幅原图,亮暗＋色差,1,77,,,,,819.3,
+real_10x10_01,real_original,10,auto,m3g,d9cff7bea7a383eda58eeb5498baa0c0fc66382489b7aee2413682e62f586192,opencv_bright_region_wide,dark,0,,,,,,,分隔线数 74×74 不符 9×9
+real_10x10_01,real_original,10,auto,kmeans,d9cff7bea7a383eda58eeb5498baa0c0fc66382489b7aee2413682e62f586192,opencv_bright_region_wide,dark,1,60,,,,,415.18,
+real_10x10_02,real_original,10,auto,dbscan,b67606ef66d7878bd451aefd021f04d0f7bbdf90a1df37262b66deb01b214dab,opencv_bright_region_wide,dark,0,,,,,,449.25,密度簇不足、孔距不规则或首行列不唯一
+real_10x10_02,real_original,10,auto,log,b67606ef66d7878bd451aefd021f04d0f7bbdf90a1df37262b66deb01b214dab,整幅原图,亮暗＋色差,0,,,,,,864.57,LoG 网格越界或局部与四边支撑不足
+real_10x10_02,real_original,10,auto,m3g,b67606ef66d7878bd451aefd021f04d0f7bbdf90a1df37262b66deb01b214dab,opencv_bright_region_wide,dark,0,,,,,,,分隔线数 75×75 不符 9×9
+real_10x10_02,real_original,10,auto,kmeans,b67606ef66d7878bd451aefd021f04d0f7bbdf90a1df37262b66deb01b214dab,opencv_bright_region_wide,dark,1,65,,,,,447.65,
+real_15x15_01,real_original,15,auto,dbscan,cbb421e2e2ab60a098a50e89b94609e83747668aeb45894beb92f787a1bf2ce1,opencv_bright_region_wide,dark,1,225,,,,,485.8,
+real_15x15_01,real_original,15,auto,log,cbb421e2e2ab60a098a50e89b94609e83747668aeb45894beb92f787a1bf2ce1,整幅原图,亮暗＋色差,1,221,,,,,616.37,
+real_15x15_01,real_original,15,auto,m3g,cbb421e2e2ab60a098a50e89b94609e83747668aeb45894beb92f787a1bf2ce1,opencv_bright_region_wide,dark,0,,,,,,,分隔线方向不符
+real_15x15_01,real_original,15,auto,kmeans,cbb421e2e2ab60a098a50e89b94609e83747668aeb45894beb92f787a1bf2ce1,opencv_bright_region_wide,dark,1,222,,,,,484.78,
+real_15x15_02,real_original,15,auto,dbscan,87622b0add29268542529b85924f551f79e66e50e285493c8660fe670d78694b,opencv_bright_region_wide,dark,1,225,,,,,485.93,
+real_15x15_02,real_original,15,auto,log,87622b0add29268542529b85924f551f79e66e50e285493c8660fe670d78694b,整幅原图,亮暗＋色差,1,225,,,,,548.15,
+real_15x15_02,real_original,15,auto,m3g,87622b0add29268542529b85924f551f79e66e50e285493c8660fe670d78694b,opencv_bright_region_wide,dark,0,,,,,,,分隔线数 74×75 不符 14×14
+real_15x15_02,real_original,15,auto,kmeans,87622b0add29268542529b85924f551f79e66e50e285493c8660fe670d78694b,opencv_bright_region_wide,dark,1,225,,,,,484.64,
+real_15x15_03,real_original,15,auto,dbscan,5e52f023d4e8aaad7335635571c8c530f15fc83447f487ed6b37589b69fcf788,opencv_bright_region_wide,dark,1,225,,,,,477.3,
+real_15x15_03,real_original,15,auto,log,5e52f023d4e8aaad7335635571c8c530f15fc83447f487ed6b37589b69fcf788,整幅原图,亮暗＋色差,1,225,,,,,504.91,
+real_15x15_03,real_original,15,auto,m3g,5e52f023d4e8aaad7335635571c8c530f15fc83447f487ed6b37589b69fcf788,opencv_bright_region_wide,dark,0,,,,,,,分隔线数 74×74 不符 14×14
+real_15x15_03,real_original,15,auto,kmeans,5e52f023d4e8aaad7335635571c8c530f15fc83447f487ed6b37589b69fcf788,opencv_bright_region_wide,dark,1,225,,,,,475.62,
+real_15x15_04,real_original,15,auto,dbscan,303ebcebe54c85a2dff175afa4cdcc44795d74527edaa2fe4af4b97410bf3b84,opencv_bright_region_wide,dark,1,225,,,,,133.66,
+real_15x15_04,real_original,15,auto,log,303ebcebe54c85a2dff175afa4cdcc44795d74527edaa2fe4af4b97410bf3b84,整幅原图,亮暗＋色差,1,221,,,,,514.05,
+real_15x15_04,real_original,15,auto,m3g,303ebcebe54c85a2dff175afa4cdcc44795d74527edaa2fe4af4b97410bf3b84,opencv_bright_region_wide,dark,0,,,,,,,分隔线数 74×74 不符 14×14
+real_15x15_04,real_original,15,auto,kmeans,303ebcebe54c85a2dff175afa4cdcc44795d74527edaa2fe4af4b97410bf3b84,opencv_bright_region_wide,dark,1,125,,,,,132.78,
+checker_failure_0048,fluo_challenge,15,auto,dbscan,109d3bcaf9b168abdfa45729d3d7e97b2b5ff4334877e07c5b09b20082d75958,opencv_faint_substrate,bright,0,,,,,0,183.63,密度簇不足、孔距不规则或首行列不唯一
+checker_failure_0048,fluo_challenge,15,auto,log,109d3bcaf9b168abdfa45729d3d7e97b2b5ff4334877e07c5b09b20082d75958,整幅原图,亮暗＋色差,1,113,0.015022307537769888,0.030176287236437414,1.0,1,728.53,
+checker_failure_0048,fluo_challenge,15,auto,m3g,109d3bcaf9b168abdfa45729d3d7e97b2b5ff4334877e07c5b09b20082d75958,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×17 不符 14×14
+checker_failure_0048,fluo_challenge,15,auto,kmeans,109d3bcaf9b168abdfa45729d3d7e97b2b5ff4334877e07c5b09b20082d75958,opencv_faint_substrate,bright,1,64,3.61585154400475,4.5381940554665965,0.0044444444444444444,0,182.26,
+checker_phase_0018,fluo_challenge,15,auto,dbscan,352f4b1b22cf5542189d090d6f51c928b887ab235a8777de43cfc1cb270636ae,opencv_faint_substrate,bright,1,113,0.00832948216618204,0.05550532945900143,1.0,1,189.9,
+checker_phase_0018,fluo_challenge,15,auto,log,352f4b1b22cf5542189d090d6f51c928b887ab235a8777de43cfc1cb270636ae,整幅原图,亮暗＋色差,1,113,0.0190221512964456,0.034530397041288276,1.0,1,718.06,
+checker_phase_0018,fluo_challenge,15,auto,m3g,352f4b1b22cf5542189d090d6f51c928b887ab235a8777de43cfc1cb270636ae,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+checker_phase_0018,fluo_challenge,15,auto,kmeans,352f4b1b22cf5542189d090d6f51c928b887ab235a8777de43cfc1cb270636ae,opencv_faint_substrate,bright,1,113,0.008968735338542918,0.048754059525284575,1.0,1,187.51,
+checker_phase_0031,fluo_challenge,15,auto,dbscan,f8d2ace119b14d0881f0897dba8a452d2f1e9836b60605512c7e6a419eaf8019,opencv_faint_substrate,bright,1,109,0.010650510736651837,0.1501488692146957,0.9644444444444444,1,181.53,
+checker_phase_0031,fluo_challenge,15,auto,log,f8d2ace119b14d0881f0897dba8a452d2f1e9836b60605512c7e6a419eaf8019,整幅原图,亮暗＋色差,1,113,0.019378753925580278,0.04527129143858375,1.0,1,725.07,
+checker_phase_0031,fluo_challenge,15,auto,m3g,f8d2ace119b14d0881f0897dba8a452d2f1e9836b60605512c7e6a419eaf8019,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 23×24 不符 14×14
+checker_phase_0031,fluo_challenge,15,auto,kmeans,f8d2ace119b14d0881f0897dba8a452d2f1e9836b60605512c7e6a419eaf8019,opencv_faint_substrate,bright,1,113,0.010509340287508648,0.12640492071460233,0.9911111111111112,1,179.91,
+full_region_extreme_0039,fluo_challenge,15,auto,dbscan,8d86aa5056c10fd0ba27f8f00f9c27fb39f8f98abdce1316150153bf8a5492ca,opencv_faint_substrate,bright,0,,,,,0,180.89,密度簇不足、孔距不规则或首行列不唯一
+full_region_extreme_0039,fluo_challenge,15,auto,log,8d86aa5056c10fd0ba27f8f00f9c27fb39f8f98abdce1316150153bf8a5492ca,整幅原图,亮暗＋色差,0,,,,,0,777.11,LoG 候选没有形成覆盖四边的可编号晶格
+full_region_extreme_0039,fluo_challenge,15,auto,m3g,8d86aa5056c10fd0ba27f8f00f9c27fb39f8f98abdce1316150153bf8a5492ca,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 71×15 不符 14×14
+full_region_extreme_0039,fluo_challenge,15,auto,kmeans,8d86aa5056c10fd0ba27f8f00f9c27fb39f8f98abdce1316150153bf8a5492ca,opencv_faint_substrate,bright,1,72,4.9596000238203475,8.516291700443574,0.057777777777777775,0,179.87,
+gradient_failure_0034,fluo_challenge,15,auto,dbscan,8876e91d21d2ed7d88c53fbd3d24635da0b6a195bfa6c659ee0c1d19cdca1a26,opencv_faint_substrate,bright,0,,,,,0,181.3,密度簇不足、孔距不规则或首行列不唯一
+gradient_failure_0034,fluo_challenge,15,auto,log,8876e91d21d2ed7d88c53fbd3d24635da0b6a195bfa6c659ee0c1d19cdca1a26,整幅原图,亮暗＋色差,1,222,0.01438615260105845,0.02565063536966905,1.0,1,773.83,
+gradient_failure_0034,fluo_challenge,15,auto,m3g,8876e91d21d2ed7d88c53fbd3d24635da0b6a195bfa6c659ee0c1d19cdca1a26,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 24×25 不符 14×14
+gradient_failure_0034,fluo_challenge,15,auto,kmeans,8876e91d21d2ed7d88c53fbd3d24635da0b6a195bfa6c659ee0c1d19cdca1a26,opencv_faint_substrate,bright,1,157,3.982131786834777,4.105205954303894,0.06666666666666667,0,180.13,
+gradient_failure_0039,fluo_challenge,15,auto,dbscan,ce10fa18340db86dbfc11a08f7982bdcec3f35ad55c8791972ac5f559056fb78,opencv_faint_substrate,bright,0,,,,,0,183.73,密度簇不足、孔距不规则或首行列不唯一
+gradient_failure_0039,fluo_challenge,15,auto,log,ce10fa18340db86dbfc11a08f7982bdcec3f35ad55c8791972ac5f559056fb78,整幅原图,亮暗＋色差,1,219,0.014949907572547032,0.02746585307580626,1.0,1,803.05,
+gradient_failure_0039,fluo_challenge,15,auto,m3g,ce10fa18340db86dbfc11a08f7982bdcec3f35ad55c8791972ac5f559056fb78,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+gradient_failure_0039,fluo_challenge,15,auto,kmeans,ce10fa18340db86dbfc11a08f7982bdcec3f35ad55c8791972ac5f559056fb78,opencv_faint_substrate,bright,1,160,2.0225704942753513,3.919516344843461,0.057777777777777775,0,182.91,
+partial_region_extreme_0007,fluo_challenge,15,auto,dbscan,0fb4a0a88797d334f891210b5b74d848775d319ed78848d0728fc6712732f8b9,opencv_faint_substrate,bright,0,,,,,0,171.67,候选不足
+partial_region_extreme_0007,fluo_challenge,15,auto,log,0fb4a0a88797d334f891210b5b74d848775d319ed78848d0728fc6712732f8b9,整幅原图,亮暗＋色差,0,,,,,0,739.6,LoG 候选没有形成覆盖四边的可编号晶格
+partial_region_extreme_0007,fluo_challenge,15,auto,m3g,0fb4a0a88797d334f891210b5b74d848775d319ed78848d0728fc6712732f8b9,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 73×16 不符 14×14
+partial_region_extreme_0007,fluo_challenge,15,auto,kmeans,0fb4a0a88797d334f891210b5b74d848775d319ed78848d0728fc6712732f8b9,opencv_faint_substrate,bright,0,,,,,0,171.66,候选不足或行列无法组网
+partial_region_hard_0006,fluo_challenge,15,auto,dbscan,ac7cc5ec01fc6f967b5dd68c924bea17a7a6f56e841021db76d4ea7eba22510f,opencv_faint_substrate,bright,0,,,,,0,172.68,候选不足
+partial_region_hard_0006,fluo_challenge,15,auto,log,ac7cc5ec01fc6f967b5dd68c924bea17a7a6f56e841021db76d4ea7eba22510f,整幅原图,亮暗＋色差,0,,,,,0,774.78,LoG 网格越界或局部与四边支撑不足
+partial_region_hard_0006,fluo_challenge,15,auto,m3g,ac7cc5ec01fc6f967b5dd68c924bea17a7a6f56e841021db76d4ea7eba22510f,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 26×26 不符 14×14
+partial_region_hard_0006,fluo_challenge,15,auto,kmeans,ac7cc5ec01fc6f967b5dd68c924bea17a7a6f56e841021db76d4ea7eba22510f,opencv_faint_substrate,bright,0,,,,,0,172.68,候选不足或行列无法组网
+partial_region_ideal_0008,fluo_challenge,15,auto,dbscan,349d5080b28c6dd4cedcb4639aecfa76dc3a4d852606363cd25df658781cd5ec,opencv_faint_substrate,bright,0,,,,,0,171.54,候选不足
+partial_region_ideal_0008,fluo_challenge,15,auto,log,349d5080b28c6dd4cedcb4639aecfa76dc3a4d852606363cd25df658781cd5ec,整幅原图,亮暗＋色差,0,,,,,0,721.81,LoG 网格越界或局部与四边支撑不足
+partial_region_ideal_0008,fluo_challenge,15,auto,m3g,349d5080b28c6dd4cedcb4639aecfa76dc3a4d852606363cd25df658781cd5ec,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 70×16 不符 14×14
+partial_region_ideal_0008,fluo_challenge,15,auto,kmeans,349d5080b28c6dd4cedcb4639aecfa76dc3a4d852606363cd25df658781cd5ec,opencv_faint_substrate,bright,0,,,,,0,171.54,候选不足或行列无法组网
+partial_region_ideal_0039,fluo_challenge,15,auto,dbscan,b161971eacccb74139a4739cbbdb4e0d5134fe8ef68523cb522b2c1bf869e84b,opencv_faint_substrate,bright,0,,,,,0,173.67,候选不足
+partial_region_ideal_0039,fluo_challenge,15,auto,log,b161971eacccb74139a4739cbbdb4e0d5134fe8ef68523cb522b2c1bf869e84b,整幅原图,亮暗＋色差,0,,,,,0,724.5,LoG 网格越界或局部与四边支撑不足
+partial_region_ideal_0039,fluo_challenge,15,auto,m3g,b161971eacccb74139a4739cbbdb4e0d5134fe8ef68523cb522b2c1bf869e84b,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+partial_region_ideal_0039,fluo_challenge,15,auto,kmeans,b161971eacccb74139a4739cbbdb4e0d5134fe8ef68523cb522b2c1bf869e84b,opencv_faint_substrate,bright,0,,,,,0,173.66,候选不足或行列无法组网
+partial_region_typical_0007,fluo_challenge,15,auto,dbscan,2331c0594e182ad0110fbdfbe878e004fa92f2d90b10497370b0d6c64bd2dddd,opencv_faint_substrate,bright,0,,,,,0,175.45,候选不足
+partial_region_typical_0007,fluo_challenge,15,auto,log,2331c0594e182ad0110fbdfbe878e004fa92f2d90b10497370b0d6c64bd2dddd,整幅原图,亮暗＋色差,1,165,0.020760550022342877,0.056563468893672954,1.0,1,741.28,
+partial_region_typical_0007,fluo_challenge,15,auto,m3g,2331c0594e182ad0110fbdfbe878e004fa92f2d90b10497370b0d6c64bd2dddd,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 70×16 不符 14×14
+partial_region_typical_0007,fluo_challenge,15,auto,kmeans,2331c0594e182ad0110fbdfbe878e004fa92f2d90b10497370b0d6c64bd2dddd,opencv_faint_substrate,bright,0,,,,,0,175.44,候选不足或行列无法组网
+random_failure_0010,fluo_challenge,15,auto,dbscan,ce07892ebc14294013fd83e210f6488179a3ad5586e3b316451d5c6c4420a65c,opencv_faint_substrate,bright,0,,,,,0,183.98,密度簇不足、孔距不规则或首行列不唯一
+random_failure_0010,fluo_challenge,15,auto,log,ce07892ebc14294013fd83e210f6488179a3ad5586e3b316451d5c6c4420a65c,整幅原图,亮暗＋色差,1,181,0.016660635256954007,0.02946147261240496,1.0,1,715.23,
+random_failure_0010,fluo_challenge,15,auto,m3g,ce07892ebc14294013fd83e210f6488179a3ad5586e3b316451d5c6c4420a65c,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+random_failure_0010,fluo_challenge,15,auto,kmeans,ce07892ebc14294013fd83e210f6488179a3ad5586e3b316451d5c6c4420a65c,opencv_faint_substrate,bright,1,84,0.015247412804245448,0.07007696824035753,1.0,1,182.75,
+random_sparse_0001,fluo_challenge,15,auto,dbscan,f2c4b93903d54ffdab455beeb11ed252e49797b5a4428e5d1e917075c0f49857,opencv_faint_substrate,bright,0,,,,,0,177.61,候选不足
+random_sparse_0001,fluo_challenge,15,auto,log,f2c4b93903d54ffdab455beeb11ed252e49797b5a4428e5d1e917075c0f49857,整幅原图,亮暗＋色差,1,168,0.018170735661724016,0.0458831371648955,1.0,1,716.9,
+random_sparse_0001,fluo_challenge,15,auto,m3g,f2c4b93903d54ffdab455beeb11ed252e49797b5a4428e5d1e917075c0f49857,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+random_sparse_0001,fluo_challenge,15,auto,kmeans,f2c4b93903d54ffdab455beeb11ed252e49797b5a4428e5d1e917075c0f49857,opencv_faint_substrate,bright,0,,,,,0,177.6,候选不足或行列无法组网
+random_sparse_0005,fluo_challenge,15,auto,dbscan,c38e20ee8be6ae3cecb2e8df6f404fbe019a12ca7943a44c20ad18538e224e63,opencv_faint_substrate,bright,0,,,,,0,181.28,密度簇不足、孔距不规则或首行列不唯一
+random_sparse_0005,fluo_challenge,15,auto,log,c38e20ee8be6ae3cecb2e8df6f404fbe019a12ca7943a44c20ad18538e224e63,整幅原图,亮暗＋色差,1,156,0.015085370394098645,0.02754903492048362,1.0,1,726.06,
+random_sparse_0005,fluo_challenge,15,auto,m3g,c38e20ee8be6ae3cecb2e8df6f404fbe019a12ca7943a44c20ad18538e224e63,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+random_sparse_0005,fluo_challenge,15,auto,kmeans,c38e20ee8be6ae3cecb2e8df6f404fbe019a12ca7943a44c20ad18538e224e63,opencv_faint_substrate,bright,1,71,0.05336710569195687,0.18037249939882333,0.9733333333333334,1,180.02,
+region_collapse_extreme_0025,fluo_challenge,15,auto,dbscan,cf9bef7d33009d5450220b453ae9149a8d8ba5ade57d77d2724dab157d3d1560,opencv_faint_substrate,bright,0,,,,,0,181.18,密度簇不足、孔距不规则或首行列不唯一
+region_collapse_extreme_0025,fluo_challenge,15,auto,log,cf9bef7d33009d5450220b453ae9149a8d8ba5ade57d77d2724dab157d3d1560,整幅原图,亮暗＋色差,0,,,,,0,781.22,LoG 网格越界或局部与四边支撑不足
+region_collapse_extreme_0025,fluo_challenge,15,auto,m3g,cf9bef7d33009d5450220b453ae9149a8d8ba5ade57d77d2724dab157d3d1560,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×74 不符 14×14
+region_collapse_extreme_0025,fluo_challenge,15,auto,kmeans,cf9bef7d33009d5450220b453ae9149a8d8ba5ade57d77d2724dab157d3d1560,opencv_faint_substrate,bright,1,62,5.460853857633655,9.867503866296586,0.04888888888888889,0,180.02,
+region_collapse_extreme_0040,fluo_challenge,15,auto,dbscan,c6bf6d08896c571fb22f8cbbb86f6fad351433423fa83a10431b933ef5f68db6,opencv_faint_substrate,bright,0,,,,,0,172.53,候选不足
+region_collapse_extreme_0040,fluo_challenge,15,auto,log,c6bf6d08896c571fb22f8cbbb86f6fad351433423fa83a10431b933ef5f68db6,整幅原图,亮暗＋色差,0,,,,,0,753.24,LoG 候选没有形成覆盖四边的可编号晶格
+region_collapse_extreme_0040,fluo_challenge,15,auto,m3g,c6bf6d08896c571fb22f8cbbb86f6fad351433423fa83a10431b933ef5f68db6,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 74×74 不符 14×14
+region_collapse_extreme_0040,fluo_challenge,15,auto,kmeans,c6bf6d08896c571fb22f8cbbb86f6fad351433423fa83a10431b933ef5f68db6,opencv_faint_substrate,bright,0,,,,,0,172.52,候选不足或行列无法组网
+trusted_wrong_gradient_0015,fluo_challenge,15,auto,dbscan,402eb4321d11dd971945aa5a2a40aa53b849e54b67261771a7debfac6930d238,opencv_faint_substrate,bright,0,,,,,0,185.7,密度簇不足、孔距不规则或首行列不唯一
+trusted_wrong_gradient_0015,fluo_challenge,15,auto,log,402eb4321d11dd971945aa5a2a40aa53b849e54b67261771a7debfac6930d238,整幅原图,亮暗＋色差,1,223,0.01429550459729077,0.025276192596421544,1.0,1,783.77,
+trusted_wrong_gradient_0015,fluo_challenge,15,auto,m3g,402eb4321d11dd971945aa5a2a40aa53b849e54b67261771a7debfac6930d238,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+trusted_wrong_gradient_0015,fluo_challenge,15,auto,kmeans,402eb4321d11dd971945aa5a2a40aa53b849e54b67261771a7debfac6930d238,opencv_faint_substrate,bright,1,164,2.9969536427551913,3.0569895072093045,0.06666666666666667,0,184.77,
+trusted_wrong_gradient_0028,fluo_challenge,15,auto,dbscan,4c47fce6a1824243292299844a4c67375ceb42ab4f044b56696a80c01a0eddf3,opencv_faint_substrate,bright,0,,,,,0,188.26,密度簇不足、孔距不规则或首行列不唯一
+trusted_wrong_gradient_0028,fluo_challenge,15,auto,log,4c47fce6a1824243292299844a4c67375ceb42ab4f044b56696a80c01a0eddf3,整幅原图,亮暗＋色差,1,222,0.01643844744497732,0.027050311084545597,1.0,1,780.62,
+trusted_wrong_gradient_0028,fluo_challenge,15,auto,m3g,4c47fce6a1824243292299844a4c67375ceb42ab4f044b56696a80c01a0eddf3,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+trusted_wrong_gradient_0028,fluo_challenge,15,auto,kmeans,4c47fce6a1824243292299844a4c67375ceb42ab4f044b56696a80c01a0eddf3,opencv_faint_substrate,bright,1,165,3.9630868870078273,4.052200526638579,0.06666666666666667,0,187.31,
+trusted_wrong_gradient_0038,fluo_challenge,15,auto,dbscan,9573dd59d6054d3aa3da991182ef5112acbd04f97f1643498c8d5f6a88d00da7,opencv_faint_substrate,bright,0,,,,,0,186.06,密度簇不足、孔距不规则或首行列不唯一
+trusted_wrong_gradient_0038,fluo_challenge,15,auto,log,9573dd59d6054d3aa3da991182ef5112acbd04f97f1643498c8d5f6a88d00da7,整幅原图,亮暗＋色差,1,223,0.013110710077315593,0.023135072827032855,1.0,1,736.35,
+trusted_wrong_gradient_0038,fluo_challenge,15,auto,m3g,9573dd59d6054d3aa3da991182ef5112acbd04f97f1643498c8d5f6a88d00da7,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+trusted_wrong_gradient_0038,fluo_challenge,15,auto,kmeans,9573dd59d6054d3aa3da991182ef5112acbd04f97f1643498c8d5f6a88d00da7,opencv_faint_substrate,bright,1,173,0.008186020339283187,2.9623592768092784,0.6,0,185.08,
+trusted_wrong_hard_0019,fluo_challenge,15,auto,dbscan,e71f22b25c0340aa475da6a47cc88652fc5e8fd003f8964e7b1044eb84fde3c5,opencv_faint_substrate,bright,0,,,,,0,180.75,密度簇不足、孔距不规则或首行列不唯一
+trusted_wrong_hard_0019,fluo_challenge,15,auto,log,e71f22b25c0340aa475da6a47cc88652fc5e8fd003f8964e7b1044eb84fde3c5,整幅原图,亮暗＋色差,0,,,,,0,776.61,LoG 网格越界或局部与四边支撑不足
+trusted_wrong_hard_0019,fluo_challenge,15,auto,m3g,e71f22b25c0340aa475da6a47cc88652fc5e8fd003f8964e7b1044eb84fde3c5,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 70×15 不符 14×14
+trusted_wrong_hard_0019,fluo_challenge,15,auto,kmeans,e71f22b25c0340aa475da6a47cc88652fc5e8fd003f8964e7b1044eb84fde3c5,opencv_faint_substrate,bright,1,74,5.115967163627817,9.092336855999479,0.06666666666666667,0,179.59,
+trusted_wrong_hard_0047,fluo_challenge,15,auto,dbscan,c67df5dae5d49b06ee1f2cc05e4784f005d1250f11852e304e8ba93bdfc69c31,opencv_faint_substrate,bright,0,,,,,0,177.52,候选不足
+trusted_wrong_hard_0047,fluo_challenge,15,auto,log,c67df5dae5d49b06ee1f2cc05e4784f005d1250f11852e304e8ba93bdfc69c31,整幅原图,亮暗＋色差,1,162,0.019238293946972636,0.0853426944154289,0.9955555555555555,1,764.28,
+trusted_wrong_hard_0047,fluo_challenge,15,auto,m3g,c67df5dae5d49b06ee1f2cc05e4784f005d1250f11852e304e8ba93bdfc69c31,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 69×16 不符 14×14
+trusted_wrong_hard_0047,fluo_challenge,15,auto,kmeans,c67df5dae5d49b06ee1f2cc05e4784f005d1250f11852e304e8ba93bdfc69c31,opencv_faint_substrate,bright,0,,,,,0,177.51,候选不足或行列无法组网
+trusted_wrong_ideal_0010,fluo_challenge,15,auto,dbscan,16d67aafe62ca0ae550227378f4e18c0ed18667f1bdbe2f808736833e7e057e1,opencv_faint_substrate,bright,0,,,,,0,186.13,密度簇不足、孔距不规则或首行列不唯一
+trusted_wrong_ideal_0010,fluo_challenge,15,auto,log,16d67aafe62ca0ae550227378f4e18c0ed18667f1bdbe2f808736833e7e057e1,整幅原图,亮暗＋色差,1,110,2.0011117153256657,3.334384608299527,0.0,0,841.72,
+trusted_wrong_ideal_0010,fluo_challenge,15,auto,m3g,16d67aafe62ca0ae550227378f4e18c0ed18667f1bdbe2f808736833e7e057e1,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 15×15 不符 14×14
+trusted_wrong_ideal_0010,fluo_challenge,15,auto,kmeans,16d67aafe62ca0ae550227378f4e18c0ed18667f1bdbe2f808736833e7e057e1,opencv_faint_substrate,bright,1,69,4.999167535949695,9.976743947386364,0.06666666666666667,0,185.31,
+trusted_wrong_typical_0024,fluo_challenge,15,auto,dbscan,5fe7502b734c9129842983d4bede3282932e9841c5ab0059a1539a7f74c85591,opencv_faint_substrate,bright,0,,,,,0,185.29,候选不足
+trusted_wrong_typical_0024,fluo_challenge,15,auto,log,5fe7502b734c9129842983d4bede3282932e9841c5ab0059a1539a7f74c85591,整幅原图,亮暗＋色差,0,,,,,0,792.45,LoG 候选没有形成覆盖四边的可编号晶格
+trusted_wrong_typical_0024,fluo_challenge,15,auto,m3g,5fe7502b734c9129842983d4bede3282932e9841c5ab0059a1539a7f74c85591,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 31×15 不符 14×14
+trusted_wrong_typical_0024,fluo_challenge,15,auto,kmeans,5fe7502b734c9129842983d4bede3282932e9841c5ab0059a1539a7f74c85591,opencv_faint_substrate,bright,0,,,,,0,185.28,候选不足或行列无法组网
+trusted_wrong_typical_0030,fluo_challenge,15,auto,dbscan,56346dd0586689225920327c9cdc05c938f3dc4cba30bab4265352af5f8eab47,opencv_faint_substrate,bright,0,,,,,0,176.03,候选不足
+trusted_wrong_typical_0030,fluo_challenge,15,auto,log,56346dd0586689225920327c9cdc05c938f3dc4cba30bab4265352af5f8eab47,整幅原图,亮暗＋色差,1,109,2.035038497630522,4.266424324072305,0.0,0,818.49,
+trusted_wrong_typical_0030,fluo_challenge,15,auto,m3g,56346dd0586689225920327c9cdc05c938f3dc4cba30bab4265352af5f8eab47,opencv_faint_substrate,bright,0,,,,,0,,分隔线数 70×16 不符 14×14
+trusted_wrong_typical_0030,fluo_challenge,15,auto,kmeans,56346dd0586689225920327c9cdc05c938f3dc4cba30bab4265352af5f8eab47,opencv_faint_substrate,bright,0,,,,,0,176.02,候选不足或行列无法组网

@@ -77,6 +77,7 @@ import com.muc.fluocolorquant.ui.theme.FluoMotion
 import com.muc.fluocolorquant.ui.theme.FluoRadius
 import com.muc.fluocolorquant.ui.theme.FluoSpacing
 import com.muc.fluocolorquant.ui.viewmodels.UserViewModel
+import com.muc.fluocolorquant.data.repository.UserAccountError
 
 /**
  * 登录与注册的唯一界面实现。
@@ -427,15 +428,22 @@ private fun AuthModeSwitch(
 private fun AuthErrorMessage(state: UserViewModel.LoginState) {
     // 收起动画播放期间 state 已经不再是 Error。这里保留最后一条非空错误文案，
     // 否则动画进行到一半文字会先变成空白，看起来像内容闪了一下。
-    var lastMessage by remember { mutableStateOf("") }
-    (state as? UserViewModel.LoginState.Error)?.message?.let { lastMessage = it }
+    var lastReason by remember { mutableStateOf(UserAccountError.LOGIN_FAILED) }
+    (state as? UserViewModel.LoginState.Error)?.reason?.let { lastReason = it }
 
     AnimatedVisibility(
         visible = state is UserViewModel.LoginState.Error,
         enter = FluoMotion.expandEnter,
         exit = FluoMotion.expandExit
     ) {
-        val message = lastMessage
+        val message = stringResource(
+            when (lastReason) {
+                UserAccountError.USERNAME_TAKEN -> R.string.auth_error_username_taken
+                UserAccountError.INVALID_CREDENTIALS -> R.string.auth_error_invalid_credentials
+                UserAccountError.LOGIN_FAILED -> R.string.auth_error_login_failed
+                UserAccountError.REGISTER_FAILED -> R.string.auth_error_register_failed
+            }
+        )
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(FluoRadius.control),

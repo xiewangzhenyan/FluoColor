@@ -134,7 +134,11 @@ class ArrayCalibrationEngineTest {
             draft(observations).copy(requestedFunctions = selectedFunctions)
         )
 
-        assertEquals(selectedFunctions.toList(), result.functionResults.map { it.function })
+        assertEquals(selectedFunctions, result.functionResults.mapTo(linkedSetOf()) { it.function })
+        assertEquals(
+            result.functionResults.mapNotNull { it.candidate?.rSquared },
+            result.functionResults.mapNotNull { it.candidate?.rSquared }.sortedDescending()
+        )
         assertTrue(result.functionResults.none { it.function == FittingFunction.RODBARD })
         assertTrue(result.functionResults.none { it.function == FittingFunction.LOGISTIC })
     }
@@ -164,12 +168,102 @@ class ArrayCalibrationEngineTest {
     }
 
     @Test
+    fun `项目下限为零时正浓度标准点也不能推荐对数曲线`() {
+        val observations = listOf(20.0, 30.0, 40.0, 50.0, 60.0).mapIndexed { index, concentration ->
+            CalibrationStandardObservation(
+                siteIndex = index,
+                concentration = concentration,
+                signals = mapOf(
+                    AnalysisPrimaryFeature.FLUORESCENCE_SNR to 10.0 * kotlin.math.ln(concentration)
+                )
+            )
+        }
+
+        val result = engine.fit(
+            draft(observations).copy(
+                requestedFunctions = linkedSetOf(FittingFunction.LOG, FittingFunction.LINEAR),
+                projectRangeMin = 0.0,
+                projectRangeMax = 100.0
+            )
+        )
+
+        val logarithmic = result.functionResults.first { it.function == FittingFunction.LOG }
+        assertNull(logarithmic.candidate)
+        assertTrue(CalibrationFailureReason.INVALID_FUNCTION_DOMAIN in logarithmic.failureReasons)
+        assertTrue(result.candidates.any { it.function == FittingFunction.LINEAR })
+    }
+
+    @Test
+    fun `曲线只在标准点范围单调但在项目量程内回折时不可应用`() {
+        val observations = listOf(32.0, 40.0, 50.0, 60.0, 70.0).mapIndexed { index, concentration ->
+            CalibrationStandardObservation(
+                siteIndex = index,
+                concentration = concentration,
+                // y=6400-(x-80)^2 在32～70持续上升，却会在项目量程的80处转折。
+                signals = mapOf(
+                    AnalysisPrimaryFeature.FLUORESCENCE_SNR to
+                        6400.0 - (concentration - 80.0) * (concentration - 80.0)
+                )
+            )
+        }
+
+        val result = engine.fit(
+            draft(observations).copy(
+                requestedFunctions = setOf(FittingFunction.QUADRATIC),
+                projectRangeMin = 0.0,
+                projectRangeMax = 100.0
+            )
+        )
+
+        assertTrue(result.candidates.isEmpty())
+        // 拟合本身收敛，是项目量程内回折被拒绝；原因必须如实显示，不能落到“拟合未收敛”。
+        assertEquals(
+            setOf(CalibrationFailureReason.CURVE_NOT_MONOTONIC),
+            result.functionResults.single().failureReasons
+        )
+    }
+
+    @Test
+    fun `跨四个数量级且平台区重复孔越过渐近线时仍推荐逻辑斯谛曲线`() {
+        // 12 个等比水平（0.05～500）各 15 个重复孔，按 4PL 加噪声生成；两端平台区有一部分
+        // 重复孔的信号会越过拟合渐近线，无法逐孔反算。旧门控因此把 4PL 整条淘汰，只剩指数函数。
+        val random = java.util.Random(20261005L)
+        val levels = (0 until 12).map { k -> 0.05 * Math.pow(10000.0, k / 11.0) }
+        val a = 176.0
+        val b = 1.12
+        val c = 7.1
+        val d = 29.4
+        val observations = levels.flatMapIndexed { level, concentration ->
+            (0 until 15).map { replicate ->
+                val expected = d + (a - d) / (1.0 + Math.pow(concentration / c, b))
+                CalibrationStandardObservation(
+                    siteIndex = level * 15 + replicate,
+                    concentration = concentration,
+                    signals = mapOf(AnalysisPrimaryFeature.FLUORESCENCE_SNR to expected + random.nextGaussian() * 2.0)
+                )
+            }
+        }
+        val signals = observations.map { it.signals.getValue(AnalysisPrimaryFeature.FLUORESCENCE_SNR)!! }
+        assertTrue("测试数据必须包含越过渐近线的重复孔", signals.any { it > a } && signals.any { it < d })
+
+        val result = engine.fit(draft(observations).copy(projectRangeMin = 0.0, projectRangeMax = 500.0))
+
+        val fourParameter = result.functionResults.single { it.function == FittingFunction.RODBARD }.candidate
+        assertTrue("4PL 应作为候选给出", fourParameter != null && fourParameter.rSquared > 0.99)
+        val recommended = result.candidates.single { it.id == result.recommendedCandidateId }
+        assertTrue(recommended.function in setOf(FittingFunction.RODBARD, FittingFunction.LOGISTIC))
+    }
+
+    @Test
     fun `稳健推荐在R方差值小于阈值时选择更简单模型`() {
         val linear = candidate(FittingFunction.LINEAR, rSquared = 0.9980)
         val fourParameter = candidate(FittingFunction.RODBARD, rSquared = 0.9995)
         val selected = CalibrationRecommendationEngine.recommend(
             candidates = listOf(linear, fourParameter),
-            policy = CalibrationPolicy.DEFAULT.copy(rSquaredSimplicityTolerance = 0.002)
+            policy = CalibrationPolicy.DEFAULT.copy(
+                strategy = CalibrationStrategy.ROBUST,
+                rSquaredSimplicityTolerance = 0.002
+            )
         )
 
         assertEquals(FittingFunction.LINEAR, requireNotNull(selected).function)
@@ -202,7 +296,7 @@ class ArrayCalibrationEngineTest {
 
         val selected = CalibrationRecommendationEngine.recommend(
             candidates = listOf(overfitFiveParameter, predictiveLinear),
-            policy = CalibrationPolicy.DEFAULT
+            policy = CalibrationPolicy.DEFAULT.copy(strategy = CalibrationStrategy.ROBUST)
         )
 
         assertEquals(FittingFunction.LINEAR, requireNotNull(selected).function)
@@ -250,6 +344,52 @@ class ArrayCalibrationEngineTest {
         )
 
         assertEquals(FittingFunction.RODBARD, requireNotNull(selected).function)
+    }
+
+    @Test
+    fun `V3默认策略在数学安全候选中按R方完整降序`() {
+        val first = candidate(FittingFunction.LINEAR, rSquared = 0.970)
+        val second = candidate(FittingFunction.RODBARD, rSquared = 0.999)
+        val third = candidate(FittingFunction.LOGISTIC, rSquared = 0.985)
+
+        val ranked = CalibrationRecommendationEngine.rank(
+            candidates = listOf(first, second, third),
+            policy = CalibrationPolicy.DEFAULT
+        )
+
+        assertEquals(CalibrationStrategy.R_SQUARED_FIRST, CalibrationPolicy.DEFAULT.strategy)
+        assertEquals(
+            listOf(FittingFunction.RODBARD, FittingFunction.LOGISTIC, FittingFunction.LINEAR),
+            ranked.map(CalibrationCandidate::function)
+        )
+    }
+
+    @Test
+    fun `函数结果按推荐优先级排列且不可用候选保留在末尾`() {
+        val unavailable = CalibrationFunctionResult(
+            function = FittingFunction.POWER,
+            failureReasons = setOf(CalibrationFailureReason.INVALID_FUNCTION_DOMAIN)
+        )
+        val lower = CalibrationFunctionResult(
+            function = FittingFunction.LINEAR,
+            candidate = candidate(FittingFunction.LINEAR, rSquared = 0.970)
+        )
+        val recommended = CalibrationFunctionResult(
+            function = FittingFunction.RODBARD,
+            candidate = candidate(FittingFunction.RODBARD, rSquared = 0.999)
+        )
+
+        val ranked = CalibrationRecommendationEngine.rankFunctionResults(
+            results = listOf(unavailable, lower, recommended),
+            policy = CalibrationPolicy.DEFAULT
+        )
+
+        assertEquals(
+            listOf(FittingFunction.RODBARD, FittingFunction.LINEAR, FittingFunction.POWER),
+            ranked.map(CalibrationFunctionResult::function)
+        )
+        assertEquals(recommended.candidate?.id, ranked.first().candidate?.id)
+        assertTrue(ranked.last().failureReasons.isNotEmpty())
     }
 
     @Test

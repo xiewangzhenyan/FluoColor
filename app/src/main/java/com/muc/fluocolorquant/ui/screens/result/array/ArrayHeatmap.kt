@@ -287,6 +287,9 @@ fun buildAnalyteHeatmapModel(
             input.concentrationValue?.isFinite() != true &&
             input.primaryFeatureValue?.isFinite() == true &&
             input.reliableRangeStatus?.uppercase() in setOf("BELOW_RANGE", "ABOVE_RANGE") &&
+            // 新版深度学习链会在同一范围状态下保存 BOUND_ONLY。它是完整的单侧浓度
+            // 结论，不属于旧版“范围状态存在但强类型浓度字段遗漏”的兼容场景。
+            input.quantificationState.isNullOrBlank() &&
             input.quantificationStatus.equals("OUT_OF_RELIABLE_RANGE", ignoreCase = true)
     }
     val hasValidProjectRange = analyte.projectRangeMin?.isFinite() == true &&
@@ -295,12 +298,14 @@ fun buildAnalyteHeatmapModel(
     val hasProjectBoundaryResult = inputs.any { input ->
         input.applicable &&
             input.hasMeasurement &&
-            input.reliableRangeStatus?.uppercase() in setOf(
-                "BELOW_PROJECT_RANGE",
-                "ABOVE_PROJECT_RANGE",
-                "BELOW_TRUSTED_RANGE",
-                "ABOVE_TRUSTED_RANGE"
-            ) || input.quantificationState.equals("BOUND_ONLY", ignoreCase = true)
+            (
+                input.reliableRangeStatus?.uppercase() in setOf(
+                    "BELOW_PROJECT_RANGE",
+                    "ABOVE_PROJECT_RANGE",
+                    "BELOW_TRUSTED_RANGE",
+                    "ABOVE_TRUSTED_RANGE"
+                ) || input.quantificationState.equals("BOUND_ONLY", ignoreCase = true)
+            )
     }
     // 旧运行只保存了部分浓度时，整张图统一使用信号值；绝不能让同一色带同时表达浓度和信号。
     // 即使全部位点都落在项目量程外，只要项目边界完整，仍应保持浓度语义并显示方向标记；

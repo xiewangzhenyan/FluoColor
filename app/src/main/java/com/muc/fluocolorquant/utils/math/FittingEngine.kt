@@ -22,6 +22,8 @@ import com.muc.fluocolorquant.data.enums.PixelType
  */
 object FittingEngine {
     private const val CALIBRATION_INVERSE_EPSILON: Double = 1e-12
+    private const val CALIBRATION_INVERSE_SAMPLE_COUNT: Int = 257
+    private const val CALIBRATION_INVERSE_ITERATIONS: Int = 96
 
     /**
      * 将函数参数格式化为LaTeX表达式
@@ -384,6 +386,76 @@ object FittingEngine {
     }
 
     /**
+     * 在调用方明确提供的浓度闭区间内执行通用单调反算。
+     *
+     * 二次、指数、对数和幂函数没有全局唯一反函数，不能仅凭参数选择一个代数根。本入口
+     * 先在本次标定域内证明正向函数连续且方向唯一，再用有界二分求解，因此只要曲线在
+     * 实际标定区间单调，就能与线性、4PL、5PL 一样生成真实反算验证。任何定义域错误、
+     * 局部反转或目标信号不可达都会返回 null，调用方不得把结果夹到区间端点。
+     */
+    fun invertCalibrationSignal(
+        function: FittingFunction,
+        params: Map<String, Double>,
+        signal: Double,
+        concentrationMinimum: Double,
+        concentrationMaximum: Double
+    ): Double? {
+        if (
+            !signal.isFinite() ||
+            !concentrationMinimum.isFinite() ||
+            !concentrationMaximum.isFinite() ||
+            concentrationMinimum < 0.0 ||
+            concentrationMaximum <= concentrationMinimum ||
+            params.values.any { !it.isFinite() }
+        ) return null
+
+        val sampledSignals = buildList(CALIBRATION_INVERSE_SAMPLE_COUNT) {
+            repeat(CALIBRATION_INVERSE_SAMPLE_COUNT) { index ->
+                val ratio = index.toDouble() / (CALIBRATION_INVERSE_SAMPLE_COUNT - 1).toDouble()
+                val concentration = concentrationMinimum +
+                    (concentrationMaximum - concentrationMinimum) * ratio
+                val value = runCatching { calculate(function, params, concentration) }
+                    .getOrNull()
+                    ?.takeIf(Double::isFinite)
+                    ?: return null
+                add(value)
+            }
+        }
+        val signalSpan = (sampledSignals.maxOrNull() ?: return null) -
+            (sampledSignals.minOrNull() ?: return null)
+        val tolerance = maxOf(abs(signalSpan) * 1e-10, CALIBRATION_INVERSE_EPSILON)
+        val differences = sampledSignals.zipWithNext { first, second -> second - first }
+        val increasing = differences.all { it >= -tolerance } && differences.any { it > tolerance }
+        val decreasing = differences.all { it <= tolerance } && differences.any { it < -tolerance }
+        if (!increasing && !decreasing) return null
+
+        val minimumSignal = sampledSignals.first()
+        val maximumSignal = sampledSignals.last()
+        val lowerSignal = minOf(minimumSignal, maximumSignal)
+        val upperSignal = maxOf(minimumSignal, maximumSignal)
+        if (signal < lowerSignal - tolerance || signal > upperSignal + tolerance) return null
+        val target = signal.coerceIn(lowerSignal, upperSignal)
+        if (abs(target - minimumSignal) <= tolerance) return concentrationMinimum
+        if (abs(target - maximumSignal) <= tolerance) return concentrationMaximum
+
+        var lower = concentrationMinimum
+        var upper = concentrationMaximum
+        repeat(CALIBRATION_INVERSE_ITERATIONS) {
+            val middle = lower + (upper - lower) / 2.0
+            if (middle == lower || middle == upper) return@repeat
+            val middleSignal = runCatching { calculate(function, params, middle) }
+                .getOrNull()
+                ?.takeIf(Double::isFinite)
+                ?: return null
+            val moveLower = if (increasing) middleSignal < target else middleSignal > target
+            if (moveLower) lower = middle else upper = middle
+        }
+        return (lower + (upper - lower) / 2.0).takeIf {
+            it.isFinite() && it >= concentrationMinimum && it <= concentrationMaximum
+        }
+    }
+
+    /**
      * 拟合数据点到最佳函数模型
      * @param dataPoints 数据点列表，每个点为 (x, y) 对
      * @return 拟合结果
@@ -439,6 +511,23 @@ object FittingEngine {
             buildCalibrationResult(normalizedPoints, candidate)
         }
     }
+
+    /**
+     * 留一水平验证专用：从全量标准点得到的参数出发，按同一权重方案重拟合一个成熟函数。
+     *
+     * 只支持 [automaticCalibrationFunctions]；返回稳定解的参数，失败返回 null。
+     */
+    fun refitCalibrationCandidate(
+        dataPoints: List<Pair<Double, Double>>,
+        function: FittingFunction,
+        weightingCode: Int,
+        warmStart: Map<String, Double>
+    ): Map<String, Double>? = CalibrationModelSelector.refit(
+        dataPoints = dataPoints,
+        function = function,
+        weightingCode = weightingCode,
+        warmStart = warmStart
+    )
 
     /**
      * 为统一阵列标定和标准曲线库生成用户明确允许的全部函数候选。

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -135,7 +137,8 @@ fun ScientificSelectionField(
     supportingValue: String? = null,
     enabled: Boolean = true,
     isError: Boolean = false,
-    density: ScientificSelectionFieldDensity = ScientificSelectionFieldDensity.STANDARD
+    density: ScientificSelectionFieldDensity = ScientificSelectionFieldDensity.STANDARD,
+    allowValueWrap: Boolean = false
 ) {
     val horizontalPadding = if (density == ScientificSelectionFieldDensity.COMPACT) 9.dp else 13.dp
     val verticalPadding = if (density == ScientificSelectionFieldDensity.COMPACT) 10.dp else 12.dp
@@ -220,8 +223,8 @@ fun ScientificSelectionField(
                         },
                         fontWeight = if (value.isNullOrBlank()) FontWeight.Normal
                         else FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = if (allowValueWrap) Int.MAX_VALUE else 1,
+                        overflow = if (allowValueWrap) TextOverflow.Clip else TextOverflow.Ellipsis
                     )
                     supportingValue?.takeIf(String::isNotBlank)?.let { supporting ->
                         Text(
@@ -257,12 +260,18 @@ fun ScientificPickerSheet(
     selectedId: String?,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // 算法短名单直接展开，避免最后两种方法必须再拖一次面板才看得见；较矮视口仍允许滚动。
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = compact)) {
+        // 密集的算法短名单额外避开手势区；保留其它科研资源面板原有的行高与边距。
+        val badgeSize = if (compact) 30.dp else 38.dp
+        val rowPadding = if (compact) 8.dp else 11.dp
         Column(
             modifier = modifier
                 .fillMaxWidth()
+                .then(if (compact) Modifier.systemBarsPadding() else Modifier)
                 .padding(bottom = 20.dp)
         ) {
             Text(
@@ -300,13 +309,14 @@ fun ScientificPickerSheet(
                         }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = rowPadding)
+                                .then(if (compact) Modifier.heightIn(min = 32.dp) else Modifier),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(11.dp)
                         ) {
                             option.icon?.let { optionIcon ->
                                 Surface(
-                                    modifier = Modifier.size(38.dp),
+                                    modifier = Modifier.size(badgeSize),
                                     shape = RoundedCornerShape(FluoRadius.badge),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
                                 ) {
@@ -314,7 +324,7 @@ fun ScientificPickerSheet(
                                         Icon(
                                             imageVector = optionIcon,
                                             contentDescription = null,
-                                            modifier = Modifier.size(20.dp),
+                                            modifier = Modifier.size(if (compact) 18.dp else 20.dp),
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                     }

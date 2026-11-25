@@ -16,6 +16,75 @@ import java.io.ByteArrayOutputStream
 import kotlin.math.min
 
 /**
+ * PDF 与独立 PNG 共用的热力图绘制契约。
+ *
+ * 之前两种导出虽然都读取冻结浓度，但各自计算范围、各自选择颜色，最终导致同一孔位在
+ * PDF 和 PNG 中呈现不同颜色。该对象只描述“画什么”和“按什么范围归一化”，不会修改、
+ * 截断或重新计算任何冻结浓度。
+ */
+internal data class ArrayResultExportHeatmapScale(
+    val useConcentration: Boolean,
+    val minimum: Double,
+    val maximum: Double
+)
+
+internal fun resolveArrayResultExportHeatmapScale(
+    snapshot: ArrayResultSnapshot,
+    analyte: ArrayAnalyteResult
+): ArrayResultExportHeatmapScale {
+    val measurements = snapshot.sites.mapNotNull { site ->
+        site.measurementForExport(analyte.analyteId)
+    }
+    val useConcentration = measurements.any { measurement ->
+        measurement.concentrationValue?.isFinite() == true ||
+            measurement.quantificationState.equals("BOUND_ONLY", ignoreCase = true)
+    }
+    val values = measurements.mapNotNull { measurement ->
+        if (useConcentration) {
+            measurement.exportHeatmapValue()
+        } else {
+            measurement.primaryFeatureValue
+        }
+    }.filter(Double::isFinite)
+    val observedMinimum = values.minOrNull() ?: 0.0
+    val observedMaximum = values.maxOrNull() ?: 1.0
+    val projectMinimum = analyte.projectRangeMin?.takeIf(Double::isFinite)
+    val projectMaximum = analyte.projectRangeMax?.takeIf(Double::isFinite)
+    val hasValidProjectRange = useConcentration &&
+        projectMinimum != null &&
+        projectMaximum != null &&
+        projectMaximum > projectMinimum
+
+    return ArrayResultExportHeatmapScale(
+        useConcentration = useConcentration,
+        minimum = if (hasValidProjectRange) requireNotNull(projectMinimum) else observedMinimum,
+        maximum = if (hasValidProjectRange) requireNotNull(projectMaximum) else observedMaximum
+    )
+}
+
+/**
+ * 单侧界限没有点浓度，只允许使用冻结的浓度边界决定色带端点；报告仍会叠加明确的
+ * “&lt;”或“&gt;”标记，因此这里不会把界限伪装成精确浓度。
+ */
+internal fun ArraySiteMeasurementResult.exportHeatmapValue(): Double? =
+    concentrationValue?.takeIf(Double::isFinite)
+        ?: when {
+            quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+                censoringDirection.equals("LOWER_BOUND", ignoreCase = true) ->
+                concentrationLowerBound?.takeIf(Double::isFinite)
+            quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
+                censoringDirection.equals("UPPER_BOUND", ignoreCase = true) ->
+                concentrationUpperBound?.takeIf(Double::isFinite)
+            else -> null
+        }
+
+internal fun ArrayPhysicalSiteResult.measurementForExport(analyteId: String) =
+    measurements.firstOrNull { measurement -> measurement.analyteId == analyteId }
+
+internal fun exportHeatmapColor(value: Double, scale: ArrayResultExportHeatmapScale): Int =
+    HeatmapColorUtil.getColor(value, scale.minimum, scale.maximum).toArgb()
+
+/**
  * 从冻结结果离屏绘制固定分辨率PNG。
  *
  * 绘制器不截取手机页面，因此导出图片不会包含导航栏、滚动位置或设备分辨率差异。圆孔板
@@ -33,31 +102,8 @@ object ArrayResultPngExporter {
         val analyte = snapshot.analytes.firstOrNull { candidate -> candidate.analyteId == analyteId }
             ?: snapshot.analytes.minByOrNull(ArrayAnalyteResult::displayOrder)
             ?: error("PNG_EXPORT_ANALYTE_UNAVAILABLE")
-        val concentrationMode = snapshot.sites.any { site ->
-            val measurement = site.measurementFor(analyte.analyteId)
-            measurement?.concentrationValue?.isFinite() == true ||
-                measurement?.quantificationState.equals("BOUND_ONLY", ignoreCase = true)
-        }
-        val values = snapshot.sites.mapNotNull { site ->
-            val measurement = site.measurementFor(analyte.analyteId) ?: return@mapNotNull null
-            if (concentrationMode) {
-                measurement.concentrationHeatmapValue()
-            } else {
-                measurement.primaryFeatureValue
-            }
-        }.filter(Double::isFinite)
-        val dataMinimum = values.minOrNull() ?: 0.0
-        val dataMaximum = values.maxOrNull() ?: 1.0
-        val scaleMinimum = if (concentrationMode) {
-            analyte.projectRangeMin?.takeIf(Double::isFinite) ?: dataMinimum
-        } else {
-            dataMinimum
-        }
-        val scaleMaximum = if (concentrationMode) {
-            analyte.projectRangeMax?.takeIf(Double::isFinite) ?: dataMaximum
-        } else {
-            dataMaximum
-        }.let { maximum -> if (maximum > scaleMinimum) maximum else scaleMinimum + 1.0 }
+        val scale = resolveArrayResultExportHeatmapScale(snapshot, analyte)
+        val concentrationMode = scale.useConcentration
 
         val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -125,14 +171,14 @@ object ArrayResultPngExporter {
             repeat(snapshot.columns) { column ->
                 val siteIndex = row * snapshot.columns + column
                 val site = siteByIndex[siteIndex]
-                val measurement = site?.measurementFor(analyte.analyteId)
+                val measurement = site?.measurementForExport(analyte.analyteId)
                 val value = if (concentrationMode) {
-                    measurement?.concentrationHeatmapValue()
+                    measurement?.exportHeatmapValue()
                 } else {
                     measurement?.primaryFeatureValue
                 }?.takeIf(Double::isFinite)
                 val color = value?.let { finite ->
-                    HeatmapColorUtil.getColor(finite, scaleMinimum, scaleMaximum).toArgb()
+                    exportHeatmapColor(finite, scale)
                 } ?: Color.rgb(229, 232, 238)
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
                 val inset = cellSize * 0.11f
@@ -164,7 +210,7 @@ object ArrayResultPngExporter {
             }
         }
 
-        drawLegend(canvas, scaleMinimum, scaleMaximum, startX, actualWidth, subtitlePaint)
+        drawLegend(canvas, scale.minimum, scale.maximum, startX, actualWidth, subtitlePaint)
         return ByteArrayOutputStream().use { output ->
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
                 "PNG_EXPORT_ENCODING_FAILED"
@@ -200,25 +246,6 @@ object ArrayResultPngExporter {
         textPaint.textAlign = Paint.Align.RIGHT
         canvas.drawText(formatPngValue(maximum), startX + width, legendTop + 62f, textPaint)
     }
-
-    private fun ArrayPhysicalSiteResult.measurementFor(analyteId: String) =
-        measurements.firstOrNull { measurement -> measurement.analyteId == analyteId }
-
-    /**
-     * 单侧界限没有点浓度，但仍可用冻结的浓度界限决定端点颜色；这不是伪造精确值，
-     * 因为导出图会同时叠加明确的 “>” 或 “<” 标记。
-     */
-    private fun ArraySiteMeasurementResult.concentrationHeatmapValue(): Double? =
-        concentrationValue?.takeIf(Double::isFinite)
-            ?: when {
-                quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
-                    censoringDirection.equals("LOWER_BOUND", ignoreCase = true) ->
-                    concentrationLowerBound?.takeIf(Double::isFinite)
-                quantificationState.equals("BOUND_ONLY", ignoreCase = true) &&
-                    censoringDirection.equals("UPPER_BOUND", ignoreCase = true) ->
-                    concentrationUpperBound?.takeIf(Double::isFinite)
-                else -> null
-            }
 
     /** 离屏图用最小符号复现页面语义：估计值为≈，浓度下界为>，上界为<。 */
     private fun drawQuantificationMarker(

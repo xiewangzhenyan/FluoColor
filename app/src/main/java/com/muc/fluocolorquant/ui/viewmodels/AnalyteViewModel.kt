@@ -1,9 +1,12 @@
 package com.muc.fluocolorquant.ui.viewmodels
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.muc.fluocolorquant.R
 import com.muc.fluocolorquant.data.model.Analyte
 import com.muc.fluocolorquant.data.repository.AnalyteRepository
+import com.muc.fluocolorquant.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,8 +27,9 @@ class AnalyteViewModel @Inject constructor(
     
     // 分析物列表状态
     private val _analytes = analyteRepository.getAllAnalytes()
-        .catch { e ->
-            _errorMessage.value = e.message ?: "未知错误"
+        .catch { error ->
+            Log.e(TAG, "加载分析物列表失败", error)
+            _errorMessage.value = UiText.StringResource(R.string.analyte_load_error)
         }
         .stateIn(
             scope = viewModelScope,
@@ -39,56 +43,96 @@ class AnalyteViewModel @Inject constructor(
     val isLoading: StateFlow<Boolean> = _isLoading
     
     // 错误信息
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage
+    private val _errorMessage = MutableStateFlow<UiText?>(null)
+    val errorMessage: StateFlow<UiText?> = _errorMessage
     
     /**
      * 添加分析物
      * @param name 分析物名称
      */
-    fun addAnalyte(name: String) {
+    fun addAnalyteProfile(
+        name: String,
+        defaultUnit: String?,
+        defaultMaxConcentration: Double?,
+        defaultFluorescenceChannel: String?,
+        referenceCutoff: Double?,
+        onSaved: () -> Unit = {}
+    ) {
         if (name.isBlank()) {
-            _errorMessage.value = "分析物名称不能为空"
+            _errorMessage.value = UiText.StringResource(R.string.analyte_name_empty)
             return
         }
-        
         viewModelScope.launch {
             _isLoading.value = true
-            
             try {
-                val result = analyteRepository.addAnalyte(name)
-                if (!result) {
-                    _errorMessage.value = "该分析物已存在"
+                val result = analyteRepository.addAnalyteProfile(
+                    name = name,
+                    defaultUnit = defaultUnit,
+                    defaultMaxConcentration = defaultMaxConcentration,
+                    defaultFluorescenceChannel = defaultFluorescenceChannel,
+                    referenceCutoff = referenceCutoff
+                )
+                if (result) {
+                    onSaved()
+                } else {
+                    _errorMessage.value = UiText.StringResource(R.string.analyte_already_exists)
                 }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "添加分析物时发生错误"
+            } catch (error: Exception) {
+                Log.e(TAG, "添加分析物失败", error)
+                _errorMessage.value = UiText.StringResource(R.string.analyte_added_error)
             } finally {
                 _isLoading.value = false
             }
         }
     }
-    
-    /**
-     * 更新分析物
-     * @param id 分析物ID
-     * @param name 新的分析物名称
-     */
-    fun updateAnalyte(id: String, name: String) {
+
+    fun updateAnalyteProfile(
+        id: String,
+        name: String,
+        defaultUnit: String?,
+        defaultMaxConcentration: Double?,
+        defaultFluorescenceChannel: String?,
+        referenceCutoff: Double?,
+        onSaved: () -> Unit = {}
+    ) {
         if (name.isBlank()) {
-            _errorMessage.value = "分析物名称不能为空"
+            _errorMessage.value = UiText.StringResource(R.string.analyte_name_empty)
             return
         }
-        
         viewModelScope.launch {
             _isLoading.value = true
-            
             try {
-                val result = analyteRepository.updateAnalyte(id, name)
-                if (!result) {
-                    _errorMessage.value = "该分析物名称已存在"
+                val result = analyteRepository.updateAnalyteProfile(
+                    id = id,
+                    name = name,
+                    defaultUnit = defaultUnit,
+                    defaultMaxConcentration = defaultMaxConcentration,
+                    defaultFluorescenceChannel = defaultFluorescenceChannel,
+                    referenceCutoff = referenceCutoff
+                )
+                if (result) {
+                    onSaved()
+                } else {
+                    _errorMessage.value = UiText.StringResource(R.string.analyte_already_exists)
                 }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "更新分析物时发生错误"
+            } catch (error: Exception) {
+                Log.e(TAG, "更新分析物失败: $id", error)
+                _errorMessage.value = UiText.StringResource(R.string.analyte_update_error)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun applyStandardPresets(onApplied: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val count = analyteRepository.applyStandardPresetsToUnconfigured()
+                onApplied(count)
+            } catch (error: Exception) {
+                Log.e(TAG, "应用常见肿瘤标志物预设失败", error)
+                _errorMessage.value = UiText.StringResource(R.string.analyte_update_error)
             } finally {
                 _isLoading.value = false
             }
@@ -105,8 +149,9 @@ class AnalyteViewModel @Inject constructor(
             
             try {
                 analyteRepository.deleteAnalyte(analyteId)
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "删除分析物时发生错误"
+            } catch (error: Exception) {
+                Log.e(TAG, "删除分析物失败: $analyteId", error)
+                _errorMessage.value = UiText.StringResource(R.string.analyte_delete_error)
             } finally {
                 _isLoading.value = false
             }
@@ -119,4 +164,8 @@ class AnalyteViewModel @Inject constructor(
     fun clearErrorMessage() {
         _errorMessage.value = null
     }
-} 
+
+    private companion object {
+        const val TAG: String = "AnalyteViewModel"
+    }
+}

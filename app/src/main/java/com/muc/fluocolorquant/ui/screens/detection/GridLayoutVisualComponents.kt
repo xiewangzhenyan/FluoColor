@@ -108,6 +108,9 @@ internal object ArrayLayoutEditorTestTags {
     const val REAL_GRID: String = "array_layout_real_grid"
     const val VIRTUAL_GRID: String = "array_layout_virtual_grid"
     const val QUANTITATION: String = "array_layout_quantitation"
+    const val MODEL_SELECTOR: String = "array_layout_model_selector"
+    /** 模型菜单项使用稳定资源 ID 定位，避免测试依赖当前语言或语义树文本合并方式。 */
+    const val MODEL_OPTION_PREFIX: String = "array_layout_model_option_"
     const val CROP_PREFIX: String = "array_layout_crop_"
     const val CROP_DIALOG: String = "array_layout_crop_dialog"
 }
@@ -221,6 +224,20 @@ internal fun RealSiteCropGrid(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
+                    if (crop.site.manuallyFlaggedBad) {
+                        Surface(
+                            shape = RoundedCornerShape(FluoRadius.badge),
+                            color = MaterialTheme.colorScheme.errorContainer
+                        ) {
+                            Text(
+                                text = stringResource(R.string.grid_spot_flagged_badge),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                     Surface(
                         modifier = Modifier.size(220.dp),
                         shape = if (visualStyle == ArraySiteVisualStyle.CIRCLE) CircleShape
@@ -456,6 +473,7 @@ internal fun CompactVirtualLayoutGrid(
                                 Row(horizontalArrangement = Arrangement.spacedBy(metrics.gap)) {
                                     repeat(preview.columns) { columnIndex ->
                                         val siteIndex = rowIndex * preview.columns + columnIndex
+                                        val sitePreview = preview.sites.getOrNull(siteIndex)
                                         VirtualSiteCell(
                                             rowIndex = rowIndex,
                                             columnIndex = columnIndex,
@@ -463,7 +481,8 @@ internal fun CompactVirtualLayoutGrid(
                                             analytes = preview.analytes,
                                             cellSize = metrics.cellSize,
                                             visualStyle = visualStyle,
-                                            selected = selectedSiteIndex == siteIndex
+                                            selected = selectedSiteIndex == siteIndex,
+                                            manuallyFlaggedBad = sitePreview?.manuallyFlaggedBad == true
                                         )
                                     }
                                 }
@@ -544,6 +563,7 @@ private fun RealSiteCropCell(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val flaggedBad = crop.site.manuallyFlaggedBad
     Surface(
         modifier = Modifier
             .size(cellSize)
@@ -552,9 +572,12 @@ private fun RealSiteCropCell(
         shape = if (visualStyle == ArraySiteVisualStyle.CIRCLE) CircleShape
         else RoundedCornerShape(if (cellSize < 24.dp) 3.dp else 5.dp),
         border = BorderStroke(
-            if (selected) 2.dp else 1.dp,
-            if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.outlineVariant
+            width = if (selected || flaggedBad) 2.dp else 1.dp,
+            color = when {
+                selected -> MaterialTheme.colorScheme.primary
+                flaggedBad -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.outlineVariant
+            }
         )
     ) {
         Box {
@@ -584,6 +607,22 @@ private fun RealSiteCropCell(
                     overflow = TextOverflow.Clip
                 )
             }
+            if (flaggedBad) {
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.88f),
+                    shape = RoundedCornerShape(topStart = 3.dp)
+                ) {
+                    Text(
+                        text = "×",
+                        modifier = Modifier.padding(horizontal = 2.dp),
+                        color = MaterialTheme.colorScheme.onError,
+                        fontSize = if (cellSize < 28.dp) 6.sp else 8.sp,
+                        lineHeight = 8.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
         }
     }
 }
@@ -596,7 +635,8 @@ private fun VirtualSiteCell(
     analytes: List<GridLocalizationAnalyte>,
     cellSize: Dp,
     visualStyle: ArraySiteVisualStyle,
-    selected: Boolean
+    selected: Boolean,
+    manuallyFlaggedBad: Boolean = false
 ) {
     val analyteIndex = analytes.indexOfFirst { it.id == assignment?.analyteId }
     val accent = when {
@@ -612,10 +652,13 @@ private fun VirtualSiteCell(
         else RoundedCornerShape(if (cellSize < 24.dp) 3.dp else 5.dp),
         color = accent,
         border = BorderStroke(
-            if (selected) 2.dp else 1.dp,
-            if (selected) MaterialTheme.colorScheme.primary
-            else if (assignment == null) MaterialTheme.colorScheme.outlineVariant
-            else accent.copy(alpha = 0.9f)
+            width = if (selected || manuallyFlaggedBad) 2.dp else 1.dp,
+            color = when {
+                selected -> MaterialTheme.colorScheme.primary
+                manuallyFlaggedBad -> MaterialTheme.colorScheme.error
+                assignment == null -> MaterialTheme.colorScheme.outlineVariant
+                else -> accent.copy(alpha = 0.9f)
+            }
         )
     ) {
         Box(modifier = Modifier.padding(if (visualStyle == ArraySiteVisualStyle.CIRCLE) 2.dp else 1.dp)) {
@@ -633,6 +676,16 @@ private fun VirtualSiteCell(
                 softWrap = false,
                 overflow = TextOverflow.Clip
             )
+            if (manuallyFlaggedBad) {
+                Text(
+                    text = "×",
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    color = if (assignment == null) MaterialTheme.colorScheme.error else Color(0xFFFFCDD2),
+                    fontSize = if (cellSize < 24.dp) 6.sp else 8.sp,
+                    lineHeight = 8.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
             Text(
                 text = gridRoleShortLabel(assignment?.role),
                 modifier = Modifier.align(

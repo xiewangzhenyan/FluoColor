@@ -144,18 +144,20 @@ class RealPhotoOnsiteQuantitationWorkflowTest {
             )
         )
         val distinctSignals = fluorescence.sites
-            .filter { site -> site.primaryFeatureValue.isFinite() }
-            .sortedBy { site -> site.primaryFeatureValue }
-            .distinctBy { site -> site.primaryFeatureValue }
+            // 荧光处理器现在也支持通道比率等可能因低分母而无定义的特征，因此统一
+            // 使用可空主信号契约；本用例选择净强度，仍要求每个入选标准点真实有限。
+            .filter { site -> site.primaryFeatureValue?.isFinite() == true }
+            .sortedBy { site -> requireNotNull(site.primaryFeatureValue) }
+            .distinctBy { site -> requireNotNull(site.primaryFeatureValue) }
         assertTrue("实拍图至少应提供六个不同的净荧光信号", distinctSignals.size >= 6)
         val standards = selectMiddleRangeStandards(distinctSignals)
-        val minimumSignal = standards.minOf { site -> site.primaryFeatureValue }
-        val maximumSignal = standards.maxOf { site -> site.primaryFeatureValue }
+        val minimumSignal = standards.minOf { site -> requireNotNull(site.primaryFeatureValue) }
+        val maximumSignal = standards.maxOf { site -> requireNotNull(site.primaryFeatureValue) }
         val signalSpan = maximumSignal - minimumSignal
         assertTrue("现场标准位点必须覆盖有限信号区间", signalSpan.isFinite() && signalSpan > 0.0)
         val standardConcentrations = standards.associate { site ->
             site.base.siteIndex to CALIBRATION_MINIMUM +
-                (site.primaryFeatureValue - minimumSignal) / signalSpan *
+                (requireNotNull(site.primaryFeatureValue) - minimumSignal) / signalSpan *
                 (CALIBRATION_MAXIMUM - CALIBRATION_MINIMUM)
         }
         val fittingSnapshot = initialSnapshot.copy(

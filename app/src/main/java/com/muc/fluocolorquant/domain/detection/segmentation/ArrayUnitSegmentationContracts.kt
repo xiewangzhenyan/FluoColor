@@ -35,7 +35,41 @@ enum class ArrayUnitRegionSource {
     FALLBACK_MEDIAN_GEOMETRY,
 
     /** 旧孔板等链路已经提供了可信圆/矩形几何，直接适配为通用区域。 */
-    DETECTED_GEOMETRY
+    DETECTED_GEOMETRY,
+
+    /** 圆孔中心来自人工角点，孔径由用户在原图显式确认，并非算法观测到的边缘。 */
+    MANUAL_GEOMETRY
+}
+
+/**
+ * 局部单元分割回退为 [ArrayUnitRegionSource.FALLBACK_MEDIAN_GEOMETRY] 时的具体物理原因。
+ *
+ * 借鉴 GenePix Pro 的 `Not Found` 诊断拆分原则：空白孔/阴性孔在荧光或弱显色下天然缺少局部对比度，
+ * 属于正常的物理低信号状态（[LOW_CONTRAST]），必须保留 `qualityReliable = true` 以免误删零浓度标准孔；
+ * 而强信号斑点触碰局部窗口边界（[WINDOW_BOUNDARY_TOUCH]）或中心严重偏离晶格（[EXCESSIVE_CENTER_SHIFT]）
+ * 则代表溢流粘连或错位，采样器据此触发异常复核并阻止坏孔污染标准曲线。
+ */
+enum class ArrayUnitFallbackReason {
+    /** 局部窗口对比度低于阈值（空白孔、阴性对照或极弱信号），属正常暗孔状态。 */
+    LOW_CONTRAST,
+
+    /** 局部连通域面积小于最小有效斑点像素数（孤立噪点），回退中位框。 */
+    SMALL_COMPONENT,
+
+    /** 高对比度前景触碰局部搜索窗口边界，通常意味着斑点溢流粘连或跨格污染。 */
+    WINDOW_BOUNDARY_TOUCH,
+
+    /** 局部连通域宽高超出全阵中位尺寸容许比例范围。 */
+    ABNORMAL_SIZE,
+
+    /** 局部连通域中心相对晶格预测点偏移超过上限。 */
+    EXCESSIVE_CENTER_SHIFT,
+
+    /** 圆形/点状单元的长宽比或面积填充率不符合圆斑几何约束（如月牙形反光条）。 */
+    IRREGULAR_SHAPE,
+
+    /** 晶格定位阶段属于无局部观测的模型推算位点。 */
+    GRID_IMPUTED
 }
 
 /**
@@ -52,6 +86,8 @@ data class ArrayUnitBounds(
 ) {
     val width: Int get() = right - left
     val height: Int get() = bottom - top
+    val centerX: Double get() = (left + right) / 2.0
+    val centerY: Double get() = (top + bottom) / 2.0
 
     fun requireValid(imageWidth: Int? = null, imageHeight: Int? = null): ArrayUnitBounds = apply {
         require(left >= 0 && top >= 0) { "单元边界左上角不能为负数" }
@@ -75,7 +111,9 @@ data class ArrayUnitRegion(
     val shape: ArrayUnitShape,
     val bounds: ArrayUnitBounds,
     val source: ArrayUnitRegionSource,
-    val foregroundMask: ByteArray
+    val foregroundMask: ByteArray,
+    /** 仅当 [source] 为兜底几何时记录具体回退原因；真实分割或外部已知几何保持为空。 */
+    val fallbackReason: ArrayUnitFallbackReason? = null
 ) {
     /** 判断一个矫正图全局坐标是否属于该单元前景。 */
     fun contains(x: Int, y: Int): Boolean {
@@ -83,6 +121,33 @@ data class ArrayUnitRegion(
         val localX = x - bounds.left
         val localY = y - bounds.top
         return foregroundMask[localY * bounds.width + localX].toInt() != 0
+    }
+
+    /**
+     * 判断矫正图坐标是否落在该单元本体或其外围半影隔离谷区（Valley Exclusion）内。
+     *
+     * 借鉴 GenePix Pro 局部背景扣除的三层剔除原则：背景像素不仅要排除本孔前景掩膜，
+     * 还要排除孔边缘外扩 [valleyPx] 的弯月面/衍射晕圈隔离带，并用于相邻位点的互斥屏蔽。
+     */
+    fun isWithinExclusionZone(x: Int, y: Int, valleyPx: Int): Boolean {
+        val pad = valleyPx.coerceAtLeast(0)
+        if (x < bounds.left - pad || x >= bounds.right + pad ||
+            y < bounds.top - pad || y >= bounds.bottom + pad
+        ) {
+            return false
+        }
+        return when (shape) {
+            ArrayUnitShape.CIRCLE, ArrayUnitShape.POINT -> {
+                val cx = (bounds.left + bounds.right - 1.0) / 2.0
+                val cy = (bounds.top + bounds.bottom - 1.0) / 2.0
+                val rx = (bounds.width / 2.0 + pad).coerceAtLeast(1.0)
+                val ry = (bounds.height / 2.0 + pad).coerceAtLeast(1.0)
+                val dx = (x - cx) / rx
+                val dy = (y - cy) / ry
+                dx * dx + dy * dy <= 1.0
+            }
+            ArrayUnitShape.SQUARE, ArrayUnitShape.CUSTOM -> true
+        }
     }
 
     val foregroundPixelCount: Int

@@ -5,6 +5,8 @@ import android.content.Context
 import android.util.Log
 import com.muc.fluocolorquant.data.repository.AppLanguageStore
 import com.muc.fluocolorquant.data.repository.SettingsRepository
+import com.muc.fluocolorquant.data.AppDatabase
+import com.muc.fluocolorquant.data.storage.ProjectFileCleaner
 import com.muc.fluocolorquant.utils.LocaleHelper
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -21,11 +23,21 @@ class FluoColorApp : Application() {
 
     private companion object {
         const val TAG = "FluoColorApp"
+        const val SCIENTIFIC_GENERATION_PREFERENCES = "scientific_data_generation"
+        const val SCIENTIFIC_GENERATION_KEY = "generation"
+        const val SCIENTIFIC_GENERATION_V2 = 2
     }
 
     // 在 onCreate 之后，仍可注入 SettingsRepository 以供应用程序的其他部分使用
     @Inject
     lateinit var settingsRepository: SettingsRepository
+
+    /** 强制数据库先完成 17→18 显式代际迁移，再清理对应私有运行文件。 */
+    @Inject
+    lateinit var appDatabase: AppDatabase
+
+    @Inject
+    lateinit var projectFileCleaner: ProjectFileCleaner
     
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -88,5 +100,31 @@ class FluoColorApp : Application() {
             val concentrationUnit = settingsRepository.defaultConcentrationUnitFlow.first()
             Log.i(TAG, "Default settings: Detection mode: $detectionMode, Concentration unit: $concentrationUnit")
         }
+
+        applicationScope.launch(Dispatchers.IO) {
+            val generationStore = getSharedPreferences(
+                SCIENTIFIC_GENERATION_PREFERENCES,
+                Context.MODE_PRIVATE
+            )
+            if (generationStore.getInt(SCIENTIFIC_GENERATION_KEY, 0) < SCIENTIFIC_GENERATION_V2) {
+                runCatching {
+                    // 打开 writableDatabase 会同步执行 Room 17→18 迁移；文件清理必须排在
+                    // 它之后，避免数据库仍指向已经删除的证据文件。
+                    appDatabase.openHelper.writableDatabase
+                    projectFileCleaner.cleanLegacyScientificGeneration()
+                }.onSuccess { report ->
+                    if (report.failedCount == 0) {
+                        generationStore.edit()
+                            .putInt(SCIENTIFIC_GENERATION_KEY, SCIENTIFIC_GENERATION_V2)
+                            .apply()
+                        Log.i(TAG, "V2 科研数据代际已就绪，清理文件 ${report.deletedCount} 个")
+                    }
+                }.onFailure { error ->
+                    // 不写完成标记，下次冷启动自动重试。异常不会阻止设置或非检测页面打开。
+                    Log.e(TAG, "V2 科研数据代际初始化失败，将在下次启动重试", error)
+                }
+            }
+        }
     }
+
 }
